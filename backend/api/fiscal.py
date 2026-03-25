@@ -119,7 +119,11 @@ def dashboard_stats(db: Session = Depends(get_db)):
     imports = db.query(func.count(ImportRecord.id)).scalar() or 0
 
     years = (
-        db.query(TaxResult.fiscal_year).distinct().order_by(TaxResult.fiscal_year.desc()).all()
+        db.query(ImportRecord.fiscal_year)
+        .filter(ImportRecord.fiscal_year.isnot(None))
+        .distinct()
+        .order_by(ImportRecord.fiscal_year.desc())
+        .all()
     )
 
     return DashboardStats(

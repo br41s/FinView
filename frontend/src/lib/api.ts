@@ -14,6 +14,14 @@ export async function uploadTRReport(file: File) {
   return res.json();
 }
 
+export async function uploadDGReport(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/imports/degiro`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  return res.json();
+}
+
 export const api = {
   dashboard: () => fetchJSON("/fiscal/dashboard"),
   fiscalSummary: (year: number) => fetchJSON(`/fiscal/summary/${year}`),

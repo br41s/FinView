@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { uploadTRReport } from "@/lib/api";
+import { uploadTRReport, uploadDGReport } from "@/lib/api";
 import type { ImportResult } from "@/lib/types";
+
+function detectBroker(filename: string): "tr" | "degiro" | null {
+  const lower = filename.toLowerCase();
+  if (lower.startsWith("dg-") || lower.includes("degiro") || lower.includes("informe anual")) return "degiro";
+  if (lower.startsWith("tr-") || lower.includes("trade republic") || lower.includes("tax_report")) return "tr";
+  return null;
+}
 
 export function FileUpload({ onImported }: { onImported: () => void }) {
   const [dragging, setDragging] = useState(false);
@@ -16,11 +23,17 @@ export function FileUpload({ onImported }: { onImported: () => void }) {
         setError("Solo se aceptan archivos PDF");
         return;
       }
+      const broker = detectBroker(file.name);
+      if (!broker) {
+        setError("No se pudo detectar el broker. El archivo debe empezar por 'TR-' o 'DG-'.");
+        return;
+      }
       setLoading(true);
       setError(null);
       setResult(null);
       try {
-        const res = await uploadTRReport(file);
+        const upload = broker === "degiro" ? uploadDGReport : uploadTRReport;
+        const res = await upload(file);
         setResult(res);
         if (res.status === "success") onImported();
       } catch (e: unknown) {
@@ -51,7 +64,7 @@ export function FileUpload({ onImported }: { onImported: () => void }) {
     >
       <div className="mb-3 text-4xl">📄</div>
       <p className="text-neutral-400 mb-3">
-        Arrastra aquí un PDF de Tax Report de Trade Republic
+        Arrastra aquí un PDF de Trade Republic o DEGIRO
       </p>
       <label className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer text-sm font-medium transition-colors">
         Seleccionar archivo

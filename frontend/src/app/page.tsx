@@ -37,6 +37,7 @@ export default function Home() {
   const [gains, setGains] = useState<CapitalGain[]>([]);
   const [tab, setTab] = useState<Tab>("graficas");
   const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   // Chart data
   const [divByCountry, setDivByCountry] = useState<DividendsByCountry[]>([]);
@@ -47,14 +48,15 @@ export default function Home() {
   const [dividendYield, setDividendYield] = useState<DividendYield[]>([]);
   const [withholdings, setWithholdings] = useState<WithholdingsByCountry[]>([]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
+    const y = year ?? undefined;
     try {
       const [dashData, casData, divData, gainsData] = await Promise.all([
         api.dashboard() as Promise<DashboardStats>,
-        api.casillas() as Promise<Casilla[]>,
-        api.dividends() as Promise<DividendSummary[]>,
-        api.capitalGains() as Promise<CapitalGain[]>,
+        api.casillas(y) as Promise<Casilla[]>,
+        api.dividends(y) as Promise<DividendSummary[]>,
+        api.capitalGains(y) as Promise<CapitalGain[]>,
       ]);
       setStats(dashData);
       setCasillas(casData);
@@ -63,13 +65,13 @@ export default function Home() {
 
       // Load chart data in parallel
       const [divC, divM, topP, gainsB, patrim, divY, withh] = await Promise.all([
-        api.charts.dividendsByCountry() as Promise<DividendsByCountry[]>,
-        api.charts.dividendsMonthly() as Promise<DividendsMonthly[]>,
-        api.charts.topDividendPayers() as Promise<TopDividendPayer[]>,
-        api.charts.capitalGainsBreakdown() as Promise<CapitalGainsBreakdown[]>,
+        api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
+        api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
+        api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
+        api.charts.capitalGainsBreakdown(y) as Promise<CapitalGainsBreakdown[]>,
         api.charts.patrimonioComposition() as Promise<PatrimonioComposition[]>,
-        api.charts.dividendYield() as Promise<DividendYield[]>,
-        api.charts.withholdingsByCountry() as Promise<WithholdingsByCountry[]>,
+        api.charts.dividendYield(y) as Promise<DividendYield[]>,
+        api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
       ]);
       setDivByCountry(divC);
       setDivMonthly(divM);
@@ -86,8 +88,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadData(selectedYear);
+  }, [loadData, selectedYear]);
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "graficas", label: "Gráficas" },
@@ -107,15 +109,26 @@ export default function Home() {
             <p className="text-sm text-neutral-500">Dashboard fiscal de inversiones</p>
           </div>
           {stats && stats.fiscal_years.length > 0 && (
-            <div className="text-sm text-neutral-400">
-              Años fiscales: {stats.fiscal_years.join(", ")}
-            </div>
+            <select
+              value={selectedYear ?? ""}
+              onChange={(e) =>
+                setSelectedYear(e.target.value ? Number(e.target.value) : null)
+              }
+              className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Todos los años</option>
+              {stats.fiscal_years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           )}
         </div>
 
         {/* Upload */}
         <section className="mb-8">
-          <FileUpload onImported={loadData} />
+          <FileUpload onImported={() => loadData(selectedYear)} />
         </section>
 
         {/* Stats */}
@@ -186,7 +199,7 @@ export default function Home() {
 
         {stats && stats.total_transactions === 0 && (
           <p className="text-center text-neutral-500 py-12">
-            No hay datos importados. Sube un PDF de Trade Republic para empezar.
+            No hay datos importados. Sube un PDF de Trade Republic o DEGIRO para empezar.
           </p>
         )}
       </div>

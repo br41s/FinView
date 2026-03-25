@@ -1,12 +1,15 @@
 """Service to import parsed broker data into the database."""
 
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from backend.importers.base import (
+    DGAnnualReport,
     ParsedCapitalGain,
     ParsedCasilla,
+    ParsedGainLoss,
     ParsedPortfolioHolding,
     ParsedTransaction,
     ParsedWithholding,
@@ -228,5 +231,170 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
             "casillas": len(all_casillas),
             "holdings": len(report.holdings),
             "withholdings": len(report.withholdings),
+        },
+    }
+
+
+# ISO 2-letter → Spanish full name (matching TR format)
+_COUNTRY_NAMES = {
+    "DE": "Alemania", "BR": "Brasil", "ES": "España",
+    "US": "Estados Unidos de América", "FR": "Francia",
+    "PT": "Portugal", "GB": "Reino Unido", "CH": "Suiza",
+    "NL": "Países Bajos", "IE": "Irlanda", "IT": "Italia",
+}
+
+
+def _country_from_isin(isin: str) -> str:
+    """Derive country name from ISIN prefix."""
+    code = isin[:2] if isin and len(isin) >= 2 else ""
+    return _COUNTRY_NAMES.get(code, code)
+
+
+def _create_dg_tax_lots(
+    db: Session,
+    gains: list[ParsedGainLoss],
+    transactions: list[ParsedTransaction],
+    account_id: int,
+    import_id: int,
+    fiscal_year: int,
+) -> list[TaxLot]:
+    """Create TaxLot entries from DEGIRO gains summary.
+
+    For each product with gains/losses, creates synthetic buy/sell
+    transactions and links them in a TaxLot. Cost basis is derived
+    from: cost = proceeds - realized_pl.
+    """
+    # Index sell transactions by ISIN (for dates and proceeds)
+    sells_by_isin: dict[str, list[ParsedTransaction]] = {}
+    for tx in transactions:
+        if tx.tx_type == TxType.SELL:
+            sells_by_isin.setdefault(tx.isin, []).append(tx)
+
+    lots = []
+    for g in gains:
+        # Find sell date and proceeds from transaction list
+        sells = sells_by_isin.get(g.isin, [])
+        if sells:
+            last_sell = max(sells, key=lambda t: t.trade_date)
+            sell_date = last_sell.trade_date
+            total_proceeds = sum(s.gross_amount for s in sells)
+            total_qty = sum(s.quantity for s in sells)
+        else:
+            sell_date = date(fiscal_year, 12, 31)
+            total_proceeds = g.realized_pl_eur  # fallback
+            total_qty = Decimal("1")
+
+        cost_basis = total_proceeds - g.realized_pl_eur
+        country = _country_from_isin(g.isin)
+
+        # Create synthetic buy transaction
+        buy_tx = Transaction(
+            account_id=account_id,
+            import_id=import_id,
+            type=TransactionType.BUY.value,
+            trade_date=date(fiscal_year, 1, 1),
+            isin=g.isin,
+            name=g.name,
+            country=country,
+            quantity=total_qty,
+            price=cost_basis / total_qty if total_qty else Decimal("0"),
+            currency="EUR",
+            gross_amount=cost_basis,
+            fees=g.commission_eur,
+            net_amount_eur=cost_basis,
+        )
+        db.add(buy_tx)
+        db.flush()
+
+        # Create synthetic sell transaction
+        sell_tx = Transaction(
+            account_id=account_id,
+            import_id=import_id,
+            type=TransactionType.SELL.value,
+            trade_date=sell_date,
+            isin=g.isin,
+            name=g.name,
+            country=country,
+            quantity=total_qty,
+            price=total_proceeds / total_qty if total_qty else Decimal("0"),
+            currency="EUR",
+            gross_amount=total_proceeds,
+            fees=Decimal("0"),
+            net_amount_eur=total_proceeds,
+        )
+        db.add(sell_tx)
+        db.flush()
+
+        lot = TaxLot(
+            buy_tx_id=buy_tx.id,
+            sell_tx_id=sell_tx.id,
+            isin=g.isin,
+            quantity_bought=total_qty,
+            quantity_remaining=Decimal("0"),
+            cost_basis_eur=cost_basis,
+            quantity_sold=total_qty,
+            proceeds_eur=total_proceeds,
+            realized_pl_eur=g.realized_pl_eur,
+            close_date=sell_date,
+        )
+        db.add(lot)
+        lots.append(lot)
+
+    return lots
+
+
+def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str) -> dict:
+    """Import a parsed DEGIRO Annual Report into the database."""
+    existing = _check_duplicate(db, file_hash, Broker.DEGIRO)
+    if existing:
+        return {
+            "status": "duplicate",
+            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
+            "import_id": existing.id,
+        }
+
+    account = _get_or_create_account(db, Broker.DEGIRO, "DEGIRO")
+
+    import_rec = ImportRecord(
+        account_id=account.id,
+        filename=filename,
+        file_hash=file_hash,
+        broker=Broker.DEGIRO.value,
+        fiscal_year=report.fiscal_year,
+        record_count=len(report.transactions) + len(report.dividends),
+    )
+    db.add(import_rec)
+    db.flush()
+
+    # Store dividends
+    div_count = 0
+    for div in report.dividends:
+        _store_transaction(db, div, account.id, import_rec.id)
+        div_count += 1
+
+    # Store all transactions
+    tx_count = 0
+    for tx in report.transactions:
+        _store_transaction(db, tx, account.id, import_rec.id)
+        tx_count += 1
+
+    # Create TaxLots from gains summary
+    lots = _create_dg_tax_lots(
+        db, report.gains_summary, report.transactions,
+        account.id, import_rec.id, report.fiscal_year,
+    )
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "import_id": import_rec.id,
+        "fiscal_year": report.fiscal_year,
+        "counts": {
+            "dividends": div_count,
+            "transactions": tx_count,
+            "capital_gains": len(lots),
+            "holdings": len(report.holdings),
+            "gains_summary": len(report.gains_summary),
         },
     }

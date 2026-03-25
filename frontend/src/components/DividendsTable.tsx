@@ -21,8 +21,8 @@ export function DividendsTable({ dividends }: { dividends: DividendSummary[] }) 
           </tr>
         </thead>
         <tbody>
-          {dividends.map((d) => (
-            <tr key={d.isin} className="border-b border-neutral-800/50 hover:bg-neutral-800/30">
+          {dividends.map((d, i) => (
+            <tr key={`${d.isin}-${d.name}-${i}`} className="border-b border-neutral-800/50 hover:bg-neutral-800/30">
               <td className="py-2 text-neutral-200 max-w-48 truncate">{d.name}</td>
               <td className="py-2 font-mono text-xs text-neutral-400">{d.isin}</td>
               <td className="py-2 text-neutral-400">{d.country ?? "—"}</td>

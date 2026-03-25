@@ -96,8 +96,19 @@ class ParsedCasilla:
 
 
 @dataclass
+class ParsedGainLoss:
+    """Realized gain/loss per product (from DEGIRO annual report)."""
+
+    isin: str
+    name: str
+    realized_pl_eur: Decimal
+    commission_eur: Decimal
+    transaction_tax_eur: Decimal
+
+
+@dataclass
 class ParsedPortfolioHolding:
-    """Holdings at year-end from TR Section VII."""
+    """Holdings at year-end."""
 
     isin: str
     name: str
@@ -109,6 +120,20 @@ class ParsedPortfolioHolding:
     avg_q4_balance: Decimal
     value_dec31_eur: Decimal
     fiscal_valuation: Decimal
+    # Extra fields for DEGIRO
+    price: Decimal = Decimal("0")
+    exchange: str = ""
+
+
+@dataclass
+class DGAnnualReport:
+    """Complete parsed DEGIRO Annual Report."""
+
+    fiscal_year: int
+    dividends: list[ParsedTransaction] = field(default_factory=list)
+    transactions: list[ParsedTransaction] = field(default_factory=list)
+    holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
+    gains_summary: list[ParsedGainLoss] = field(default_factory=list)
 
 
 @dataclass
