@@ -189,11 +189,10 @@ def dividend_yield(
     fiscal_year: int | None = None,
     db: Session = Depends(get_db),
 ):
-    """Dividend yield per ISIN: dividends vs total invested.
+    """Dividend yield per ISIN: dividends vs cost of current holdings.
 
     For each ISIN that paid dividends:
-    - total_dividends: sum of gross dividend payments
-    - total_invested: sum of abs(net_amount_eur) from all BUY transactions
+    - total_invested: FIFO cost basis of shares held at year-end
     - qty_remaining: total bought - total sold (current position)
     - current_value: qty_remaining * latest price
     - yield_on_cost: dividends / invested * 100
@@ -213,64 +212,85 @@ def dividend_yield(
 
     div_rows = div_q.group_by(Transaction.isin, Transaction.name, Transaction.country).all()
 
-    # Calculate total invested per ISIN from BUY transactions (all sections)
-    buy_data = (
-        db.query(
-            Transaction.isin,
-            func.sum(func.abs(Transaction.net_amount_eur)).label("total_invested"),
-            func.sum(Transaction.quantity).label("total_bought"),
+    # Collect ISINs with dividends
+    div_isins = [d.isin for d in div_rows if d.isin]
+
+    # Fetch all BUY transactions for these ISINs (for FIFO calculation)
+    all_buys = (
+        db.query(Transaction)
+        .filter(
+            Transaction.type == TransactionType.BUY.value,
+            Transaction.isin.in_(div_isins),
         )
-        .filter(Transaction.type == TransactionType.BUY.value)
-        .group_by(Transaction.isin)
+        .order_by(Transaction.isin, Transaction.trade_date, Transaction.id)
         .all()
     )
-    buy_map = {r.isin: r for r in buy_data}
+    # Group buys by ISIN
+    buys_by_isin: dict[str, list] = {}
+    for tx in all_buys:
+        buys_by_isin.setdefault(tx.isin, []).append(tx)
 
-    # Calculate total sold per ISIN from SELL transactions
+    # Total sold per ISIN
     sell_data = (
         db.query(
             Transaction.isin,
             func.sum(func.abs(Transaction.quantity)).label("total_sold"),
         )
-        .filter(Transaction.type == TransactionType.SELL.value)
+        .filter(
+            Transaction.type == TransactionType.SELL.value,
+            Transaction.isin.in_(div_isins),
+        )
         .group_by(Transaction.isin)
         .all()
     )
-    sell_map = {r.isin: r for r in sell_data}
+    sell_map = {r.isin: Decimal(str(r.total_sold)) for r in sell_data}
 
-    # Get latest price per ISIN from BUY/SELL transactions (most recent trade)
+    # Latest price per ISIN
     latest_prices_q = (
         db.query(Transaction.isin, func.abs(Transaction.price).label("price"))
         .filter(Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]))
-        .filter(Transaction.isin.isnot(None))
+        .filter(Transaction.isin.in_(div_isins))
         .order_by(Transaction.isin, Transaction.trade_date.desc())
         .all()
     )
     price_map: dict[str, Decimal] = {}
     for r in latest_prices_q:
         if r.isin not in price_map:
-            price_map[r.isin] = r.price
+            price_map[r.isin] = Decimal(str(r.price))
 
     results = []
     for d in div_rows:
         isin = d.isin or ""
         total_div = Decimal(str(d.total_dividends or 0))
 
-        buy = buy_map.get(isin)
-        sell = sell_map.get(isin)
+        buys = buys_by_isin.get(isin, [])
+        total_sold = sell_map.get(isin, Decimal("0"))
 
-        # SQLite func.abs/func.sum may return float/int — normalize to Decimal
-        _D = Decimal
-        total_invested = _D(str(buy.total_invested)) if buy else _D("0")
-        total_bought = _D(str(buy.total_bought)) if buy else _D("0")
-        total_sold = _D(str(sell.total_sold)) if sell else _D("0")
-        qty_remaining = total_bought - total_sold
+        # FIFO cost basis: consume oldest buys first with sells,
+        # then sum cost of remaining (unsold) shares
+        cost_basis = Decimal("0")
+        qty_remaining = Decimal("0")
+        remaining_to_sell = total_sold
+        for tx in buys:
+            buy_qty = abs(tx.quantity)
+            buy_cost = abs(tx.net_amount_eur)
+            if remaining_to_sell >= buy_qty:
+                remaining_to_sell -= buy_qty
+            elif remaining_to_sell > 0:
+                kept = buy_qty - remaining_to_sell
+                cost_per_share = buy_cost / buy_qty if buy_qty else Decimal("0")
+                cost_basis += kept * cost_per_share
+                qty_remaining += kept
+                remaining_to_sell = Decimal("0")
+            else:
+                cost_basis += buy_cost
+                qty_remaining += buy_qty
 
-        latest_price = _D(str(price_map.get(isin, 0)))
-        current_value = abs(qty_remaining * latest_price) if qty_remaining else _D("0")
+        latest_price = price_map.get(isin, Decimal("0"))
+        current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
 
         yield_on_cost = (
-            (total_div / total_invested * 100) if total_invested > 0 else Decimal("0")
+            (total_div / cost_basis * 100) if cost_basis > 0 else Decimal("0")
         )
         yield_on_value = (
             (total_div / current_value * 100) if current_value > 0 else Decimal("0")
@@ -282,10 +302,10 @@ def dividend_yield(
                 "name": d.name,
                 "country": d.country,
                 "total_dividends": str(total_div),
-                "total_invested": str(total_invested),
+                "total_invested": str(round(cost_basis, 2)),
                 "qty_remaining": str(qty_remaining),
                 "latest_price": str(latest_price),
-                "current_value": str(current_value),
+                "current_value": str(round(current_value, 2)),
                 "yield_on_cost": str(round(yield_on_cost, 2)),
                 "yield_on_value": str(round(yield_on_value, 2)),
                 "payment_count": d.payment_count,
