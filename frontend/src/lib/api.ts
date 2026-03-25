@@ -1,0 +1,31 @@
+const BASE = "/api";
+
+async function fetchJSON<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function uploadTRReport(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/imports/tr`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  return res.json();
+}
+
+export const api = {
+  dashboard: () => fetchJSON("/fiscal/dashboard"),
+  fiscalSummary: (year: number) => fetchJSON(`/fiscal/summary/${year}`),
+  casillas: (year?: number) =>
+    fetchJSON(`/fiscal/casillas${year ? `?fiscal_year=${year}` : ""}`),
+  dividends: (year?: number) =>
+    fetchJSON(`/transactions/dividends/summary${year ? `?fiscal_year=${year}` : ""}`),
+  capitalGains: (year?: number) =>
+    fetchJSON(`/transactions/capital-gains${year ? `?fiscal_year=${year}` : ""}`),
+  transactions: (params?: Record<string, string>) => {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return fetchJSON(`/transactions/${qs}`);
+  },
+  imports: () => fetchJSON("/imports/"),
+};
