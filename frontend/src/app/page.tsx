@@ -140,7 +140,7 @@ export default function Home() {
         {stats && stats.total_transactions > 0 && (
           <>
             <section className="mb-8">
-              <StatsCards stats={stats} />
+              <StatsCards stats={stats} withholdings={withholdings} />
             </section>
 
             {/* Tabs */}
@@ -191,7 +191,7 @@ export default function Home() {
             {tab === "rendimiento" && <DividendYieldTable data={dividendYield} />}
 
             <section className={tab === "graficas" || tab === "rendimiento" ? "hidden" : "bg-neutral-900 border border-neutral-800 rounded-xl p-6"}>
-              {tab === "casillas" && <CasillasTable casillas={casillas} />}
+              {tab === "casillas" && <CasillasTable casillas={casillas} dividendsByCountry={divByCountry} />}
               {tab === "dividendos" && <DividendsTable dividends={dividends} />}
               {tab === "ganancias" && <CapitalGainsTable gains={gains} />}
             </section>
