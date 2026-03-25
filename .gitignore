@@ -1,0 +1,23 @@
+# Data files (broker CSVs, PDFs, DB)
+data/
+files/
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+.venv/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+
+# OS
+.DS_Store
+
+# Temp
+test_parser.py
+test_api.py
