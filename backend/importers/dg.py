@@ -237,7 +237,7 @@ def _parse_gains_summary(text: str) -> list[ParsedGainLoss]:
     return results
 
 
-def _parse_holdings(text: str, fiscal_year: int) -> list[ParsedPortfolioHolding]:
+def _parse_holdings(text: str, _fiscal_year: int) -> list[ParsedPortfolioHolding]:
     """Parse year-end holdings section."""
     section = _get_section_text(
         text,

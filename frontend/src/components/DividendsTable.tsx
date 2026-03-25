@@ -3,7 +3,7 @@
 import type { DividendSummary } from "@/lib/types";
 import { formatEur } from "@/lib/format";
 
-export function DividendsTable({ dividends }: { dividends: DividendSummary[] }) {
+export function DividendsTable({ dividends }: Readonly<{ dividends: DividendSummary[] }>) {
   if (dividends.length === 0) return <p className="text-neutral-500 text-sm">Sin datos</p>;
 
   return (

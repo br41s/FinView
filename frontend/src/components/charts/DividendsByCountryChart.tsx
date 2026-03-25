@@ -3,7 +3,6 @@
 import {
   PieChart,
   Pie,
-  Cell,
   Tooltip,
   ResponsiveContainer,
   Legend,
@@ -17,11 +16,12 @@ const COLORS = [
 ];
 
 export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCountry[] }>) {
-  const chartData = data.map((d) => ({
+  const chartData = data.map((d, i) => ({
     name: d.country,
     value: Number.parseFloat(d.gross),
     withholding: Number.parseFloat(d.withholding),
     count: d.count,
+    fill: COLORS[i % COLORS.length],
   }));
 
   return (
@@ -38,9 +38,6 @@ export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCo
             paddingAngle={2}
             dataKey="value"
           >
-            {chartData.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-            ))}
           </Pie>
           <Tooltip
             contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8 }}

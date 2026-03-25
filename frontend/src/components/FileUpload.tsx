@@ -11,7 +11,7 @@ function detectBroker(filename: string): "tr" | "degiro" | null {
   return null;
 }
 
-export function FileUpload({ onImported }: { onImported: () => void }) {
+export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -47,6 +47,8 @@ export function FileUpload({ onImported }: { onImported: () => void }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
         dragging ? "border-blue-500 bg-blue-500/10" : "border-neutral-700 hover:border-neutral-500"
       }`}
@@ -60,6 +62,12 @@ export function FileUpload({ onImported }: { onImported: () => void }) {
         setDragging(false);
         const file = e.dataTransfer.files[0];
         if (file) handleFile(file);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          (e.currentTarget.querySelector("input[type=file]") as HTMLInputElement)?.click();
+        }
       }}
     >
       <div className="mb-3 text-4xl">📄</div>
@@ -81,7 +89,7 @@ export function FileUpload({ onImported }: { onImported: () => void }) {
 
       {loading && <p className="mt-4 text-blue-400 animate-pulse">Procesando PDF...</p>}
 
-      {result && result.status === "success" && (
+      {result?.status === "success" && (
         <div className="mt-4 p-4 bg-green-900/30 border border-green-800 rounded-lg text-sm">
           <p className="text-green-400 font-medium">
             ✓ Importado — Año fiscal {result.fiscal_year}
@@ -97,7 +105,7 @@ export function FileUpload({ onImported }: { onImported: () => void }) {
         </div>
       )}
 
-      {result && result.status === "duplicate" && (
+      {result?.status === "duplicate" && (
         <p className="mt-4 text-yellow-400 text-sm">⚠ {result.message}</p>
       )}
 

@@ -3,7 +3,6 @@
 import {
   PieChart,
   Pie,
-  Cell,
   Tooltip,
   ResponsiveContainer,
   Legend,
@@ -14,10 +13,11 @@ import { formatEur } from "@/lib/format";
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
 
 export function PatrimonioChart({ data }: Readonly<{ data: PatrimonioComposition[] }>) {
-  const chartData = data.map((d) => ({
+  const chartData = data.map((d, i) => ({
     name: `Cas. ${d.casilla}`,
     fullName: d.description,
     value: Number.parseFloat(d.amount),
+    fill: COLORS[i % COLORS.length],
   }));
 
   return (
@@ -34,9 +34,6 @@ export function PatrimonioChart({ data }: Readonly<{ data: PatrimonioComposition
             paddingAngle={2}
             dataKey="value"
           >
-            {chartData.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-            ))}
           </Pie>
           <Tooltip
             contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8 }}

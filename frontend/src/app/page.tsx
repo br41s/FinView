@@ -100,7 +100,7 @@ export default function Home() {
   ];
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] text-neutral-100">
+    <main className="min-h-screen bg-(--bg) text-neutral-100">
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -108,8 +108,9 @@ export default function Home() {
             <h1 className="text-2xl font-bold">FinView</h1>
             <p className="text-sm text-neutral-500">Dashboard fiscal de inversiones</p>
           </div>
-          {stats && stats.fiscal_years.length > 0 && (
+          {stats?.fiscal_years.length > 0 && (
             <select
+              aria-label="Seleccionar año fiscal"
               value={selectedYear ?? ""}
               onChange={(e) =>
                 setSelectedYear(e.target.value ? Number(e.target.value) : null)
@@ -197,7 +198,7 @@ export default function Home() {
           </>
         )}
 
-        {stats && stats.total_transactions === 0 && (
+        {stats?.total_transactions === 0 && (
           <p className="text-center text-neutral-500 py-12">
             No hay datos importados. Sube un PDF de Trade Republic o DEGIRO para empezar.
           </p>
