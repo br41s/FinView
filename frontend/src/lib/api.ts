@@ -28,4 +28,21 @@ export const api = {
     return fetchJSON(`/transactions/${qs}`);
   },
   imports: () => fetchJSON("/imports/"),
+
+  // Charts
+  charts: {
+    dividendsByCountry: (year?: number) =>
+      fetchJSON(`/charts/dividends-by-country${year ? `?fiscal_year=${year}` : ""}`),
+    dividendsMonthly: (year?: number) =>
+      fetchJSON(`/charts/dividends-monthly${year ? `?fiscal_year=${year}` : ""}`),
+    topDividendPayers: (year?: number, limit = 10) =>
+      fetchJSON(`/charts/top-dividend-payers?limit=${limit}${year ? `&fiscal_year=${year}` : ""}`),
+    capitalGainsBreakdown: (year?: number) =>
+      fetchJSON(`/charts/capital-gains-breakdown${year ? `?fiscal_year=${year}` : ""}`),
+    patrimonioComposition: () => fetchJSON("/charts/patrimonio-composition"),
+    dividendYield: (year?: number) =>
+      fetchJSON(`/charts/dividend-yield${year ? `?fiscal_year=${year}` : ""}`),
+    withholdingsByCountry: (year?: number) =>
+      fetchJSON(`/charts/withholdings-by-country${year ? `?fiscal_year=${year}` : ""}`),
+  },
 };

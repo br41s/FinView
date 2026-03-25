@@ -84,3 +84,68 @@ export interface Transaction {
   casilla: number | null;
   holding_period: string | null;
 }
+
+// Chart types
+export interface DividendsByCountry {
+  country: string;
+  gross: string;
+  withholding: string;
+  net: string;
+  count: number;
+}
+
+export interface DividendsMonthly {
+  month: string;
+  gross: string;
+  withholding: string;
+  net: string;
+  count: number;
+}
+
+export interface TopDividendPayer {
+  isin: string;
+  name: string;
+  country: string;
+  gross: string;
+  withholding: string;
+  net: string;
+  count: number;
+}
+
+export interface CapitalGainsBreakdown {
+  isin: string;
+  name: string;
+  gains: string;
+  losses: string;
+  net: string;
+  trades: number;
+}
+
+export interface PatrimonioComposition {
+  casilla: number;
+  description: string;
+  amount: string;
+  fiscal_year: number;
+}
+
+export interface DividendYield {
+  isin: string;
+  name: string;
+  country: string;
+  total_dividends: string;
+  total_invested: string;
+  qty_remaining: string;
+  latest_price: string;
+  current_value: string;
+  yield_on_cost: string;
+  yield_on_value: string;
+  payment_count: number;
+}
+
+export interface WithholdingsByCountry {
+  country: string;
+  gross: string;
+  withholding: string;
+  net: string;
+  effective_rate: string;
+}

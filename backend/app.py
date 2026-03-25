@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.imports import router as imports_router
 from backend.api.transactions import router as transactions_router
 from backend.api.fiscal import router as fiscal_router
+from backend.api.charts import router as charts_router
 from backend.database import engine
 from backend.models import Base
 
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(imports_router, prefix="/api")
 app.include_router(transactions_router, prefix="/api")
 app.include_router(fiscal_router, prefix="/api")
+app.include_router(charts_router, prefix="/api")
 
 
 @app.get("/api/health")

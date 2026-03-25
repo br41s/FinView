@@ -7,22 +7,45 @@ import type {
   Casilla,
   DividendSummary,
   CapitalGain,
+  DividendsByCountry,
+  DividendsMonthly,
+  TopDividendPayer,
+  CapitalGainsBreakdown,
+  PatrimonioComposition,
+  DividendYield,
+  WithholdingsByCountry,
 } from "@/lib/types";
 import { FileUpload } from "@/components/FileUpload";
 import { StatsCards } from "@/components/StatsCards";
 import { CasillasTable } from "@/components/CasillasTable";
 import { DividendsTable } from "@/components/DividendsTable";
 import { CapitalGainsTable } from "@/components/CapitalGainsTable";
+import { DividendYieldTable } from "@/components/DividendYieldTable";
+import { DividendsByCountryChart } from "@/components/charts/DividendsByCountryChart";
+import { DividendsMonthlyChart } from "@/components/charts/DividendsMonthlyChart";
+import { TopPayersChart } from "@/components/charts/TopPayersChart";
+import { CapitalGainsChart } from "@/components/charts/CapitalGainsChart";
+import { PatrimonioChart } from "@/components/charts/PatrimonioChart";
+import { WithholdingsChart } from "@/components/charts/WithholdingsChart";
 
-type Tab = "casillas" | "dividendos" | "ganancias";
+type Tab = "graficas" | "rendimiento" | "casillas" | "dividendos" | "ganancias";
 
 export default function Home() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [casillas, setCasillas] = useState<Casilla[]>([]);
   const [dividends, setDividends] = useState<DividendSummary[]>([]);
   const [gains, setGains] = useState<CapitalGain[]>([]);
-  const [tab, setTab] = useState<Tab>("casillas");
+  const [tab, setTab] = useState<Tab>("graficas");
   const [loading, setLoading] = useState(true);
+
+  // Chart data
+  const [divByCountry, setDivByCountry] = useState<DividendsByCountry[]>([]);
+  const [divMonthly, setDivMonthly] = useState<DividendsMonthly[]>([]);
+  const [topPayers, setTopPayers] = useState<TopDividendPayer[]>([]);
+  const [gainsBreakdown, setGainsBreakdown] = useState<CapitalGainsBreakdown[]>([]);
+  const [patrimonio, setPatrimonio] = useState<PatrimonioComposition[]>([]);
+  const [dividendYield, setDividendYield] = useState<DividendYield[]>([]);
+  const [withholdings, setWithholdings] = useState<WithholdingsByCountry[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -37,6 +60,24 @@ export default function Home() {
       setCasillas(casData);
       setDividends(divData);
       setGains(gainsData);
+
+      // Load chart data in parallel
+      const [divC, divM, topP, gainsB, patrim, divY, withh] = await Promise.all([
+        api.charts.dividendsByCountry() as Promise<DividendsByCountry[]>,
+        api.charts.dividendsMonthly() as Promise<DividendsMonthly[]>,
+        api.charts.topDividendPayers() as Promise<TopDividendPayer[]>,
+        api.charts.capitalGainsBreakdown() as Promise<CapitalGainsBreakdown[]>,
+        api.charts.patrimonioComposition() as Promise<PatrimonioComposition[]>,
+        api.charts.dividendYield() as Promise<DividendYield[]>,
+        api.charts.withholdingsByCountry() as Promise<WithholdingsByCountry[]>,
+      ]);
+      setDivByCountry(divC);
+      setDivMonthly(divM);
+      setTopPayers(topP);
+      setGainsBreakdown(gainsB);
+      setPatrimonio(patrim);
+      setDividendYield(divY);
+      setWithholdings(withh);
     } catch (e) {
       console.error("Error loading data:", e);
     } finally {
@@ -48,7 +89,9 @@ export default function Home() {
     loadData();
   }, [loadData]);
 
-  const tabs: { key: Tab; label: string; count: number }[] = [
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: "graficas", label: "Gráficas" },
+    { key: "rendimiento", label: "Rendimiento", count: dividendYield.filter(d => Number.parseFloat(d.yield_on_cost) > 0).length },
     { key: "casillas", label: "Casillas fiscales", count: casillas.length },
     { key: "dividendos", label: "Dividendos", count: dividends.length },
     { key: "ganancias", label: "Ganancias de capital", count: gains.length },
@@ -100,16 +143,40 @@ export default function Home() {
                     }`}
                   >
                     {t.label}
-                    <span className="ml-2 text-xs bg-neutral-800 px-2 py-0.5 rounded-full">
-                      {t.count}
-                    </span>
+                    {t.count !== undefined && (
+                      <span className="ml-2 text-xs bg-neutral-800 px-2 py-0.5 rounded-full">
+                        {t.count}
+                      </span>
+                    )}
                   </button>
                 ))}
               </nav>
             </div>
 
             {/* Tab content */}
-            <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+            {tab === "graficas" && (
+              <section className="space-y-6">
+                {/* Row 1: Donut charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <DividendsByCountryChart data={divByCountry} />
+                  <PatrimonioChart data={patrimonio} />
+                </div>
+                {/* Row 2: Monthly + Withholdings */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <DividendsMonthlyChart data={divMonthly} />
+                  <WithholdingsChart data={withholdings} />
+                </div>
+                {/* Row 3: Top payers + Capital gains */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <TopPayersChart data={topPayers} />
+                  <CapitalGainsChart data={gainsBreakdown} />
+                </div>
+              </section>
+            )}
+
+            {tab === "rendimiento" && <DividendYieldTable data={dividendYield} />}
+
+            <section className={tab === "graficas" || tab === "rendimiento" ? "hidden" : "bg-neutral-900 border border-neutral-800 rounded-xl p-6"}>
               {tab === "casillas" && <CasillasTable casillas={casillas} />}
               {tab === "dividendos" && <DividendsTable dividends={dividends} />}
               {tab === "ganancias" && <CapitalGainsTable gains={gains} />}
