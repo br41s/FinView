@@ -47,6 +47,7 @@ class DividendSummary(BaseModel):
 class CapitalGainOut(BaseModel):
     id: int
     isin: str
+    name: str
     buy_date: date
     sell_date: date
     quantity: Decimal

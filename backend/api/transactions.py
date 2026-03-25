@@ -85,6 +85,7 @@ def capital_gains(fiscal_year: int | None = None, db: Session = Depends(get_db))
         CapitalGainOut(
             id=lot.id,
             isin=lot.isin,
+            name=lot.buy_tx.name,
             buy_date=lot.buy_tx.trade_date,
             sell_date=lot.close_date,
             quantity=lot.quantity_sold or Decimal("0"),

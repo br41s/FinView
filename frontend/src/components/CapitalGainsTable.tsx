@@ -11,6 +11,7 @@ export function CapitalGainsTable({ gains }: { gains: CapitalGain[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-neutral-800 text-neutral-500">
+            <th className="text-left py-2">Empresa</th>
             <th className="text-left py-2">ISIN</th>
             <th className="text-left py-2">Compra</th>
             <th className="text-left py-2">Venta</th>
@@ -24,6 +25,7 @@ export function CapitalGainsTable({ gains }: { gains: CapitalGain[] }) {
         <tbody>
           {gains.map((g) => (
             <tr key={g.id} className="border-b border-neutral-800/50 hover:bg-neutral-800/30">
+              <td className="py-2 text-neutral-300">{g.name}</td>
               <td className="py-2 font-mono text-xs text-neutral-400">{g.isin}</td>
               <td className="py-2 text-neutral-300">{g.buy_date}</td>
               <td className="py-2 text-neutral-300">{g.sell_date}</td>

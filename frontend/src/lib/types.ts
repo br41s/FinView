@@ -58,6 +58,7 @@ export interface DividendSummary {
 export interface CapitalGain {
   id: number;
   isin: string;
+  name: string;
   buy_date: string;
   sell_date: string;
   quantity: string;
