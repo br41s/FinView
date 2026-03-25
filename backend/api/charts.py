@@ -162,16 +162,14 @@ def capital_gains_breakdown(
 
 
 @router.get("/patrimonio-composition")
-def patrimonio_composition(db: DbSession):
+def patrimonio_composition(db: DbSession, fiscal_year: int | None = None):
     """Portfolio composition from Modelo 714 casillas."""
     from backend.models import TaxResult
 
-    rows = (
-        db.query(TaxResult)
-        .filter(TaxResult.modelo == 714)
-        .order_by(TaxResult.fiscal_year.desc(), TaxResult.casilla)
-        .all()
-    )
+    q = db.query(TaxResult).filter(TaxResult.modelo == 714)
+    if fiscal_year:
+        q = q.filter(TaxResult.fiscal_year == fiscal_year)
+    rows = q.order_by(TaxResult.fiscal_year.desc(), TaxResult.casilla).all()
 
     return [
         {

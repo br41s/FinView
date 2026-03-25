@@ -31,7 +31,8 @@ export async function uploadDGReport(file: File) {
 }
 
 export const api = {
-  dashboard: () => fetchJSON("/fiscal/dashboard"),
+  dashboard: (year?: number) =>
+    fetchJSON(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
   fiscalSummary: (year: number) => fetchJSON(`/fiscal/summary/${year}`),
   casillas: (year?: number) =>
     fetchJSON(`/fiscal/casillas${qs({ fiscal_year: year })}`),
@@ -55,7 +56,8 @@ export const api = {
       fetchJSON(`/charts/top-dividend-payers${qs({ limit, fiscal_year: year })}`),
     capitalGainsBreakdown: (year?: number) =>
       fetchJSON(`/charts/capital-gains-breakdown${qs({ fiscal_year: year })}`),
-    patrimonioComposition: () => fetchJSON("/charts/patrimonio-composition"),
+    patrimonioComposition: (year?: number) =>
+      fetchJSON(`/charts/patrimonio-composition${qs({ fiscal_year: year })}`),
     dividendYield: (year?: number) =>
       fetchJSON(`/charts/dividend-yield${qs({ fiscal_year: year })}`),
     withholdingsByCountry: (year?: number) =>

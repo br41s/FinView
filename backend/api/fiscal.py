@@ -93,26 +93,34 @@ def fiscal_summary(db: DbSession, fiscal_year: int):
 
 
 @router.get("/dashboard", response_model=DashboardStats)
-def dashboard_stats(db: DbSession):
-    """Quick dashboard stats."""
-    total_tx = db.query(func.count(Transaction.id)).scalar() or 0
+def dashboard_stats(db: DbSession, fiscal_year: int | None = None):
+    """Quick dashboard stats, optionally filtered by fiscal year."""
+    tx_q = db.query(func.count(Transaction.id))
+    if fiscal_year:
+        tx_q = tx_q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+    total_tx = tx_q.scalar() or 0
 
-    div_total = (
+    div_q = (
         db.query(func.coalesce(func.sum(Transaction.gross_amount), 0))
         .filter(Transaction.type == TransactionType.DIVIDEND.value)
-        .scalar()
     )
+    if fiscal_year:
+        div_q = div_q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+    div_total = div_q.scalar()
 
-    gains = (
+    gains_q = (
         db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
         .filter(TaxLot.realized_pl_eur > 0)
-        .scalar()
     )
-    losses = (
+    losses_q = (
         db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
         .filter(TaxLot.realized_pl_eur < 0)
-        .scalar()
     )
+    if fiscal_year:
+        gains_q = gains_q.filter(func.strftime("%Y", TaxLot.close_date) == str(fiscal_year))
+        losses_q = losses_q.filter(func.strftime("%Y", TaxLot.close_date) == str(fiscal_year))
+    gains = gains_q.scalar()
+    losses = losses_q.scalar()
 
     accounts = db.query(func.count(Account.id)).scalar() or 0
     imports = db.query(func.count(ImportRecord.id)).scalar() or 0

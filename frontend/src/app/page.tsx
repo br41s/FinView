@@ -53,7 +53,7 @@ export default function Home() {
     const y = year ?? undefined;
     try {
       const [dashData, casData, divData, gainsData] = await Promise.all([
-        api.dashboard() as Promise<DashboardStats>,
+        api.dashboard(y) as Promise<DashboardStats>,
         api.casillas(y) as Promise<Casilla[]>,
         api.dividends(y) as Promise<DividendSummary[]>,
         api.capitalGains(y) as Promise<CapitalGain[]>,
@@ -69,7 +69,7 @@ export default function Home() {
         api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
         api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
         api.charts.capitalGainsBreakdown(y) as Promise<CapitalGainsBreakdown[]>,
-        api.charts.patrimonioComposition() as Promise<PatrimonioComposition[]>,
+        api.charts.patrimonioComposition(y) as Promise<PatrimonioComposition[]>,
         api.charts.dividendYield(y) as Promise<DividendYield[]>,
         api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
       ]);
@@ -91,12 +91,21 @@ export default function Home() {
     loadData(selectedYear);
   }, [loadData, selectedYear]);
 
+  const showFiscal = selectedYear !== null;
+
+  // Reset to non-fiscal tab when switching to "Todos los años"
+  useEffect(() => {
+    if (!showFiscal && (tab === "casillas" || tab === "ganancias")) {
+      setTab("graficas");
+    }
+  }, [showFiscal, tab]);
+
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "graficas", label: "Gráficas" },
     { key: "rendimiento", label: "Rendimiento", count: dividendYield.filter(d => Number.parseFloat(d.yield_on_cost) > 0).length },
-    { key: "casillas", label: "Casillas fiscales", count: casillas.length },
+    ...(showFiscal ? [{ key: "casillas" as Tab, label: "Casillas fiscales", count: casillas.length }] : []),
     { key: "dividendos", label: "Dividendos", count: dividends.length },
-    { key: "ganancias", label: "Ganancias de capital", count: gains.length },
+    ...(showFiscal ? [{ key: "ganancias" as Tab, label: "Ganancias de capital", count: gains.length }] : []),
   ];
 
   return (
@@ -140,7 +149,7 @@ export default function Home() {
         {stats && stats.total_transactions > 0 && (
           <>
             <section className="mb-8">
-              <StatsCards stats={stats} withholdings={withholdings} />
+              <StatsCards stats={stats} withholdings={withholdings} showFiscal={showFiscal} />
             </section>
 
             {/* Tabs */}
@@ -170,20 +179,20 @@ export default function Home() {
             {/* Tab content */}
             {tab === "graficas" && (
               <section className="space-y-6">
-                {/* Row 1: Donut charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Row 1: Dividends by country + Patrimonio (fiscal) */}
+                <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
                   <DividendsByCountryChart data={divByCountry} />
-                  <PatrimonioChart data={patrimonio} />
+                  {showFiscal && <PatrimonioChart data={patrimonio} />}
                 </div>
-                {/* Row 2: Monthly + Withholdings */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Row 2: Monthly + Withholdings (fiscal) */}
+                <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
                   <DividendsMonthlyChart data={divMonthly} />
-                  <WithholdingsChart data={withholdings} />
+                  {showFiscal && <WithholdingsChart data={withholdings} />}
                 </div>
-                {/* Row 3: Top payers + Capital gains */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Row 3: Top payers + Capital gains (fiscal) */}
+                <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
                   <TopPayersChart data={topPayers} />
-                  <CapitalGainsChart data={gainsBreakdown} />
+                  {showFiscal && <CapitalGainsChart data={gainsBreakdown} />}
                 </div>
               </section>
             )}

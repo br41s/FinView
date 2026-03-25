@@ -98,12 +98,24 @@ function ForeignWithholdingsCard({
 export function StatsCards({
   stats,
   withholdings,
+  showFiscal,
 }: {
   readonly stats: DashboardStats;
   readonly withholdings: readonly WithholdingsByCountry[];
+  readonly showFiscal: boolean;
 }) {
   const spanishWhg = withholdings.find((w) => w.country === "España");
   const spanishTotal = spanishWhg ? Number.parseFloat(spanishWhg.withholding) : 0;
+
+  if (!showFiscal) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <Card label="Transacciones" value={stats.total_transactions.toString()} />
+        <Card label="Dividendos brutos" value={formatEur(stats.total_dividends_eur)} />
+        <Card label="P&L neto" value={formatEur(stats.net_pl_eur)} className={plColor(stats.net_pl_eur)} />
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
