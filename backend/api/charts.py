@@ -189,12 +189,13 @@ def dividend_yield(
     fiscal_year: int | None = None,
     db: Session = Depends(get_db),
 ):
-    """Dividend yield per ISIN: dividends vs cost basis invested.
+    """Dividend yield per ISIN: dividends vs total invested.
 
     For each ISIN that paid dividends:
     - total_dividends: sum of gross dividend payments
-    - total_invested: sum of cost_basis_eur from all buy lots (closed + open)
-    - current_value: quantity_remaining * latest buy price (approximation from TR data)
+    - total_invested: sum of abs(net_amount_eur) from all BUY transactions
+    - qty_remaining: total bought - total sold (current position)
+    - current_value: qty_remaining * latest price
     - yield_on_cost: dividends / invested * 100
     - yield_on_value: dividends / current_holding_value * 100
     """
@@ -212,28 +213,39 @@ def dividend_yield(
 
     div_rows = div_q.group_by(Transaction.isin, Transaction.name, Transaction.country).all()
 
-    # Get cost basis and current holdings per ISIN from TaxLots
-    lot_data = (
+    # Calculate total invested per ISIN from BUY transactions (all sections)
+    buy_data = (
         db.query(
-            TaxLot.isin,
-            func.sum(TaxLot.cost_basis_eur).label("total_invested"),
-            func.sum(TaxLot.quantity_remaining).label("qty_remaining"),
+            Transaction.isin,
+            func.sum(func.abs(Transaction.net_amount_eur)).label("total_invested"),
+            func.sum(Transaction.quantity).label("total_bought"),
         )
-        .group_by(TaxLot.isin)
+        .filter(Transaction.type == TransactionType.BUY.value)
+        .group_by(Transaction.isin)
         .all()
     )
-    lot_map = {r.isin: r for r in lot_data}
+    buy_map = {r.isin: r for r in buy_data}
 
-    # Get latest price per ISIN from BUY/SELL transactions
-    # Use subquery to get latest trade_date per ISIN
+    # Calculate total sold per ISIN from SELL transactions
+    sell_data = (
+        db.query(
+            Transaction.isin,
+            func.sum(func.abs(Transaction.quantity)).label("total_sold"),
+        )
+        .filter(Transaction.type == TransactionType.SELL.value)
+        .group_by(Transaction.isin)
+        .all()
+    )
+    sell_map = {r.isin: r for r in sell_data}
+
+    # Get latest price per ISIN from BUY/SELL transactions (most recent trade)
     latest_prices_q = (
-        db.query(Transaction.isin, Transaction.price)
+        db.query(Transaction.isin, func.abs(Transaction.price).label("price"))
         .filter(Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]))
         .filter(Transaction.isin.isnot(None))
         .order_by(Transaction.isin, Transaction.trade_date.desc())
         .all()
     )
-    # Take the first (most recent) price per ISIN
     price_map: dict[str, Decimal] = {}
     for r in latest_prices_q:
         if r.isin not in price_map:
@@ -242,13 +254,20 @@ def dividend_yield(
     results = []
     for d in div_rows:
         isin = d.isin or ""
-        total_div = d.total_dividends or Decimal("0")
-        lot = lot_map.get(isin)
+        total_div = Decimal(str(d.total_dividends or 0))
 
-        total_invested = abs(lot.total_invested) if lot else Decimal("0")
-        qty_remaining = lot.qty_remaining if lot else Decimal("0")
-        latest_price = price_map.get(isin, Decimal("0"))
-        current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
+        buy = buy_map.get(isin)
+        sell = sell_map.get(isin)
+
+        # SQLite func.abs/func.sum may return float/int — normalize to Decimal
+        _D = Decimal
+        total_invested = _D(str(buy.total_invested)) if buy else _D("0")
+        total_bought = _D(str(buy.total_bought)) if buy else _D("0")
+        total_sold = _D(str(sell.total_sold)) if sell else _D("0")
+        qty_remaining = total_bought - total_sold
+
+        latest_price = _D(str(price_map.get(isin, 0)))
+        current_value = abs(qty_remaining * latest_price) if qty_remaining else _D("0")
 
         yield_on_cost = (
             (total_div / total_invested * 100) if total_invested > 0 else Decimal("0")
