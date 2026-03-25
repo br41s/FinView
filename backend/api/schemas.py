@@ -69,6 +69,19 @@ class CasillaOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BrokerAmount(BaseModel):
+    broker: str
+    amount_eur: Decimal
+
+
+class AggregatedCasillaOut(BaseModel):
+    modelo: int
+    casilla: int
+    description: str
+    amount_eur: Decimal
+    brokers: list[BrokerAmount]
+
+
 class FiscalSummary(BaseModel):
     fiscal_year: int
     total_dividends_gross: Decimal
@@ -77,7 +90,7 @@ class FiscalSummary(BaseModel):
     total_gains: Decimal
     total_losses: Decimal
     net_capital_gains: Decimal
-    casillas: list[CasillaOut]
+    casillas: list[AggregatedCasillaOut]
 
 
 class AccountOut(BaseModel):

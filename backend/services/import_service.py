@@ -343,6 +343,74 @@ def _create_dg_tax_lots(
     return lots
 
 
+def _compute_broker_casillas(
+    db: Session, broker: Broker, fiscal_year: int, account_id: int
+) -> list[TaxResult]:
+    """Compute Modelo 100 casilla values from Transaction/TaxLot data.
+
+    Used for brokers that don't provide pre-calculated casillas (e.g. DEGIRO).
+    """
+    from sqlalchemy import func
+
+    year_str = str(fiscal_year)
+
+    # Casilla 29 — Dividendos brutos
+    div_gross = (
+        db.query(func.coalesce(func.sum(Transaction.gross_amount), 0))
+        .filter(
+            Transaction.account_id == account_id,
+            Transaction.type == TransactionType.DIVIDEND.value,
+            func.strftime("%Y", Transaction.trade_date) == year_str,
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    # Casilla 332/337 — Ganancias/Pérdidas patrimoniales (from TaxLot via buy_tx)
+    gains = (
+        db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
+        .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+        .filter(
+            Transaction.account_id == account_id,
+            TaxLot.realized_pl_eur > 0,
+            func.strftime("%Y", TaxLot.close_date) == year_str,
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    losses = (
+        db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
+        .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+        .filter(
+            Transaction.account_id == account_id,
+            TaxLot.realized_pl_eur < 0,
+            func.strftime("%Y", TaxLot.close_date) == year_str,
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    casilla_data = []
+    if div_gross:
+        casilla_data.append((100, 29, "Dividendos y demás rendimientos", div_gross))
+    if gains:
+        casilla_data.append((100, 332, "Ganancias patrimoniales", gains))
+    if losses:
+        casilla_data.append((100, 337, "Pérdidas patrimoniales", losses))
+
+    results = []
+    for modelo, casilla, desc, amount in casilla_data:
+        tr = TaxResult(
+            fiscal_year=fiscal_year,
+            broker=broker.value,
+            modelo=modelo,
+            casilla=casilla,
+            description=desc,
+            amount_eur=amount,
+        )
+        db.add(tr)
+        results.append(tr)
+    return results
+
+
 def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str) -> dict:
     """Import a parsed DEGIRO Annual Report into the database."""
     existing = _check_duplicate(db, file_hash, Broker.DEGIRO)
@@ -384,6 +452,9 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
         account.id, import_rec.id, report.fiscal_year,
     )
 
+    # Compute and store casillas from transaction/lot data
+    casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id)
+
     db.commit()
 
     return {
@@ -394,6 +465,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
             "dividends": div_count,
             "transactions": tx_count,
             "capital_gains": len(lots),
+            "casillas": len(casillas),
             "holdings": len(report.holdings),
             "gains_summary": len(report.gains_summary),
         },

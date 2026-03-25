@@ -26,12 +26,17 @@ export interface ImportRecord {
   record_count: number;
 }
 
+export interface BrokerAmount {
+  broker: string;
+  amount_eur: string;
+}
+
 export interface Casilla {
   modelo: number;
   casilla: number;
   description: string;
   amount_eur: string;
-  broker: string | null;
+  brokers: BrokerAmount[];
 }
 
 export interface FiscalSummary {

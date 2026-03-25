@@ -190,8 +190,15 @@ function CasillasSection({ casillas }: { readonly casillas: readonly Casilla[] }
                       className="border-b border-neutral-800/50"
                     >
                       <td className="py-2 font-mono">{c.casilla}</td>
-                      <td className="py-2 text-neutral-300">{c.description}</td>
-                      <td className="py-2 text-right">{formatEur(c.amount_eur)}</td>
+                      <td className="py-2 text-neutral-300">
+                        {c.description}
+                        {c.brokers && c.brokers.length > 1 && (
+                          <span className="block text-xs text-neutral-500 mt-0.5">
+                            {c.brokers.map((b) => `${b.broker}: ${formatEur(b.amount_eur)}`).join(" · ")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right font-mono">{formatEur(c.amount_eur)}</td>
                     </tr>
                   ))}
                 </tbody>
