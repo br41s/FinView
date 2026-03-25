@@ -2,12 +2,11 @@
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import case, func
-from sqlalchemy.orm import Session
 
 from backend.api.schemas import CasillaOut, DashboardStats, FiscalSummary
-from backend.database import get_db
+from backend.database import DbSession
 from backend.models import (
     Account,
     ImportRecord,
@@ -21,7 +20,7 @@ router = APIRouter(prefix="/fiscal", tags=["fiscal"])
 
 
 @router.get("/casillas", response_model=list[CasillaOut])
-def list_casillas(fiscal_year: int | None = None, db: Session = Depends(get_db)):
+def list_casillas(db: DbSession, fiscal_year: int | None = None):
     """List all pre-calculated tax casillas."""
     q = db.query(TaxResult)
     if fiscal_year:
@@ -30,7 +29,7 @@ def list_casillas(fiscal_year: int | None = None, db: Session = Depends(get_db))
 
 
 @router.get("/summary/{fiscal_year}", response_model=FiscalSummary)
-def fiscal_summary(fiscal_year: int, db: Session = Depends(get_db)):
+def fiscal_summary(db: DbSession, fiscal_year: int):
     """Get complete fiscal summary for a year."""
     # Dividends — use strftime for SQLite compatibility
     div_row = (
@@ -94,7 +93,7 @@ def fiscal_summary(fiscal_year: int, db: Session = Depends(get_db)):
 
 
 @router.get("/dashboard", response_model=DashboardStats)
-def dashboard_stats(db: Session = Depends(get_db)):
+def dashboard_stats(db: DbSession):
     """Quick dashboard stats."""
     total_tx = db.query(func.count(Transaction.id)).scalar() or 0
 

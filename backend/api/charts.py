@@ -1,12 +1,12 @@
 """Chart and analytics API endpoints."""
 
 from decimal import Decimal
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from sqlalchemy import case, func
-from sqlalchemy.orm import Session
 
-from backend.database import get_db
+from backend.database import DbSession
 from backend.models import TaxLot, Transaction, TransactionType
 
 router = APIRouter(prefix="/charts", tags=["charts"])
@@ -14,8 +14,8 @@ router = APIRouter(prefix="/charts", tags=["charts"])
 
 @router.get("/dividends-by-country")
 def dividends_by_country(
+    db: DbSession,
     fiscal_year: int | None = None,
-    db: Session = Depends(get_db),
 ):
     """Dividends aggregated by country for donut chart."""
     q = db.query(
@@ -45,8 +45,8 @@ def dividends_by_country(
 
 @router.get("/dividends-monthly")
 def dividends_monthly(
+    db: DbSession,
     fiscal_year: int | None = None,
-    db: Session = Depends(get_db),
 ):
     """Monthly dividend income for bar chart."""
     q = db.query(
@@ -76,9 +76,9 @@ def dividends_monthly(
 
 @router.get("/top-dividend-payers")
 def top_dividend_payers(
+    db: DbSession,
     fiscal_year: int | None = None,
-    limit: int = Query(default=10, le=50),
-    db: Session = Depends(get_db),
+    limit: Annotated[int, Query(le=50)] = 10,
 ):
     """Top N dividend-paying companies."""
     q = db.query(
@@ -117,8 +117,8 @@ def top_dividend_payers(
 
 @router.get("/capital-gains-breakdown")
 def capital_gains_breakdown(
+    db: DbSession,
     fiscal_year: int | None = None,
-    db: Session = Depends(get_db),
 ):
     """Capital gains/losses per ISIN for bar chart."""
     q = db.query(
@@ -162,7 +162,7 @@ def capital_gains_breakdown(
 
 
 @router.get("/patrimonio-composition")
-def patrimonio_composition(db: Session = Depends(get_db)):
+def patrimonio_composition(db: DbSession):
     """Portfolio composition from Modelo 714 casillas."""
     from backend.models import TaxResult
 
@@ -233,10 +233,67 @@ def _avg_invested_at_dates(buys: list, sells: list, div_dates: list) -> Decimal:
     return sum(invested_at_dates, Decimal("0")) / len(invested_at_dates)
 
 
+def _compute_isin_yield(
+    d, buys_by_isin: dict, sells_by_isin: dict,
+    div_dates_by_isin: dict, price_map: dict,
+) -> dict:
+    """Compute yield metrics for a single ISIN."""
+    isin = d.isin or ""
+    total_div = Decimal(str(d.total_dividends or 0))
+
+    buys = buys_by_isin.get(isin, [])
+    sells = sells_by_isin.get(isin, [])
+    div_dates = div_dates_by_isin.get(isin, [])
+
+    avg_invested = _avg_invested_at_dates(buys, sells, div_dates)
+
+    total_sold = sum((abs(tx.quantity) for tx in sells), Decimal("0"))
+    buy_pairs = [(abs(tx.quantity), abs(tx.net_amount_eur)) for tx in buys]
+    _, qty_remaining = _fifo_cost_basis(buy_pairs, total_sold)
+
+    latest_price = price_map.get(isin, Decimal("0"))
+    current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
+
+    yield_on_cost = (total_div / avg_invested * 100) if avg_invested > 0 else Decimal("0")
+    yield_on_value = (total_div / current_value * 100) if current_value > 0 else Decimal("0")
+
+    return {
+        "isin": isin,
+        "name": d.name,
+        "country": d.country,
+        "total_dividends": str(total_div),
+        "total_invested": str(round(avg_invested, 2)),
+        "qty_remaining": str(qty_remaining),
+        "latest_price": str(latest_price),
+        "current_value": str(round(current_value, 2)),
+        "yield_on_cost": str(round(yield_on_cost, 2)),
+        "yield_on_value": str(round(yield_on_value, 2)),
+        "payment_count": d.payment_count,
+    }
+
+
+def _group_transactions(txs: list) -> dict[str, list]:
+    """Group a list of transactions by ISIN."""
+    by_isin: dict[str, list] = {}
+    for tx in txs:
+        by_isin.setdefault(tx.isin, []).append(tx)
+    return by_isin
+
+
+def _first_per_key(rows, key_attr: str, val_attr: str) -> dict:
+    """Build a dict mapping key → value, keeping only the first occurrence."""
+    result: dict = {}
+    for r in rows:
+        k = getattr(r, key_attr)
+        if k not in result:
+            result[k] = Decimal(str(getattr(r, val_attr)))
+    return result
+
+
 @router.get("/dividend-yield")
 def dividend_yield(
+    db: DbSession,
     fiscal_year: int | None = None,
-    db: Session = Depends(get_db),
 ):
     """Dividend yield per ISIN: dividends vs avg invested at dividend dates.
 
@@ -301,9 +358,7 @@ def dividend_yield(
         .order_by(Transaction.isin, Transaction.trade_date, Transaction.id)
         .all()
     )
-    buys_by_isin: dict[str, list] = {}
-    for tx in all_buys:
-        buys_by_isin.setdefault(tx.isin, []).append(tx)
+    buys_by_isin = _group_transactions(all_buys)
 
     # Fetch all SELL transactions for these ISINs (ordered by date for FIFO)
     all_sells = (
@@ -316,9 +371,7 @@ def dividend_yield(
         .order_by(Transaction.isin, Transaction.trade_date, Transaction.id)
         .all()
     )
-    sells_by_isin: dict[str, list] = {}
-    for tx in all_sells:
-        sells_by_isin.setdefault(tx.isin, []).append(tx)
+    sells_by_isin = _group_transactions(all_sells)
 
     # Latest price per ISIN (exclude synthetic transactions)
     all_synthetic_ids = db.query(TaxLot.buy_tx_id).union(
@@ -332,61 +385,20 @@ def dividend_yield(
         .order_by(Transaction.isin, Transaction.trade_date.desc())
         .all()
     )
-    price_map: dict[str, Decimal] = {}
-    for r in latest_prices_q:
-        if r.isin not in price_map:
-            price_map[r.isin] = Decimal(str(r.price))
+    price_map = _first_per_key(latest_prices_q, "isin", "price")
 
-    results = []
-    for d in div_rows:
-        isin = d.isin or ""
-        total_div = Decimal(str(d.total_dividends or 0))
-
-        buys = buys_by_isin.get(isin, [])
-        sells = sells_by_isin.get(isin, [])
-        div_dates = div_dates_by_isin.get(isin, [])
-
-        avg_invested = _avg_invested_at_dates(buys, sells, div_dates)
-
-        # Current position
-        total_sold = sum((abs(tx.quantity) for tx in sells), Decimal("0"))
-        buy_pairs = [(abs(tx.quantity), abs(tx.net_amount_eur)) for tx in buys]
-        _, qty_remaining = _fifo_cost_basis(buy_pairs, total_sold)
-
-        latest_price = price_map.get(isin, Decimal("0"))
-        current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
-
-        yield_on_cost = (
-            (total_div / avg_invested * 100) if avg_invested > 0 else Decimal("0")
-        )
-        yield_on_value = (
-            (total_div / current_value * 100) if current_value > 0 else Decimal("0")
-        )
-
-        results.append(
-            {
-                "isin": isin,
-                "name": d.name,
-                "country": d.country,
-                "total_dividends": str(total_div),
-                "total_invested": str(round(avg_invested, 2)),
-                "qty_remaining": str(qty_remaining),
-                "latest_price": str(latest_price),
-                "current_value": str(round(current_value, 2)),
-                "yield_on_cost": str(round(yield_on_cost, 2)),
-                "yield_on_value": str(round(yield_on_value, 2)),
-                "payment_count": d.payment_count,
-            }
-        )
-
+    results = [
+        _compute_isin_yield(d, buys_by_isin, sells_by_isin, div_dates_by_isin, price_map)
+        for d in div_rows
+    ]
     results.sort(key=lambda x: float(x["yield_on_cost"]), reverse=True)
     return results
 
 
 @router.get("/withholdings-by-country")
 def withholdings_by_country(
+    db: DbSession,
     fiscal_year: int | None = None,
-    db: Session = Depends(get_db),
 ):
     """Withholding tax breakdown by country for double taxation analysis."""
     q = db.query(

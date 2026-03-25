@@ -2,16 +2,15 @@
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter
 from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from backend.api.schemas import (
     CapitalGainOut,
     DividendSummary,
     TransactionOut,
 )
-from backend.database import get_db
+from backend.database import DbSession, LimitParam, OffsetParam
 from backend.models import TaxLot, Transaction, TransactionType
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -19,12 +18,12 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 @router.get("/", response_model=list[TransactionOut])
 def list_transactions(
+    db: DbSession,
+    limit: LimitParam = 200,
+    offset: OffsetParam = 0,
     fiscal_year: int | None = None,
     tx_type: str | None = None,
     isin: str | None = None,
-    limit: int = Query(default=200, le=1000),
-    offset: int = Query(default=0, ge=0),
-    db: Session = Depends(get_db),
 ):
     """List transactions with filters."""
     q = db.query(Transaction)
@@ -40,7 +39,7 @@ def list_transactions(
 
 
 @router.get("/dividends/summary", response_model=list[DividendSummary])
-def dividend_summary(fiscal_year: int | None = None, db: Session = Depends(get_db)):
+def dividend_summary(db: DbSession, fiscal_year: int | None = None):
     """Aggregate dividends by ISIN."""
     q = db.query(
         Transaction.isin,
@@ -72,7 +71,7 @@ def dividend_summary(fiscal_year: int | None = None, db: Session = Depends(get_d
 
 
 @router.get("/capital-gains", response_model=list[CapitalGainOut])
-def capital_gains(fiscal_year: int | None = None, db: Session = Depends(get_db)):
+def capital_gains(db: DbSession, fiscal_year: int | None = None):
     """List realized capital gains/losses from FIFO lots."""
     q = db.query(TaxLot).filter(TaxLot.sell_tx_id.isnot(None))
 

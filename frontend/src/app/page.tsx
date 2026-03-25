@@ -108,7 +108,7 @@ export default function Home() {
             <h1 className="text-2xl font-bold">FinView</h1>
             <p className="text-sm text-neutral-500">Dashboard fiscal de inversiones</p>
           </div>
-          {stats?.fiscal_years.length > 0 && (
+          {(stats?.fiscal_years?.length ?? 0) > 0 && (
             <select
               aria-label="Seleccionar año fiscal"
               value={selectedYear ?? ""}
@@ -118,7 +118,7 @@ export default function Home() {
               className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
             >
               <option value="">Todos los años</option>
-              {stats.fiscal_years.map((y) => (
+              {stats?.fiscal_years.map((y) => (
                 <option key={y} value={y}>
                   {y}
                 </option>

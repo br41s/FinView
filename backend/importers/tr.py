@@ -65,6 +65,20 @@ def parse_date(s: str) -> date:
 
 ISIN_RE = re.compile(r"([A-Z]{2}[A-Z0-9]{9,10})\s*-\s*(.+)")
 
+# Known country names that appear as section sub-headers
+COUNTRY_NAMES = {
+    "Alemania", "Brasil", "España", "Estados Unidos de América",
+    "Francia", "Países Bajos", "Portugal", "Reino Unido", "Suiza",
+}
+
+# Map Spanish transaction type labels to TxType enum
+_TX_TYPE_MAP = {
+    "Compra": TxType.BUY,
+    "Venta": TxType.SELL,
+    "Spin-Off": TxType.SPINOFF,
+    "Dividendo": TxType.DIVIDEND,
+}
+
 
 # -- Section identification --
 
@@ -129,6 +143,101 @@ def _extract_header(pages_text: list[str]) -> tuple[str, date, date]:
     raise ValueError("Could not find client ID and period in PDF")
 
 
+# -- Shared helpers for section parsers --
+
+def _build_vi_transaction(tx_match, current_isin, current_name):
+    """Build a ParsedTransaction from a Section VI regex match."""
+    tx_type_str = tx_match.group(1)
+    trade_date = parse_date(tx_match.group(2))
+    currency = tx_match.group(3)
+    exchange_rate = parse_eur_number(tx_match.group(4))
+    quantity = parse_eur_number(tx_match.group(5))
+    amount = parse_eur_number(tx_match.group(6))
+    tx_type = _TX_TYPE_MAP.get(tx_type_str, TxType.DIVIDEND)
+    price = abs(amount / quantity) if quantity != 0 else Decimal("0")
+
+    return ParsedTransaction(
+        tx_type=tx_type,
+        trade_date=trade_date,
+        isin=current_isin,
+        name=current_name,
+        country="",
+        quantity=quantity,
+        price=price,
+        currency=currency,
+        exchange_rate=exchange_rate,
+        gross_amount=amount,
+        net_amount_eur=amount if exchange_rate == Decimal("1") else amount / exchange_rate,
+    )
+
+
+def _build_capital_gain(pending_buys, pending_sells, pl_match, current_isin, current_name, current_country):
+    """Build a ParsedCapitalGain from accumulated buys/sells and a P&L match."""
+    period_text = pl_match.group(1)
+    pl_amount = parse_eur_number(pl_match.group(2))
+    casilla = int(pl_match.group(3))
+    holding = "<1y" if period_text == "menos" else ">1y"
+
+    buy_total = sum(b["total_eur"] for b in pending_buys)
+    buy_fees = sum(b["fees_eur"] for b in pending_buys)
+    buy_qty = sum(b["quantity"] for b in pending_buys)
+    buy_price = pending_buys[0]["price"] if pending_buys else Decimal("0")
+    buy_date = pending_buys[0]["date"] if pending_buys else None
+
+    sell_total = sum(s["total_eur"] for s in pending_sells)
+    sell_fees = sum(s["fees_eur"] for s in pending_sells)
+    sell_qty = sum(s["quantity"] for s in pending_sells)
+    sell_price = pending_sells[0]["price"] if pending_sells else Decimal("0")
+    sell_date = pending_sells[0]["date"] if pending_sells else None
+
+    if not buy_date or not sell_date:
+        return None
+
+    return ParsedCapitalGain(
+        isin=current_isin,
+        name=current_name,
+        country=current_country or "",
+        buy_date=buy_date,
+        buy_quantity=buy_qty,
+        buy_price=buy_price,
+        buy_fees=buy_fees,
+        buy_total_eur=buy_total,
+        sell_date=sell_date,
+        sell_quantity=sell_qty,
+        sell_price=sell_price,
+        sell_fees=sell_fees,
+        sell_total_eur=sell_total,
+        realized_pl_eur=pl_amount,
+        holding_period=holding,
+        casilla=casilla,
+    )
+
+
+def _parse_withholding_data(line, current_isin, current_name, current_country, current_date):
+    """Parse EUR data line in Section V. Returns ParsedWithholding or None."""
+    nums = _EUR_NUM.findall(line)
+    if len(nums) < 4:
+        return None
+    income = parse_eur_number(nums[0])
+    withholding = parse_eur_number(nums[1])
+    rate_str = re.search(r"(\d+,\d+)%", line)
+    rate = parse_eur_number(rate_str.group(1)) if rate_str else Decimal("0")
+    double_tax = parse_eur_number(nums[-1])
+
+    return ParsedWithholding(
+        country=current_country or "",
+        isin=current_isin,
+        name=current_name,
+        tx_type="Dividendo",
+        payment_date=current_date,
+        currency="EUR",
+        income_eur=income,
+        withholding_eur=withholding,
+        withholding_rate=rate,
+        double_taxation_eur=double_tax,
+    )
+
+
 # =============================================================================
 # Section VI: All transactions (simplest structure)
 # =============================================================================
@@ -167,38 +276,7 @@ def _parse_section_vi(pages_text: list[str]) -> list[ParsedTransaction]:
             # Check for transaction line
             tx_match = _TX_LINE_RE.search(line)
             if tx_match:
-                tx_type_str = tx_match.group(1)
-                trade_date = parse_date(tx_match.group(2))
-                currency = tx_match.group(3)
-                exchange_rate = parse_eur_number(tx_match.group(4))
-                quantity = parse_eur_number(tx_match.group(5))
-                amount = parse_eur_number(tx_match.group(6))
-
-                if tx_type_str == "Compra":
-                    tx_type = TxType.BUY
-                elif tx_type_str == "Venta":
-                    tx_type = TxType.SELL
-                elif tx_type_str == "Spin-Off":
-                    tx_type = TxType.SPINOFF
-                else:
-                    tx_type = TxType.DIVIDEND
-
-                # Price per unit
-                price = abs(amount / quantity) if quantity != 0 else Decimal("0")
-
-                transactions.append(ParsedTransaction(
-                    tx_type=tx_type,
-                    trade_date=trade_date,
-                    isin=current_isin,
-                    name=current_name,
-                    country="",  # Section VI doesn't have country
-                    quantity=quantity,
-                    price=price,
-                    currency=currency,
-                    exchange_rate=exchange_rate,
-                    gross_amount=amount,
-                    net_amount_eur=amount if exchange_rate == Decimal("1") else amount / exchange_rate,
-                ))
+                transactions.append(_build_vi_transaction(tx_match, current_isin, current_name))
 
     return transactions
 
@@ -241,6 +319,38 @@ _INT_RE = re.compile(
 )
 
 
+def _build_dividend_tx(m, tx_type, isin, name, country):
+    """Build a ParsedTransaction from a dividend/interest regex match."""
+    return ParsedTransaction(
+        tx_type=tx_type,
+        trade_date=parse_date(m.group(1)),
+        isin=isin,
+        name=name,
+        country=country or "",
+        quantity=parse_eur_number(m.group(3)),
+        price=parse_eur_number(m.group(4)),
+        currency=m.group(2),
+        fees=parse_eur_number(m.group(5)),
+        gross_amount=parse_eur_number(m.group(7)),
+        withholding_tax=parse_eur_number(m.group(8)),
+        exchange_rate=parse_eur_number(m.group(9)),
+        net_amount_eur=parse_eur_number(m.group(10)),
+        casilla=int(m.group(12)),
+    )
+
+
+_DIV_PATTERNS = [(_DIV_RE, TxType.DIVIDEND), (_INT_RE, TxType.INTEREST)]
+
+
+def _match_div_line(line, isin, name, country):
+    """Try to match a line against dividend/interest patterns. Returns ParsedTransaction or None."""
+    for pattern, tx_type in _DIV_PATTERNS:
+        m = pattern.search(line)
+        if m:
+            return _build_dividend_tx(m, tx_type, isin, name, country)
+    return None
+
+
 def _parse_section_i(pages_text: list[str]) -> list[ParsedTransaction]:
     """Parse Section I: dividends & interest payments."""
     pages = _pages_for_section(pages_text, "I")
@@ -249,23 +359,14 @@ def _parse_section_i(pages_text: list[str]) -> list[ParsedTransaction]:
     current_name = None
     current_country = None
 
-    # Track country from section headers
-    country_names = {
-        "Alemania", "Brasil", "España", "Estados Unidos de América",
-        "Francia", "Países Bajos", "Portugal", "Reino Unido", "Suiza",
-    }
-
     for text in pages:
-        lines = text.split("\n")
-        for line in lines:
+        for line in text.split("\n"):
             stripped = line.strip()
 
-            # Country detection
-            if stripped in country_names:
+            if stripped in COUNTRY_NAMES:
                 current_country = stripped
                 continue
 
-            # ISIN detection
             isin_match = ISIN_RE.search(line)
             if isin_match:
                 current_isin = isin_match.group(1)
@@ -275,27 +376,9 @@ def _parse_section_i(pages_text: list[str]) -> list[ParsedTransaction]:
             if not current_isin:
                 continue
 
-            # Try dividend pattern
-            for pattern, tx_type in [(_DIV_RE, TxType.DIVIDEND), (_INT_RE, TxType.INTEREST)]:
-                m = pattern.search(line)
-                if m:
-                    results.append(ParsedTransaction(
-                        tx_type=tx_type,
-                        trade_date=parse_date(m.group(1)),
-                        isin=current_isin,
-                        name=current_name,
-                        country=current_country or "",
-                        quantity=parse_eur_number(m.group(3)),
-                        price=parse_eur_number(m.group(4)),
-                        currency=m.group(2),
-                        fees=parse_eur_number(m.group(5)),
-                        gross_amount=parse_eur_number(m.group(7)),
-                        withholding_tax=parse_eur_number(m.group(8)),
-                        exchange_rate=parse_eur_number(m.group(9)),
-                        net_amount_eur=parse_eur_number(m.group(10)),
-                        casilla=int(m.group(12)),
-                    ))
-                    break
+            tx = _match_div_line(line, current_isin, current_name, current_country)
+            if tx:
+                results.append(tx)
 
     return results
 
@@ -323,116 +406,65 @@ _PL_RE = re.compile(
     r"Ganancias y pérdidas (menos|más) 1 año\s+(-?\d{1,3}(?:\.\d{3})*,\d+)\s+(\d+)"
 )
 
-_BUY_SELL_PAIR = re.compile(
-    r"(Compra|Venta)"
-)
+
+def _parse_bs_entry(bs_match):
+    """Parse a buy/sell regex match into a dict entry."""
+    return {
+        "type": bs_match.group(1),
+        "date": parse_date(bs_match.group(2)),
+        "currency": bs_match.group(3),
+        "quantity": parse_eur_number(bs_match.group(4)),
+        "price": parse_eur_number(bs_match.group(5)),
+        "fees": parse_eur_number(bs_match.group(6)),
+        "total_eur": parse_eur_number(bs_match.group(11)),
+        "fees_eur": parse_eur_number(bs_match.group(12)),
+    }
+
+
+def _process_iii_line(line, stripped, state, results):
+    """Process a single line in Section III. Mutates state and results."""
+    if stripped in COUNTRY_NAMES:
+        state["country"] = stripped
+        return
+
+    isin_match = ISIN_RE.search(line)
+    if isin_match and "Compra" not in line and "Venta" not in line:
+        state["isin"] = isin_match.group(1)
+        state["name"] = isin_match.group(2).strip()
+        state["buys"] = []
+        state["sells"] = []
+        return
+
+    if not state["isin"]:
+        return
+
+    bs_match = _BUY_SELL_RE.search(line)
+    if bs_match:
+        entry = _parse_bs_entry(bs_match)
+        (state["buys"] if entry["type"] == "Compra" else state["sells"]).append(entry)
+        return
+
+    pl_match = _PL_RE.search(line)
+    if pl_match and (state["buys"] or state["sells"]):
+        gain = _build_capital_gain(
+            state["buys"], state["sells"], pl_match,
+            state["isin"], state["name"], state["country"],
+        )
+        if gain:
+            results.append(gain)
+        state["buys"] = []
+        state["sells"] = []
 
 
 def _parse_section_iii(pages_text: list[str]) -> list[ParsedCapitalGain]:
     """Parse Section III: capital gains/losses."""
     pages = _pages_for_section(pages_text, "III")
     results = []
-    current_isin = None
-    current_name = None
-    current_country = None
-
-    country_names = {
-        "Alemania", "Brasil", "España", "Estados Unidos de América",
-        "Francia", "Países Bajos", "Portugal", "Reino Unido", "Suiza",
-    }
-
-    # Collect buy/sell entries for current ISIN block
-    pending_buys = []
-    pending_sells = []
-
-    def _flush_pair():
-        """Emit a capital gain record from accumulated buys/sells."""
-        nonlocal pending_buys, pending_sells
-        # We don't emit here — we wait for the P&L line
-        pass
+    state = {"isin": None, "name": None, "country": None, "buys": [], "sells": []}
 
     for text in pages:
-        lines = text.split("\n")
-        for line in lines:
-            stripped = line.strip()
-
-            if stripped in country_names:
-                current_country = stripped
-                continue
-
-            isin_match = ISIN_RE.search(line)
-            if isin_match and "Compra" not in line and "Venta" not in line:
-                current_isin = isin_match.group(1)
-                current_name = isin_match.group(2).strip()
-                pending_buys = []
-                pending_sells = []
-                continue
-
-            if not current_isin:
-                continue
-
-            # Buy/sell line
-            bs_match = _BUY_SELL_RE.search(line)
-            if bs_match:
-                entry = {
-                    "type": bs_match.group(1),
-                    "date": parse_date(bs_match.group(2)),
-                    "currency": bs_match.group(3),
-                    "quantity": parse_eur_number(bs_match.group(4)),
-                    "price": parse_eur_number(bs_match.group(5)),
-                    "fees": parse_eur_number(bs_match.group(6)),
-                    "total_eur": parse_eur_number(bs_match.group(11)),
-                    "fees_eur": parse_eur_number(bs_match.group(12)),
-                }
-                if entry["type"] == "Compra":
-                    pending_buys.append(entry)
-                else:
-                    pending_sells.append(entry)
-                continue
-
-            # P&L summary line
-            pl_match = _PL_RE.search(line)
-            if pl_match and (pending_buys or pending_sells):
-                period_text = pl_match.group(1)
-                pl_amount = parse_eur_number(pl_match.group(2))
-                casilla = int(pl_match.group(3))
-                holding = "<1y" if period_text == "menos" else ">1y"
-
-                # Sum up buys and sells
-                buy_total = sum(b["total_eur"] for b in pending_buys)
-                buy_fees = sum(b["fees_eur"] for b in pending_buys)
-                buy_qty = sum(b["quantity"] for b in pending_buys)
-                buy_price = pending_buys[0]["price"] if pending_buys else Decimal("0")
-                buy_date = pending_buys[0]["date"] if pending_buys else None
-
-                sell_total = sum(s["total_eur"] for s in pending_sells)
-                sell_fees = sum(s["fees_eur"] for s in pending_sells)
-                sell_qty = sum(s["quantity"] for s in pending_sells)
-                sell_price = pending_sells[0]["price"] if pending_sells else Decimal("0")
-                sell_date = pending_sells[0]["date"] if pending_sells else None
-
-                if buy_date and sell_date:
-                    results.append(ParsedCapitalGain(
-                        isin=current_isin,
-                        name=current_name,
-                        country=current_country or "",
-                        buy_date=buy_date,
-                        buy_quantity=buy_qty,
-                        buy_price=buy_price,
-                        buy_fees=buy_fees,
-                        buy_total_eur=buy_total,
-                        sell_date=sell_date,
-                        sell_quantity=sell_qty,
-                        sell_price=sell_price,
-                        sell_fees=sell_fees,
-                        sell_total_eur=sell_total,
-                        realized_pl_eur=pl_amount,
-                        holding_period=holding,
-                        casilla=casilla,
-                    ))
-
-                pending_buys = []
-                pending_sells = []
+        for line in text.split("\n"):
+            _process_iii_line(line, line.strip(), state, results)
 
     return results
 
@@ -554,78 +586,46 @@ def _parse_section_vii(pages_text: list[str]) -> list[ParsedPortfolioHolding]:
 # Section V: Withholding details
 # =============================================================================
 
-_WITH_ENTRY_RE = re.compile(
-    r"([A-Z]{2}[A-Z0-9]{9,10})\s*-\s*(.+?)\s+"
-    r"(Dividendo)\s+(\d{2}\.\d{2}\.\d{4})\s+"
-    r"(-?\d{1,3}(?:\.\d{3})*,\d+)"        # exchange rate
+_ISIN_DIV_RE = re.compile(
+    r"([A-Z]{2}[A-Z0-9]{9,10})\s*-\s*(.+?)\s+Dividendo\s+(\d{2}\.\d{2}\.\d{4})"
 )
 
 
-def _parse_section_v(pages_text: list[str]) -> list[ParsedWithholding]:
-    """Parse Section V: withholding tax details.
+def _process_v_line(line, stripped, state, results):
+    """Process a single line in Section V. Mutates state and results."""
+    if stripped in COUNTRY_NAMES:
+        state["country"] = stripped
+        return
 
-    This section is complex with multi-line entries per dividend.
-    We use a simpler approach: pair ISINs with the data tables on each page.
-    """
+    isin_div = _ISIN_DIV_RE.search(line)
+    if isin_div:
+        state["isin"] = isin_div.group(1)
+        state["name"] = isin_div.group(2).strip()
+        state["date"] = parse_date(isin_div.group(3))
+        return
+
+    if state["isin"] and state["date"] and stripped.startswith("EUR"):
+        entry = _parse_withholding_data(
+            line, state["isin"], state["name"], state["country"], state["date"],
+        )
+        if entry:
+            results.append(entry)
+            state["isin"] = None
+            state["date"] = None
+
+
+def _parse_section_v(pages_text: list[str]) -> list[ParsedWithholding]:
+    """Parse Section V: withholding tax details."""
     pages = _pages_for_section(pages_text, "V")
     results = []
-    current_country = None
-
-    country_names = {
-        "Alemania", "Brasil", "España", "Estados Unidos de América",
-        "Francia", "Países Bajos", "Portugal", "Reino Unido", "Suiza",
-    }
+    state = {"country": None, "isin": None, "name": None, "date": None}
 
     for text in pages:
-        lines = text.split("\n")
-        current_isin = None
-        current_name = None
-        current_date = None
-
-        for line in lines:
-            stripped = line.strip()
-
-            # Country
-            if stripped in country_names:
-                current_country = stripped
-                continue
-
-            # ISIN + Dividend + Date on same line
-            isin_div = re.search(
-                r"([A-Z]{2}[A-Z0-9]{9,10})\s*-\s*(.+?)\s+Dividendo\s+(\d{2}\.\d{2}\.\d{4})",
-                line
-            )
-            if isin_div:
-                current_isin = isin_div.group(1)
-                current_name = isin_div.group(2).strip()
-                current_date = parse_date(isin_div.group(3))
-                continue
-
-            # Data line with EUR amounts (the second line with EUR prefix)
-            if current_isin and current_date and line.strip().startswith("EUR"):
-                nums = _EUR_NUM.findall(line)
-                if len(nums) >= 4:
-                    income = parse_eur_number(nums[0])
-                    withholding = parse_eur_number(nums[1])
-                    # nums[2] is rate as percentage if present
-                    rate_str = re.search(r"(\d+,\d+)%", line)
-                    rate = parse_eur_number(rate_str.group(1)) if rate_str else Decimal("0")
-                    double_tax = parse_eur_number(nums[-1])
-
-                    results.append(ParsedWithholding(
-                        country=current_country or "",
-                        isin=current_isin,
-                        name=current_name,
-                        tx_type="Dividendo",
-                        payment_date=current_date,
-                        currency="EUR",
-                        income_eur=income,
-                        withholding_eur=withholding,
-                        withholding_rate=rate,
-                        double_taxation_eur=double_tax,
-                    ))
-                    current_isin = None
-                    current_date = None
+        state["isin"] = None
+        state["name"] = None
+        state["date"] = None
+        for line in text.split("\n"):
+            _process_v_line(line, line.strip(), state, results)
 
     return results
 

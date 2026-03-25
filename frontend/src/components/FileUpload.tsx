@@ -47,8 +47,8 @@ export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>)
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role="region"
+      aria-label="Zona de carga de archivos PDF"
       className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
         dragging ? "border-blue-500 bg-blue-500/10" : "border-neutral-700 hover:border-neutral-500"
       }`}
@@ -63,29 +63,29 @@ export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>)
         const file = e.dataTransfer.files[0];
         if (file) handleFile(file);
       }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          (e.currentTarget.querySelector("input[type=file]") as HTMLInputElement)?.click();
-        }
-      }}
     >
       <div className="mb-3 text-4xl">📄</div>
       <p className="text-neutral-400 mb-3">
         Arrastra aquí un PDF de Trade Republic o DEGIRO
       </p>
-      <label className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer text-sm font-medium transition-colors">
+      <input
+        type="file"
+        accept=".pdf"
+        id="file-upload"
+        aria-label="Seleccionar archivo PDF"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+        }}
+      />
+      <button
+        type="button"
+        className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer text-sm font-medium transition-colors"
+        onClick={() => document.getElementById("file-upload")?.click()}
+      >
         Seleccionar archivo
-        <input
-          type="file"
-          accept=".pdf"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
-          }}
-        />
-      </label>
+      </button>
 
       {loading && <p className="mt-4 text-blue-400 animate-pulse">Procesando PDF...</p>}
 

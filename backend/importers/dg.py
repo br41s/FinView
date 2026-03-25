@@ -290,7 +290,7 @@ def _parse_transactions(text: str) -> list[ParsedTransaction]:
 
         trade_date = _parse_date(m.group(1))
         isin = m.group(3)
-        trade_type = m.group(4)  # C=buy, V=sell
+        trade_type = m.group(4)
         qty = _D(m.group(5))
         price = _parse_decimal(m.group(6))
         eur_value = _parse_decimal(m.group(8))

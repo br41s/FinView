@@ -3,11 +3,10 @@
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, UploadFile
 
 from backend.api.schemas import ImportRecordOut, ImportResult
-from backend.database import get_db
+from backend.database import DbSession
 from backend.importers.dg import (
     compute_file_hash as dg_compute_hash,
     parse_dg_annual_report,
@@ -19,8 +18,8 @@ from backend.services.import_service import import_dg_report, import_tr_report
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 
-@router.post("/tr", response_model=ImportResult)
-def upload_tr_report(file: UploadFile, db: Session = Depends(get_db)):
+@router.post("/tr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+def upload_tr_report(file: UploadFile, db: DbSession):
     """Upload a Trade Republic Tax Report PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
@@ -42,8 +41,8 @@ def upload_tr_report(file: UploadFile, db: Session = Depends(get_db)):
         tmp_path.unlink(missing_ok=True)
 
 
-@router.post("/degiro", response_model=ImportResult)
-def upload_dg_report(file: UploadFile, db: Session = Depends(get_db)):
+@router.post("/degiro", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+def upload_dg_report(file: UploadFile, db: DbSession):
     """Upload a DEGIRO Annual Report PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
@@ -65,6 +64,6 @@ def upload_dg_report(file: UploadFile, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[ImportRecordOut])
-def list_imports(db: Session = Depends(get_db)):
+def list_imports(db: DbSession):
     """List all import records."""
     return db.query(ImportRecord).order_by(ImportRecord.imported_at.desc()).all()

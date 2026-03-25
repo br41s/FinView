@@ -3,7 +3,7 @@
 import type { CapitalGain } from "@/lib/types";
 import { formatEur, plColor } from "@/lib/format";
 
-export function CapitalGainsTable({ gains }: { gains: CapitalGain[] }) {
+export function CapitalGainsTable({ gains }: Readonly<{ gains: CapitalGain[] }>) {
   if (gains.length === 0) return <p className="text-neutral-500 text-sm">Sin datos</p>;
 
   return (
