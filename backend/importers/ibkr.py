@@ -37,7 +37,46 @@ _COUNTRY_NAMES = {
     "NL": "Países Bajos",
     "IE": "Irlanda",
     "IT": "Italia",
+    "SG": "Singapur",
 }
+
+# Section name normalization: Spanish → English
+_SECTION_EN: dict[str, str] = {
+    "Información sobre la cuenta": "Account Information",
+    "Valor liquidativo": "Net Asset Value",
+    "Cambio en NAV": "Change in NAV",
+    "Resumen Rendimiento Valoración al mercado": "Mark-to-Market Performance Summary",
+    "Resumen del rendimiento realizado y no realizado": "Realized & Unrealized Performance Summary",
+    "Informe de efectivo": "Cash Report",
+    "Posiciones abiertas": "Open Positions",
+    "Saldos en fórex": "Forex Balances",
+    "Operaciones": "Trades",
+    "Acciones corporativas": "Corporate Actions",
+    "Actividad de la subvención": "Grant Activity",
+    "Depósitos y retiradas": "Deposits & Withdrawals",
+    "Dividendos": "Dividends",
+    "Retención de impuestos": "Withholding Tax",
+    "Interés": "Interest",
+    "Devengo de intereses": "Interest Accruals",
+    "Modificación en los dividendos devengados": "Change in Dividend Accruals",
+    "Información de instrumento financiero": "Financial Instrument Information",
+    "Código": "Codes",
+    "Notas/Notas legales": "Notes/Legal Notes",
+    "PyG totales del período del extracto": "Total P/L for Statement Period",
+    "Tarifas": "Fees",
+}
+
+# Category normalization: Spanish → English
+_CAT_EN: dict[str, str] = {
+    "Acciones": "Stocks",
+    "Fórex": "Forex",
+    "Opciones sobre acciones e índices": "Equity and Index Options",
+}
+
+
+def _norm_cat(value: str) -> str:
+    """Normalize asset-category / field value to English."""
+    return _CAT_EN.get(value, value)
 
 
 def _dec(value: str) -> Decimal:
@@ -71,13 +110,18 @@ def compute_file_hash(path: Path) -> str:
 
 
 def _parse_sections(text: str) -> dict[str, list[list[str]]]:
-    """Group CSV rows by section name. Returns {section: [rows]}."""
+    """Group CSV rows by section name. Returns {section: [rows]}.
+
+    Section names are normalized to English so the rest of the parser
+    works identically for both EN and ES IBKR exports.
+    """
     sections: dict[str, list[list[str]]] = {}
     reader = csv.reader(StringIO(text))
     for row in reader:
         if len(row) < 2:
             continue
         section = row[0].strip()
+        section = _SECTION_EN.get(section, section)
         sections.setdefault(section, []).append(row)
     return sections
 
@@ -92,11 +136,11 @@ def _extract_account_info(rows: list[list[str]]) -> tuple[str, str, str]:
             continue
         field = row[2].strip()
         value = row[3].strip()
-        if field == "Account":
+        if field in ("Account", "Cuenta"):
             account_id = value
-        elif field == "Name":
+        elif field in ("Name", "Nombre"):
             name = value
-        elif field == "Base Currency":
+        elif field in ("Base Currency", "Divisa base"):
             base_currency = value
     return account_id, name, base_currency
 
@@ -120,7 +164,7 @@ def _extract_instrument_info(rows: list[list[str]]) -> dict[str, str]:
     for row in rows:
         if len(row) < 7 or row[1].strip() != "Data":
             continue
-        category = row[2].strip()
+        category = _norm_cat(row[2].strip())
         if category != "Stocks":
             continue
         symbol = row[3].strip()
@@ -141,7 +185,7 @@ def _extract_forex_rates(rows: list[list[str]]) -> dict[str, list[tuple[date, De
     for row in rows:
         if len(row) < 9 or row[1].strip() != "Data" or row[2].strip() != "Order":
             continue
-        if row[3].strip() != "Forex":
+        if _norm_cat(row[3].strip()) != "Forex":
             continue
         currency = row[4].strip()
         rate = _dec(row[8])
@@ -166,7 +210,7 @@ def _extract_yearend_fx_rates(rows: list[list[str]]) -> dict[str, Decimal]:
     for row in rows:
         if len(row) < 8 or row[1].strip() != "Data":
             continue
-        if row[2].strip() != "Forex":
+        if _norm_cat(row[2].strip()) != "Forex":
             continue
         symbol = row[3].strip()
         if symbol == "EUR":
@@ -213,7 +257,7 @@ def _is_trade_order(row: list[str]) -> bool:
         len(row) >= 6
         and row[1].strip() == "Data"
         and row[2].strip() == "Order"
-        and row[3].strip() != "Forex"
+        and _norm_cat(row[3].strip()) != "Forex"
     )
 
 
@@ -242,7 +286,7 @@ def _parse_single_trade(
 
     underlying = symbol.split()[0] if " " in symbol else symbol
     isin = symbol_isin.get(underlying, symbol_isin.get(symbol, ""))
-    name = f"[OPT] {symbol}" if asset_category == "Equity and Index Options" else symbol
+    name = f"[OPT] {symbol}" if _norm_cat(asset_category) == "Equity and Index Options" else symbol
 
     # Convert amounts to EUR
     proceeds_eur, fx_rate = _to_eur(abs(proceeds), currency, forex_rates, trade_dt)
@@ -284,12 +328,11 @@ def _extract_trades(
 def _build_wht_lookup(wht_rows: list[list[str]]) -> dict[tuple[str, str, str], Decimal]:
     """Build withholding tax lookup: (currency, date, symbol) → amount."""
     wht_by_key: dict[tuple[str, str, str], Decimal] = {}
-    skip_rows = ("Total", "Total in EUR", "Total Withholding Tax in EUR")
     for row in wht_rows:
         if len(row) < 6 or row[1].strip() != "Data":
             continue
         currency = row[2].strip()
-        if currency in skip_rows:
+        if currency.startswith("Total"):
             continue
         desc = row[4].strip()
         m = re.match(r"(\w+)\(", desc)
@@ -324,7 +367,7 @@ def _extract_dividends(
         if len(row) < 6 or row[1].strip() != "Data":
             continue
         currency = row[2].strip()
-        if currency in ("Total", "Total in EUR"):
+        if currency.startswith("Total"):
             continue
         date_str = row[3].strip()
         if not date_str:
@@ -400,6 +443,20 @@ def _extract_interest(rows: list[list[str]]) -> list[ParsedTransaction]:
     return interest
 
 
+def _detect_open_col_offset(rows: list[list[str]]) -> int:
+    """Detect whether the Open Positions section has an 'Open' column.
+
+    The 2024 EN format has: ...Symbol,Open,Quantity,Mult,...  (offset=1)
+    The 2025 ES format has: ...Símbolo,Cantidad,Mult.,...    (offset=0)
+    """
+    for row in rows:
+        if len(row) > 6 and row[1].strip() == "Header":
+            if row[6].strip().lower() == "open":
+                return 1
+            break
+    return 0
+
+
 def _extract_open_positions(
     rows: list[list[str]],
     symbol_isin: dict[str, str],
@@ -407,23 +464,24 @@ def _extract_open_positions(
 ) -> list[ParsedPortfolioHolding]:
     """Parse open positions at year-end. Values converted to EUR."""
     holdings: list[ParsedPortfolioHolding] = []
+    offset = _detect_open_col_offset(rows)
 
     for row in rows:
-        if len(row) < 14 or row[1].strip() != "Data":
+        if len(row) < 13 + offset or row[1].strip() != "Data":
             continue
         disc = row[2].strip()
         if disc != "Summary":
             continue
 
-        asset_category = row[3].strip()
-        if asset_category not in ("Stocks",):
+        asset_category = _norm_cat(row[3].strip())
+        if asset_category != "Stocks":
             continue  # Only stocks for Modelo 714
 
         currency = row[4].strip()
         symbol = row[5].strip()
-        quantity = _dec(row[7])
-        close_price = _dec(row[11])
-        value = _dec(row[12])
+        quantity = _dec(row[6 + offset])
+        close_price = _dec(row[10 + offset])
+        value = _dec(row[11 + offset])
 
         # Convert to EUR using year-end rate
         fx_rate = yearend_rates.get(currency, Decimal("1")) if currency != "EUR" else Decimal("1")
@@ -456,10 +514,11 @@ def _resolve_perf_symbol(
     asset_category: str, symbol: str, symbol_isin: dict[str, str]
 ) -> tuple[str, str]:
     """Resolve (isin, display_name) for a performance summary row."""
-    if asset_category == "Equity and Index Options":
+    norm = _norm_cat(asset_category)
+    if norm == "Equity and Index Options":
         underlying = symbol.split()[0]
         return symbol_isin.get(underlying, ""), f"[OPT] {symbol}"
-    if asset_category == "Forex":
+    if norm == "Forex":
         return "", f"[FX] {symbol}"
     return symbol_isin.get(symbol, ""), symbol
 
@@ -472,7 +531,6 @@ def _extract_realized_performance(
     Values in this section are already in base currency (EUR).
     This is the source of truth for gains/losses.
     """
-    skip = ("Total", "Total (All Assets)")
     gains: list[ParsedGainLoss] = []
 
     for row in rows:
@@ -480,7 +538,7 @@ def _extract_realized_performance(
             continue
         asset_category = row[2].strip()
         symbol = row[3].strip()
-        if asset_category in skip or not symbol:
+        if asset_category.startswith("Total") or not symbol:
             continue
 
         realized_total = _dec(row[9])

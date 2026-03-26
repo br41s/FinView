@@ -198,3 +198,144 @@ class TestForexRates:
             if d.currency == "USD":
                 assert d.exchange_rate < Decimal("1")
                 assert d.exchange_rate > Decimal("0.8")
+
+
+# ── 2025 tests (Spanish-language IBKR CSV) ───────────────────────────
+
+CSV_2025 = Path(__file__).parent.parent.parent / "files" / "IBKR-U11040354_2025_2025.csv"
+
+
+@pytest.fixture
+def report_2025():
+    assert CSV_2025.exists(), f"Test CSV not found: {CSV_2025}"
+    return parse_ibkr_activity_statement(CSV_2025)
+
+
+class TestAccountInfo2025:
+    def test_account_id(self, report_2025):
+        assert report_2025.account_id == "U11040354"
+
+    def test_account_name(self, report_2025):
+        assert report_2025.account_name == "FRANCISCO B NIETO ROMERO"
+
+    def test_base_currency(self, report_2025):
+        assert report_2025.base_currency == "EUR"
+
+    def test_fiscal_year(self, report_2025):
+        assert report_2025.fiscal_year == 2025
+
+
+class TestSymbolISINMap2025:
+    def test_has_new_stocks(self, report_2025):
+        for sym in ("ADM", "GIS", "HRL", "IBKR", "IFLEX", "KVUE", "T", "U11", "VZ"):
+            assert sym in report_2025.symbol_isin_map, f"Missing {sym}"
+
+    def test_isin_values(self, report_2025):
+        assert report_2025.symbol_isin_map["KVUE"] == "US49177J1025"
+        assert report_2025.symbol_isin_map["HRL"] == "US4404521001"
+        assert report_2025.symbol_isin_map["GIS"] == "US3703341046"
+        assert report_2025.symbol_isin_map["U11"] == "SG1M31001969"
+
+
+class TestTrades2025:
+    def test_trade_count(self, report_2025):
+        assert len(report_2025.trades) == 52
+
+    def test_no_forex_trades(self, report_2025):
+        fx = [t for t in report_2025.trades if "EUR." in t.name]
+        assert len(fx) == 0
+
+    def test_option_trades_present(self, report_2025):
+        opt = [t for t in report_2025.trades if t.name.startswith("[OPT]")]
+        assert len(opt) > 0
+
+    def test_sgd_trade_converted(self, report_2025):
+        """U11 is traded in SGD — should have EUR conversion."""
+        u11 = [t for t in report_2025.trades if t.name == "U11"]
+        assert len(u11) >= 1
+        assert u11[0].currency == "SGD"
+        assert u11[0].gross_amount > 0
+
+
+class TestDividends2025:
+    def test_dividend_count(self, report_2025):
+        assert len(report_2025.dividends) == 20
+
+    def test_eur_dividend(self, report_2025):
+        """IFLEX pays in EUR — no conversion needed."""
+        iflex = [d for d in report_2025.dividends if d.isin == "ES0105684007"]
+        assert len(iflex) == 2
+        for d in iflex:
+            assert d.currency == "EUR"
+            assert d.exchange_rate == Decimal("1")
+
+    def test_usd_dividend_converted(self, report_2025):
+        """ADM USD dividends should be converted to EUR."""
+        adm = [d for d in report_2025.dividends if d.isin == "US0394831020"]
+        assert len(adm) == 4
+        for d in adm:
+            assert d.currency == "USD"
+            assert d.exchange_rate < Decimal("1")
+            assert d.gross_amount < d.price  # EUR < USD
+
+    def test_withholding_matched(self, report_2025):
+        """All dividends should have withholding tax matched."""
+        for d in report_2025.dividends:
+            assert d.withholding_tax > 0, f"Missing WHT for {d.name} on {d.trade_date}"
+
+    def test_new_tickers_hrl_kvue(self, report_2025):
+        """HRL and KVUE are new dividend payers in 2025."""
+        hrl = [d for d in report_2025.dividends if d.isin == "US4404521001"]
+        kvue = [d for d in report_2025.dividends if d.isin == "US49177J1025"]
+        assert len(hrl) == 1
+        assert len(kvue) == 1
+
+
+class TestInterest2025:
+    def test_interest_count(self, report_2025):
+        assert len(report_2025.interest) == 10
+
+    def test_all_eur(self, report_2025):
+        for i in report_2025.interest:
+            assert i.currency == "EUR"
+
+
+class TestHoldings2025:
+    def test_holdings_count(self, report_2025):
+        assert len(report_2025.holdings) == 9
+
+    def test_quantities(self, report_2025):
+        """Verify quantities match Open Positions data (no 'Open' column offset bug)."""
+        by_name = {h.name: h for h in report_2025.holdings}
+        assert by_name["ADM"].quantity == Decimal("102.5199")
+        assert by_name["IFLEX"].quantity == Decimal("1300")
+        assert by_name["T"].quantity == Decimal("51.8982")
+        assert by_name["VZ"].quantity == Decimal("125.1618")
+        assert by_name["U11"].quantity == Decimal("100")
+
+    def test_total_eur(self, report_2025):
+        """Total must match IBKR NAV stocks: 25855.4251335 EUR."""
+        total = sum(h.value_dec31_eur for h in report_2025.holdings)
+        assert abs(total - Decimal("25855.4251335")) < Decimal("1")
+
+    def test_multi_currency(self, report_2025):
+        """Holdings span EUR, SGD, and USD."""
+        currencies = {h.currency for h in report_2025.holdings}
+        assert currencies == {"EUR", "SGD", "USD"}
+
+
+class TestRealizedGains2025:
+    def test_option_gains(self, report_2025):
+        opt = [g for g in report_2025.realized_gains if g.name.startswith("[OPT]")]
+        total = sum(g.realized_pl_eur for g in opt)
+        assert abs(total - Decimal("1012.64231245")) < Decimal("0.01")
+
+    def test_fx_gains(self, report_2025):
+        fx = [g for g in report_2025.realized_gains if g.name.startswith("[FX]")]
+        assert len(fx) == 3  # GBP, SGD, USD
+        usd = [g for g in fx if "USD" in g.name][0]
+        assert usd.realized_pl_eur == Decimal("-52.830669")
+
+    def test_total_realized(self, report_2025):
+        total = sum(g.realized_pl_eur for g in report_2025.realized_gains)
+        assert abs(total - Decimal("951.01888545")) < Decimal("0.01")
