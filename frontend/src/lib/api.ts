@@ -38,6 +38,38 @@ export async function uploadIBKRReport(file: File) {
   return res.json();
 }
 
+export async function uploadINGReport(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/imports/ing`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  return res.json();
+}
+
+export async function uploadBBVAReport(files: File[]) {
+  const form = new FormData();
+  for (const file of files) {
+    form.append("files", file);
+  }
+  const res = await fetch(`${BASE}/imports/bbva`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  return res.json();
+}
+
+export async function uploadEToroReport(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/imports/etoro`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  return res.json();
+}
+
+export async function deleteImport(importId: number) {
+  const res = await fetch(`${BASE}/imports/${importId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
+  return res.json();
+}
+
 export const api = {
   dashboard: (year?: number) =>
     fetchJSON(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
@@ -48,6 +80,12 @@ export const api = {
     fetchJSON(`/transactions/dividends/summary${qs({ fiscal_year: year })}`),
   capitalGains: (year?: number) =>
     fetchJSON(`/transactions/capital-gains${qs({ fiscal_year: year })}`),
+  crossBrokerLots: (year: number) =>
+    fetchJSON(`/fiscal/cross-broker-lots${qs({ fiscal_year: year })}`),
+  fifoAdjustments: (year: number) =>
+    fetchJSON(`/fiscal/fifo-adjustments${qs({ fiscal_year: year })}`),
+  optionAssignments: (year: number) =>
+    fetchJSON(`/fiscal/option-assignments${qs({ fiscal_year: year })}`),
   transactions: (params?: Record<string, string>) => {
     const qstr = params ? "?" + new URLSearchParams(params).toString() : "";
     return fetchJSON(`/transactions/${qstr}`);

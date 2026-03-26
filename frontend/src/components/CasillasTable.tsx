@@ -48,48 +48,6 @@ const COUNTRY_NOTES: Record<string, string> = {
     "Convenio España-Irlanda. Sin retención en origen sobre dividendos para no residentes.",
 };
 
-const TAX_BRACKETS = [
-  { from: 0, to: 6000, rate: 19 },
-  { from: 6000, to: 50000, rate: 21 },
-  { from: 50000, to: 200000, rate: 23 },
-  { from: 200000, to: 300000, rate: 27 },
-  { from: 300000, to: Infinity, rate: 28 },
-];
-
-function TaxBracketsSection() {
-  return (
-    <div>
-      <h3 className="text-sm font-medium text-neutral-300 mb-3">
-        Tramos de la base del ahorro — IRPF 2024
-      </h3>
-      <p className="text-xs text-neutral-500 mb-3">
-        Los dividendos y ganancias patrimoniales tributan en la base del ahorro del IRPF a los
-        siguientes tipos marginales:
-      </p>
-      <table className="w-full text-sm max-w-md">
-        <thead>
-          <tr className="border-b border-neutral-800 text-neutral-500">
-            <th className="text-left py-2">Base liquidable</th>
-            <th className="text-right py-2">Tipo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {TAX_BRACKETS.map((b) => (
-            <tr key={b.from} className="border-b border-neutral-800/50">
-              <td className="py-1.5 text-neutral-300">
-                {b.to === Infinity
-                  ? `Más de ${b.from.toLocaleString("es-ES")} €`
-                  : `${b.from.toLocaleString("es-ES")} € — ${b.to.toLocaleString("es-ES")} €`}
-              </td>
-              <td className="py-1.5 text-right font-mono text-neutral-200">{b.rate}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function CountryAnalysis({
   dividendsByCountry,
 }: {
@@ -197,8 +155,21 @@ function CasillasSection({ casillas }: { readonly casillas: readonly Casilla[] }
                             {c.brokers.map((b) => `${b.broker}: ${formatEur(b.amount_eur)}`).join(" · ")}
                           </span>
                         )}
+                        {c.fifo_adjustment_eur && Number(c.fifo_adjustment_eur) !== 0 && (
+                          <span className="block text-xs text-amber-400 mt-1">
+                            ⚠ Ajuste FIFO cruzado: {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
+                            {formatEur(c.fifo_adjustment_eur)} (diferencia entre FIFO global y broker)
+                          </span>
+                        )}
                       </td>
-                      <td className="py-2 text-right font-mono">{formatEur(c.amount_eur)}</td>
+                      <td className="py-2 text-right font-mono">
+                        {formatEur(c.amount_eur)}
+                        {c.fifo_adjustment_eur && Number(c.fifo_adjustment_eur) !== 0 && (
+                          <span className="block text-xs text-amber-400 mt-1 font-mono">
+                            ⚠ Ajustado: {formatEur(Number(c.amount_eur) + Number(c.fifo_adjustment_eur))}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -250,7 +221,6 @@ export function CasillasTable({
 }) {
   return (
     <div className="space-y-8">
-      <TaxBracketsSection />
       <CountryAnalysis dividendsByCountry={dividendsByCountry} />
       <CasillasSection casillas={casillas} />
       <DeclarationGuide />

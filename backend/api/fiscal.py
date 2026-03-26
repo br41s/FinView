@@ -5,11 +5,22 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import case, func
 
-from backend.api.schemas import AggregatedCasillaOut, CasillaOut, DashboardStats, FiscalSummary
+from backend.api.schemas import (
+    AggregatedCasillaOut,
+    CasillaOut,
+    CrossBrokerLotOut,
+    DashboardStats,
+    FIFOAdjustmentOut,
+    FiscalSummary,
+    OptionAssignmentOut,
+)
 from backend.database import DbSession
 from backend.models import (
     Account,
+    CrossBrokerLot,
+    FIFOAdjustment,
     ImportRecord,
+    OptionAssignmentRecord,
     TaxLot,
     TaxResult,
     Transaction,
@@ -33,6 +44,19 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
         key = (r.modelo, r.casilla)
         grouped.setdefault(key, []).append(r)
 
+    # Load FIFO adjustments for the fiscal year (if any)
+    fifo_adj_by_casilla: dict[int, Decimal] = {}
+    if fiscal_year:
+        adjs = db.query(FIFOAdjustment).filter(
+            FIFOAdjustment.fiscal_year == fiscal_year
+        ).all()
+        for adj in adjs:
+            # Positive adjustment → more gains (332), negative → less gains / more losses (337)
+            if adj.adjustment_eur > 0:
+                fifo_adj_by_casilla[332] = fifo_adj_by_casilla.get(332, Decimal("0")) + adj.adjustment_eur
+            elif adj.adjustment_eur < 0:
+                fifo_adj_by_casilla[337] = fifo_adj_by_casilla.get(337, Decimal("0")) + adj.adjustment_eur
+
     result = []
     for (modelo, casilla), items in sorted(grouped.items()):
         total = sum(i.amount_eur for i in items)
@@ -41,12 +65,14 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
             {"broker": i.broker, "amount_eur": i.amount_eur}
             for i in items
         ]
+        adj_val = fifo_adj_by_casilla.get(casilla)
         result.append(AggregatedCasillaOut(
             modelo=modelo,
             casilla=casilla,
             description=desc,
             amount_eur=total,
             brokers=brokers,
+            fifo_adjustment_eur=adj_val,
         ))
     return result
 
@@ -191,3 +217,43 @@ def dashboard_stats(db: DbSession, fiscal_year: int | None = None):
         imports=imports,
         fiscal_years=[y[0] for y in years],
     )
+
+
+@router.get("/cross-broker-lots", response_model=list[CrossBrokerLotOut])
+def list_cross_broker_lots(db: DbSession, fiscal_year: int):
+    """List cross-broker FIFO lots for a fiscal year."""
+    lots = (
+        db.query(CrossBrokerLot)
+        .filter(CrossBrokerLot.fiscal_year == fiscal_year)
+        .order_by(CrossBrokerLot.isin, CrossBrokerLot.id)
+        .all()
+    )
+    return lots
+
+
+@router.get("/fifo-adjustments", response_model=list[FIFOAdjustmentOut])
+def list_fifo_adjustments(db: DbSession, fiscal_year: int):
+    """List FIFO adjustments (cross-broker vs broker) for a fiscal year."""
+    adjs = (
+        db.query(FIFOAdjustment)
+        .filter(FIFOAdjustment.fiscal_year == fiscal_year)
+        .order_by(FIFOAdjustment.isin)
+        .all()
+    )
+    return adjs
+
+
+@router.get("/option-assignments", response_model=list[OptionAssignmentOut])
+def list_option_assignments(db: DbSession, fiscal_year: int):
+    """List detected option assignments for a fiscal year.
+
+    Assignments are informational — IBKR's Realized P/L already embeds
+    option premiums in the stock cost basis per Spanish IRPF rules.
+    """
+    records = (
+        db.query(OptionAssignmentRecord)
+        .filter(OptionAssignmentRecord.fiscal_year == fiscal_year)
+        .order_by(OptionAssignmentRecord.assignment_date)
+        .all()
+    )
+    return records

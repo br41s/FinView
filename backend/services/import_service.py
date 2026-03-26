@@ -6,8 +6,11 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from backend.importers.base import (
+    BBVAAnnualReport,
     DGAnnualReport,
+    EToroAnnualReport,
     IBKRAnnualReport,
+    INGAnnualReport,
     ParsedCapitalGain,
     ParsedCasilla,
     ParsedGainLoss,
@@ -16,16 +19,22 @@ from backend.importers.base import (
     ParsedWithholding,
     TRTaxReport,
     TxType,
+    country_from_isin,
 )
 from backend.models import (
     Account,
     Broker,
+    CrossBrokerLot,
+    FIFOAdjustment,
     ImportRecord,
+    OptionAssignmentRecord,
+    PortfolioHolding,
     TaxLot,
     TaxResult,
     Transaction,
     TransactionType,
 )
+from backend.services.fifo_engine import recalculate_cross_broker_fifo
 
 
 TX_TYPE_MAP = {
@@ -61,6 +70,71 @@ def _check_duplicate(db: Session, file_hash: str, broker: Broker) -> ImportRecor
         .filter(ImportRecord.file_hash == file_hash, ImportRecord.broker == broker.value)
         .first()
     )
+
+
+def _check_year_duplicate(db: Session, broker: Broker, fiscal_year: int) -> ImportRecord | None:
+    """Check if an import already exists for this broker + fiscal year."""
+    return (
+        db.query(ImportRecord)
+        .filter(ImportRecord.broker == broker.value, ImportRecord.fiscal_year == fiscal_year)
+        .first()
+    )
+
+
+def _delete_import_data(db: Session, import_id: int) -> None:
+    """Cascade-delete all data from a previous import.
+
+    Order: TaxLots (via buy/sell tx) → Transactions → TaxResults → ImportRecord.
+    """
+    import_rec = db.query(ImportRecord).filter(ImportRecord.id == import_id).first()
+    if not import_rec:
+        return
+
+    # Get all transaction IDs from this import
+    tx_ids = [
+        t.id for t in
+        db.query(Transaction.id).filter(Transaction.import_id == import_id).all()
+    ]
+
+    if tx_ids:
+        # Delete TaxLots that reference these transactions
+        db.query(TaxLot).filter(
+            (TaxLot.buy_tx_id.in_(tx_ids)) | (TaxLot.sell_tx_id.in_(tx_ids))
+        ).delete(synchronize_session="fetch")
+
+        # Delete the transactions themselves
+        db.query(Transaction).filter(Transaction.import_id == import_id).delete(
+            synchronize_session="fetch"
+        )
+
+    # Delete TaxResults for this broker + year
+    if import_rec.fiscal_year:
+        db.query(TaxResult).filter(
+            TaxResult.broker == import_rec.broker,
+            TaxResult.fiscal_year == import_rec.fiscal_year,
+        ).delete(synchronize_session="fetch")
+
+        # Delete cross-broker FIFO data for this year (will be recalculated)
+        db.query(CrossBrokerLot).filter(
+            CrossBrokerLot.fiscal_year == import_rec.fiscal_year,
+        ).delete(synchronize_session="fetch")
+        db.query(FIFOAdjustment).filter(
+            FIFOAdjustment.fiscal_year == import_rec.fiscal_year,
+        ).delete(synchronize_session="fetch")
+
+    # Delete option assignment records for this import
+    db.query(OptionAssignmentRecord).filter(
+        OptionAssignmentRecord.import_id == import_id,
+    ).delete(synchronize_session="fetch")
+
+    # Delete portfolio holdings for this import
+    db.query(PortfolioHolding).filter(
+        PortfolioHolding.import_id == import_id,
+    ).delete(synchronize_session="fetch")
+
+    # Delete the import record
+    db.delete(import_rec)
+    db.flush()
 
 
 def _store_transaction(db: Session, tx: ParsedTransaction, account_id: int, import_id: int) -> Transaction:
@@ -178,7 +252,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
 
     Returns summary dict with counts and status.
     """
-    # Check duplicate
+    # Check exact file duplicate
     existing = _check_duplicate(db, file_hash, Broker.TR)
     if existing:
         return {
@@ -186,6 +260,13 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
             "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
             "import_id": existing.id,
         }
+
+    # Check if same broker+year already imported → auto-replace
+    replaced_id = None
+    year_dup = _check_year_duplicate(db, Broker.TR, report.fiscal_year)
+    if year_dup:
+        replaced_id = year_dup.id
+        _delete_import_data(db, year_dup.id)
 
     account = _get_or_create_account(db, Broker.TR, report.client_id)
 
@@ -219,10 +300,14 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     all_casillas = report.casillas_modelo_100 + report.casillas_modelo_714
     _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR)
 
+    # Recalculate cross-broker FIFO
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+
     db.commit()
 
     return {
-        "status": "success",
+        "status": "replaced" if replaced_id else "success",
+        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
         "import_id": import_rec.id,
         "fiscal_year": report.fiscal_year,
         "counts": {
@@ -232,23 +317,9 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
             "casillas": len(all_casillas),
             "holdings": len(report.holdings),
             "withholdings": len(report.withholdings),
+            "fifo_cross_broker": fifo_result["lots_created"],
         },
     }
-
-
-# ISO 2-letter → Spanish full name (matching TR format)
-_COUNTRY_NAMES = {
-    "DE": "Alemania", "BR": "Brasil", "ES": "España",
-    "US": "Estados Unidos de América", "FR": "Francia",
-    "PT": "Portugal", "GB": "Reino Unido", "CH": "Suiza",
-    "NL": "Países Bajos", "IE": "Irlanda", "IT": "Italia",
-}
-
-
-def _country_from_isin(isin: str) -> str:
-    """Derive country name from ISIN prefix."""
-    code = isin[:2] if isin and len(isin) >= 2 else ""
-    return _COUNTRY_NAMES.get(code, code)
 
 
 def _create_dg_tax_lots(
@@ -286,7 +357,7 @@ def _create_dg_tax_lots(
             total_qty = Decimal("1")
 
         cost_basis = total_proceeds - g.realized_pl_eur
-        country = _country_from_isin(g.isin)
+        country = country_from_isin(g.isin)
 
         # Create synthetic buy transaction
         buy_tx = Transaction(
@@ -422,6 +493,13 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
             "import_id": existing.id,
         }
 
+    # Check if same broker+year already imported → auto-replace
+    replaced_id = None
+    year_dup = _check_year_duplicate(db, Broker.DEGIRO, report.fiscal_year)
+    if year_dup:
+        replaced_id = year_dup.id
+        _delete_import_data(db, year_dup.id)
+
     account = _get_or_create_account(db, Broker.DEGIRO, "DEGIRO")
 
     import_rec = ImportRecord(
@@ -456,10 +534,14 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     # Compute and store casillas from transaction/lot data
     casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id)
 
+    # Recalculate cross-broker FIFO
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+
     db.commit()
 
     return {
-        "status": "success",
+        "status": "replaced" if replaced_id else "success",
+        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
         "import_id": import_rec.id,
         "fiscal_year": report.fiscal_year,
         "counts": {
@@ -469,6 +551,264 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
             "casillas": len(casillas),
             "holdings": len(report.holdings),
             "gains_summary": len(report.gains_summary),
+            "fifo_cross_broker": fifo_result["lots_created"],
+        },
+    }
+
+
+def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, filename: str) -> dict:
+    """Import a parsed ING Información Fiscal PDF into the database."""
+    existing = _check_duplicate(db, file_hash, Broker.ING)
+    if existing:
+        return {
+            "status": "duplicate",
+            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
+            "import_id": existing.id,
+        }
+
+    replaced_id = None
+    year_dup = _check_year_duplicate(db, Broker.ING, report.fiscal_year)
+    if year_dup:
+        replaced_id = year_dup.id
+        _delete_import_data(db, year_dup.id)
+
+    account = _get_or_create_account(db, Broker.ING, "ING")
+
+    record_count = len(report.interest) + len(report.dividends) + len(report.transactions)
+    import_rec = ImportRecord(
+        account_id=account.id,
+        filename=filename,
+        file_hash=file_hash,
+        broker=Broker.ING.value,
+        fiscal_year=report.fiscal_year,
+        record_count=record_count,
+    )
+    db.add(import_rec)
+    db.flush()
+
+    # Store interest
+    int_count = 0
+    for tx in report.interest:
+        _store_transaction(db, tx, account.id, import_rec.id)
+        int_count += 1
+
+    # Store dividends
+    div_count = 0
+    for div in report.dividends:
+        _store_transaction(db, div, account.id, import_rec.id)
+        div_count += 1
+
+    # Store buy/sell transactions
+    tx_count = 0
+    for tx in report.transactions:
+        _store_transaction(db, tx, account.id, import_rec.id)
+        tx_count += 1
+
+    # Store year-end holdings
+    hold_count = 0
+    for h in report.holdings:
+        db.add(PortfolioHolding(
+            import_id=import_rec.id,
+            account_id=account.id,
+            fiscal_year=report.fiscal_year,
+            broker=Broker.ING.value,
+            isin=h.isin,
+            name=h.name,
+            country=h.country,
+            currency=h.currency,
+            quantity=h.quantity,
+            price=h.price,
+            value_eur=h.value_dec31_eur,
+        ))
+        hold_count += 1
+
+    # Compute casillas from stored transactions
+    casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id)
+
+    # Recalculate cross-broker FIFO
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+
+    db.commit()
+
+    return {
+        "status": "replaced" if replaced_id else "success",
+        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
+        "import_id": import_rec.id,
+        "fiscal_year": report.fiscal_year,
+        "counts": {
+            "interest": int_count,
+            "dividends": div_count,
+            "transactions": tx_count,
+            "casillas": len(casillas),
+            "holdings": hold_count,
+            "fifo_cross_broker": fifo_result["lots_created"],
+        },
+    }
+
+
+def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, filename: str) -> dict:
+    """Import a parsed BBVA annual report (from 1-3 PDFs) into the database."""
+    existing = _check_duplicate(db, file_hash, Broker.BBVA)
+    if existing:
+        return {
+            "status": "duplicate",
+            "message": f"Estos archivos ya fueron importados el {existing.imported_at.isoformat()}",
+            "import_id": existing.id,
+        }
+
+    replaced_id = None
+    year_dup = _check_year_duplicate(db, Broker.BBVA, report.fiscal_year)
+    if year_dup:
+        replaced_id = year_dup.id
+        _delete_import_data(db, year_dup.id)
+
+    account = _get_or_create_account(db, Broker.BBVA, "BBVA")
+
+    record_count = len(report.dividends) + len(report.transactions)
+    import_rec = ImportRecord(
+        account_id=account.id,
+        filename=filename,
+        file_hash=file_hash,
+        broker=Broker.BBVA.value,
+        fiscal_year=report.fiscal_year,
+        record_count=record_count,
+    )
+    db.add(import_rec)
+    db.flush()
+
+    # Store dividends
+    div_count = 0
+    for div in report.dividends:
+        _store_transaction(db, div, account.id, import_rec.id)
+        div_count += 1
+
+    # Store buy/sell transactions
+    tx_count = 0
+    for tx in report.transactions:
+        _store_transaction(db, tx, account.id, import_rec.id)
+        tx_count += 1
+
+    # Store custody fee as a FEE transaction if > 0
+    fee_count = 0
+    if report.custody_fee > 0:
+        fee_tx = ParsedTransaction(
+            tx_type=TxType.FEE,
+            trade_date=date(report.fiscal_year, 12, 31),
+            isin="",
+            name="Gastos custodia BBVA",
+            country="España",
+            quantity=Decimal("0"),
+            price=Decimal("0"),
+            currency="EUR",
+            gross_amount=report.custody_fee,
+            fees=report.custody_fee,
+            net_amount_eur=-report.custody_fee,
+        )
+        _store_transaction(db, fee_tx, account.id, import_rec.id)
+        fee_count = 1
+
+    # Store year-end holdings
+    hold_count = 0
+    for h in report.holdings:
+        db.add(PortfolioHolding(
+            import_id=import_rec.id,
+            account_id=account.id,
+            fiscal_year=report.fiscal_year,
+            broker=Broker.BBVA.value,
+            isin=h.isin,
+            name=h.name,
+            country=h.country,
+            currency=h.currency,
+            quantity=h.quantity,
+            price=h.price,
+            value_eur=h.value_dec31_eur,
+        ))
+        hold_count += 1
+
+    # Compute casillas from stored transactions
+    casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id)
+
+    # Recalculate cross-broker FIFO
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+
+    db.commit()
+
+    return {
+        "status": "replaced" if replaced_id else "success",
+        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
+        "import_id": import_rec.id,
+        "fiscal_year": report.fiscal_year,
+        "counts": {
+            "dividends": div_count,
+            "transactions": tx_count,
+            "fees": fee_count,
+            "casillas": len(casillas),
+            "holdings": hold_count,
+            "fifo_cross_broker": fifo_result["lots_created"],
+        },
+    }
+
+
+def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, filename: str) -> dict:
+    """Import a parsed eToro annual account statement into the database."""
+    existing = _check_duplicate(db, file_hash, Broker.ETORO)
+    if existing:
+        return {
+            "status": "duplicate",
+            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
+            "import_id": existing.id,
+        }
+
+    replaced_id = None
+    year_dup = _check_year_duplicate(db, Broker.ETORO, report.fiscal_year)
+    if year_dup:
+        replaced_id = year_dup.id
+        _delete_import_data(db, year_dup.id)
+
+    account = _get_or_create_account(db, Broker.ETORO, "ETORO")
+
+    record_count = len(report.dividends) + len(report.transactions)
+    import_rec = ImportRecord(
+        account_id=account.id,
+        filename=filename,
+        file_hash=file_hash,
+        broker=Broker.ETORO.value,
+        fiscal_year=report.fiscal_year,
+        record_count=record_count,
+    )
+    db.add(import_rec)
+    db.flush()
+
+    # Store dividends
+    div_count = 0
+    for div in report.dividends:
+        _store_transaction(db, div, account.id, import_rec.id)
+        div_count += 1
+
+    # Store buy/sell transactions
+    tx_count = 0
+    for tx in report.transactions:
+        _store_transaction(db, tx, account.id, import_rec.id)
+        tx_count += 1
+
+    # Compute casillas from stored transactions
+    casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id)
+
+    # Recalculate cross-broker FIFO
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+
+    db.commit()
+
+    return {
+        "status": "replaced" if replaced_id else "success",
+        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
+        "import_id": import_rec.id,
+        "fiscal_year": report.fiscal_year,
+        "counts": {
+            "dividends": div_count,
+            "transactions": tx_count,
+            "casillas": len(casillas),
+            "fifo_cross_broker": fifo_result["lots_created"],
         },
     }
 
@@ -487,7 +827,7 @@ def _create_ibkr_tax_lots(
     """
     lots = []
     for g in realized_gains:
-        country = _country_from_isin(g.isin)
+        country = country_from_isin(g.isin)
         # Realized P/L is the net result; derive synthetic cost/proceeds
         if g.realized_pl_eur >= 0:
             cost = Decimal("0")
@@ -563,6 +903,13 @@ def import_ibkr_report(
             "import_id": existing.id,
         }
 
+    # Check if same broker+year already imported → auto-replace
+    replaced_id = None
+    year_dup = _check_year_duplicate(db, Broker.IBKR, report.fiscal_year)
+    if year_dup:
+        replaced_id = year_dup.id
+        _delete_import_data(db, year_dup.id)
+
     account = _get_or_create_account(db, Broker.IBKR, report.account_id)
 
     import_rec = ImportRecord(
@@ -601,15 +948,34 @@ def import_ibkr_report(
         db, report.realized_gains, account.id, import_rec.id, report.fiscal_year
     )
 
+    # Store detected option assignments (informational for IRPF audit)
+    for a in report.assignments:
+        db.add(OptionAssignmentRecord(
+            import_id=import_rec.id,
+            fiscal_year=report.fiscal_year,
+            assignment_date=a.assignment_date,
+            underlying=a.underlying,
+            option_symbol=a.option_symbol,
+            option_type="PUT" if a.option_type == "P" else "CALL",
+            strike=a.strike,
+            stock_quantity=a.stock_quantity,
+            stock_isin=a.stock_isin,
+            premium_eur=a.premium_eur,
+        ))
+
     # Compute casillas from the stored data
     casillas = _compute_broker_casillas(
         db, Broker.IBKR, report.fiscal_year, account.id
     )
 
+    # Recalculate cross-broker FIFO
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+
     db.commit()
 
     return {
-        "status": "success",
+        "status": "replaced" if replaced_id else "success",
+        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
         "import_id": import_rec.id,
         "fiscal_year": report.fiscal_year,
         "counts": {
@@ -619,5 +985,19 @@ def import_ibkr_report(
             "capital_gains": len(lots),
             "casillas": len(casillas),
             "holdings": len(report.holdings),
+            "fifo_cross_broker": fifo_result["lots_created"],
+            "option_assignments": len(report.assignments),
         },
+        "assignments": [
+            {
+                "date": a.assignment_date.isoformat(),
+                "underlying": a.underlying,
+                "option": a.option_symbol,
+                "type": "PUT" if a.option_type == "P" else "CALL",
+                "strike": str(a.strike),
+                "shares": str(a.stock_quantity),
+                "premium_eur": str(a.premium_eur),
+            }
+            for a in report.assignments
+        ],
     }

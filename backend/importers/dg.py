@@ -21,6 +21,7 @@ from backend.importers.base import (
     ParsedPortfolioHolding,
     ParsedTransaction,
     TxType,
+    country_from_isin,
 )
 
 # ── Number / date helpers ──────────────────────────────────────────────
@@ -37,42 +38,6 @@ def _parse_date(s: str) -> date:
     """DD/MM/YYYY → date."""
     d, m, y = s.split("/")
     return date(int(y), int(m), int(d))
-
-
-def _country_from_isin(isin: str) -> str:
-    """Derive 2-letter country code from ISIN prefix."""
-    return isin[:2] if isin and len(isin) >= 2 else ""
-
-
-# ISO 2-letter → Spanish full name (matching TR format)
-_COUNTRY_NAMES = {
-    "DE": "Alemania",
-    "BR": "Brasil",
-    "ES": "España",
-    "US": "Estados Unidos de América",
-    "FR": "Francia",
-    "PT": "Portugal",
-    "GB": "Reino Unido",
-    "CH": "Suiza",
-    "NL": "Países Bajos",
-    "IE": "Irlanda",
-    "IT": "Italia",
-    "AT": "Austria",
-    "BE": "Bélgica",
-    "LU": "Luxemburgo",
-    "NO": "Noruega",
-    "SE": "Suecia",
-    "DK": "Dinamarca",
-    "FI": "Finlandia",
-    "JP": "Japón",
-    "CA": "Canadá",
-    "AU": "Australia",
-}
-
-
-def _resolve_country(code: str) -> str:
-    """Convert 2-letter ISO code to full Spanish name."""
-    return _COUNTRY_NAMES.get(code.upper(), code) if code else ""
 
 
 # ── Regex patterns ─────────────────────────────────────────────────────
@@ -190,7 +155,7 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
         m = DIV_RE.match(line)
         if not m:
             continue
-        country = _resolve_country(m.group(1))
+        country = country_from_isin(m.group(1))
         name = m.group(2).strip()
         gross = _parse_decimal(m.group(3))
         withholding = _parse_decimal(m.group(4))
@@ -260,7 +225,7 @@ def _parse_holdings(text: str, _fiscal_year: int) -> list[ParsedPortfolioHolding
             name=m.group(1).strip(),
             currency=m.group(6),
             asset_type=m.group(3),
-            country=_resolve_country(_country_from_isin(isin)),
+            country=country_from_isin(isin),
             casilla_714=0,
             quantity=qty,
             avg_q4_balance=_D("0"),
@@ -306,7 +271,7 @@ def _parse_transactions(text: str) -> list[ParsedTransaction]:
             trade_date=trade_date,
             isin=isin,
             name=m.group(2).strip(),
-            country=_resolve_country(_country_from_isin(isin)),
+            country=country_from_isin(isin),
             quantity=qty,
             price=price,
             currency="EUR",
@@ -360,7 +325,7 @@ def _enrich_dividends(
         if isin:
             div.isin = isin
             if not div.country or len(div.country) != 2:
-                div.country = _resolve_country(_country_from_isin(isin))
+                div.country = country_from_isin(isin)
 
 
 # ── Public API ─────────────────────────────────────────────────────────

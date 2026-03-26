@@ -1,9 +1,175 @@
 "use client";
 
-import type { CapitalGain } from "@/lib/types";
+import { useState } from "react";
+import type { CapitalGain, CrossBrokerLot, FIFOAdjustment, OptionAssignment } from "@/lib/types";
 import { formatEur, plColor } from "@/lib/format";
 
-export function CapitalGainsTable({ gains }: Readonly<{ gains: CapitalGain[] }>) {
+function CrossBrokerSection({
+  lots,
+  adjustments,
+}: {
+  readonly lots: CrossBrokerLot[];
+  readonly adjustments: FIFOAdjustment[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (lots.length === 0 && adjustments.length === 0) return null;
+
+  return (
+    <div className="mt-6 border border-amber-700/40 rounded-lg bg-amber-950/20">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full px-4 py-3 flex items-center justify-between text-sm font-medium text-amber-300 hover:bg-amber-950/30 rounded-lg"
+      >
+        <span>⚠ FIFO Cruzado — {lots.length} lotes, {adjustments.length} ajuste(s)</span>
+        <span className="text-xs">{open ? "▼" : "▶"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-4">
+          {adjustments.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-medium text-amber-400">Resumen de ajustes</h4>
+              {adjustments.map((a) => (
+                <div
+                  key={a.id}
+                  className="bg-neutral-800/50 border border-neutral-700/50 rounded p-3 text-xs"
+                >
+                  <div className="flex justify-between mb-1">
+                    <span className="text-neutral-300 font-medium">{a.name}</span>
+                    <span className="font-mono text-neutral-400">{a.isin}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-neutral-400">
+                    <div>
+                      Broker: <span className="font-mono text-neutral-200">{formatEur(a.broker_pl_eur)}</span>
+                    </div>
+                    <div>
+                      FIFO global: <span className="font-mono text-neutral-200">{formatEur(a.fifo_pl_eur)}</span>
+                    </div>
+                    <div>
+                      Ajuste:{" "}
+                      <span className={`font-mono font-medium ${plColor(a.adjustment_eur)}`}>
+                        {Number(a.adjustment_eur) > 0 ? "+" : ""}{formatEur(a.adjustment_eur)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-neutral-500">{a.note}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {lots.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-amber-400 mb-2">Lotes FIFO cruzado</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-neutral-800 text-neutral-500">
+                      <th className="text-left py-1.5">ISIN</th>
+                      <th className="text-left py-1.5">Compra en</th>
+                      <th className="text-left py-1.5">Venta en</th>
+                      <th className="text-right py-1.5">Cantidad</th>
+                      <th className="text-right py-1.5">Coste</th>
+                      <th className="text-right py-1.5">Venta</th>
+                      <th className="text-right py-1.5">P&L</th>
+                      <th className="text-left py-1.5">Periodo</th>
+                      <th className="text-right py-1.5">Casilla</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lots.map((l) => (
+                      <tr key={l.id} className="border-b border-neutral-800/30">
+                        <td className="py-1.5 font-mono text-neutral-400">{l.isin}</td>
+                        <td className="py-1.5 text-neutral-300">{l.buy_broker}</td>
+                        <td className="py-1.5 text-neutral-300">{l.sell_broker}</td>
+                        <td className="py-1.5 text-right text-neutral-300">{l.quantity}</td>
+                        <td className="py-1.5 text-right">{formatEur(l.cost_basis_eur)}</td>
+                        <td className="py-1.5 text-right">{formatEur(l.proceeds_eur)}</td>
+                        <td className={`py-1.5 text-right font-medium ${plColor(l.realized_pl_eur)}`}>
+                          {formatEur(l.realized_pl_eur)}
+                        </td>
+                        <td className="py-1.5 text-neutral-400">{l.holding_period ?? "—"}</td>
+                        <td className="py-1.5 text-right font-mono">{l.casilla}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssignmentsSection({ assignments }: { readonly assignments: OptionAssignment[] }) {
+  const [open, setOpen] = useState(false);
+  if (assignments.length === 0) return null;
+
+  return (
+    <div className="mt-6 border border-blue-700/40 rounded-lg bg-blue-950/20">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full px-4 py-3 flex items-center justify-between text-sm font-medium text-blue-300 hover:bg-blue-950/30 rounded-lg"
+      >
+        <span>ℹ Asignaciones de opciones — {assignments.length} detectada(s)</span>
+        <span className="text-xs">{open ? "▼" : "▶"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-2">
+          <p className="text-xs text-blue-400/80 mb-3">
+            Las primas de opciones asignadas están integradas en el coste de adquisición de las
+            acciones por IBKR. No generan ganancia/pérdida independiente (art. 37.1.n LIRPF).
+          </p>
+          {assignments.map((a) => (
+            <div
+              key={a.id}
+              className="bg-neutral-800/50 border border-neutral-700/50 rounded p-3 text-xs"
+            >
+              <div className="flex justify-between mb-1">
+                <span className="text-neutral-300 font-medium">
+                  {a.option_type} {a.option_symbol}
+                </span>
+                <span className="text-neutral-400">{a.assignment_date}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-neutral-400">
+                <div>
+                  Acción: <span className="text-neutral-200">{a.underlying}</span>
+                  {a.stock_isin && <span className="font-mono ml-1">({a.stock_isin})</span>}
+                </div>
+                <div>
+                  {a.stock_quantity} acc. @ ${a.strike}
+                </div>
+                <div>
+                  Prima:{" "}
+                  <span className="font-mono text-blue-300">{formatEur(a.premium_eur)}</span>
+                  {" → coste base"}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function CapitalGainsTable({
+  gains,
+  crossBrokerLots = [],
+  fifoAdjustments = [],
+  optionAssignments = [],
+}: Readonly<{
+  gains: CapitalGain[];
+  crossBrokerLots?: CrossBrokerLot[];
+  fifoAdjustments?: FIFOAdjustment[];
+  optionAssignments?: OptionAssignment[];
+}>) {
   if (gains.length === 0) return <p className="text-neutral-500 text-sm">Sin datos</p>;
 
   return (
@@ -40,6 +206,8 @@ export function CapitalGainsTable({ gains }: Readonly<{ gains: CapitalGain[] }>)
           ))}
         </tbody>
       </table>
+      <CrossBrokerSection lots={crossBrokerLots} adjustments={fifoAdjustments} />
+      <AssignmentsSection assignments={optionAssignments} />
     </div>
   );
 }

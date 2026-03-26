@@ -18,27 +18,13 @@ from pathlib import Path
 
 from backend.importers.base import (
     IBKRAnnualReport,
+    OptionAssignment,
     ParsedGainLoss,
     ParsedPortfolioHolding,
     ParsedTransaction,
     TxType,
+    country_from_isin,
 )
-
-# Country lookup from ISIN prefix
-_COUNTRY_NAMES = {
-    "DE": "Alemania",
-    "BR": "Brasil",
-    "ES": "España",
-    "US": "Estados Unidos de América",
-    "FR": "Francia",
-    "PT": "Portugal",
-    "GB": "Reino Unido",
-    "CH": "Suiza",
-    "NL": "Países Bajos",
-    "IE": "Irlanda",
-    "IT": "Italia",
-    "SG": "Singapur",
-}
 
 # Section name normalization: Spanish → English
 _SECTION_EN: dict[str, str] = {
@@ -94,12 +80,6 @@ def _parse_date(value: str) -> date:
     """Parse IBKR date format '2024-12-19, 16:20:00' or '2024-12-19'."""
     date_str = value.split(",")[0].strip()
     return date.fromisoformat(date_str)
-
-
-def _country_from_isin(isin: str) -> str:
-    """Derive country name from ISIN prefix."""
-    code = isin[:2] if isin and len(isin) >= 2 else ""
-    return _COUNTRY_NAMES.get(code, code)
 
 
 def compute_file_hash(path: Path) -> str:
@@ -284,9 +264,14 @@ def _parse_single_trade(
     quantity = abs(quantity)
     trade_dt = _parse_date(date_str)
 
-    underlying = symbol.split()[0] if " " in symbol else symbol
-    isin = symbol_isin.get(underlying, symbol_isin.get(symbol, ""))
-    name = f"[OPT] {symbol}" if _norm_cat(asset_category) == "Equity and Index Options" else symbol
+    is_option = _norm_cat(asset_category) == "Equity and Index Options"
+    if is_option:
+        isin = ""
+        name = f"[OPT] {symbol}"
+    else:
+        underlying = symbol.split()[0] if " " in symbol else symbol
+        isin = symbol_isin.get(underlying, symbol_isin.get(symbol, ""))
+        name = symbol
 
     # Convert amounts to EUR
     proceeds_eur, fx_rate = _to_eur(abs(proceeds), currency, forex_rates, trade_dt)
@@ -297,7 +282,7 @@ def _parse_single_trade(
         trade_date=trade_dt,
         isin=isin,
         name=name,
-        country=_country_from_isin(isin),
+        country=country_from_isin(isin),
         quantity=quantity,
         price=abs(t_price),
         currency=currency,
@@ -391,7 +376,7 @@ def _extract_dividends(
             trade_date=trade_dt,
             isin=isin,
             name=f"{symbol} - {desc}" if symbol else desc,
-            country=_country_from_isin(isin),
+            country=country_from_isin(isin),
             quantity=Decimal("1"),
             price=amount,
             currency=currency,
@@ -488,7 +473,7 @@ def _extract_open_positions(
         value_eur = value * fx_rate
 
         isin = symbol_isin.get(symbol, "")
-        country = _country_from_isin(isin)
+        country = country_from_isin(isin)
 
         holdings.append(
             ParsedPortfolioHolding(
@@ -516,8 +501,7 @@ def _resolve_perf_symbol(
     """Resolve (isin, display_name) for a performance summary row."""
     norm = _norm_cat(asset_category)
     if norm == "Equity and Index Options":
-        underlying = symbol.split()[0]
-        return symbol_isin.get(underlying, ""), f"[OPT] {symbol}"
+        return "", f"[OPT] {symbol}"
     if norm == "Forex":
         return "", f"[FX] {symbol}"
     return symbol_isin.get(symbol, ""), symbol
@@ -555,6 +539,84 @@ def _extract_realized_performance(
         ))
 
     return gains
+
+
+def _detect_assignments(
+    trades_rows: list[list[str]],
+    symbol_isin: dict[str, str],
+    forex_rates: dict[str, list[tuple[date, Decimal]]],
+) -> list[OptionAssignment]:
+    """Detect option assignments from trade Code column.
+
+    IBKR uses code 'A;C' for the option close (assigned) and 'A;O' for
+    the resulting stock trade.  Assigned option premiums are NOT reported
+    in the Realized Performance Summary — IBKR embeds them in the stock's
+    cost basis automatically.  This function extracts them for display.
+    """
+    assignments: list[OptionAssignment] = []
+
+    # Pass 1: collect option premiums from assignment closes (A;C)
+    option_premiums: dict[tuple[str, str], Decimal] = {}
+    option_info: dict[tuple[str, str], tuple[str, str, Decimal]] = {}
+
+    for row in trades_rows:
+        if len(row) < 16 or row[1].strip() != "Data" or row[2].strip() != "Order":
+            continue
+        code = row[15].strip() if len(row) > 15 else ""
+        if "A" not in code:
+            continue
+        asset_category = row[3].strip()
+        currency = row[4].strip()
+        symbol = row[5].strip()
+        date_str = row[6].strip()
+        if not date_str:
+            continue
+        trade_dt = _parse_date(date_str)
+
+        if "A;C" in code or "A; C" in code:
+            norm = _norm_cat(asset_category)
+            if norm != "Equity and Index Options":
+                continue
+            underlying = symbol.split()[0]
+            basis = abs(_dec(row[12])) if len(row) > 12 else Decimal("0")
+            basis_eur, _ = _to_eur(basis, currency, forex_rates, trade_dt)
+            key = (underlying, trade_dt.isoformat())
+            option_premiums[key] = basis_eur
+            parts = symbol.split()
+            opt_type = parts[-1] if parts else "?"
+            strike = _dec(parts[-2]) if len(parts) >= 3 else Decimal("0")
+            option_info[key] = (symbol, opt_type, strike)
+
+    # Pass 2: match stock trades from assignments (A;O)
+    for row in trades_rows:
+        if len(row) < 16 or row[1].strip() != "Data" or row[2].strip() != "Order":
+            continue
+        code = row[15].strip() if len(row) > 15 else ""
+        if "A;O" not in code and "A; O" not in code:
+            continue
+        symbol = row[5].strip()
+        date_str = row[6].strip()
+        if not date_str:
+            continue
+        trade_dt = _parse_date(date_str)
+        key = (symbol, trade_dt.isoformat())
+        if key not in option_premiums:
+            continue
+        quantity = abs(_dec(row[7])) if len(row) > 7 else Decimal("0")
+        isin = symbol_isin.get(symbol, "")
+        opt_symbol, opt_type, strike = option_info[key]
+        assignments.append(OptionAssignment(
+            assignment_date=trade_dt,
+            underlying=symbol,
+            option_symbol=opt_symbol,
+            option_type=opt_type,
+            strike=strike,
+            stock_quantity=quantity,
+            stock_isin=isin,
+            premium_eur=option_premiums[key],
+        ))
+
+    return assignments
 
 
 def parse_ibkr_activity_statement(path: Path) -> IBKRAnnualReport:
@@ -609,6 +671,9 @@ def parse_ibkr_activity_statement(path: Path) -> IBKRAnnualReport:
         symbol_isin,
     )
 
+    # Detect option assignments from trade codes
+    assignments = _detect_assignments(trades_rows, symbol_isin, forex_rates)
+
     return IBKRAnnualReport(
         account_id=account_id,
         account_name=name,
@@ -619,5 +684,6 @@ def parse_ibkr_activity_statement(path: Path) -> IBKRAnnualReport:
         interest=interest,
         holdings=holdings,
         realized_gains=realized_gains,
+        assignments=assignments,
         symbol_isin_map=symbol_isin,
     )

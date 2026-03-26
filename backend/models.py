@@ -34,8 +34,11 @@ class Base(DeclarativeBase):
 
 
 class Broker(PyEnum):
+    BBVA = "BBVA"
     DEGIRO = "DEGIRO"
+    ETORO = "ETORO"
     IBKR = "IBKR"
+    ING = "ING"
     TR = "TR"
 
 
@@ -155,6 +158,57 @@ class TaxResult(Base):
     )
 
 
+class CrossBrokerLot(Base):
+    """FIFO lot matched across all brokers for Spanish IRPF compliance."""
+
+    __tablename__ = "cross_broker_lots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    isin: Mapped[str] = mapped_column(String(12), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), default="")
+
+    buy_tx_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), nullable=False)
+    sell_tx_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), nullable=False)
+    buy_broker: Mapped[str] = mapped_column(String(20), nullable=False)
+    sell_broker: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    cost_basis_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    proceeds_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    realized_pl_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    holding_period: Mapped[str | None] = mapped_column(String(10))
+    casilla: Mapped[int] = mapped_column(Integer, nullable=False)  # 332 or 337
+
+    buy_tx: Mapped["Transaction"] = relationship(foreign_keys=[buy_tx_id])
+    sell_tx: Mapped["Transaction"] = relationship(foreign_keys=[sell_tx_id])
+
+    __table_args__ = (
+        Index("ix_cbl_year_isin", "fiscal_year", "isin"),
+        UniqueConstraint("buy_tx_id", "sell_tx_id"),
+    )
+
+
+class FIFOAdjustment(Base):
+    """Summary of FIFO difference per ISIN when cross-broker differs from broker."""
+
+    __tablename__ = "fifo_adjustments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    isin: Mapped[str] = mapped_column(String(12), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), default="")
+
+    broker_pl_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    fifo_pl_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    adjustment_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    __table_args__ = (
+        UniqueConstraint("fiscal_year", "isin"),
+    )
+
+
 class ImportRecord(Base):
     """Track what files have been imported to prevent duplicates."""
 
@@ -173,3 +227,56 @@ class ImportRecord(Base):
     account: Mapped["Account"] = relationship(back_populates="imports")
 
     __table_args__ = (UniqueConstraint("file_hash", "broker"),)
+
+
+class OptionAssignmentRecord(Base):
+    """Detected option assignments from IBKR trade codes.
+
+    Tracks PUT/CALL assignments where the option premium is embedded
+    in the resulting stock's cost basis per Spanish IRPF rules.
+    IBKR's Realized P/L already accounts for this — this table is
+    for audit/display purposes.
+    """
+
+    __tablename__ = "option_assignments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    import_id: Mapped[int] = mapped_column(ForeignKey("import_records.id"), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    assignment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    underlying: Mapped[str] = mapped_column(String(50), nullable=False)
+    option_symbol: Mapped[str] = mapped_column(String(100), nullable=False)
+    option_type: Mapped[str] = mapped_column(String(4), nullable=False)  # PUT / CALL
+    strike: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    stock_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    stock_isin: Mapped[str] = mapped_column(String(20), default="")
+    premium_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+
+    __table_args__ = (
+        Index("ix_option_assignments_year", "fiscal_year"),
+    )
+
+
+class PortfolioHolding(Base):
+    """Year-end portfolio holdings from broker reports."""
+
+    __tablename__ = "portfolio_holdings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    import_id: Mapped[int] = mapped_column(ForeignKey("import_records.id"), nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    broker: Mapped[str] = mapped_column(Enum(Broker), nullable=False)
+
+    isin: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    country: Mapped[str | None] = mapped_column(String(50))
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    value_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+
+    __table_args__ = (
+        Index("ix_holdings_year_isin", "fiscal_year", "isin"),
+    )

@@ -5,6 +5,41 @@ from datetime import date
 from decimal import Decimal
 from enum import Enum
 
+# ── Shared country resolution ──────────────────────────────────────────
+
+COUNTRY_NAMES: dict[str, str] = {
+    "AT": "Austria",
+    "AU": "Australia",
+    "BE": "Bélgica",
+    "BR": "Brasil",
+    "CA": "Canadá",
+    "CH": "Suiza",
+    "CN": "China",
+    "DE": "Alemania",
+    "DK": "Dinamarca",
+    "ES": "España",
+    "FI": "Finlandia",
+    "FR": "Francia",
+    "GB": "Reino Unido",
+    "HK": "Hong Kong",
+    "IE": "Irlanda",
+    "IT": "Italia",
+    "JP": "Japón",
+    "LU": "Luxemburgo",
+    "NL": "Países Bajos",
+    "NO": "Noruega",
+    "PT": "Portugal",
+    "SE": "Suecia",
+    "SG": "Singapur",
+    "US": "Estados Unidos de América",
+}
+
+
+def country_from_isin(isin: str) -> str:
+    """Derive Spanish country name from ISIN prefix."""
+    code = isin[:2].upper() if isin and len(isin) >= 2 else ""
+    return COUNTRY_NAMES.get(code, code)
+
 
 class TxType(Enum):
     BUY = "BUY"
@@ -126,6 +161,20 @@ class ParsedPortfolioHolding:
 
 
 @dataclass
+class OptionAssignment:
+    """Detected option assignment from IBKR trade codes."""
+
+    assignment_date: date
+    underlying: str          # Stock symbol (e.g. "ADM")
+    option_symbol: str       # Full option symbol (e.g. "ADM 20DEC24 52.5 P")
+    option_type: str         # "P" (PUT) or "C" (CALL)
+    strike: Decimal
+    stock_quantity: Decimal   # Shares acquired/sold
+    stock_isin: str
+    premium_eur: Decimal      # Option premium in EUR (embedded in stock cost basis)
+
+
+@dataclass
 class IBKRAnnualReport:
     """Complete parsed IBKR Activity Statement CSV."""
 
@@ -139,6 +188,7 @@ class IBKRAnnualReport:
     interest: list[ParsedTransaction] = field(default_factory=list)
     holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
     realized_gains: list[ParsedGainLoss] = field(default_factory=list)
+    assignments: list[OptionAssignment] = field(default_factory=list)
     symbol_isin_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -170,3 +220,34 @@ class TRTaxReport:
     holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
     casillas_modelo_100: list[ParsedCasilla] = field(default_factory=list)
     casillas_modelo_714: list[ParsedCasilla] = field(default_factory=list)
+
+
+@dataclass
+class INGAnnualReport:
+    """Complete parsed ING Información Fiscal PDF."""
+
+    fiscal_year: int
+    interest: list[ParsedTransaction] = field(default_factory=list)
+    dividends: list[ParsedTransaction] = field(default_factory=list)
+    transactions: list[ParsedTransaction] = field(default_factory=list)
+    holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
+
+
+@dataclass
+class BBVAAnnualReport:
+    """Combined parsed BBVA annual PDFs (up to 3 documents)."""
+
+    fiscal_year: int
+    dividends: list[ParsedTransaction] = field(default_factory=list)
+    transactions: list[ParsedTransaction] = field(default_factory=list)
+    holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
+    custody_fee: Decimal = Decimal("0")
+
+
+@dataclass
+class EToroAnnualReport:
+    """Parsed eToro annual account statement XLSX."""
+
+    fiscal_year: int
+    dividends: list[ParsedTransaction] = field(default_factory=list)
+    transactions: list[ParsedTransaction] = field(default_factory=list)

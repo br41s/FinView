@@ -37,6 +37,33 @@ export interface Casilla {
   description: string;
   amount_eur: string;
   brokers: BrokerAmount[];
+  fifo_adjustment_eur: string | null;
+}
+
+export interface CrossBrokerLot {
+  id: number;
+  fiscal_year: number;
+  isin: string;
+  name: string;
+  buy_broker: string;
+  sell_broker: string;
+  quantity: string;
+  cost_basis_eur: string;
+  proceeds_eur: string;
+  realized_pl_eur: string;
+  holding_period: string | null;
+  casilla: number;
+}
+
+export interface FIFOAdjustment {
+  id: number;
+  fiscal_year: number;
+  isin: string;
+  name: string;
+  broker_pl_eur: string;
+  fifo_pl_eur: string;
+  adjustment_eur: string;
+  note: string;
 }
 
 export interface FiscalSummary {
@@ -162,4 +189,17 @@ export interface CompanyDividendsYearly {
   ticker: string;
   years: Record<string, string>;
   total: string;
+}
+
+export interface OptionAssignment {
+  id: number;
+  fiscal_year: number;
+  assignment_date: string;
+  underlying: string;
+  option_symbol: string;
+  option_type: string; // PUT / CALL
+  strike: string;
+  stock_quantity: string;
+  stock_isin: string;
+  premium_eur: string;
 }

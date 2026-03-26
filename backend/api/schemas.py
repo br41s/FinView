@@ -80,6 +80,37 @@ class AggregatedCasillaOut(BaseModel):
     description: str
     amount_eur: Decimal
     brokers: list[BrokerAmount]
+    fifo_adjustment_eur: Decimal | None = None
+
+
+class CrossBrokerLotOut(BaseModel):
+    id: int
+    fiscal_year: int
+    isin: str
+    name: str
+    buy_broker: str
+    sell_broker: str
+    quantity: Decimal
+    cost_basis_eur: Decimal
+    proceeds_eur: Decimal
+    realized_pl_eur: Decimal
+    holding_period: str | None
+    casilla: int
+
+    model_config = {"from_attributes": True}
+
+
+class FIFOAdjustmentOut(BaseModel):
+    id: int
+    fiscal_year: int
+    isin: str
+    name: str
+    broker_pl_eur: Decimal
+    fifo_pl_eur: Decimal
+    adjustment_eur: Decimal
+    note: str
+
+    model_config = {"from_attributes": True}
 
 
 class FiscalSummary(BaseModel):
@@ -124,3 +155,16 @@ class DashboardStats(BaseModel):
     accounts: int
     imports: int
     fiscal_years: list[int]
+
+
+class OptionAssignmentOut(BaseModel):
+    id: int
+    fiscal_year: int
+    assignment_date: date
+    underlying: str
+    option_symbol: str
+    option_type: str  # PUT / CALL
+    strike: Decimal
+    stock_quantity: Decimal
+    stock_isin: str
+    premium_eur: Decimal

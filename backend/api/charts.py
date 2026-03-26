@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import case, func
 
 from backend.database import DbSession
-from backend.models import TaxLot, Transaction, TransactionType
+from backend.models import PortfolioHolding, TaxLot, Transaction, TransactionType
 
 router = APIRouter(prefix="/charts", tags=["charts"])
 
@@ -235,6 +235,7 @@ def _avg_invested_at_dates(buys: list, sells: list, div_dates: list) -> Decimal:
 def _compute_isin_yield(
     d, buys_by_isin: dict, sells_by_isin: dict,
     div_dates_by_isin: dict, price_map: dict,
+    holdings_map: dict | None = None,
 ) -> dict:
     """Compute yield metrics for a single ISIN."""
     isin = d.isin or ""
@@ -252,6 +253,14 @@ def _compute_isin_yield(
 
     latest_price = price_map.get(isin, Decimal("0"))
     current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
+
+    # Fall back to portfolio holdings when no buy/sell history exists
+    if holdings_map and current_value == 0:
+        holding = holdings_map.get(isin)
+        if holding:
+            current_value = abs(holding.value_eur)
+            qty_remaining = abs(holding.quantity)
+            latest_price = abs(holding.price)
 
     yield_on_cost = (total_div / avg_invested * 100) if avg_invested > 0 else Decimal("0")
     yield_on_value = (total_div / current_value * 100) if current_value > 0 else Decimal("0")
@@ -386,8 +395,18 @@ def dividend_yield(
     )
     price_map = _first_per_key(latest_prices_q, "isin", "price")
 
+    # Fetch portfolio holdings to supplement ISINs without buy/sell history
+    holdings_q = db.query(PortfolioHolding).filter(
+        PortfolioHolding.isin.in_(div_isins),
+    )
+    if fiscal_year:
+        holdings_q = holdings_q.filter(PortfolioHolding.fiscal_year == fiscal_year)
+    holdings_map: dict[str, PortfolioHolding] = {}
+    for h in holdings_q.all():
+        holdings_map.setdefault(h.isin, h)
+
     results = [
-        _compute_isin_yield(d, buys_by_isin, sells_by_isin, div_dates_by_isin, price_map)
+        _compute_isin_yield(d, buys_by_isin, sells_by_isin, div_dates_by_isin, price_map, holdings_map)
         for d in div_rows
     ]
     results.sort(key=lambda x: float(x["yield_on_cost"]), reverse=True)

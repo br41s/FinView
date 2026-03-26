@@ -7,6 +7,9 @@ import type {
   Casilla,
   DividendSummary,
   CapitalGain,
+  CrossBrokerLot,
+  FIFOAdjustment,
+  OptionAssignment,
   DividendsByCountry,
   DividendsMonthly,
   TopDividendPayer,
@@ -51,6 +54,9 @@ export default function Home() {
   const [dividendYield, setDividendYield] = useState<DividendYield[]>([]);
   const [withholdings, setWithholdings] = useState<WithholdingsByCountry[]>([]);
   const [companyDividends, setCompanyDividends] = useState<CompanyDividendsYearly[]>([]);
+  const [crossBrokerLots, setCrossBrokerLots] = useState<CrossBrokerLot[]>([]);
+  const [fifoAdjustments, setFifoAdjustments] = useState<FIFOAdjustment[]>([]);
+  const [optionAssignments, setOptionAssignments] = useState<OptionAssignment[]>([]);
 
   const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
@@ -66,6 +72,22 @@ export default function Home() {
       setCasillas(casData);
       setDividends(divData);
       setGains(gainsData);
+
+      // Load cross-broker FIFO data when a year is selected
+      if (y) {
+        const [cblData, adjData, assignData] = await Promise.all([
+          api.crossBrokerLots(y) as Promise<CrossBrokerLot[]>,
+          api.fifoAdjustments(y) as Promise<FIFOAdjustment[]>,
+          api.optionAssignments(y) as Promise<OptionAssignment[]>,
+        ]);
+        setCrossBrokerLots(cblData);
+        setFifoAdjustments(adjData);
+        setOptionAssignments(assignData);
+      } else {
+        setCrossBrokerLots([]);
+        setFifoAdjustments([]);
+        setOptionAssignments([]);
+      }
 
       // Load chart data in parallel
       const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv] = await Promise.all([
@@ -216,7 +238,7 @@ export default function Home() {
             <section className={tab === "graficas" || tab === "rendimiento" ? "hidden" : "bg-neutral-900 border border-neutral-800 rounded-xl p-6"}>
               {tab === "casillas" && <CasillasTable casillas={casillas} dividendsByCountry={divByCountry} />}
               {tab === "dividendos" && <DividendsTable dividends={dividends} />}
-              {tab === "ganancias" && <CapitalGainsTable gains={gains} />}
+              {tab === "ganancias" && <CapitalGainsTable gains={gains} crossBrokerLots={crossBrokerLots} fifoAdjustments={fifoAdjustments} optionAssignments={optionAssignments} />}
             </section>
           </>
         )}

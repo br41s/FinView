@@ -59,6 +59,12 @@ class TestTrades:
         opt_trades = [t for t in report.trades if t.name.startswith("[OPT]")]
         assert len(opt_trades) > 0
 
+    def test_option_trades_have_no_isin(self, report):
+        """Options should NOT inherit the underlying stock's ISIN."""
+        opt_trades = [t for t in report.trades if t.name.startswith("[OPT]")]
+        for t in opt_trades:
+            assert t.isin == "", f"Option {t.name} should have empty ISIN, got {t.isin}"
+
     def test_no_forex_trades(self, report):
         fx = [t for t in report.trades if "EUR.USD" in t.name or "EUR.GBP" in t.name]
         assert len(fx) == 0
@@ -163,6 +169,49 @@ class TestRealizedGains:
         )
         # 219.24 EUR matches the CSV total for options
         assert abs(total_options - Decimal("219.23965433")) < Decimal("0.01")
+
+    def test_option_gains_have_no_isin(self, report):
+        """Option realized gains should NOT inherit the underlying's ISIN."""
+        opt_gains = [g for g in report.realized_gains if g.name.startswith("[OPT]")]
+        for g in opt_gains:
+            assert g.isin == "", f"Option gain {g.name} should have empty ISIN, got {g.isin}"
+
+
+class TestOptionAssignments:
+    """Detect option assignments from IBKR trade codes (A;C / A;O)."""
+
+    def test_assignment_count(self, report):
+        """2024 CSV has 2 assignments: ADM PUT and VZ PUT."""
+        assert len(report.assignments) == 2
+
+    def test_adm_put_assignment(self, report):
+        adm = [a for a in report.assignments if a.underlying == "ADM"]
+        assert len(adm) == 1
+        a = adm[0]
+        assert a.option_type == "P"
+        assert a.strike == Decimal("52.5")
+        assert a.stock_quantity == Decimal("100")
+        assert a.stock_isin == "US0394831020"
+        assert a.premium_eur > Decimal("0")
+
+    def test_vz_put_assignment(self, report):
+        vz = [a for a in report.assignments if a.underlying == "VZ"]
+        assert len(vz) == 1
+        a = vz[0]
+        assert a.option_type == "P"
+        assert a.strike == Decimal("40.5")
+        assert a.stock_quantity == Decimal("100")
+        assert a.stock_isin == "US92343V1044"
+        assert a.premium_eur > Decimal("0")
+
+    def test_assigned_options_not_in_realized_gains(self, report):
+        """Assigned option P/L should NOT appear in realized gains (IBKR handles correctly)."""
+        realized_names = {g.name for g in report.realized_gains}
+        for a in report.assignments:
+            opt_name = f"[OPT] {a.option_symbol}"
+            assert opt_name not in realized_names, (
+                f"Assigned option {a.option_symbol} should not be in realized gains"
+            )
 
 
 class TestForexRates:
