@@ -131,6 +131,82 @@ def _extract_instrument_info(rows: list[list[str]]) -> dict[str, str]:
     return symbol_isin
 
 
+def _extract_forex_rates(rows: list[list[str]]) -> dict[str, list[tuple[date, Decimal]]]:
+    """Parse Forex trades to build exchange rate lookup.
+
+    Returns {currency: [(date, rate_per_eur)]} where 1 EUR = rate_per_eur foreign.
+    To convert foreign→EUR: amount / rate_per_eur.
+    """
+    rates_by_date: dict[str, dict[date, Decimal]] = {}
+    for row in rows:
+        if len(row) < 9 or row[1].strip() != "Data" or row[2].strip() != "Order":
+            continue
+        if row[3].strip() != "Forex":
+            continue
+        currency = row[4].strip()
+        rate = _dec(row[8])
+        if rate <= 0:
+            continue
+        trade_date = _parse_date(row[6])
+        # Keep last rate per date (rows are chronological)
+        rates_by_date.setdefault(currency, {})[trade_date] = rate
+
+    return {
+        currency: sorted(date_rates.items())
+        for currency, date_rates in rates_by_date.items()
+    }
+
+
+def _extract_yearend_fx_rates(rows: list[list[str]]) -> dict[str, Decimal]:
+    """Extract year-end exchange rates from Mark-to-Market Performance Summary.
+
+    Returns {currency: eur_per_foreign} where 1 foreign = eur_per_foreign EUR.
+    """
+    rates: dict[str, Decimal] = {}
+    for row in rows:
+        if len(row) < 8 or row[1].strip() != "Data":
+            continue
+        if row[2].strip() != "Forex":
+            continue
+        symbol = row[3].strip()
+        if symbol == "EUR":
+            continue
+        current_price = _dec(row[7])
+        if current_price > 0:
+            rates[symbol] = current_price
+    return rates
+
+
+def _to_eur(
+    amount: Decimal,
+    currency: str,
+    forex_rates: dict[str, list[tuple[date, Decimal]]],
+    trade_date: date,
+) -> tuple[Decimal, Decimal]:
+    """Convert amount to EUR using closest available forex rate.
+
+    Returns (amount_eur, eur_per_foreign) where eur_per_foreign is the rate used.
+    """
+    if currency == "EUR" or amount == 0:
+        return amount, Decimal("1")
+
+    rates = forex_rates.get(currency, [])
+    if not rates:
+        return amount, Decimal("1")
+
+    # Find closest rate on or before trade_date
+    best_rate = rates[0][1]
+    for d, r in rates:
+        if d <= trade_date:
+            best_rate = r
+        else:
+            break
+
+    # best_rate = 1 EUR = best_rate foreign → 1 foreign = (1/best_rate) EUR
+    eur_per_foreign = Decimal("1") / best_rate
+    return amount * eur_per_foreign, eur_per_foreign
+
+
 def _is_trade_order(row: list[str]) -> bool:
     """Check if row is a trade Order data row (not Header/SubTotal/Total/Forex)."""
     return (
@@ -142,7 +218,9 @@ def _is_trade_order(row: list[str]) -> bool:
 
 
 def _parse_single_trade(
-    row: list[str], symbol_isin: dict[str, str]
+    row: list[str],
+    symbol_isin: dict[str, str],
+    forex_rates: dict[str, list[tuple[date, Decimal]]],
 ) -> ParsedTransaction | None:
     """Parse a single trade Order row into a ParsedTransaction."""
     asset_category = row[3].strip()
@@ -160,36 +238,44 @@ def _parse_single_trade(
 
     tx_type = TxType.BUY if quantity > 0 else TxType.SELL
     quantity = abs(quantity)
+    trade_dt = _parse_date(date_str)
 
     underlying = symbol.split()[0] if " " in symbol else symbol
     isin = symbol_isin.get(underlying, symbol_isin.get(symbol, ""))
     name = f"[OPT] {symbol}" if asset_category == "Equity and Index Options" else symbol
 
+    # Convert amounts to EUR
+    proceeds_eur, fx_rate = _to_eur(abs(proceeds), currency, forex_rates, trade_dt)
+    commission_eur, _ = _to_eur(abs(commission), currency, forex_rates, trade_dt)
+
     return ParsedTransaction(
         tx_type=tx_type,
-        trade_date=_parse_date(date_str),
+        trade_date=trade_dt,
         isin=isin,
         name=name,
         country=_country_from_isin(isin),
         quantity=quantity,
         price=abs(t_price),
         currency=currency,
-        gross_amount=abs(proceeds),
-        fees=abs(commission),
-        net_amount_eur=abs(proceeds) - abs(commission),
+        exchange_rate=fx_rate,
+        gross_amount=proceeds_eur,
+        fees=commission_eur,
+        net_amount_eur=proceeds_eur - commission_eur,
         realized_pl_eur=realized_pl,
     )
 
 
 def _extract_trades(
-    rows: list[list[str]], symbol_isin: dict[str, str]
+    rows: list[list[str]],
+    symbol_isin: dict[str, str],
+    forex_rates: dict[str, list[tuple[date, Decimal]]],
 ) -> list[ParsedTransaction]:
     """Parse individual trades (stocks and options) from Trades section."""
     trades: list[ParsedTransaction] = []
     for row in rows:
         if not _is_trade_order(row):
             continue
-        tx = _parse_single_trade(row, symbol_isin)
+        tx = _parse_single_trade(row, symbol_isin, forex_rates)
         if tx:
             trades.append(tx)
     return trades
@@ -225,9 +311,12 @@ def _parse_div_symbol_isin(
 
 
 def _extract_dividends(
-    rows: list[list[str]], symbol_isin: dict[str, str], wht_rows: list[list[str]]
+    rows: list[list[str]],
+    symbol_isin: dict[str, str],
+    wht_rows: list[list[str]],
+    forex_rates: dict[str, list[tuple[date, Decimal]]],
 ) -> list[ParsedTransaction]:
-    """Parse dividends and match with withholding tax."""
+    """Parse dividends and match with withholding tax. Amounts converted to EUR."""
     wht_by_key = _build_wht_lookup(wht_rows)
     dividends: list[ParsedTransaction] = []
 
@@ -246,21 +335,28 @@ def _extract_dividends(
         symbol, isin = _parse_div_symbol_isin(desc, symbol_isin)
 
         wht = abs(wht_by_key.get((currency, date_str, symbol), Decimal("0")))
+        # Withholding rate is based on original currency amounts
         wht_rate = (wht / amount * 100) if amount else None
+
+        # Convert to EUR
+        trade_dt = _parse_date(date_str)
+        amount_eur, fx_rate = _to_eur(amount, currency, forex_rates, trade_dt)
+        wht_eur, _ = _to_eur(wht, currency, forex_rates, trade_dt)
 
         dividends.append(ParsedTransaction(
             tx_type=TxType.DIVIDEND,
-            trade_date=_parse_date(date_str),
+            trade_date=trade_dt,
             isin=isin,
             name=f"{symbol} - {desc}" if symbol else desc,
             country=_country_from_isin(isin),
             quantity=Decimal("1"),
             price=amount,
             currency=currency,
-            gross_amount=amount,
+            exchange_rate=fx_rate,
+            gross_amount=amount_eur,
             fees=Decimal("0"),
-            net_amount_eur=amount - wht,
-            withholding_tax=wht,
+            net_amount_eur=amount_eur - wht_eur,
+            withholding_tax=wht_eur,
             withholding_rate=wht_rate,
         ))
 
@@ -305,9 +401,11 @@ def _extract_interest(rows: list[list[str]]) -> list[ParsedTransaction]:
 
 
 def _extract_open_positions(
-    rows: list[list[str]], symbol_isin: dict[str, str]
+    rows: list[list[str]],
+    symbol_isin: dict[str, str],
+    yearend_rates: dict[str, Decimal],
 ) -> list[ParsedPortfolioHolding]:
-    """Parse open positions at year-end."""
+    """Parse open positions at year-end. Values converted to EUR."""
     holdings: list[ParsedPortfolioHolding] = []
 
     for row in rows:
@@ -327,6 +425,10 @@ def _extract_open_positions(
         close_price = _dec(row[11])
         value = _dec(row[12])
 
+        # Convert to EUR using year-end rate
+        fx_rate = yearend_rates.get(currency, Decimal("1")) if currency != "EUR" else Decimal("1")
+        value_eur = value * fx_rate
+
         isin = symbol_isin.get(symbol, "")
         country = _country_from_isin(isin)
 
@@ -340,8 +442,8 @@ def _extract_open_positions(
                 casilla_714=0,  # Assigned during import based on value threshold
                 quantity=quantity,
                 avg_q4_balance=quantity,  # Simplified
-                value_dec31_eur=value,
-                fiscal_valuation=value,
+                value_dec31_eur=value_eur,
+                fiscal_valuation=value_eur,
                 price=close_price,
                 exchange="IBKR",
             )
@@ -415,22 +517,32 @@ def parse_ibkr_activity_statement(path: Path) -> IBKRAnnualReport:
         sections.get("Financial Instrument Information", [])
     )
 
-    # Individual trades
-    trades = _extract_trades(sections.get("Trades", []), symbol_isin)
+    # Exchange rates from Forex trades (source of truth for currency conversion)
+    trades_rows = sections.get("Trades", [])
+    forex_rates = _extract_forex_rates(trades_rows)
 
-    # Dividends + withholding
+    # Year-end exchange rates from Mark-to-Market (for holdings valuation)
+    yearend_rates = _extract_yearend_fx_rates(
+        sections.get("Mark-to-Market Performance Summary", [])
+    )
+
+    # Individual trades (amounts converted to EUR)
+    trades = _extract_trades(trades_rows, symbol_isin, forex_rates)
+
+    # Dividends + withholding (amounts converted to EUR)
     dividends = _extract_dividends(
         sections.get("Dividends", []),
         symbol_isin,
         sections.get("Withholding Tax", []),
+        forex_rates,
     )
 
-    # Interest
+    # Interest (already in EUR for this account)
     interest = _extract_interest(sections.get("Interest", []))
 
-    # Open positions (holdings)
+    # Open positions (values converted to EUR using year-end rates)
     holdings = _extract_open_positions(
-        sections.get("Open Positions", []), symbol_isin
+        sections.get("Open Positions", []), symbol_isin, yearend_rates
     )
 
     # Realized P/L from performance summary (source of truth)

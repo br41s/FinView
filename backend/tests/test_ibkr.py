@@ -68,12 +68,28 @@ class TestDividends:
     def test_dividend_count(self, report):
         assert len(report.dividends) == 3
 
-    def test_t_dividend(self, report):
-        t_divs = [d for d in report.dividends if "T(" in d.name or d.isin == "US00206R1023"]
+    def test_t_dividend_is_in_eur(self, report):
+        t_divs = [d for d in report.dividends if d.isin == "US00206R1023"]
         assert len(t_divs) == 1
-        assert t_divs[0].gross_amount == Decimal("13.88")
-        assert t_divs[0].withholding_tax == Decimal("2.08")
-        assert t_divs[0].currency == "USD"
+        d = t_divs[0]
+        # Original currency retained for reference
+        assert d.currency == "USD"
+        assert d.price == Decimal("13.88")  # Original USD amount as price
+        # gross_amount, withholding, net are now in EUR
+        assert d.gross_amount < Decimal("13.88")  # EUR < USD for 2024 rates
+        assert d.gross_amount > Decimal("10")  # Sanity check
+        assert d.exchange_rate < Decimal("1")  # EUR/USD < 1 in 2024
+        # Withholding also in EUR
+        assert d.withholding_tax < Decimal("2.08")
+        assert d.withholding_tax > Decimal("1.5")
+        # Net = gross - wht
+        assert abs(d.net_amount_eur - (d.gross_amount - d.withholding_tax)) < Decimal("0.01")
+
+    def test_all_dividends_in_eur(self, report):
+        """All dividend gross_amounts should be in EUR (less than original USD)."""
+        total_eur = sum(d.gross_amount for d in report.dividends)
+        # IBKR reports Total in EUR = 13.4925917, our conversion should be close
+        assert Decimal("12") < total_eur < Decimal("15")
 
     def test_ibkr_pil_dividends(self, report):
         ibkr_divs = [d for d in report.dividends if d.isin == "US45841N1072"]
@@ -104,6 +120,20 @@ class TestHoldings:
         assert adm[0].currency == "USD"
         assert adm[0].isin == "US0394831020"
 
+    def test_holdings_in_eur(self, report):
+        """Holdings values should be converted to EUR using year-end rate."""
+        adm = [h for h in report.holdings if h.name == "ADM"][0]
+        # ADM: 100 shares at $50.52 = $5052 USD
+        # Year-end rate: 1 USD = 0.96586 EUR → ~$5052 * 0.96586 = ~€4879.53
+        assert Decimal("4800") < adm.value_dec31_eur < Decimal("5000")
+        assert adm.value_dec31_eur < Decimal("5052")  # EUR < USD
+
+    def test_total_holdings_eur(self, report):
+        """Total holdings should match IBKR's EUR total (~10286.31 EUR)."""
+        total = sum(h.value_dec31_eur for h in report.holdings)
+        # IBKR reports: Open Positions Total Stocks EUR = 10286.312414
+        assert abs(total - Decimal("10286.312414")) < Decimal("1")
+
     def test_all_stocks_have_isin(self, report):
         for h in report.holdings:
             assert h.isin, f"Missing ISIN for {h.name}"
@@ -133,3 +163,38 @@ class TestRealizedGains:
         )
         # 219.24 EUR matches the CSV total for options
         assert abs(total_options - Decimal("219.23965433")) < Decimal("0.01")
+
+
+class TestForexRates:
+    """Test Forex rate extraction and EUR conversion."""
+
+    def test_trades_have_exchange_rate(self, report):
+        """USD trades with non-zero amounts should have exchange_rate < 1 (EUR per USD)."""
+        usd_trades = [t for t in report.trades if t.currency == "USD" and t.gross_amount > 0]
+        assert len(usd_trades) > 0
+        for t in usd_trades:
+            assert t.exchange_rate < Decimal("1"), f"Trade {t.name} EUR/USD rate should be < 1"
+            assert t.exchange_rate > Decimal("0.8"), f"Trade {t.name} rate seems too low"
+
+    def test_gbp_trades_have_exchange_rate(self, report):
+        """GBP trades with non-zero amounts should have exchange_rate > 1 (EUR per GBP)."""
+        gbp_trades = [t for t in report.trades if t.currency == "GBP" and t.gross_amount > 0]
+        assert len(gbp_trades) > 0
+        for t in gbp_trades:
+            assert t.exchange_rate > Decimal("1"), f"Trade {t.name} EUR/GBP rate should be > 1"
+
+    def test_stock_buy_eur_conversion(self, report):
+        """ADM stock buy: $5250 should convert to less in EUR."""
+        adm_buys = [t for t in report.trades if t.name == "ADM" and t.tx_type.value == "BUY"]
+        assert len(adm_buys) == 1
+        adm = adm_buys[0]
+        assert adm.price == Decimal("52.5")  # Original USD price preserved
+        assert adm.gross_amount < Decimal("5250")  # EUR < USD
+        assert adm.gross_amount > Decimal("4500")  # Sanity check
+
+    def test_dividends_have_exchange_rate(self, report):
+        """USD dividends should have exchange_rate set."""
+        for d in report.dividends:
+            if d.currency == "USD":
+                assert d.exchange_rate < Decimal("1")
+                assert d.exchange_rate > Decimal("0.8")
