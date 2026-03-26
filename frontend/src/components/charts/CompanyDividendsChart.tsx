@@ -164,7 +164,7 @@ export function CompanyDividendsChart({
 
       <div className="flex gap-4">
         {/* Left: company tickers */}
-        <nav className="flex flex-col gap-0.5 min-w-22.5 justify-center overflow-y-auto max-h-100 pr-3 border-r border-neutral-800">
+        <nav className="flex flex-col gap-0.5 min-w-22.5 justify-center overflow-y-auto pr-3 border-r border-neutral-800">
           {lines.map((l) => {
             const on = !focus || focus === l.key;
             return (
@@ -193,7 +193,7 @@ export function CompanyDividendsChart({
 
         {/* Chart */}
         <div className="flex-1 min-w-0">
-          <ResponsiveContainer width="100%" height={400}>
+          <ResponsiveContainer width="100%" height={Math.max(400, lines.length * 24)}>
             <LineChart
               data={chartData}
               margin={{ top: 10, right: 20, bottom: 5, left: 20 }}
