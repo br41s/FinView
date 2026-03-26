@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.importers.base import (
     DGAnnualReport,
+    IBKRAnnualReport,
     ParsedCapitalGain,
     ParsedCasilla,
     ParsedGainLoss,
@@ -468,5 +469,155 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
             "casillas": len(casillas),
             "holdings": len(report.holdings),
             "gains_summary": len(report.gains_summary),
+        },
+    }
+
+
+def _create_ibkr_tax_lots(
+    db: Session,
+    realized_gains: list[ParsedGainLoss],
+    account_id: int,
+    import_id: int,
+    fiscal_year: int,
+) -> list[TaxLot]:
+    """Create TaxLot entries from IBKR realized performance summary.
+
+    The realized P/L values are already in EUR (base currency) and come
+    directly from IBKR — they are the source of truth.
+    """
+    lots = []
+    for g in realized_gains:
+        country = _country_from_isin(g.isin)
+        # Realized P/L is the net result; derive synthetic cost/proceeds
+        if g.realized_pl_eur >= 0:
+            cost = Decimal("0")
+            proceeds = g.realized_pl_eur
+        else:
+            cost = abs(g.realized_pl_eur)
+            proceeds = Decimal("0")
+
+        buy_tx = Transaction(
+            account_id=account_id,
+            import_id=import_id,
+            type=TransactionType.BUY.value,
+            trade_date=date(fiscal_year, 1, 1),
+            isin=g.isin,
+            name=g.name,
+            country=country,
+            quantity=Decimal("1"),
+            price=cost,
+            currency="EUR",
+            gross_amount=cost,
+            fees=Decimal("0"),
+            net_amount_eur=cost,
+        )
+        db.add(buy_tx)
+        db.flush()
+
+        sell_tx = Transaction(
+            account_id=account_id,
+            import_id=import_id,
+            type=TransactionType.SELL.value,
+            trade_date=date(fiscal_year, 12, 31),
+            isin=g.isin,
+            name=g.name,
+            country=country,
+            quantity=Decimal("1"),
+            price=proceeds,
+            currency="EUR",
+            gross_amount=proceeds,
+            fees=Decimal("0"),
+            net_amount_eur=proceeds,
+        )
+        db.add(sell_tx)
+        db.flush()
+
+        lot = TaxLot(
+            buy_tx_id=buy_tx.id,
+            sell_tx_id=sell_tx.id,
+            isin=g.isin,
+            quantity_bought=Decimal("1"),
+            quantity_remaining=Decimal("0"),
+            cost_basis_eur=cost,
+            quantity_sold=Decimal("1"),
+            proceeds_eur=proceeds,
+            realized_pl_eur=g.realized_pl_eur,
+            close_date=date(fiscal_year, 12, 31),
+            holding_period="<1y",
+        )
+        db.add(lot)
+        lots.append(lot)
+
+    return lots
+
+
+def import_ibkr_report(
+    db: Session, report: IBKRAnnualReport, file_hash: str, filename: str
+) -> dict:
+    """Import a parsed IBKR Activity Statement into the database."""
+    existing = _check_duplicate(db, file_hash, Broker.IBKR)
+    if existing:
+        return {
+            "status": "duplicate",
+            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
+            "import_id": existing.id,
+        }
+
+    account = _get_or_create_account(db, Broker.IBKR, report.account_id)
+
+    import_rec = ImportRecord(
+        account_id=account.id,
+        filename=filename,
+        file_hash=file_hash,
+        broker=Broker.IBKR.value,
+        fiscal_year=report.fiscal_year,
+        record_count=(
+            len(report.trades) + len(report.dividends) + len(report.interest)
+        ),
+    )
+    db.add(import_rec)
+    db.flush()
+
+    # Store dividends
+    div_count = 0
+    for div in report.dividends:
+        _store_transaction(db, div, account.id, import_rec.id)
+        div_count += 1
+
+    # Store interest
+    int_count = 0
+    for intr in report.interest:
+        _store_transaction(db, intr, account.id, import_rec.id)
+        int_count += 1
+
+    # Store individual trades (informational)
+    tx_count = 0
+    for tx in report.trades:
+        _store_transaction(db, tx, account.id, import_rec.id)
+        tx_count += 1
+
+    # Create TaxLots from IBKR's realized P/L (source of truth)
+    lots = _create_ibkr_tax_lots(
+        db, report.realized_gains, account.id, import_rec.id, report.fiscal_year
+    )
+
+    # Compute casillas from the stored data
+    casillas = _compute_broker_casillas(
+        db, Broker.IBKR, report.fiscal_year, account.id
+    )
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "import_id": import_rec.id,
+        "fiscal_year": report.fiscal_year,
+        "counts": {
+            "dividends": div_count,
+            "interest": int_count,
+            "transactions": tx_count,
+            "capital_gains": len(lots),
+            "casillas": len(casillas),
+            "holdings": len(report.holdings),
         },
     }

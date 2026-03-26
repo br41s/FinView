@@ -126,6 +126,23 @@ class ParsedPortfolioHolding:
 
 
 @dataclass
+class IBKRAnnualReport:
+    """Complete parsed IBKR Activity Statement CSV."""
+
+    account_id: str
+    account_name: str
+    fiscal_year: int
+    base_currency: str
+
+    trades: list[ParsedTransaction] = field(default_factory=list)
+    dividends: list[ParsedTransaction] = field(default_factory=list)
+    interest: list[ParsedTransaction] = field(default_factory=list)
+    holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
+    realized_gains: list[ParsedGainLoss] = field(default_factory=list)
+    symbol_isin_map: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class DGAnnualReport:
     """Complete parsed DEGIRO Annual Report."""
 

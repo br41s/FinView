@@ -30,6 +30,14 @@ export async function uploadDGReport(file: File) {
   return res.json();
 }
 
+export async function uploadIBKRReport(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/imports/ibkr`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  return res.json();
+}
+
 export const api = {
   dashboard: (year?: number) =>
     fetchJSON(`/fiscal/dashboard${qs({ fiscal_year: year })}`),

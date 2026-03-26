@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { uploadTRReport, uploadDGReport } from "@/lib/api";
+import { uploadTRReport, uploadDGReport, uploadIBKRReport } from "@/lib/api";
 import type { ImportResult } from "@/lib/types";
 
-function detectBroker(filename: string): "tr" | "degiro" | null {
+function detectBroker(filename: string): "tr" | "degiro" | "ibkr" | null {
   const lower = filename.toLowerCase();
   if (lower.startsWith("dg-") || lower.includes("degiro") || lower.includes("informe anual")) return "degiro";
   if (lower.startsWith("tr-") || lower.includes("trade republic") || lower.includes("tax_report")) return "tr";
+  if (lower.startsWith("ibkr") || lower.includes("interactive") || lower.includes("u1104")) return "ibkr";
   return null;
 }
 
@@ -19,20 +20,22 @@ export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>)
 
   const handleFile = useCallback(
     async (file: File) => {
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        setError("Solo se aceptan archivos PDF");
+      const ext = file.name.toLowerCase();
+      if (!ext.endsWith(".pdf") && !ext.endsWith(".csv")) {
+        setError("Solo se aceptan archivos PDF o CSV");
         return;
       }
       const broker = detectBroker(file.name);
       if (!broker) {
-        setError("No se pudo detectar el broker. El archivo debe empezar por 'TR-' o 'DG-'.");
+        setError("No se pudo detectar el broker. El archivo debe empezar por 'TR-', 'DG-' o 'IBKR'.");
         return;
       }
       setLoading(true);
       setError(null);
       setResult(null);
       try {
-        const upload = broker === "degiro" ? uploadDGReport : uploadTRReport;
+        const uploadMap = { degiro: uploadDGReport, tr: uploadTRReport, ibkr: uploadIBKRReport };
+        const upload = uploadMap[broker];
         const res = await upload(file);
         setResult(res);
         if (res.status === "success") onImported();
@@ -48,7 +51,7 @@ export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>)
   return (
     <div
       role="region"
-      aria-label="Zona de carga de archivos PDF"
+      aria-label="Zona de carga de archivos"
       className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
         dragging ? "border-blue-500 bg-blue-500/10" : "border-neutral-700 hover:border-neutral-500"
       }`}
@@ -66,13 +69,13 @@ export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>)
     >
       <div className="mb-3 text-4xl">📄</div>
       <p className="text-neutral-400 mb-3">
-        Arrastra aquí un PDF de Trade Republic o DEGIRO
+        Arrastra aquí un archivo de Trade Republic (PDF), DEGIRO (PDF) o IBKR (CSV)
       </p>
       <input
         type="file"
-        accept=".pdf"
+        accept=".pdf,.csv"
         id="file-upload"
-        aria-label="Seleccionar archivo PDF"
+        aria-label="Seleccionar archivo"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -87,7 +90,7 @@ export function FileUpload({ onImported }: Readonly<{ onImported: () => void }>)
         Seleccionar archivo
       </button>
 
-      {loading && <p className="mt-4 text-blue-400 animate-pulse">Procesando PDF...</p>}
+      {loading && <p className="mt-4 text-blue-400 animate-pulse">Procesando archivo...</p>}
 
       {result?.status === "success" && (
         <div className="mt-4 p-4 bg-green-900/30 border border-green-800 rounded-lg text-sm">

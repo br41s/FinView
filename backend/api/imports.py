@@ -11,9 +11,17 @@ from backend.importers.dg import (
     compute_file_hash as dg_compute_hash,
     parse_dg_annual_report,
 )
+from backend.importers.ibkr import (
+    compute_file_hash as ibkr_compute_hash,
+    parse_ibkr_activity_statement,
+)
 from backend.importers.tr import compute_file_hash, parse_tr_tax_report
 from backend.models import ImportRecord
-from backend.services.import_service import import_dg_report, import_tr_report
+from backend.services.import_service import (
+    import_dg_report,
+    import_ibkr_report,
+    import_tr_report,
+)
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -59,6 +67,28 @@ def upload_dg_report(file: UploadFile, db: DbSession):
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@router.post("/ibkr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos CSV"}, 422: {"description": "Error al procesar el CSV"}})
+def upload_ibkr_report(file: UploadFile, db: DbSession):
+    """Upload an IBKR Activity Statement CSV."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos CSV")
+
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        content = file.file.read()
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        file_hash = ibkr_compute_hash(tmp_path)
+        report = parse_ibkr_activity_statement(tmp_path)
+        result = import_ibkr_report(db, report, file_hash, file.filename)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Error al procesar el CSV: {e}")
     finally:
         tmp_path.unlink(missing_ok=True)
 
