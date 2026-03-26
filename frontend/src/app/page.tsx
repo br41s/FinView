@@ -206,8 +206,8 @@ export default function Home() {
                     <CapitalGainsChart data={gainsBreakdown} />
                   </div>
                 )}
-                {/* Row 5: Company dividends over time (full width) */}
-                <CompanyDividendsChart data={companyDividends} />
+                {/* Row 5: Company dividends over time (all years only) */}
+                {!showFiscal && <CompanyDividendsChart data={companyDividends} />}
               </section>
             )}
 
