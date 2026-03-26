@@ -1,5 +1,6 @@
 """Chart and analytics API endpoints."""
 
+import re
 from decimal import Decimal
 from typing import Annotated
 
@@ -429,3 +430,79 @@ def withholdings_by_country(
         }
         for r in rows
     ]
+
+
+_IBKR_TICKER_RE = re.compile(r"^([A-Z0-9]{1,6})\(")
+
+
+def _derive_ticker(names: list[str]) -> str:
+    """Find a short display label from company name variants."""
+    for name in names:
+        m = _IBKR_TICKER_RE.match(name)
+        if m:
+            return m.group(1)
+    shortest = min(names, key=len) if names else "?"
+    first_word = shortest.split()[0].rstrip(",.:;") if shortest.split() else shortest
+    if len(first_word) <= 10:
+        return first_word
+    return first_word[:8] + "…"
+
+
+def _best_display_name(names: list[str]) -> str:
+    """Pick the most readable company name from variants."""
+    clean = [n for n in names if "Cash Dividend" not in n and "Payment in Lieu" not in n]
+    if clean:
+        return min(clean, key=len)
+    return min(names, key=len) if names else ""
+
+
+@router.get("/dividends-by-company-yearly")
+def dividends_by_company_yearly(db: DbSession):
+    """Dividends per company per year for multi-year timeline chart."""
+    rows = (
+        db.query(
+            Transaction.isin,
+            func.strftime("%Y", Transaction.trade_date).label("year"),
+            func.sum(Transaction.gross_amount).label("gross"),
+        )
+        .filter(
+            Transaction.type == TransactionType.DIVIDEND.value,
+            Transaction.isin.isnot(None),
+        )
+        .group_by(Transaction.isin, func.strftime("%Y", Transaction.trade_date))
+        .all()
+    )
+
+    name_rows = (
+        db.query(Transaction.isin, Transaction.name)
+        .filter(
+            Transaction.type == TransactionType.DIVIDEND.value,
+            Transaction.isin.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    names_by_isin: dict[str, list[str]] = {}
+    for r in name_rows:
+        names_by_isin.setdefault(r.isin, []).append(r.name)
+
+    by_isin: dict[str, dict] = {}
+    for r in rows:
+        if r.isin not in by_isin:
+            by_isin[r.isin] = {"years": {}, "total": Decimal("0")}
+        by_isin[r.isin]["years"][r.year] = str(r.gross or 0)
+        by_isin[r.isin]["total"] += r.gross or Decimal("0")
+
+    result = []
+    for isin, data in by_isin.items():
+        names = names_by_isin.get(isin, [])
+        result.append({
+            "isin": isin,
+            "name": _best_display_name(names),
+            "ticker": _derive_ticker(names),
+            "years": data["years"],
+            "total": str(data["total"]),
+        })
+
+    result.sort(key=lambda x: float(x["total"]), reverse=True)
+    return result

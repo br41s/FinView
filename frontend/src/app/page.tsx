@@ -14,6 +14,7 @@ import type {
   PatrimonioComposition,
   DividendYield,
   WithholdingsByCountry,
+  CompanyDividendsYearly,
 } from "@/lib/types";
 import { FileUpload } from "@/components/FileUpload";
 import { StatsCards } from "@/components/StatsCards";
@@ -27,6 +28,8 @@ import { TopPayersChart } from "@/components/charts/TopPayersChart";
 import { CapitalGainsChart } from "@/components/charts/CapitalGainsChart";
 import { PatrimonioChart } from "@/components/charts/PatrimonioChart";
 import { WithholdingsChart } from "@/components/charts/WithholdingsChart";
+import { GrossDividendsByCountryChart } from "@/components/charts/GrossDividendsByCountryChart";
+import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart";
 
 type Tab = "graficas" | "rendimiento" | "casillas" | "dividendos" | "ganancias";
 
@@ -47,6 +50,7 @@ export default function Home() {
   const [patrimonio, setPatrimonio] = useState<PatrimonioComposition[]>([]);
   const [dividendYield, setDividendYield] = useState<DividendYield[]>([]);
   const [withholdings, setWithholdings] = useState<WithholdingsByCountry[]>([]);
+  const [companyDividends, setCompanyDividends] = useState<CompanyDividendsYearly[]>([]);
 
   const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
@@ -64,7 +68,7 @@ export default function Home() {
       setGains(gainsData);
 
       // Load chart data in parallel
-      const [divC, divM, topP, gainsB, patrim, divY, withh] = await Promise.all([
+      const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv] = await Promise.all([
         api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
         api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
         api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
@@ -72,6 +76,7 @@ export default function Home() {
         api.charts.patrimonioComposition(y) as Promise<PatrimonioComposition[]>,
         api.charts.dividendYield(y) as Promise<DividendYield[]>,
         api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
+        api.charts.dividendsByCompanyYearly() as Promise<CompanyDividendsYearly[]>,
       ]);
       setDivByCountry(divC);
       setDivMonthly(divM);
@@ -80,6 +85,7 @@ export default function Home() {
       setPatrimonio(patrim);
       setDividendYield(divY);
       setWithholdings(withh);
+      setCompanyDividends(compDiv);
     } catch (e) {
       console.error("Error loading data:", e);
     } finally {
@@ -179,21 +185,29 @@ export default function Home() {
             {/* Tab content */}
             {tab === "graficas" && (
               <section className="space-y-6">
-                {/* Row 1: Dividends by country + Patrimonio (fiscal) */}
+                {/* Row 1: Dividends by country (donut) + Patrimonio (fiscal) */}
                 <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
                   <DividendsByCountryChart data={divByCountry} />
                   {showFiscal && <PatrimonioChart data={patrimonio} />}
                 </div>
-                {/* Row 2: Monthly + Withholdings (fiscal) */}
-                <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
+                {/* Row 2: Monthly + Gross dividends by country (bar) */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <DividendsMonthlyChart data={divMonthly} />
-                  {showFiscal && <WithholdingsChart data={withholdings} />}
+                  <GrossDividendsByCountryChart data={divByCountry} />
                 </div>
-                {/* Row 3: Top payers + Capital gains (fiscal) */}
+                {/* Row 3: Retenciones (fiscal) + Top payers */}
                 <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
+                  {showFiscal && <WithholdingsChart data={withholdings} />}
                   <TopPayersChart data={topPayers} />
-                  {showFiscal && <CapitalGainsChart data={gainsBreakdown} />}
                 </div>
+                {/* Row 4: Capital gains (fiscal) */}
+                {showFiscal && (
+                  <div>
+                    <CapitalGainsChart data={gainsBreakdown} />
+                  </div>
+                )}
+                {/* Row 5: Company dividends over time (full width) */}
+                <CompanyDividendsChart data={companyDividends} />
               </section>
             )}
 

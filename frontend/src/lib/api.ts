@@ -70,5 +70,7 @@ export const api = {
       fetchJSON(`/charts/dividend-yield${qs({ fiscal_year: year })}`),
     withholdingsByCountry: (year?: number) =>
       fetchJSON(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
+    dividendsByCompanyYearly: () =>
+      fetchJSON('/charts/dividends-by-company-yearly'),
   },
 };

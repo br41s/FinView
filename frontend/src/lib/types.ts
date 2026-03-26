@@ -155,3 +155,11 @@ export interface WithholdingsByCountry {
   net: string;
   effective_rate: string;
 }
+
+export interface CompanyDividendsYearly {
+  isin: string;
+  name: string;
+  ticker: string;
+  years: Record<string, string>;
+  total: string;
+}
