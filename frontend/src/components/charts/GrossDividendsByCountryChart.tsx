@@ -19,17 +19,17 @@ export function GrossDividendsByCountryChart({ data }: Readonly<{ data: Dividend
   }));
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-      <h3 className="text-sm font-medium text-neutral-400 mb-4">Dividendos brutos por país</h3>
+    <div className="bg-card border border-border rounded-xl p-6">
+      <h3 className="text-sm font-medium text-muted-foreground mb-4">Dividendos brutos por país</h3>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-          <XAxis dataKey="country" tick={{ fill: "#999", fontSize: 11 }} />
-          <YAxis tick={{ fill: "#999", fontSize: 11 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis dataKey="country" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
+          <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
           <Tooltip
-            contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8 }}
-            formatter={(value: number) => formatEur(value)}
-            labelStyle={{ color: "#999" }}
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
+            formatter={(value) => formatEur(Number(value))}
+            labelStyle={{ color: "var(--muted-foreground)" }}
           />
           <Bar dataKey="Bruto" fill="#3b82f6" radius={[4, 4, 0, 0]} />
         </BarChart>

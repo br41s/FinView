@@ -21,8 +21,8 @@ export function PatrimonioChart({ data }: Readonly<{ data: PatrimonioComposition
   }));
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-      <h3 className="text-sm font-medium text-neutral-400 mb-4">Composición del patrimonio (Modelo 714)</h3>
+    <div className="bg-card border border-border rounded-xl p-6">
+      <h3 className="text-sm font-medium text-muted-foreground mb-4">Composición del patrimonio (Modelo 714)</h3>
       <ResponsiveContainer width="100%" height={300}>
         <PieChart>
           <Pie
@@ -36,9 +36,9 @@ export function PatrimonioChart({ data }: Readonly<{ data: PatrimonioComposition
           >
           </Pie>
           <Tooltip
-            contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8 }}
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
             formatter={(value) => formatEur(Number(value))}
-            labelStyle={{ color: "#999" }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
           />
           <Legend
             wrapperStyle={{ fontSize: 12 }}

@@ -19,6 +19,14 @@ import type {
   WithholdingsByCountry,
   CompanyDividendsYearly,
 } from "@/lib/types";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AppSidebar, type View } from "@/components/app-sidebar";
 import { FileUpload } from "@/components/FileUpload";
 import { StatsCards } from "@/components/StatsCards";
 import { CasillasTable } from "@/components/CasillasTable";
@@ -33,15 +41,69 @@ import { PatrimonioChart } from "@/components/charts/PatrimonioChart";
 import { WithholdingsChart } from "@/components/charts/WithholdingsChart";
 import { GrossDividendsByCountryChart } from "@/components/charts/GrossDividendsByCountryChart";
 import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart";
+import {
+  Upload as UploadIcon,
+  TrendingUp,
+  Coins,
+  FileText,
+  LineChart,
+} from "lucide-react";
 
-type Tab = "graficas" | "rendimiento" | "casillas" | "dividendos" | "ganancias";
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {["s1", "s2", "s3", "s4"].map((id) => (
+          <Skeleton key={id} className="h-24 rounded-xl" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: Readonly<{
+  icon: React.ElementType;
+  title: string;
+  description: string;
+}>) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="rounded-full bg-muted p-4 mb-4">
+        <Icon className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h3 className="text-lg font-medium mb-1">{title}</h3>
+      <p className="text-sm text-muted-foreground max-w-md">{description}</p>
+    </div>
+  );
+}
+
+const viewTitles: Record<View, string> = {
+  graficas: "Dashboard",
+  rendimiento: "Rendimiento de dividendos",
+  casillas: "Casillas fiscales",
+  dividendos: "Dividendos",
+  ganancias: "Ganancias de capital",
+  importar: "Importar datos",
+};
 
 export default function Home() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [casillas, setCasillas] = useState<Casilla[]>([]);
   const [dividends, setDividends] = useState<DividendSummary[]>([]);
   const [gains, setGains] = useState<CapitalGain[]>([]);
-  const [tab, setTab] = useState<Tab>("graficas");
+  const [view, setView] = useState<View>("graficas");
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
@@ -49,14 +111,20 @@ export default function Home() {
   const [divByCountry, setDivByCountry] = useState<DividendsByCountry[]>([]);
   const [divMonthly, setDivMonthly] = useState<DividendsMonthly[]>([]);
   const [topPayers, setTopPayers] = useState<TopDividendPayer[]>([]);
-  const [gainsBreakdown, setGainsBreakdown] = useState<CapitalGainsBreakdown[]>([]);
+  const [gainsBreakdown, setGainsBreakdown] = useState<CapitalGainsBreakdown[]>(
+    [],
+  );
   const [patrimonio, setPatrimonio] = useState<PatrimonioComposition[]>([]);
   const [dividendYield, setDividendYield] = useState<DividendYield[]>([]);
   const [withholdings, setWithholdings] = useState<WithholdingsByCountry[]>([]);
-  const [companyDividends, setCompanyDividends] = useState<CompanyDividendsYearly[]>([]);
+  const [companyDividends, setCompanyDividends] = useState<
+    CompanyDividendsYearly[]
+  >([]);
   const [crossBrokerLots, setCrossBrokerLots] = useState<CrossBrokerLot[]>([]);
   const [fifoAdjustments, setFifoAdjustments] = useState<FIFOAdjustment[]>([]);
-  const [optionAssignments, setOptionAssignments] = useState<OptionAssignment[]>([]);
+  const [optionAssignments, setOptionAssignments] = useState<
+    OptionAssignment[]
+  >([]);
 
   const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
@@ -73,7 +141,6 @@ export default function Home() {
       setDividends(divData);
       setGains(gainsData);
 
-      // Load cross-broker FIFO data when a year is selected
       if (y) {
         const [cblData, adjData, assignData] = await Promise.all([
           api.crossBrokerLots(y) as Promise<CrossBrokerLot[]>,
@@ -89,17 +156,25 @@ export default function Home() {
         setOptionAssignments([]);
       }
 
-      // Load chart data in parallel
-      const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv] = await Promise.all([
-        api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
-        api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
-        api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
-        api.charts.capitalGainsBreakdown(y) as Promise<CapitalGainsBreakdown[]>,
-        api.charts.patrimonioComposition(y) as Promise<PatrimonioComposition[]>,
-        api.charts.dividendYield(y) as Promise<DividendYield[]>,
-        api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
-        api.charts.dividendsByCompanyYearly() as Promise<CompanyDividendsYearly[]>,
-      ]);
+      const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv] =
+        await Promise.all([
+          api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
+          api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
+          api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
+          api.charts.capitalGainsBreakdown(y) as Promise<
+            CapitalGainsBreakdown[]
+          >,
+          api.charts.patrimonioComposition(y) as Promise<
+            PatrimonioComposition[]
+          >,
+          api.charts.dividendYield(y) as Promise<DividendYield[]>,
+          api.charts.withholdingsByCountry(y) as Promise<
+            WithholdingsByCountry[]
+          >,
+          api.charts.dividendsByCompanyYearly() as Promise<
+            CompanyDividendsYearly[]
+          >,
+        ]);
       setDivByCountry(divC);
       setDivMonthly(divM);
       setTopPayers(topP);
@@ -121,134 +196,159 @@ export default function Home() {
 
   const showFiscal = selectedYear !== null;
 
-  // Reset to non-fiscal tab when switching to "Todos los años"
+  // Reset to non-fiscal view when switching to "Todos los años"
   useEffect(() => {
-    if (!showFiscal && (tab === "casillas" || tab === "ganancias")) {
-      setTab("graficas");
+    if (!showFiscal && (view === "casillas" || view === "ganancias")) {
+      setView("graficas");
     }
-  }, [showFiscal, tab]);
+  }, [showFiscal, view]);
 
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: "graficas", label: "Gráficas" },
-    { key: "rendimiento", label: "Rendimiento", count: dividendYield.filter(d => Number.parseFloat(d.yield_on_cost) > 0).length },
-    ...(showFiscal ? [{ key: "casillas" as Tab, label: "Casillas fiscales", count: casillas.length }] : []),
-    { key: "dividendos", label: "Dividendos", count: dividends.length },
-    ...(showFiscal ? [{ key: "ganancias" as Tab, label: "Ganancias de capital", count: gains.length }] : []),
-  ];
+  const counts = {
+    rendimiento: dividendYield.filter(
+      (d) => Number.parseFloat(d.yield_on_cost) > 0,
+    ).length,
+    casillas: casillas.length,
+    dividendos: dividends.length,
+    ganancias: gains.length,
+  };
+
+  const hasData = stats && stats.total_transactions > 0;
 
   return (
-    <main className="min-h-screen bg-(--bg) text-neutral-100">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <SidebarProvider>
+      <AppSidebar
+        currentView={view}
+        onViewChange={setView}
+        selectedYear={selectedYear}
+        onYearChange={setSelectedYear}
+        fiscalYears={stats?.fiscal_years ?? []}
+        counts={hasData ? counts : undefined}
+      />
+      <SidebarInset>
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">FinView</h1>
-            <p className="text-sm text-neutral-500">Dashboard fiscal de inversiones</p>
-          </div>
-          {(stats?.fiscal_years?.length ?? 0) > 0 && (
-            <select
-              aria-label="Seleccionar año fiscal"
-              value={selectedYear ?? ""}
-              onChange={(e) =>
-                setSelectedYear(e.target.value ? Number(e.target.value) : null)
-              }
-              className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-blue-500"
-            >
-              <option value="">Todos los años</option>
-              {stats?.fiscal_years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4!" />
+          <h1 className="text-sm font-medium">{viewTitles[view]}</h1>
+          {selectedYear && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              Año fiscal {selectedYear}
+            </span>
           )}
-        </div>
+        </header>
 
-        {/* Upload */}
-        <section className="mb-8">
-          <FileUpload onImported={() => loadData(selectedYear)} />
-        </section>
-
-        {/* Stats */}
-        {loading && !stats && (
-          <p className="text-neutral-500 text-center py-8 animate-pulse">Cargando datos...</p>
-        )}
-
-        {stats && stats.total_transactions > 0 && (
-          <>
-            <section className="mb-8">
-              <StatsCards stats={stats} withholdings={withholdings} showFiscal={showFiscal} />
-            </section>
-
-            {/* Tabs */}
-            <div className="border-b border-neutral-800 mb-6">
-              <nav className="flex gap-6">
-                {tabs.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setTab(t.key)}
-                    className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
-                      tab === t.key
-                        ? "border-blue-500 text-blue-400"
-                        : "border-transparent text-neutral-500 hover:text-neutral-300"
-                    }`}
-                  >
-                    {t.label}
-                    {t.count !== undefined && (
-                      <span className="ml-2 text-xs bg-neutral-800 px-2 py-0.5 rounded-full">
-                        {t.count}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </nav>
+        {/* Content */}
+        <main className="flex-1 overflow-auto p-6">
+          {/* Import view */}
+          {view === "importar" && (
+            <div className="max-w-3xl mx-auto">
+              <FileUpload onImported={() => loadData(selectedYear)} />
             </div>
+          )}
 
-            {/* Tab content */}
-            {tab === "graficas" && (
-              <section className="space-y-6">
-                {/* Row 1: Dividends by country (donut) + Patrimonio (fiscal) */}
-                <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
-                  <DividendsByCountryChart data={divByCountry} />
-                  {showFiscal && <PatrimonioChart data={patrimonio} />}
-                </div>
-                {/* Row 2: Monthly + Gross dividends by country (bar) */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <DividendsMonthlyChart data={divMonthly} />
-                  <GrossDividendsByCountryChart data={divByCountry} />
-                </div>
-                {/* Row 3: Retenciones (fiscal) + Top payers */}
-                <div className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}>
-                  {showFiscal && <WithholdingsChart data={withholdings} />}
-                  <TopPayersChart data={topPayers} />
-                </div>
-                {/* Row 4: Capital gains (fiscal) */}
-                {showFiscal && (
-                  <div>
-                    <CapitalGainsChart data={gainsBreakdown} />
-                  </div>
-                )}
-                {/* Row 5: Company dividends over time (all years only) */}
-                {!showFiscal && <CompanyDividendsChart data={companyDividends} />}
-              </section>
-            )}
+          {/* Loading state */}
+          {view !== "importar" && loading && !stats && <DashboardSkeleton />}
 
-            {tab === "rendimiento" && <DividendYieldTable data={dividendYield} />}
+          {/* No data state */}
+          {view !== "importar" && !loading && !hasData && (
+            <EmptyState
+              icon={UploadIcon}
+              title="No hay datos importados"
+              description="Sube un informe de Trade Republic, DEGIRO, IBKR, ING, BBVA o eToro para empezar."
+            />
+          )}
 
-            <section className={tab === "graficas" || tab === "rendimiento" ? "hidden" : "bg-neutral-900 border border-neutral-800 rounded-xl p-6"}>
-              {tab === "casillas" && <CasillasTable casillas={casillas} dividendsByCountry={divByCountry} />}
-              {tab === "dividendos" && <DividendsTable dividends={dividends} />}
-              {tab === "ganancias" && <CapitalGainsTable gains={gains} crossBrokerLots={crossBrokerLots} fifoAdjustments={fifoAdjustments} optionAssignments={optionAssignments} />}
-            </section>
-          </>
-        )}
+          {/* Dashboard (charts + stats) */}
+          {view === "graficas" && hasData && (
+            <div className="space-y-6">
+              <StatsCards
+                stats={stats}
+                withholdings={withholdings}
+                showFiscal={showFiscal}
+              />
+              <div
+                className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}
+              >
+                <DividendsByCountryChart data={divByCountry} />
+                {showFiscal && <PatrimonioChart data={patrimonio} />}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <DividendsMonthlyChart data={divMonthly} />
+                <GrossDividendsByCountryChart data={divByCountry} />
+              </div>
+              <div
+                className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}
+              >
+                {showFiscal && <WithholdingsChart data={withholdings} />}
+                <TopPayersChart data={topPayers} />
+              </div>
+              {showFiscal && <CapitalGainsChart data={gainsBreakdown} />}
+              {!showFiscal && <CompanyDividendsChart data={companyDividends} />}
+            </div>
+          )}
 
-        {stats?.total_transactions === 0 && (
-          <p className="text-center text-neutral-500 py-12">
-            No hay datos importados. Sube un PDF de Trade Republic o DEGIRO para empezar.
-          </p>
-        )}
-      </div>
-    </main>
+          {/* Rendimiento */}
+          {view === "rendimiento" &&
+            hasData &&
+            (dividendYield.length > 0 ? (
+              <DividendYieldTable data={dividendYield} />
+            ) : (
+              <EmptyState
+                icon={TrendingUp}
+                title="Sin datos de rendimiento"
+                description="Importa datos con dividendos para ver el rendimiento de tu cartera."
+              />
+            ))}
+
+          {/* Casillas */}
+          {view === "casillas" &&
+            hasData &&
+            (casillas.length > 0 ? (
+              <CasillasTable
+                casillas={casillas}
+                dividendsByCountry={divByCountry}
+                fiscalYear={selectedYear}
+              />
+            ) : (
+              <EmptyState
+                icon={FileText}
+                title="Sin casillas fiscales"
+                description="Selecciona un año fiscal con datos importados para ver las casillas."
+              />
+            ))}
+
+          {/* Dividendos */}
+          {view === "dividendos" &&
+            hasData &&
+            (dividends.length > 0 ? (
+              <DividendsTable dividends={dividends} />
+            ) : (
+              <EmptyState
+                icon={Coins}
+                title="Sin dividendos"
+                description="No se encontraron dividendos para el periodo seleccionado."
+              />
+            ))}
+
+          {/* Ganancias */}
+          {view === "ganancias" &&
+            hasData &&
+            (gains.length > 0 ? (
+              <CapitalGainsTable
+                gains={gains}
+                crossBrokerLots={crossBrokerLots}
+                fifoAdjustments={fifoAdjustments}
+                optionAssignments={optionAssignments}
+              />
+            ) : (
+              <EmptyState
+                icon={LineChart}
+                title="Sin ganancias de capital"
+                description="No se encontraron operaciones de compra/venta para el periodo seleccionado."
+              />
+            ))}
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

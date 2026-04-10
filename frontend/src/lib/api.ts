@@ -3,9 +3,10 @@ const BASE = "/api";
 function qs(params: Record<string, string | number | undefined>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return "";
-  return "?" + new URLSearchParams(
-    entries.map(([k, v]) => [k, String(v)])
-  ).toString();
+  return (
+    "?" +
+    new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString()
+  );
 }
 
 async function fetchJSON<T>(path: string): Promise<T> {
@@ -25,7 +26,10 @@ export async function uploadTRReport(file: File) {
 export async function uploadDGReport(file: File) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE}/imports/degiro`, { method: "POST", body: form });
+  const res = await fetch(`${BASE}/imports/degiro`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
@@ -33,7 +37,10 @@ export async function uploadDGReport(file: File) {
 export async function uploadIBKRReport(file: File) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE}/imports/ibkr`, { method: "POST", body: form });
+  const res = await fetch(`${BASE}/imports/ibkr`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
@@ -41,7 +48,10 @@ export async function uploadIBKRReport(file: File) {
 export async function uploadINGReport(file: File) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE}/imports/ing`, { method: "POST", body: form });
+  const res = await fetch(`${BASE}/imports/ing`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
@@ -51,7 +61,10 @@ export async function uploadBBVAReport(files: File[]) {
   for (const file of files) {
     form.append("files", file);
   }
-  const res = await fetch(`${BASE}/imports/bbva`, { method: "POST", body: form });
+  const res = await fetch(`${BASE}/imports/bbva`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
@@ -59,7 +72,10 @@ export async function uploadBBVAReport(files: File[]) {
 export async function uploadEToroReport(file: File) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE}/imports/etoro`, { method: "POST", body: form });
+  const res = await fetch(`${BASE}/imports/etoro`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
@@ -76,6 +92,23 @@ export const api = {
   fiscalSummary: (year: number) => fetchJSON(`/fiscal/summary/${year}`),
   casillas: (year?: number) =>
     fetchJSON(`/fiscal/casillas${qs({ fiscal_year: year })}`),
+  exportFiscal: async (year: number, format: "json" | "csv" = "json") => {
+    const res = await fetch(`${BASE}/fiscal/export/${year}?format=${format}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Export error: ${await res.text()}`);
+    if (format === "csv") {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `finview_casillas_${year}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return null;
+    }
+    return res.json();
+  },
   dividends: (year?: number) =>
     fetchJSON(`/transactions/dividends/summary${qs({ fiscal_year: year })}`),
   capitalGains: (year?: number) =>
@@ -99,7 +132,9 @@ export const api = {
     dividendsMonthly: (year?: number) =>
       fetchJSON(`/charts/dividends-monthly${qs({ fiscal_year: year })}`),
     topDividendPayers: (year?: number, limit = 10) =>
-      fetchJSON(`/charts/top-dividend-payers${qs({ limit, fiscal_year: year })}`),
+      fetchJSON(
+        `/charts/top-dividend-payers${qs({ limit, fiscal_year: year })}`,
+      ),
     capitalGainsBreakdown: (year?: number) =>
       fetchJSON(`/charts/capital-gains-breakdown${qs({ fiscal_year: year })}`),
     patrimonioComposition: (year?: number) =>
@@ -109,6 +144,6 @@ export const api = {
     withholdingsByCountry: (year?: number) =>
       fetchJSON(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
     dividendsByCompanyYearly: () =>
-      fetchJSON('/charts/dividends-by-company-yearly'),
+      fetchJSON("/charts/dividends-by-company-yearly"),
   },
 };

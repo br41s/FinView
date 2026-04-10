@@ -25,8 +25,8 @@ export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCo
   }));
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-      <h3 className="text-sm font-medium text-neutral-400 mb-4">Dividendos por país</h3>
+    <div className="bg-card border border-border rounded-xl p-6">
+      <h3 className="text-sm font-medium text-muted-foreground mb-4">Dividendos por país</h3>
       <ResponsiveContainer width="100%" height={300}>
         <PieChart>
           <Pie
@@ -40,12 +40,12 @@ export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCo
           >
           </Pie>
           <Tooltip
-            contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8 }}
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
             formatter={(value) => formatEur(Number(value))}
-            labelStyle={{ color: "#999" }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
           />
           <Legend
-            wrapperStyle={{ fontSize: 12, color: "#999" }}
+            wrapperStyle={{ fontSize: 12, color: "var(--muted-foreground)" }}
             formatter={(value) => value}
           />
         </PieChart>

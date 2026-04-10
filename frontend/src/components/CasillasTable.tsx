@@ -54,19 +54,20 @@ function CountryAnalysis({
   readonly dividendsByCountry: readonly DividendsByCountry[];
 }) {
   const foreign = dividendsByCountry.filter(
-    (d) => d.country !== "España" && d.country !== "Desconocido"
+    (d) => d.country !== "España" && d.country !== "Desconocido",
   );
   if (foreign.length === 0) return null;
 
   return (
     <div>
-      <h3 className="text-sm font-medium text-neutral-300 mb-2">
+      <h3 className="text-sm font-medium text-foreground mb-2">
         Análisis por país — Doble imposición internacional
       </h3>
-      <p className="text-xs text-neutral-500 mb-4">
-        Deducción aplicable en casilla 588 del Modelo 100 según los Convenios de Doble Imposición
-        (CDI) vigentes. El importe deducible es el menor entre: la retención soportada, el bruto ×
-        tipo CDI, y la cuota íntegra proporcional española.
+      <p className="text-xs text-muted-foreground mb-4">
+        Deducción aplicable en casilla 588 del Modelo 100 según los Convenios de
+        Doble Imposición (CDI) vigentes. El importe deducible es el menor entre:
+        la retención soportada, el bruto × tipo CDI, y la cuota íntegra
+        proporcional española.
       </p>
       <div className="space-y-4">
         {foreign.map((d) => {
@@ -76,38 +77,51 @@ function CountryAnalysis({
           const deductible = Math.min(withholding, gross * treatyRate);
           const excess = Math.max(0, withholding - deductible);
           const note =
-            COUNTRY_NOTES[d.country] ?? `Consultar convenio de doble imposición con ${d.country}.`;
+            COUNTRY_NOTES[d.country] ??
+            `Consultar convenio de doble imposición con ${d.country}.`;
 
           return (
             <div
               key={d.country}
-              className="bg-neutral-800/50 border border-neutral-700/50 rounded-lg p-4"
+              className="bg-muted/50 border border-border/50 rounded-lg p-4"
             >
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-medium text-neutral-200">{d.country}</h4>
-                <span className="text-xs text-neutral-500">{d.count} pago(s)</span>
+                <h4 className="text-sm font-medium text-foreground">
+                  {d.country}
+                </h4>
+                <span className="text-xs text-muted-foreground">
+                  {d.count} pago(s)
+                </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-3">
                 <div>
-                  <span className="text-neutral-500">Bruto</span>
-                  <p className="text-neutral-200 font-mono">{formatEur(gross)}</p>
+                  <span className="text-muted-foreground">Bruto</span>
+                  <p className="text-foreground font-mono">
+                    {formatEur(gross)}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-neutral-500">Retención origen</span>
-                  <p className="text-amber-400 font-mono">{formatEur(withholding)}</p>
+                  <span className="text-muted-foreground">Retención origen</span>
+                  <p className="text-amber-400 font-mono">
+                    {formatEur(withholding)}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-neutral-500">Deducible (cas. 588)</span>
-                  <p className="text-green-400 font-mono">{formatEur(deductible)}</p>
+                  <span className="text-muted-foreground">Deducible (cas. 588)</span>
+                  <p className="text-green-400 font-mono">
+                    {formatEur(deductible)}
+                  </p>
                 </div>
                 {excess > 0 && (
                   <div>
-                    <span className="text-neutral-500">Exceso reclamable</span>
-                    <p className="text-red-400 font-mono">{formatEur(excess)}</p>
+                    <span className="text-muted-foreground">Exceso reclamable</span>
+                    <p className="text-red-400 font-mono">
+                      {formatEur(excess)}
+                    </p>
                   </div>
                 )}
               </div>
-              <p className="text-xs text-neutral-400 leading-relaxed">{note}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{note}</p>
             </div>
           );
         })}
@@ -116,9 +130,13 @@ function CountryAnalysis({
   );
 }
 
-function CasillasSection({ casillas }: { readonly casillas: readonly Casilla[] }) {
+function CasillasSection({
+  casillas,
+}: {
+  readonly casillas: readonly Casilla[];
+}) {
   if (casillas.length === 0)
-    return <p className="text-neutral-500 text-sm">Sin casillas calculadas</p>;
+    return <p className="text-muted-foreground text-sm">Sin casillas calculadas</p>;
 
   const m100 = casillas.filter((c) => c.modelo === 100);
   const m714 = casillas.filter((c) => c.modelo === 714);
@@ -132,41 +150,75 @@ function CasillasSection({ casillas }: { readonly casillas: readonly Casilla[] }
         ({ title, items }) =>
           items.length > 0 && (
             <div key={title}>
-              <h3 className="text-sm font-medium text-neutral-300 mb-2">{title}</h3>
+              <h3 className="text-sm font-medium text-foreground mb-2">
+                {title}
+              </h3>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-800 text-neutral-500">
+                  <tr className="border-b border-border text-muted-foreground">
                     <th className="text-left py-2">Casilla</th>
                     <th className="text-left py-2">Descripción</th>
                     <th className="text-right py-2">Importe</th>
+                    <th className="text-center py-2 w-10">TR</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((c) => (
                     <tr
                       key={`${c.modelo}-${c.casilla}`}
-                      className="border-b border-neutral-800/50"
+                      className="border-b border-border/50"
                     >
                       <td className="py-2 font-mono">{c.casilla}</td>
-                      <td className="py-2 text-neutral-300">
+                      <td className="py-2 text-foreground">
                         {c.description}
                         {c.brokers && c.brokers.length > 1 && (
-                          <span className="block text-xs text-neutral-500 mt-0.5">
-                            {c.brokers.map((b) => `${b.broker}: ${formatEur(b.amount_eur)}`).join(" · ")}
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            {c.brokers
+                              .map(
+                                (b) =>
+                                  `${b.broker}: ${formatEur(b.amount_eur)}`,
+                              )
+                              .join(" · ")}
                           </span>
                         )}
-                        {c.fifo_adjustment_eur && Number(c.fifo_adjustment_eur) !== 0 && (
-                          <span className="block text-xs text-amber-400 mt-1">
-                            ⚠ Ajuste FIFO cruzado: {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
-                            {formatEur(c.fifo_adjustment_eur)} (diferencia entre FIFO global y broker)
-                          </span>
-                        )}
+                        {c.fifo_adjustment_eur &&
+                          Number(c.fifo_adjustment_eur) !== 0 && (
+                            <span className="block text-xs text-amber-400 mt-1">
+                              ⚠ Ajuste FIFO cruzado:{" "}
+                              {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
+                              {formatEur(c.fifo_adjustment_eur)} (diferencia
+                              entre FIFO global y broker)
+                            </span>
+                          )}
                       </td>
                       <td className="py-2 text-right font-mono">
                         {formatEur(c.amount_eur)}
-                        {c.fifo_adjustment_eur && Number(c.fifo_adjustment_eur) !== 0 && (
-                          <span className="block text-xs text-amber-400 mt-1 font-mono">
-                            ⚠ Ajustado: {formatEur(Number(c.amount_eur) + Number(c.fifo_adjustment_eur))}
+                        {c.fifo_adjustment_eur &&
+                          Number(c.fifo_adjustment_eur) !== 0 && (
+                            <span className="block text-xs text-amber-400 mt-1 font-mono">
+                              ⚠ Ajustado:{" "}
+                              {formatEur(
+                                Number(c.amount_eur) +
+                                  Number(c.fifo_adjustment_eur),
+                              )}
+                            </span>
+                          )}
+                      </td>
+                      <td className="py-2 text-center">
+                        {c.validation_status === "match" && (
+                          <span
+                            title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
+                            className="text-green-400 cursor-help"
+                          >
+                            ✅
+                          </span>
+                        )}
+                        {c.validation_status === "mismatch" && (
+                          <span
+                            title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
+                            className="text-amber-400 cursor-help"
+                          >
+                            ⚠️
                           </span>
                         )}
                       </td>
@@ -175,7 +227,7 @@ function CasillasSection({ casillas }: { readonly casillas: readonly Casilla[] }
                 </tbody>
               </table>
             </div>
-          )
+          ),
       )}
     </div>
   );
@@ -184,28 +236,32 @@ function CasillasSection({ casillas }: { readonly casillas: readonly Casilla[] }
 function DeclarationGuide() {
   return (
     <div>
-      <h3 className="text-sm font-medium text-neutral-300 mb-3">
+      <h3 className="text-sm font-medium text-foreground mb-3">
         Cómo declarar dividendos en el Modelo 100
       </h3>
-      <ol className="text-xs text-neutral-400 space-y-2 list-decimal list-inside leading-relaxed">
+      <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside leading-relaxed">
         <li>
-          <strong className="text-neutral-300">Casilla 0029</strong> — Rendimientos íntegros del
-          capital mobiliario: total de dividendos brutos recibidos (nacionales y extranjeros).
+          <strong className="text-foreground">Casilla 0029</strong> —
+          Rendimientos íntegros del capital mobiliario: total de dividendos
+          brutos recibidos (nacionales y extranjeros).
         </li>
         <li>
-          <strong className="text-neutral-300">Casilla 0596</strong> — Retenciones e ingresos a
-          cuenta: retenciones practicadas por el broker español (19% sobre dividendos nacionales).
+          <strong className="text-foreground">Casilla 0596</strong> —
+          Retenciones e ingresos a cuenta: retenciones practicadas por el broker
+          español (19% sobre dividendos nacionales).
         </li>
         <li>
-          <strong className="text-neutral-300">Casilla 0588</strong> — Deducción por doble
-          imposición internacional (base del ahorro): importe deducible por retenciones soportadas
-          en el extranjero, limitado al menor entre la retención efectiva, el tipo del CDI aplicable
-          × bruto, y la cuota íntegra proporcional española.
+          <strong className="text-foreground">Casilla 0588</strong> — Deducción
+          por doble imposición internacional (base del ahorro): importe
+          deducible por retenciones soportadas en el extranjero, limitado al
+          menor entre la retención efectiva, el tipo del CDI aplicable × bruto,
+          y la cuota íntegra proporcional española.
         </li>
         <li>
-          <strong className="text-neutral-300">Exceso de retención</strong> — Si la retención en
-          origen supera el límite del CDI (ej. Alemania 26% vs CDI 15%), el exceso debe reclamarse
-          directamente a la administración fiscal del país de origen.
+          <strong className="text-foreground">Exceso de retención</strong> — Si
+          la retención en origen supera el límite del CDI (ej. Alemania 26% vs
+          CDI 15%), el exceso debe reclamarse directamente a la administración
+          fiscal del país de origen.
         </li>
       </ol>
     </div>
@@ -215,14 +271,55 @@ function DeclarationGuide() {
 export function CasillasTable({
   casillas,
   dividendsByCountry,
+  fiscalYear,
 }: {
   readonly casillas: readonly Casilla[];
   readonly dividendsByCountry: readonly DividendsByCountry[];
+  readonly fiscalYear?: number | null;
 }) {
+  const handleExport = async (format: "json" | "csv") => {
+    if (!fiscalYear) return;
+    try {
+      const { api } = await import("@/lib/api");
+      if (format === "csv") {
+        await api.exportFiscal(fiscalYear, "csv");
+      } else {
+        const data = await api.exportFiscal(fiscalYear, "json");
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `finview_casillas_${fiscalYear}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error("Export failed:", err);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <CountryAnalysis dividendsByCountry={dividendsByCountry} />
       <CasillasSection casillas={casillas} />
+      {fiscalYear && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleExport("json")}
+            className="px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 border border-border rounded-lg transition-colors"
+          >
+            Exportar JSON
+          </button>
+          <button
+            onClick={() => handleExport("csv")}
+            className="px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 border border-border rounded-lg transition-colors"
+          >
+            Exportar CSV
+          </button>
+        </div>
+      )}
       <DeclarationGuide />
     </div>
   );

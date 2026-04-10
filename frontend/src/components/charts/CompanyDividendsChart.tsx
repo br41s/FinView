@@ -95,8 +95,8 @@ export function CompanyDividendsChart({
         : items.filter((p) => (p.value ?? 0) > 0).length;
       const rest = total - visible.length;
       return (
-        <div className="bg-[#1a1a1a] border border-neutral-700 rounded-lg p-3 shadow-xl max-w-xs">
-          <p className="text-neutral-500 text-[11px] mb-1.5">{label}</p>
+        <div className="bg-popover border border-border rounded-lg p-3 shadow-xl max-w-xs">
+          <p className="text-muted-foreground text-[11px] mb-1.5">{label}</p>
           {visible.map((it) => {
             const match = lines.find((c) => c.key === it.dataKey);
             return (
@@ -107,14 +107,14 @@ export function CompanyDividendsChart({
                 <span className="truncate" style={{ color: match?.color }}>
                   {match?.ticker ?? String(it.dataKey)}
                 </span>
-                <span className="text-neutral-200 font-mono tabular-nums shrink-0">
+                <span className="text-foreground font-mono tabular-nums shrink-0">
                   {formatEur(it.value ?? 0)}
                 </span>
               </div>
             );
           })}
           {rest > 0 && (
-            <p className="text-neutral-600 text-[10px] mt-1">
+            <p className="text-muted-foreground/70 text-[10px] mt-1">
               … y {rest} más
             </p>
           )}
@@ -132,19 +132,19 @@ export function CompanyDividendsChart({
   if (data.length === 0 || years.length < 2) return null;
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+    <div className="bg-card border border-border rounded-xl p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-neutral-400">
+        <h3 className="text-sm font-medium text-muted-foreground">
           Dividendos por empresa
         </h3>
-        <div className="flex bg-neutral-800 rounded-lg p-0.5">
+        <div className="flex bg-muted rounded-lg p-0.5">
           <button
             onClick={() => setMode("year")}
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
               mode === "year"
                 ? "bg-blue-600 text-white"
-                : "text-neutral-400 hover:text-neutral-200"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Por año
@@ -154,7 +154,7 @@ export function CompanyDividendsChart({
             className={`px-3 py-1 text-xs rounded-md transition-colors ${
               mode === "cumulative"
                 ? "bg-blue-600 text-white"
-                : "text-neutral-400 hover:text-neutral-200"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Acumulado
@@ -164,7 +164,7 @@ export function CompanyDividendsChart({
 
       <div className="flex gap-4">
         {/* Left: company tickers */}
-        <nav className="flex flex-col gap-0.5 min-w-22.5 justify-center overflow-y-auto pr-3 border-r border-neutral-800">
+        <nav className="flex flex-col gap-0.5 min-w-22.5 justify-center overflow-y-auto pr-3 border-r border-border">
           {lines.map((l) => {
             const on = !focus || focus === l.key;
             return (
@@ -173,7 +173,7 @@ export function CompanyDividendsChart({
                 onClick={() => toggle(l.key)}
                 onMouseEnter={() => setHoveredKey(l.key)}
                 onMouseLeave={() => setHoveredKey(null)}
-                className="flex items-center gap-2 px-1.5 py-1 rounded text-left transition-all hover:bg-neutral-800/50"
+                className="flex items-center gap-2 px-1.5 py-1 rounded text-left transition-all hover:bg-muted/50"
                 title={l.name}
               >
                 <span
@@ -182,7 +182,7 @@ export function CompanyDividendsChart({
                 />
                 <span
                   className="text-[11px] font-mono truncate transition-colors"
-                  style={{ color: on ? "#e5e5e5" : "#555" }}
+                  style={{ color: on ? "var(--foreground)" : "var(--muted-foreground)" }}
                 >
                   {l.ticker}
                 </span>
@@ -198,7 +198,7 @@ export function CompanyDividendsChart({
               data={chartData}
               margin={{ top: 10, right: 20, bottom: 5, left: 20 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis
                 dataKey="year"
                 tick={{ fill: "#ccc", fontSize: 12 }}
@@ -207,7 +207,7 @@ export function CompanyDividendsChart({
               />
               <YAxis
                 orientation="right"
-                tick={{ fill: "#999", fontSize: 11 }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                 axisLine={{ stroke: "#555" }}
                 tickFormatter={(v: number) =>
                   v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
@@ -237,7 +237,7 @@ export function CompanyDividendsChart({
                         : {
                             r: 5,
                             fill: l.color,
-                            stroke: "#1a1a1a",
+                            stroke: "var(--popover)",
                             strokeWidth: 2,
                             cursor: "pointer",
                             onClick: () => toggle(l.key),

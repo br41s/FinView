@@ -34,18 +34,18 @@ function CrossBrokerSection({
               {adjustments.map((a) => (
                 <div
                   key={a.id}
-                  className="bg-neutral-800/50 border border-neutral-700/50 rounded p-3 text-xs"
+                  className="bg-muted/50 border border-border/50 rounded p-3 text-xs"
                 >
                   <div className="flex justify-between mb-1">
-                    <span className="text-neutral-300 font-medium">{a.name}</span>
-                    <span className="font-mono text-neutral-400">{a.isin}</span>
+                    <span className="text-foreground font-medium">{a.name}</span>
+                    <span className="font-mono text-muted-foreground">{a.isin}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-neutral-400">
+                  <div className="grid grid-cols-3 gap-2 text-muted-foreground">
                     <div>
-                      Broker: <span className="font-mono text-neutral-200">{formatEur(a.broker_pl_eur)}</span>
+                      Broker: <span className="font-mono text-foreground">{formatEur(a.broker_pl_eur)}</span>
                     </div>
                     <div>
-                      FIFO global: <span className="font-mono text-neutral-200">{formatEur(a.fifo_pl_eur)}</span>
+                      FIFO global: <span className="font-mono text-foreground">{formatEur(a.fifo_pl_eur)}</span>
                     </div>
                     <div>
                       Ajuste:{" "}
@@ -54,7 +54,7 @@ function CrossBrokerSection({
                       </span>
                     </div>
                   </div>
-                  <p className="mt-1 text-neutral-500">{a.note}</p>
+                  <p className="mt-1 text-muted-foreground">{a.note}</p>
                 </div>
               ))}
             </div>
@@ -66,7 +66,7 @@ function CrossBrokerSection({
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-neutral-800 text-neutral-500">
+                    <tr className="border-b border-border text-muted-foreground">
                       <th className="text-left py-1.5">ISIN</th>
                       <th className="text-left py-1.5">Compra en</th>
                       <th className="text-left py-1.5">Venta en</th>
@@ -80,17 +80,17 @@ function CrossBrokerSection({
                   </thead>
                   <tbody>
                     {lots.map((l) => (
-                      <tr key={l.id} className="border-b border-neutral-800/30">
-                        <td className="py-1.5 font-mono text-neutral-400">{l.isin}</td>
-                        <td className="py-1.5 text-neutral-300">{l.buy_broker}</td>
-                        <td className="py-1.5 text-neutral-300">{l.sell_broker}</td>
-                        <td className="py-1.5 text-right text-neutral-300">{l.quantity}</td>
+                      <tr key={l.id} className="border-b border-border/30">
+                        <td className="py-1.5 font-mono text-muted-foreground">{l.isin}</td>
+                        <td className="py-1.5 text-foreground">{l.buy_broker}</td>
+                        <td className="py-1.5 text-foreground">{l.sell_broker}</td>
+                        <td className="py-1.5 text-right text-foreground">{l.quantity}</td>
                         <td className="py-1.5 text-right">{formatEur(l.cost_basis_eur)}</td>
                         <td className="py-1.5 text-right">{formatEur(l.proceeds_eur)}</td>
                         <td className={`py-1.5 text-right font-medium ${plColor(l.realized_pl_eur)}`}>
                           {formatEur(l.realized_pl_eur)}
                         </td>
-                        <td className="py-1.5 text-neutral-400">{l.holding_period ?? "—"}</td>
+                        <td className="py-1.5 text-muted-foreground">{l.holding_period ?? "—"}</td>
                         <td className="py-1.5 text-right font-mono">{l.casilla}</td>
                       </tr>
                     ))}
@@ -129,17 +129,17 @@ function AssignmentsSection({ assignments }: { readonly assignments: OptionAssig
           {assignments.map((a) => (
             <div
               key={a.id}
-              className="bg-neutral-800/50 border border-neutral-700/50 rounded p-3 text-xs"
+              className="bg-muted/50 border border-border/50 rounded p-3 text-xs"
             >
               <div className="flex justify-between mb-1">
-                <span className="text-neutral-300 font-medium">
+                <span className="text-foreground font-medium">
                   {a.option_type} {a.option_symbol}
                 </span>
-                <span className="text-neutral-400">{a.assignment_date}</span>
+                <span className="text-muted-foreground">{a.assignment_date}</span>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-neutral-400">
+              <div className="grid grid-cols-3 gap-2 text-muted-foreground">
                 <div>
-                  Acción: <span className="text-neutral-200">{a.underlying}</span>
+                  Acción: <span className="text-foreground">{a.underlying}</span>
                   {a.stock_isin && <span className="font-mono ml-1">({a.stock_isin})</span>}
                 </div>
                 <div>
@@ -170,13 +170,13 @@ export function CapitalGainsTable({
   fifoAdjustments?: FIFOAdjustment[];
   optionAssignments?: OptionAssignment[];
 }>) {
-  if (gains.length === 0) return <p className="text-neutral-500 text-sm">Sin datos</p>;
+  if (gains.length === 0) return <p className="text-muted-foreground text-sm">Sin datos</p>;
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-800 text-neutral-500">
+          <tr className="border-b border-border text-muted-foreground">
             <th className="text-left py-2">Empresa</th>
             <th className="text-left py-2">ISIN</th>
             <th className="text-left py-2">Compra</th>
@@ -190,18 +190,18 @@ export function CapitalGainsTable({
         </thead>
         <tbody>
           {gains.map((g) => (
-            <tr key={g.id} className="border-b border-neutral-800/50 hover:bg-neutral-800/30">
-              <td className="py-2 text-neutral-300">{g.name}</td>
-              <td className="py-2 font-mono text-xs text-neutral-400">{g.isin}</td>
-              <td className="py-2 text-neutral-300">{g.buy_date}</td>
-              <td className="py-2 text-neutral-300">{g.sell_date}</td>
-              <td className="py-2 text-right text-neutral-300">{g.quantity}</td>
+            <tr key={g.id} className="border-b border-border/50 hover:bg-muted/30">
+              <td className="py-2 text-foreground">{g.name}</td>
+              <td className="py-2 font-mono text-xs text-muted-foreground">{g.isin}</td>
+              <td className="py-2 text-foreground">{g.buy_date}</td>
+              <td className="py-2 text-foreground">{g.sell_date}</td>
+              <td className="py-2 text-right text-foreground">{g.quantity}</td>
               <td className="py-2 text-right">{formatEur(g.cost_basis_eur)}</td>
               <td className="py-2 text-right">{formatEur(g.proceeds_eur)}</td>
               <td className={`py-2 text-right font-medium ${plColor(g.realized_pl_eur)}`}>
                 {formatEur(g.realized_pl_eur)}
               </td>
-              <td className="py-2 text-neutral-400 text-xs">{g.holding_period ?? "—"}</td>
+              <td className="py-2 text-muted-foreground text-xs">{g.holding_period ?? "—"}</td>
             </tr>
           ))}
         </tbody>

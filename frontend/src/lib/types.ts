@@ -9,12 +9,24 @@ export interface DashboardStats {
   fiscal_years: number[];
 }
 
+export interface DataIssue {
+  id: number;
+  issue_type: string;
+  severity: string;
+  isin: string | null;
+  name: string;
+  description: string;
+  status: string;
+  auto_resolution: string | null;
+}
+
 export interface ImportResult {
   status: string;
   message?: string;
   import_id?: number;
   fiscal_year?: number;
   counts?: Record<string, number>;
+  issues?: DataIssue[];
 }
 
 export interface ImportRecord {
@@ -38,6 +50,8 @@ export interface Casilla {
   amount_eur: string;
   brokers: BrokerAmount[];
   fifo_adjustment_eur: string | null;
+  tr_reference_amount: string | null;
+  validation_status: string | null;
 }
 
 export interface CrossBrokerLot {
