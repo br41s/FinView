@@ -18,6 +18,8 @@ import type {
   DividendYield,
   WithholdingsByCountry,
   CompanyDividendsYearly,
+  CrossValidationResult,
+  YearlyMetrics,
 } from "@/lib/types";
 import {
   SidebarProvider,
@@ -33,6 +35,8 @@ import { CasillasTable } from "@/components/CasillasTable";
 import { DividendsTable } from "@/components/DividendsTable";
 import { CapitalGainsTable } from "@/components/CapitalGainsTable";
 import { DividendYieldTable } from "@/components/DividendYieldTable";
+import { CrossValidationTable } from "@/components/CrossValidationTable";
+import { YearlyComparisonView } from "@/components/YearlyComparisonView";
 import { DividendsByCountryChart } from "@/components/charts/DividendsByCountryChart";
 import { DividendsMonthlyChart } from "@/components/charts/DividendsMonthlyChart";
 import { TopPayersChart } from "@/components/charts/TopPayersChart";
@@ -47,6 +51,8 @@ import {
   Coins,
   FileText,
   LineChart,
+  ShieldCheck,
+  CalendarRange,
 } from "lucide-react";
 
 function DashboardSkeleton() {
@@ -95,6 +101,8 @@ const viewTitles: Record<View, string> = {
   casillas: "Casillas fiscales",
   dividendos: "Dividendos",
   ganancias: "Ganancias de capital",
+  validacion: "Validación cruzada TR",
+  comparativa: "Comparativa anual",
   importar: "Importar datos",
 };
 
@@ -125,6 +133,9 @@ export default function Home() {
   const [optionAssignments, setOptionAssignments] = useState<
     OptionAssignment[]
   >([]);
+  const [crossValidation, setCrossValidation] =
+    useState<CrossValidationResult | null>(null);
+  const [yearlyComparison, setYearlyComparison] = useState<YearlyMetrics[]>([]);
 
   const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
@@ -142,21 +153,24 @@ export default function Home() {
       setGains(gainsData);
 
       if (y) {
-        const [cblData, adjData, assignData] = await Promise.all([
+        const [cblData, adjData, assignData, cvData] = await Promise.all([
           api.crossBrokerLots(y) as Promise<CrossBrokerLot[]>,
           api.fifoAdjustments(y) as Promise<FIFOAdjustment[]>,
           api.optionAssignments(y) as Promise<OptionAssignment[]>,
+          api.crossValidation(y) as Promise<CrossValidationResult>,
         ]);
         setCrossBrokerLots(cblData);
         setFifoAdjustments(adjData);
         setOptionAssignments(assignData);
+        setCrossValidation(cvData);
       } else {
         setCrossBrokerLots([]);
         setFifoAdjustments([]);
         setOptionAssignments([]);
+        setCrossValidation(null);
       }
 
-      const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv] =
+      const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv, ycData] =
         await Promise.all([
           api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
           api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
@@ -174,6 +188,7 @@ export default function Home() {
           api.charts.dividendsByCompanyYearly() as Promise<
             CompanyDividendsYearly[]
           >,
+          api.yearlyComparison() as Promise<{ years: YearlyMetrics[] }>,
         ]);
       setDivByCountry(divC);
       setDivMonthly(divM);
@@ -183,6 +198,7 @@ export default function Home() {
       setDividendYield(divY);
       setWithholdings(withh);
       setCompanyDividends(compDiv);
+      setYearlyComparison(ycData.years);
     } catch (e) {
       console.error("Error loading data:", e);
     } finally {
@@ -198,7 +214,10 @@ export default function Home() {
 
   // Reset to non-fiscal view when switching to "Todos los años"
   useEffect(() => {
-    if (!showFiscal && (view === "casillas" || view === "ganancias")) {
+    if (
+      !showFiscal &&
+      (view === "casillas" || view === "ganancias" || view === "validacion")
+    ) {
       setView("graficas");
     }
   }, [showFiscal, view]);
@@ -345,6 +364,32 @@ export default function Home() {
                 icon={LineChart}
                 title="Sin ganancias de capital"
                 description="No se encontraron operaciones de compra/venta para el periodo seleccionado."
+              />
+            ))}
+
+          {/* Validación cruzada TR */}
+          {view === "validacion" &&
+            hasData &&
+            (crossValidation ? (
+              <CrossValidationTable data={crossValidation} />
+            ) : (
+              <EmptyState
+                icon={ShieldCheck}
+                title="Sin datos de validación"
+                description="Selecciona un año fiscal para comparar los datos de FinView con el informe de Trade Republic."
+              />
+            ))}
+
+          {/* Comparativa anual */}
+          {view === "comparativa" &&
+            hasData &&
+            (yearlyComparison.length > 0 ? (
+              <YearlyComparisonView data={yearlyComparison} />
+            ) : (
+              <EmptyState
+                icon={CalendarRange}
+                title="Sin datos para comparar"
+                description="Importa datos de varios años fiscales para ver la comparativa anual."
               />
             ))}
         </main>

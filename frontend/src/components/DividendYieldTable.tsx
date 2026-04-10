@@ -1,56 +1,248 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import type { DividendYield } from "@/lib/types";
-import { formatEur } from "@/lib/format";
+import { formatEur, plColor } from "@/lib/format";
 
-export function DividendYieldTable({ data }: Readonly<{ data: DividendYield[] }>) {
-  if (data.length === 0) return <p className="text-muted-foreground text-sm">Sin datos</p>;
+type SortKey =
+  | "name"
+  | "country"
+  | "total_dividends"
+  | "total_invested"
+  | "yield_on_cost"
+  | "current_value"
+  | "pl"
+  | "pl_pct"
+  | "yield_on_value"
+  | "payment_count";
+
+type SortDir = "asc" | "desc";
+
+function num(v: string | number): number {
+  return typeof v === "string" ? Number.parseFloat(v) || 0 : v;
+}
+
+export function DividendYieldTable({
+  data,
+}: Readonly<{ data: DividendYield[] }>) {
+  const [sortKey, setSortKey] = useState<SortKey>("total_dividends");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const enriched = useMemo(
+    () =>
+      data.map((d) => {
+        const invested = num(d.total_invested);
+        const value = num(d.current_value);
+        const pl = invested > 0 && value > 0 ? value - invested : 0;
+        const plPct = invested > 0 && value > 0 ? (pl / invested) * 100 : 0;
+        return { ...d, pl, plPct };
+      }),
+    [data],
+  );
+
+  const sorted = useMemo(() => {
+    const arr = [...enriched];
+    arr.sort((a, b) => {
+      let va: number | string;
+      let vb: number | string;
+      switch (sortKey) {
+        case "name":
+          va = a.name.toLowerCase();
+          vb = b.name.toLowerCase();
+          break;
+        case "country":
+          va = (a.country ?? "").toLowerCase();
+          vb = (b.country ?? "").toLowerCase();
+          break;
+        case "pl":
+          va = a.pl;
+          vb = b.pl;
+          break;
+        case "pl_pct":
+          va = a.plPct;
+          vb = b.plPct;
+          break;
+        default:
+          va = num((a as Record<string, unknown>)[sortKey] as string);
+          vb = num((b as Record<string, unknown>)[sortKey] as string);
+      }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [enriched, sortKey, sortDir]);
+
+  const totals = useMemo(() => {
+    let dividends = 0;
+    let invested = 0;
+    let value = 0;
+    let pl = 0;
+    let payments = 0;
+    for (const d of enriched) {
+      dividends += num(d.total_dividends);
+      invested += num(d.total_invested);
+      value += num(d.current_value);
+      pl += d.pl;
+      payments += d.payment_count;
+    }
+    const plPct = invested > 0 ? (pl / invested) * 100 : 0;
+    const yieldOnCost = invested > 0 ? (dividends / invested) * 100 : 0;
+    const yieldOnValue = value > 0 ? (dividends / value) * 100 : 0;
+    return {
+      dividends,
+      invested,
+      value,
+      pl,
+      plPct,
+      yieldOnCost,
+      yieldOnValue,
+      payments,
+    };
+  }, [enriched]);
+
+  if (data.length === 0)
+    return <p className="text-muted-foreground text-sm">Sin datos</p>;
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
+
+  function SortHeader({
+    k,
+    children,
+    align = "right",
+  }: {
+    k: SortKey;
+    children: React.ReactNode;
+    align?: "left" | "right";
+  }) {
+    const active = sortKey === k;
+    return (
+      <th
+        className={`py-2 cursor-pointer select-none hover:text-foreground transition-colors ${align === "left" ? "text-left" : "text-right"}`}
+        onClick={() => handleSort(k)}
+      >
+        <span className={active ? "text-foreground" : ""}>
+          {children} {active ? (sortDir === "asc" ? "↑" : "↓") : ""}
+        </span>
+      </th>
+    );
+  }
 
   return (
     <div className="bg-card border border-border rounded-xl p-6">
-      <h3 className="text-sm font-medium text-muted-foreground mb-4">Rendimiento de dividendos</h3>
+      <h3 className="text-sm font-medium text-muted-foreground mb-4">
+        Rendimiento de dividendos
+        <span className="ml-2 text-xs text-muted-foreground/60">
+          ({data.length} posiciones)
+        </span>
+      </h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-muted-foreground">
-              <th className="text-left py-2">Empresa</th>
-              <th className="text-left py-2">País</th>
-              <th className="text-right py-2">Dividendos</th>
-              <th className="text-right py-2">Invertido</th>
-              <th className="text-right py-2">% s/coste</th>
-              <th className="text-right py-2">Valor actual</th>
-              <th className="text-right py-2">% s/valor</th>
-              <th className="text-right py-2">Pagos</th>
+            <tr className="border-b border-border text-muted-foreground text-xs">
+              <SortHeader k="name" align="left">
+                Empresa
+              </SortHeader>
+              <SortHeader k="country" align="left">
+                País
+              </SortHeader>
+              <SortHeader k="total_dividends">Dividendos</SortHeader>
+              <SortHeader k="total_invested">Invertido</SortHeader>
+              <SortHeader k="yield_on_cost">% s/coste</SortHeader>
+              <SortHeader k="current_value">Valor actual</SortHeader>
+              <SortHeader k="pl">+/-</SortHeader>
+              <SortHeader k="pl_pct">% +/-</SortHeader>
+              <SortHeader k="yield_on_value">% s/valor</SortHeader>
+              <SortHeader k="payment_count">Pagos</SortHeader>
             </tr>
           </thead>
           <tbody>
-            {data.map((d) => {
-              const yieldCost = Number.parseFloat(d.yield_on_cost);
-              const yieldValue = Number.parseFloat(d.yield_on_value);
+            {sorted.map((d) => {
+              const yieldCost = num(d.yield_on_cost);
+              const yieldValue = num(d.yield_on_value);
               return (
-                <tr key={d.isin} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-2 text-foreground max-w-48 truncate" title={d.name}>
+                <tr
+                  key={d.isin}
+                  className="border-b border-border/50 hover:bg-muted/30"
+                >
+                  <td
+                    className="py-2 text-foreground max-w-48 truncate"
+                    title={d.name}
+                  >
                     {d.name}
                   </td>
-                  <td className="py-2 text-muted-foreground">{d.country ?? "—"}</td>
-                  <td className="py-2 text-right text-green-400">{formatEur(d.total_dividends)}</td>
+                  <td className="py-2 text-muted-foreground text-sm">
+                    {d.country ?? "—"}
+                  </td>
+                  <td className="py-2 text-right text-green-400">
+                    {formatEur(d.total_dividends)}
+                  </td>
                   <td className="py-2 text-right">
-                    {Number.parseFloat(d.total_invested) > 0 ? formatEur(d.total_invested) : "—"}
+                    {num(d.total_invested) > 0
+                      ? formatEur(d.total_invested)
+                      : "—"}
                   </td>
                   <td className="py-2 text-right">
                     <YieldBadge value={yieldCost} />
                   </td>
                   <td className="py-2 text-right">
-                    {Number.parseFloat(d.current_value) > 0 ? formatEur(d.current_value) : "—"}
+                    {num(d.current_value) > 0
+                      ? formatEur(d.current_value)
+                      : "—"}
+                  </td>
+                  <td className={`py-2 text-right ${plColor(d.pl)}`}>
+                    {d.pl !== 0 ? formatEur(d.pl) : "—"}
+                  </td>
+                  <td className={`py-2 text-right ${plColor(d.plPct)}`}>
+                    {d.plPct !== 0
+                      ? `${d.plPct > 0 ? "+" : ""}${d.plPct.toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td className="py-2 text-right">
                     <YieldBadge value={yieldValue} />
                   </td>
-                  <td className="py-2 text-right text-muted-foreground">{d.payment_count}</td>
+                  <td className="py-2 text-right text-muted-foreground">
+                    {d.payment_count}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-border font-semibold text-foreground">
+              <td className="py-3" colSpan={2}>
+                Total
+              </td>
+              <td className="py-3 text-right text-green-400">
+                {formatEur(totals.dividends)}
+              </td>
+              <td className="py-3 text-right">{formatEur(totals.invested)}</td>
+              <td className="py-3 text-right">
+                <YieldBadge value={totals.yieldOnCost} />
+              </td>
+              <td className="py-3 text-right">{formatEur(totals.value)}</td>
+              <td className={`py-3 text-right ${plColor(totals.pl)}`}>
+                {formatEur(totals.pl)}
+              </td>
+              <td className={`py-3 text-right ${plColor(totals.plPct)}`}>
+                {totals.plPct > 0 ? "+" : ""}
+                {totals.plPct.toFixed(1)}%
+              </td>
+              <td className="py-3 text-right">
+                <YieldBadge value={totals.yieldOnValue} />
+              </td>
+              <td className="py-3 text-right text-muted-foreground">
+                {totals.payments}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>

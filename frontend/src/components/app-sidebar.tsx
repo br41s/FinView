@@ -8,6 +8,8 @@ import {
   LineChart,
   Upload,
   Calendar,
+  ShieldCheck,
+  CalendarRange,
 } from "lucide-react";
 
 import {
@@ -30,6 +32,8 @@ export type View =
   | "casillas"
   | "dividendos"
   | "ganancias"
+  | "validacion"
+  | "comparativa"
   | "importar";
 
 interface AppSidebarProps {
@@ -55,6 +59,19 @@ const mainNav = [
 const fiscalNav = [
   { key: "casillas" as const, label: "Casillas fiscales", icon: FileText },
   { key: "ganancias" as const, label: "Ganancias de capital", icon: LineChart },
+  {
+    key: "validacion" as const,
+    label: "Validación TR",
+    icon: ShieldCheck,
+  },
+];
+
+const analysisNav = [
+  {
+    key: "comparativa" as const,
+    label: "Comparativa anual",
+    icon: CalendarRange,
+  },
 ];
 
 export function AppSidebar({
@@ -182,6 +199,27 @@ export function AppSidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        {/* Analysis */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Análisis</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {analysisNav.map((item) => (
+                <SidebarMenuItem key={item.key}>
+                  <SidebarMenuButton
+                    isActive={currentView === item.key}
+                    onClick={() => onViewChange(item.key)}
+                    tooltip={item.label}
+                  >
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         {/* Import */}
         <SidebarGroup>

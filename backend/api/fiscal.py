@@ -12,14 +12,19 @@ from backend.api.schemas import (
     AggregatedCasillaOut,
     CasillaOut,
     CrossBrokerLotOut,
+    CrossValidationResult,
+    CrossValidationRow,
     DashboardStats,
     FIFOAdjustmentOut,
     FiscalSummary,
     OptionAssignmentOut,
+    YearlyComparisonResult,
+    YearlyMetrics,
 )
 from backend.database import DbSession
 from backend.models import (
     Account,
+    Broker,
     CrossBrokerLot,
     FIFOAdjustment,
     ImportRecord,
@@ -74,7 +79,7 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
         tr_ref = None
         validation = None
         for i in items:
-            if i.broker == "TR" and i.tr_reference_amount is not None:
+            if i.broker == Broker.TR and i.tr_reference_amount is not None:
                 tr_ref = i.tr_reference_amount
                 # Compare aggregated total against TR reference
                 validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
@@ -318,3 +323,152 @@ def export_fiscal_data(
         "fiscal_year": fiscal_year,
         "casillas": [c.model_dump() for c in casillas],
     }
+
+
+@router.get("/cross-validation/{fiscal_year}", response_model=CrossValidationResult)
+def cross_validation(db: DbSession, fiscal_year: int):
+    """Compare FinView-calculated casillas against TR reference values."""
+    rows = (
+        db.query(TaxResult)
+        .filter(TaxResult.fiscal_year == fiscal_year)
+        .order_by(TaxResult.modelo, TaxResult.casilla)
+        .all()
+    )
+
+    # Group by (modelo, casilla)
+    grouped: dict[tuple[int, int], list[TaxResult]] = {}
+    for r in rows:
+        key = (r.modelo, r.casilla)
+        grouped.setdefault(key, []).append(r)
+
+    # Load FIFO adjustments
+    fifo_adj: dict[int, Decimal] = {}
+    adjs = db.query(FIFOAdjustment).filter(
+        FIFOAdjustment.fiscal_year == fiscal_year,
+    ).all()
+    for adj in adjs:
+        target = 332 if adj.adjustment_eur > 0 else 337
+        fifo_adj[target] = fifo_adj.get(target, Decimal("0")) + adj.adjustment_eur
+
+    result_rows: list[CrossValidationRow] = []
+    match_count = mismatch_count = no_ref_count = 0
+
+    for (modelo, casilla), items in sorted(grouped.items()):
+        total = sum(i.amount_eur for i in items)
+        adj_val = fifo_adj.get(casilla, Decimal("0"))
+        adjusted_total = total + adj_val
+        desc = items[0].description
+        brokers = [{"broker": i.broker, "amount_eur": i.amount_eur} for i in items]
+
+        # Find TR reference and TR's own amount
+        tr_ref = None
+        tr_own_amount = None
+        for i in items:
+            if i.broker == Broker.TR:
+                tr_own_amount = i.amount_eur
+                if i.tr_reference_amount is not None:
+                    tr_ref = i.tr_reference_amount
+
+        if tr_ref is not None:
+            # For multi-broker casillas (29, 332, 337), compare TR amount vs TR reference
+            # For TR-only casillas (27, 714), compare total vs TR reference
+            is_multi_broker = len(items) > 1
+            compare_amount = tr_own_amount if is_multi_broker and tr_own_amount is not None else adjusted_total
+            diff = compare_amount - tr_ref
+            status = "match" if abs(diff) < Decimal("1.00") else "mismatch"
+            if status == "match":
+                match_count += 1
+            else:
+                mismatch_count += 1
+        else:
+            diff = None
+            compare_amount = adjusted_total
+            status = "no_tr_data"
+            no_ref_count += 1
+
+        result_rows.append(CrossValidationRow(
+            modelo=modelo,
+            casilla=casilla,
+            description=desc,
+            finview_amount=adjusted_total,
+            compare_amount=compare_amount,
+            tr_amount=tr_ref,
+            difference=diff,
+            status=status,
+            is_multi_broker=len(items) > 1,
+            brokers=brokers,
+        ))
+
+    return CrossValidationResult(
+        fiscal_year=fiscal_year,
+        rows=result_rows,
+        total_match=match_count,
+        total_mismatch=mismatch_count,
+        total_no_ref=no_ref_count,
+    )
+
+
+@router.get("/yearly-comparison", response_model=YearlyComparisonResult)
+def yearly_comparison(db: DbSession):
+    """Get fiscal metrics aggregated per year for multi-year comparison."""
+    # Get all distinct fiscal years
+    years = (
+        db.query(TaxResult.fiscal_year)
+        .distinct()
+        .order_by(TaxResult.fiscal_year)
+        .all()
+    )
+
+    metrics: list[YearlyMetrics] = []
+    for (year,) in years:
+        def _sum_casilla(c: int) -> Decimal:
+            val = (
+                db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
+                .filter(TaxResult.fiscal_year == year, TaxResult.casilla == c)
+                .scalar()
+            )
+            return val or Decimal("0")
+
+        dividends = _sum_casilla(29)
+        gains = _sum_casilla(332)
+        losses = _sum_casilla(337)
+
+        # Withholdings from transactions
+        whg = (
+            db.query(func.coalesce(func.sum(Transaction.withholding_tax), 0))
+            .filter(
+                Transaction.type == TransactionType.DIVIDEND.value,
+                func.strftime("%Y", Transaction.trade_date) == str(year),
+            )
+            .scalar()
+        ) or Decimal("0")
+
+        # Number of distinct brokers with data this year
+        broker_count = (
+            db.query(func.count(func.distinct(TaxResult.broker)))
+            .filter(TaxResult.fiscal_year == year)
+            .scalar()
+        ) or 0
+
+        # Number of distinct ISINs with dividends this year
+        pos_count = (
+            db.query(func.count(func.distinct(Transaction.isin)))
+            .filter(
+                Transaction.type == TransactionType.DIVIDEND.value,
+                func.strftime("%Y", Transaction.trade_date) == str(year),
+            )
+            .scalar()
+        ) or 0
+
+        metrics.append(YearlyMetrics(
+            fiscal_year=year,
+            dividends_gross=dividends,
+            gains=gains,
+            losses=losses,
+            net_capital=gains + losses,
+            withholdings=whg,
+            brokers=broker_count,
+            positions=pos_count,
+        ))
+
+    return YearlyComparisonResult(years=metrics)

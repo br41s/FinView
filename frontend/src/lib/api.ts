@@ -119,6 +119,9 @@ export const api = {
     fetchJSON(`/fiscal/fifo-adjustments${qs({ fiscal_year: year })}`),
   optionAssignments: (year: number) =>
     fetchJSON(`/fiscal/option-assignments${qs({ fiscal_year: year })}`),
+  crossValidation: (year: number) =>
+    fetchJSON(`/fiscal/cross-validation/${year}`),
+  yearlyComparison: () => fetchJSON("/fiscal/yearly-comparison"),
   transactions: (params?: Record<string, string>) => {
     const qstr = params ? "?" + new URLSearchParams(params).toString() : "";
     return fetchJSON(`/transactions/${qstr}`);

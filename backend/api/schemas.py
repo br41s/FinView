@@ -189,3 +189,43 @@ class OptionAssignmentOut(BaseModel):
 class ResolveIssueRequest(BaseModel):
     action: str  # "dismiss", "resolve", "add_data"
     data: dict | None = None  # action-specific payload
+
+
+# --- Cross-validation ---
+
+class CrossValidationRow(BaseModel):
+    modelo: int
+    casilla: int
+    description: str
+    finview_amount: Decimal
+    compare_amount: Decimal  # amount actually compared (TR-only for multi-broker casillas)
+    tr_amount: Decimal | None
+    difference: Decimal | None
+    status: str  # "match" | "mismatch" | "no_tr_data"
+    is_multi_broker: bool
+    brokers: list[BrokerAmount]
+
+
+class CrossValidationResult(BaseModel):
+    fiscal_year: int
+    rows: list[CrossValidationRow]
+    total_match: int
+    total_mismatch: int
+    total_no_ref: int
+
+
+# --- Multi-year comparison ---
+
+class YearlyMetrics(BaseModel):
+    fiscal_year: int
+    dividends_gross: Decimal
+    gains: Decimal
+    losses: Decimal
+    net_capital: Decimal
+    withholdings: Decimal
+    brokers: int
+    positions: int
+
+
+class YearlyComparisonResult(BaseModel):
+    years: list[YearlyMetrics]
