@@ -101,27 +101,35 @@ function CountryAnalysis({
                   </p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Retención origen</span>
+                  <span className="text-muted-foreground">
+                    Retención origen
+                  </span>
                   <p className="text-amber-400 font-mono">
                     {formatEur(withholding)}
                   </p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Deducible (cas. 588)</span>
+                  <span className="text-muted-foreground">
+                    Deducible (cas. 588)
+                  </span>
                   <p className="text-green-400 font-mono">
                     {formatEur(deductible)}
                   </p>
                 </div>
                 {excess > 0 && (
                   <div>
-                    <span className="text-muted-foreground">Exceso reclamable</span>
+                    <span className="text-muted-foreground">
+                      Exceso reclamable
+                    </span>
                     <p className="text-red-400 font-mono">
                       {formatEur(excess)}
                     </p>
                   </div>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">{note}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {note}
+              </p>
             </div>
           );
         })}
@@ -136,7 +144,9 @@ function CasillasSection({
   readonly casillas: readonly Casilla[];
 }) {
   if (casillas.length === 0)
-    return <p className="text-muted-foreground text-sm">Sin casillas calculadas</p>;
+    return (
+      <p className="text-muted-foreground text-sm">Sin casillas calculadas</p>
+    );
 
   const m100 = casillas.filter((c) => c.modelo === 100);
   const m714 = casillas.filter((c) => c.modelo === 714);
@@ -153,79 +163,81 @@ function CasillasSection({
               <h3 className="text-sm font-medium text-foreground mb-2">
                 {title}
               </h3>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="text-left py-2">Casilla</th>
-                    <th className="text-left py-2">Descripción</th>
-                    <th className="text-right py-2">Importe</th>
-                    <th className="text-center py-2 w-10">TR</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((c) => (
-                    <tr
-                      key={`${c.modelo}-${c.casilla}`}
-                      className="border-b border-border/50"
-                    >
-                      <td className="py-2 font-mono">{c.casilla}</td>
-                      <td className="py-2 text-foreground">
-                        {c.description}
-                        {c.brokers && c.brokers.length > 1 && (
-                          <span className="block text-xs text-muted-foreground mt-0.5">
-                            {c.brokers
-                              .map(
-                                (b) =>
-                                  `${b.broker}: ${formatEur(b.amount_eur)}`,
-                              )
-                              .join(" · ")}
-                          </span>
-                        )}
-                        {c.fifo_adjustment_eur &&
-                          Number(c.fifo_adjustment_eur) !== 0 && (
-                            <span className="block text-xs text-amber-400 mt-1">
-                              ⚠ Ajuste FIFO cruzado:{" "}
-                              {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
-                              {formatEur(c.fifo_adjustment_eur)} (diferencia
-                              entre FIFO global y broker)
-                            </span>
-                          )}
-                      </td>
-                      <td className="py-2 text-right font-mono">
-                        {formatEur(c.amount_eur)}
-                        {c.fifo_adjustment_eur &&
-                          Number(c.fifo_adjustment_eur) !== 0 && (
-                            <span className="block text-xs text-amber-400 mt-1 font-mono">
-                              ⚠ Ajustado:{" "}
-                              {formatEur(
-                                Number(c.amount_eur) +
-                                  Number(c.fifo_adjustment_eur),
-                              )}
-                            </span>
-                          )}
-                      </td>
-                      <td className="py-2 text-center">
-                        {c.validation_status === "match" && (
-                          <span
-                            title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
-                            className="text-green-400 cursor-help"
-                          >
-                            ✅
-                          </span>
-                        )}
-                        {c.validation_status === "mismatch" && (
-                          <span
-                            title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
-                            className="text-amber-400 cursor-help"
-                          >
-                            ⚠️
-                          </span>
-                        )}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="text-left py-2">Casilla</th>
+                      <th className="text-left py-2">Descripción</th>
+                      <th className="text-right py-2">Importe</th>
+                      <th className="text-center py-2 w-10">TR</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((c) => (
+                      <tr
+                        key={`${c.modelo}-${c.casilla}`}
+                        className="border-b border-border/50"
+                      >
+                        <td className="py-2 font-mono">{c.casilla}</td>
+                        <td className="py-2 text-foreground">
+                          {c.description}
+                          {c.brokers && c.brokers.length > 1 && (
+                            <span className="block text-xs text-muted-foreground mt-0.5">
+                              {c.brokers
+                                .map(
+                                  (b) =>
+                                    `${b.broker}: ${formatEur(b.amount_eur)}`,
+                                )
+                                .join(" · ")}
+                            </span>
+                          )}
+                          {c.fifo_adjustment_eur &&
+                            Number(c.fifo_adjustment_eur) !== 0 && (
+                              <span className="block text-xs text-amber-400 mt-1">
+                                ⚠ Ajuste FIFO cruzado:{" "}
+                                {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
+                                {formatEur(c.fifo_adjustment_eur)} (diferencia
+                                entre FIFO global y broker)
+                              </span>
+                            )}
+                        </td>
+                        <td className="py-2 text-right font-mono">
+                          {formatEur(c.amount_eur)}
+                          {c.fifo_adjustment_eur &&
+                            Number(c.fifo_adjustment_eur) !== 0 && (
+                              <span className="block text-xs text-amber-400 mt-1 font-mono">
+                                ⚠ Ajustado:{" "}
+                                {formatEur(
+                                  Number(c.amount_eur) +
+                                    Number(c.fifo_adjustment_eur),
+                                )}
+                              </span>
+                            )}
+                        </td>
+                        <td className="py-2 text-center">
+                          {c.validation_status === "match" && (
+                            <span
+                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
+                              className="text-green-400 cursor-help"
+                            >
+                              ✅
+                            </span>
+                          )}
+                          {c.validation_status === "mismatch" && (
+                            <span
+                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
+                              className="text-amber-400 cursor-help"
+                            >
+                              ⚠️
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ),
       )}

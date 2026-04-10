@@ -187,6 +187,9 @@ export interface DividendYield {
   yield_on_cost: string;
   yield_on_value: string;
   payment_count: number;
+  currency: string;
+  original_price: string | null;
+  fx_rate: string | null;
 }
 
 export interface WithholdingsByCountry {

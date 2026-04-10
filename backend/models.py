@@ -318,6 +318,9 @@ class PriceCache(Base):
     yahoo_ticker: Mapped[str | None] = mapped_column(String(20))
     price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    original_currency: Mapped[str | None] = mapped_column(String(3))
+    original_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     fetched_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     __table_args__ = (

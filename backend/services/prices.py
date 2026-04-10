@@ -201,8 +201,12 @@ def fetch_and_cache_prices(
         if ticker.endswith(".L"):
             price_val = price_val / 100.0
 
-        # Convert to EUR if needed
+        # Track original currency and price
         ccy = ticker_currencies.get(ticker, "EUR")
+        orig_price = Decimal(str(round(price_val, 6)))
+        rate = Decimal(str(round(fx_rates[ccy], 6))) if ccy in fx_rates else None
+
+        # Convert to EUR if needed
         if ccy != "EUR" and ccy in fx_rates:
             price_eur = price_val / fx_rates[ccy]
         elif ccy != "EUR":
@@ -222,12 +226,18 @@ def fetch_and_cache_prices(
         if existing:
             existing.price = price_dec
             existing.yahoo_ticker = ticker
+            existing.original_currency = ccy
+            existing.original_price = orig_price
+            existing.fx_rate = rate
         else:
             db.add(PriceCache(
                 isin=isin,
                 yahoo_ticker=ticker,
                 price=price_dec,
                 currency="EUR",
+                original_currency=ccy,
+                original_price=orig_price,
+                fx_rate=rate,
                 fetched_date=today,
             ))
         cached[isin] = price_dec
@@ -272,5 +282,44 @@ def _fetch_yahoo_prices(tickers: list[str]) -> dict[str, float]:
                         result[ticker] = float(series.iloc[-1])
     except Exception:
         logger.exception("Error fetching Yahoo Finance prices")
+
+    return result
+
+
+def get_currency_info(db: Session, isins: list[str]) -> dict[str, dict]:
+    """Get currency info for ISINs from today's cache.
+
+    Returns dict[isin, {currency, original_price, fx_rate}].
+    Falls back to _ISIN_TICKER_MAP when cache has no original_currency.
+    """
+    today = date.today()
+    rows = (
+        db.query(
+            PriceCache.isin,
+            PriceCache.original_currency,
+            PriceCache.original_price,
+            PriceCache.fx_rate,
+            PriceCache.yahoo_ticker,
+        )
+        .filter(PriceCache.isin.in_(isins), PriceCache.fetched_date == today)
+        .all()
+    )
+    result: dict[str, dict] = {}
+    for r in rows:
+        ccy = r.original_currency
+        if not ccy and r.yahoo_ticker:
+            ccy = _ticker_currency(r.yahoo_ticker)
+        result[r.isin] = {
+            "currency": ccy or "EUR",
+            "original_price": str(r.original_price) if r.original_price else None,
+            "fx_rate": str(r.fx_rate) if r.fx_rate else None,
+        }
+
+    # For ISINs not in today's cache, derive from ticker map
+    for isin in isins:
+        if isin not in result:
+            ticker = _ISIN_TICKER_MAP.get(isin)
+            ccy = _ticker_currency(ticker) if ticker else "EUR"
+            result[isin] = {"currency": ccy, "original_price": None, "fx_rate": None}
 
     return result

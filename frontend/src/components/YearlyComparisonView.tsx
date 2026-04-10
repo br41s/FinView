@@ -145,95 +145,99 @@ export function YearlyComparisonView({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {(
-                  [
-                    ["fiscal_year", "Año"],
-                    ["dividends_gross", "Dividendos brutos"],
-                    ["gains", "Ganancias"],
-                    ["losses", "Pérdidas"],
-                    ["net_capital", "Neto capital"],
-                    ["withholdings", "Retenciones"],
-                    ["brokers", "Brokers"],
-                    ["positions", "Posiciones"],
-                  ] as [SortKey, string][]
-                ).map(([key, label]) => (
-                  <TableHead
-                    key={key}
-                    className={`cursor-pointer select-none hover:text-foreground ${key === "fiscal_year" ? "" : "text-right"}`}
-                    onClick={() => handleSort(key)}
-                  >
-                    {label}
-                    {arrow(key)}
-                  </TableHead>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {(
+                    [
+                      ["fiscal_year", "Año"],
+                      ["dividends_gross", "Dividendos brutos"],
+                      ["gains", "Ganancias"],
+                      ["losses", "Pérdidas"],
+                      ["net_capital", "Neto capital"],
+                      ["withholdings", "Retenciones"],
+                      ["brokers", "Brokers"],
+                      ["positions", "Posiciones"],
+                    ] as [SortKey, string][]
+                  ).map(([key, label]) => (
+                    <TableHead
+                      key={key}
+                      className={`cursor-pointer select-none hover:text-foreground ${key === "fiscal_year" ? "" : "text-right"}`}
+                      onClick={() => handleSort(key)}
+                    >
+                      {label}
+                      {arrow(key)}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sorted.map((y) => (
+                  <TableRow key={y.fiscal_year}>
+                    <TableCell className="font-medium">
+                      {y.fiscal_year}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-green-400">
+                      {formatEur(y.dividends_gross)}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono ${plColor(y.gains)}`}
+                    >
+                      {formatEur(y.gains)}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono ${plColor(y.losses)}`}
+                    >
+                      {formatEur(y.losses)}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono ${plColor(y.net_capital)}`}
+                    >
+                      {formatEur(y.net_capital)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-amber-400">
+                      {formatEur(y.withholdings)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">{y.brokers}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="outline">{y.positions}</Badge>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map((y) => (
-                <TableRow key={y.fiscal_year}>
-                  <TableCell className="font-medium">{y.fiscal_year}</TableCell>
+              </TableBody>
+              <TableFooter>
+                <TableRow className="font-semibold">
+                  <TableCell>Total</TableCell>
                   <TableCell className="text-right font-mono text-green-400">
-                    {formatEur(y.dividends_gross)}
+                    {formatEur(totals.dividends)}
                   </TableCell>
                   <TableCell
-                    className={`text-right font-mono ${plColor(y.gains)}`}
+                    className={`text-right font-mono ${plColor(totals.gains)}`}
                   >
-                    {formatEur(y.gains)}
+                    {formatEur(totals.gains)}
                   </TableCell>
                   <TableCell
-                    className={`text-right font-mono ${plColor(y.losses)}`}
+                    className={`text-right font-mono ${plColor(totals.losses)}`}
                   >
-                    {formatEur(y.losses)}
+                    {formatEur(totals.losses)}
                   </TableCell>
                   <TableCell
-                    className={`text-right font-mono ${plColor(y.net_capital)}`}
+                    className={`text-right font-mono ${plColor(totals.net)}`}
                   >
-                    {formatEur(y.net_capital)}
+                    {formatEur(totals.net)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-amber-400">
-                    {formatEur(y.withholdings)}
+                    {formatEur(totals.withholdings)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="secondary">{y.brokers}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="outline">{y.positions}</Badge>
-                  </TableCell>
+                  <TableCell />
+                  <TableCell />
                 </TableRow>
-              ))}
-            </TableBody>
-            <TableFooter>
-              <TableRow className="font-semibold">
-                <TableCell>Total</TableCell>
-                <TableCell className="text-right font-mono text-green-400">
-                  {formatEur(totals.dividends)}
-                </TableCell>
-                <TableCell
-                  className={`text-right font-mono ${plColor(totals.gains)}`}
-                >
-                  {formatEur(totals.gains)}
-                </TableCell>
-                <TableCell
-                  className={`text-right font-mono ${plColor(totals.losses)}`}
-                >
-                  {formatEur(totals.losses)}
-                </TableCell>
-                <TableCell
-                  className={`text-right font-mono ${plColor(totals.net)}`}
-                >
-                  {formatEur(totals.net)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-amber-400">
-                  {formatEur(totals.withholdings)}
-                </TableCell>
-                <TableCell />
-                <TableCell />
-              </TableRow>
-            </TableFooter>
-          </Table>
+              </TableFooter>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

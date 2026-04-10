@@ -55,7 +55,7 @@ export function CrossValidationTable({
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Coincidencias</CardDescription>
@@ -95,80 +95,82 @@ export function CrossValidationTable({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">Modelo</TableHead>
-                <TableHead className="w-20">Casilla</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead className="text-right">FinView (total)</TableHead>
-                <TableHead className="text-right">Comparado</TableHead>
-                <TableHead className="text-right">TR Referencia</TableHead>
-                <TableHead className="text-right">Diferencia</TableHead>
-                <TableHead className="w-28">Estado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={`${row.modelo}-${row.casilla}`}>
-                  <TableCell className="font-mono text-muted-foreground">
-                    {row.modelo}
-                  </TableCell>
-                  <TableCell className="font-mono font-medium">
-                    {row.casilla}
-                  </TableCell>
-                  <TableCell>
-                    <div>{row.description}</div>
-                    {row.is_multi_broker && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {row.brokers.map((b) => (
-                          <span key={b.broker} className="mr-2">
-                            {b.broker}: {formatEur(b.amount_eur)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatEur(row.finview_amount)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {row.is_multi_broker ? (
-                      <span
-                        className="text-blue-400"
-                        title="Solo la parte de TR (multi-broker)"
-                      >
-                        {formatEur(row.compare_amount)}
-                      </span>
-                    ) : (
-                      formatEur(row.compare_amount)
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {row.tr_amount == null ? "—" : formatEur(row.tr_amount)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {row.difference == null ? (
-                      "—"
-                    ) : (
-                      <span
-                        className={
-                          Number.parseFloat(row.difference) === 0
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                      >
-                        {formatEur(row.difference)}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={row.status} />
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Modelo</TableHead>
+                  <TableHead className="w-20">Casilla</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead className="text-right">FinView (total)</TableHead>
+                  <TableHead className="text-right">Comparado</TableHead>
+                  <TableHead className="text-right">TR Referencia</TableHead>
+                  <TableHead className="text-right">Diferencia</TableHead>
+                  <TableHead className="w-28">Estado</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={`${row.modelo}-${row.casilla}`}>
+                    <TableCell className="font-mono text-muted-foreground">
+                      {row.modelo}
+                    </TableCell>
+                    <TableCell className="font-mono font-medium">
+                      {row.casilla}
+                    </TableCell>
+                    <TableCell>
+                      <div>{row.description}</div>
+                      {row.is_multi_broker && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {row.brokers.map((b) => (
+                            <span key={b.broker} className="mr-2">
+                              {b.broker}: {formatEur(b.amount_eur)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatEur(row.finview_amount)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {row.is_multi_broker ? (
+                        <span
+                          className="text-blue-400"
+                          title="Solo la parte de TR (multi-broker)"
+                        >
+                          {formatEur(row.compare_amount)}
+                        </span>
+                      ) : (
+                        formatEur(row.compare_amount)
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {row.tr_amount == null ? "—" : formatEur(row.tr_amount)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {row.difference == null ? (
+                        "—"
+                      ) : (
+                        <span
+                          className={
+                            Number.parseFloat(row.difference) === 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }
+                        >
+                          {formatEur(row.difference)}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={row.status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

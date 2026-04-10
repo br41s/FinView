@@ -257,7 +257,7 @@ export default function Home() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-3 sm:p-6">
           {/* Import view */}
           {view === "importar" && (
             <div className="max-w-3xl mx-auto">

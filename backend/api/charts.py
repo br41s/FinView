@@ -277,6 +277,9 @@ def _compute_isin_yield(
         "yield_on_cost": str(round(yield_on_cost, 2)),
         "yield_on_value": str(round(yield_on_value, 2)),
         "payment_count": d.payment_count,
+        "currency": "EUR",
+        "original_price": None,
+        "fx_rate": None,
     }
 
 
@@ -397,12 +400,14 @@ def dividend_yield(
 
     # Overlay with live Yahoo Finance prices when available
     try:
-        from backend.services.prices import fetch_and_cache_prices
+        from backend.services.prices import fetch_and_cache_prices, get_currency_info
 
         yahoo_prices = fetch_and_cache_prices(db, div_isins)
         price_map.update(yahoo_prices)
+        currency_info = get_currency_info(db, div_isins)
     except Exception:
         logger.debug("Yahoo Finance prices unavailable, using historical prices")
+        currency_info = {}
 
     # Fetch portfolio holdings to supplement ISINs without buy/sell history
     holdings_q = db.query(PortfolioHolding).filter(
@@ -414,10 +419,15 @@ def dividend_yield(
     for h in holdings_q.all():
         holdings_map.setdefault(h.isin, h)
 
-    results = [
-        _compute_isin_yield(d, buys_by_isin, sells_by_isin, price_map, holdings_map)
-        for d in div_rows
-    ]
+    results = []
+    for d in div_rows:
+        row = _compute_isin_yield(d, buys_by_isin, sells_by_isin, price_map, holdings_map)
+        isin = d.isin or ""
+        ci = currency_info.get(isin, {})
+        row["currency"] = ci.get("currency", "EUR")
+        row["original_price"] = ci.get("original_price")
+        row["fx_rate"] = ci.get("fx_rate")
+        results.append(row)
     results.sort(key=lambda x: float(x["yield_on_cost"]), reverse=True)
     return results
 
