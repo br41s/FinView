@@ -10,6 +10,24 @@ from backend.models import PriceCache
 
 logger = logging.getLogger(__name__)
 
+# Exchange suffix → trading currency
+_EXCHANGE_CURRENCY: dict[str, str] = {
+    ".MC": "EUR", ".DE": "EUR", ".PA": "EUR", ".AS": "EUR",
+    ".LS": "EUR", ".VI": "EUR",
+    ".L": "GBP",
+    ".OL": "NOK",
+    ".CO": "DKK",
+    ".SA": "BRL",
+}
+
+
+def _ticker_currency(ticker: str) -> str:
+    """Determine the trading currency from the Yahoo Finance ticker suffix."""
+    for suffix, currency in _EXCHANGE_CURRENCY.items():
+        if ticker.endswith(suffix):
+            return currency
+    return "USD"  # US stocks have no suffix
+
 # ISIN → Yahoo Finance ticker mapping for stocks that don't auto-resolve
 _ISIN_TICKER_MAP: dict[str, str] = {
     # Spain
@@ -65,7 +83,7 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "GB00BH4HKS39": "VOD.L",    # Vodafone
     "GB00B1FH8J72": "SVT.L",    # Severn Trent
     "GB00B39J2M42": "UU.L",     # United Utilities
-    "GB00BZ3CNK81": "TRMD.OL",  # TORM
+    "GB00BZ3CNK81": "TORM.CO",   # TORM (Copenhagen)
     # US
     "US88579Y1010": "MMM",        # 3M
     "US7134481081": "PEP",        # PepsiCo
@@ -89,7 +107,7 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "NL0010773842": "NN.AS",      # NN Group
     "NL0000379121": "RAND.AS",    # Randstad
     # Brazil
-    "BRPETRACNOR9": "PBR",        # Petrobras ADR
+    "BRPETRACNOR9": "PETR3.SA",   # Petrobras ORD (Bovespa)
     # Portugal
     "PTREL0AM0008": "EDPR.LS",    # Redes Energeticas
     # Austria
@@ -156,11 +174,44 @@ def fetch_and_cache_prices(
     # Batch fetch via yfinance
     prices = _fetch_yahoo_prices(list(ticker_to_isin.keys()))
 
+    # Determine which currencies need conversion
+    non_eur_currencies: set[str] = set()
+    ticker_currencies: dict[str, str] = {}
+    for ticker in ticker_to_isin:
+        ccy = _ticker_currency(ticker)
+        ticker_currencies[ticker] = ccy
+        if ccy != "EUR":
+            non_eur_currencies.add(ccy)
+
+    # Fetch forex rates for non-EUR currencies (e.g. EURUSD=X → 1 EUR = X USD)
+    fx_rates: dict[str, float] = {}
+    if non_eur_currencies:
+        forex_tickers = [f"EUR{ccy}=X" for ccy in non_eur_currencies]
+        fx_raw = _fetch_yahoo_prices(forex_tickers)
+        for ft, rate in fx_raw.items():
+            ccy = ft[3:6]  # e.g. "EURUSD=X" → "USD"
+            fx_rates[ccy] = rate
+
     for ticker, price_val in prices.items():
         isin = ticker_to_isin.get(ticker)
         if not isin:
             continue
-        price_dec = Decimal(str(round(price_val, 6)))
+
+        # London Stock Exchange quotes in GBX (pence) — convert to GBP
+        if ticker.endswith(".L"):
+            price_val = price_val / 100.0
+
+        # Convert to EUR if needed
+        ccy = ticker_currencies.get(ticker, "EUR")
+        if ccy != "EUR" and ccy in fx_rates:
+            price_eur = price_val / fx_rates[ccy]
+        elif ccy != "EUR":
+            logger.warning("No FX rate for %s, skipping %s", ccy, ticker)
+            continue
+        else:
+            price_eur = price_val
+
+        price_dec = Decimal(str(round(price_eur, 6)))
 
         # Upsert cache
         existing = (
