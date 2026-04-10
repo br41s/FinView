@@ -332,9 +332,9 @@ def _build_dividend_tx(m, tx_type, isin, name, country):
         currency=m.group(2),
         fees=parse_eur_number(m.group(5)),
         gross_amount=parse_eur_number(m.group(7)),
-        withholding_tax=parse_eur_number(m.group(8)),
+        withholding_tax=-abs(parse_eur_number(m.group(8))),
         exchange_rate=parse_eur_number(m.group(9)),
-        net_amount_eur=parse_eur_number(m.group(10)),
+        net_amount_eur=parse_eur_number(m.group(10)) - abs(parse_eur_number(m.group(8))),
         casilla=int(m.group(12)),
     )
 

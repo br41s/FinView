@@ -1,0 +1,568 @@
+"""Data Supervisor — post-import validation and auto-resolution.
+
+Runs after each broker import to detect and fix data inconsistencies:
+- Missing buy transactions for dividends/holdings
+- Rights (derechos) misclassified as SELL
+- Stock splits (ISIN changes, qty mismatches)
+- Scrip dividends needing conversion ratio verification
+- Holdings qty mismatch vs calculated qty from transactions
+- Missing Yahoo Finance ticker for ISIN
+- Price sanity checks (extreme deviations)
+"""
+
+import json
+import logging
+import re
+from collections import defaultdict
+from datetime import date
+from decimal import Decimal
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from backend.models import (
+    DataIssue,
+    PortfolioHolding,
+    Transaction,
+    TransactionType,
+)
+
+logger = logging.getLogger(__name__)
+
+# Patterns that indicate rights/derechos (not actual share sales)
+_RIGHTS_PATTERNS = re.compile(
+    r"\b(derechos?|rights?|drets?|bezugsrecht)\b",
+    re.IGNORECASE,
+)
+
+# Scrip dividend indicators in transaction names
+_SCRIP_PATTERNS = re.compile(
+    r"\b(scrip|script|liberada|ampliaci[oó]n liberada)\b",
+    re.IGNORECASE,
+)
+
+# Options/derivatives patterns in names — skip for ticker checks
+_DERIVATIVE_PATTERNS = re.compile(
+    r"\b[CP]\d+\.?\d*\s+\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OKT|OCT|NOV|DEC|ENE|FEB|ABR|AGO|DIC)\d{2}\b",
+    re.IGNORECASE,
+)
+
+# Bond/note indicators
+_BOND_PATTERNS = re.compile(
+    r"\b(bond|bono|note|letra|pagaré|pagare)\b",
+    re.IGNORECASE,
+)
+
+
+def run_checks(db: Session, import_id: int | None = None) -> list[DataIssue]:
+    """Run all data quality checks and return issues found.
+
+    If import_id is given, focus checks on transactions from that import.
+    Otherwise run on all data (useful for full audit).
+    """
+    issues: list[DataIssue] = []
+
+    issues.extend(_check_rights_as_sells(db, import_id))
+    issues.extend(_check_missing_buys(db, import_id))
+    issues.extend(_check_holdings_mismatch(db, import_id))
+    issues.extend(_check_missing_ticker(db, import_id))
+    issues.extend(_check_split_candidates(db, import_id))
+    issues.extend(_check_price_sanity(db, import_id))
+
+    # Persist all issues
+    for issue in issues:
+        db.add(issue)
+    db.flush()
+
+    logger.info(
+        "Data supervisor: %d issues found (import_id=%s)",
+        len(issues),
+        import_id,
+    )
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Check 1: Rights misclassified as SELL
+# ---------------------------------------------------------------------------
+
+def _check_rights_as_sells(db: Session, import_id: int | None) -> list[DataIssue]:
+    """Detect SELL transactions whose name contains 'derechos/rights'.
+
+    These are typically scrip dividend rights sold for cash — they should
+    be DIVIDEND type with qty=0, not SELL (which would imply shares sold).
+    """
+    q = db.query(Transaction).filter(
+        Transaction.type == TransactionType.SELL.value,
+    )
+    if import_id:
+        q = q.filter(Transaction.import_id == import_id)
+
+    issues = []
+    for tx in q.all():
+        if _RIGHTS_PATTERNS.search(tx.name):
+            # Auto-fix: reclassify as DIVIDEND
+            tx.type = TransactionType.DIVIDEND.value
+            old_qty = tx.quantity
+            tx.quantity = Decimal("0")
+
+            issue = DataIssue(
+                import_id=import_id,
+                issue_type="rights_as_sell",
+                severity="warning",
+                isin=tx.isin,
+                name=tx.name,
+                description=(
+                    f"SELL '{tx.name}' reclasificada como DIVIDEND (derechos vendidos por efectivo, "
+                    f"no acciones). qty {old_qty} → 0, importe {tx.net_amount_eur}€"
+                ),
+                status="auto_resolved",
+                auto_resolution="Reclasificada SELL → DIVIDEND con qty=0",
+                resolution_data=json.dumps({
+                    "tx_id": tx.id,
+                    "old_type": "SELL",
+                    "new_type": "DIVIDEND",
+                    "old_qty": str(old_qty),
+                    "amount": str(tx.net_amount_eur),
+                }),
+            )
+            issues.append(issue)
+            logger.info("Auto-fixed: rights SELL → DIVIDEND for tx %d (%s)", tx.id, tx.name)
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Check 2: Missing buy transactions
+# ---------------------------------------------------------------------------
+
+def _check_missing_buys(db: Session, import_id: int | None) -> list[DataIssue]:
+    """Detect ISINs that have dividends/holdings but no BUY transaction.
+
+    This means the buy happened outside imported data — user needs to provide it.
+    """
+    # Get all ISINs with dividends
+    dividend_isins = set(
+        row[0]
+        for row in db.query(Transaction.isin)
+        .filter(
+            Transaction.type == TransactionType.DIVIDEND.value,
+            Transaction.isin.isnot(None),
+            Transaction.isin != "",
+        )
+        .distinct()
+        .all()
+    )
+
+    # Get all ISINs with holdings
+    holding_isins = set(
+        row[0]
+        for row in db.query(PortfolioHolding.isin).distinct().all()
+    )
+
+    # Get all ISINs with BUY transactions for active stocks (exclude derivatives)
+    buy_isins = set(
+        row[0]
+        for row in db.query(Transaction.isin)
+        .filter(
+            Transaction.type == TransactionType.BUY.value,
+            Transaction.isin.isnot(None),
+            ~Transaction.name.like("[OPT]%"),
+            ~Transaction.name.like("[FX]%"),
+        )
+        .distinct()
+        .all()
+    )
+
+    # ISINs with dividends or holdings but no BUY
+    missing = (dividend_isins | holding_isins) - buy_isins
+    # Exclude empty/None ISINs
+    missing = {isin for isin in missing if isin}
+
+    issues = []
+    for isin in sorted(missing):
+        # Get a representative name
+        name_row = (
+            db.query(Transaction.name)
+            .filter(Transaction.isin == isin, Transaction.name != "")
+            .first()
+        )
+        if not name_row:
+            name_row = (
+                db.query(PortfolioHolding.name)
+                .filter(PortfolioHolding.isin == isin)
+                .first()
+            )
+        name = name_row[0] if name_row else isin
+
+        div_count = (
+            db.query(func.count())
+            .select_from(Transaction)
+            .filter(
+                Transaction.isin == isin,
+                Transaction.type == TransactionType.DIVIDEND.value,
+            )
+            .scalar()
+        )
+        hold_count = (
+            db.query(func.count())
+            .select_from(PortfolioHolding)
+            .filter(PortfolioHolding.isin == isin)
+            .scalar()
+        )
+
+        issue = DataIssue(
+            import_id=import_id,
+            issue_type="missing_buy",
+            severity="warning",
+            isin=isin,
+            name=name,
+            description=(
+                f"ISIN {isin} ({name}) tiene {div_count} dividendo(s) y {hold_count} "
+                f"holding(s) pero ninguna transacción de COMPRA. "
+                f"Puede que la compra se hiciera en otro broker o antes de los datos importados."
+            ),
+            status="needs_input",
+        )
+        issues.append(issue)
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Check 3: Portfolio holdings vs calculated qty mismatch
+# ---------------------------------------------------------------------------
+
+def _check_holdings_mismatch(db: Session, import_id: int | None) -> list[DataIssue]:
+    """Compare portfolio holdings qty with net qty from transactions.
+
+    If a holding says 100 shares but transactions show net 80,
+    something is missing (BUY, split, scrip, etc.).
+    """
+    # Get latest portfolio holdings per ISIN
+    latest_holdings = {}
+    for h in db.query(PortfolioHolding).order_by(PortfolioHolding.fiscal_year.desc()).all():
+        if h.isin not in latest_holdings:
+            latest_holdings[h.isin] = h
+
+    issues = []
+    for isin, holding in sorted(latest_holdings.items(), key=lambda x: x[0]):
+        # Calculate net qty from BUY/SELL transactions
+        buys = (
+            db.query(func.coalesce(func.sum(Transaction.quantity), 0))
+            .filter(
+                Transaction.isin == isin,
+                Transaction.type == TransactionType.BUY.value,
+            )
+            .scalar()
+        ) or Decimal("0")
+
+        sells = (
+            db.query(func.coalesce(func.sum(Transaction.quantity), 0))
+            .filter(
+                Transaction.isin == isin,
+                Transaction.type == TransactionType.SELL.value,
+            )
+            .scalar()
+        ) or Decimal("0")
+
+        net_qty = buys - sells
+        expected_qty = holding.quantity
+
+        # Allow small floating point tolerance
+        if abs(net_qty - expected_qty) > Decimal("0.01"):
+            diff = expected_qty - net_qty
+            severity = "warning" if abs(diff) / max(expected_qty, Decimal("1")) > Decimal("0.1") else "info"
+
+            issue = DataIssue(
+                import_id=import_id,
+                issue_type="holdings_mismatch",
+                severity=severity,
+                isin=isin,
+                name=holding.name,
+                description=(
+                    f"Holdings de {holding.name} ({isin}): broker reporta {expected_qty} uds "
+                    f"a cierre {holding.fiscal_year}, pero transacciones dan {net_qty} "
+                    f"(diferencia: {diff:+}). Posible split, scrip dividend, o transacción faltante."
+                ),
+                status="needs_input",
+                resolution_data=json.dumps({
+                    "expected_qty": str(expected_qty),
+                    "calculated_qty": str(net_qty),
+                    "difference": str(diff),
+                    "fiscal_year": holding.fiscal_year,
+                }),
+            )
+            issues.append(issue)
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Check 4: Missing Yahoo Finance ticker
+# ---------------------------------------------------------------------------
+
+def _check_missing_ticker(db: Session, import_id: int | None) -> list[DataIssue]:
+    """Detect ISINs not in the Yahoo Finance ticker map.
+
+    These will show "—" for current price in the UI.
+    Auto-resolution: try yfinance search.
+    """
+    from backend.services.prices import _ISIN_TICKER_MAP
+
+    # Get all active ISINs (have holdings or open buy positions)
+    active_isins = set()
+
+    # From holdings
+    for row in db.query(PortfolioHolding.isin).distinct().all():
+        active_isins.add(row[0])
+
+    # From BUY transactions with no matching sell (open positions)
+    buy_isins = set(
+        row[0]
+        for row in db.query(Transaction.isin)
+        .filter(
+            Transaction.type == TransactionType.BUY.value,
+            Transaction.isin.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    sell_isins = set(
+        row[0]
+        for row in db.query(Transaction.isin)
+        .filter(
+            Transaction.type == TransactionType.SELL.value,
+            Transaction.isin.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    # ISINs with buys but possibly still open
+    active_isins |= buy_isins
+
+    missing = []
+    for isin in sorted(active_isins):
+        if not isin or isin in _ISIN_TICKER_MAP:
+            continue
+
+        # Skip derivatives and bonds — they don't have stock tickers
+        name = _get_name_for_isin(db, isin)
+        if _DERIVATIVE_PATTERNS.search(name) or _BOND_PATTERNS.search(name):
+            continue
+
+        # Try to auto-resolve via yfinance
+        ticker = _try_resolve_ticker(isin)
+        if ticker:
+            issue = DataIssue(
+                import_id=import_id,
+                issue_type="missing_ticker",
+                severity="info",
+                isin=isin,
+                name=_get_name_for_isin(db, isin),
+                description=(
+                    f"ISIN {isin} no estaba en el mapa de tickers. "
+                    f"Resuelto automáticamente: {ticker}"
+                ),
+                status="auto_resolved",
+                auto_resolution=f"Ticker {ticker} encontrado vía yfinance",
+                resolution_data=json.dumps({"isin": isin, "ticker": ticker}),
+            )
+            missing.append(issue)
+        else:
+            issue = DataIssue(
+                import_id=import_id,
+                issue_type="missing_ticker",
+                severity="warning",
+                isin=isin,
+                name=_get_name_for_isin(db, isin),
+                description=(
+                    f"ISIN {isin} ({_get_name_for_isin(db, isin)}) no tiene ticker de Yahoo Finance. "
+                    f"Los precios actuales no se mostrarán en la UI."
+                ),
+                status="needs_input",
+            )
+            missing.append(issue)
+
+    return missing
+
+
+# ---------------------------------------------------------------------------
+# Check 5: Stock split candidates
+# ---------------------------------------------------------------------------
+
+def _check_split_candidates(db: Session, import_id: int | None) -> list[DataIssue]:
+    """Detect potential stock splits via yfinance history.
+
+    Checks active ISINs for splits reported by Yahoo Finance
+    that might not have been applied to our transactions.
+    """
+    from backend.services.prices import _ISIN_TICKER_MAP
+
+    issues = []
+    # Only check ISINs we have a ticker for
+    active_isins = set()
+    for row in db.query(PortfolioHolding.isin).distinct().all():
+        if row[0] in _ISIN_TICKER_MAP:
+            active_isins.add(row[0])
+
+    for isin in sorted(active_isins):
+        ticker = _ISIN_TICKER_MAP.get(isin)
+        if not ticker:
+            continue
+
+        splits = _get_splits_from_yfinance(ticker)
+        if not splits:
+            continue
+
+        # Check if any split happened AFTER our first buy
+        first_buy = (
+            db.query(func.min(Transaction.trade_date))
+            .filter(
+                Transaction.isin == isin,
+                Transaction.type == TransactionType.BUY.value,
+            )
+            .scalar()
+        )
+        if not first_buy:
+            continue
+
+        for split_date, ratio in splits:
+            if split_date > first_buy:
+                # Check if we already adjusted for this split
+                # (buy price should be split-adjusted if split was applied)
+                issue = DataIssue(
+                    import_id=import_id,
+                    issue_type="potential_split",
+                    severity="info",
+                    isin=isin,
+                    name=_get_name_for_isin(db, isin),
+                    description=(
+                        f"Split detectado para {ticker} ({isin}): ratio {ratio} "
+                        f"el {split_date.isoformat()}. Verificar que las transacciones "
+                        f"y holdings reflejan el split correctamente."
+                    ),
+                    status="needs_input",
+                    resolution_data=json.dumps({
+                        "ticker": ticker,
+                        "split_date": split_date.isoformat(),
+                        "ratio": str(ratio),
+                        "first_buy": first_buy.isoformat(),
+                    }),
+                )
+                issues.append(issue)
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Check 6: Price sanity
+# ---------------------------------------------------------------------------
+
+def _check_price_sanity(db: Session, import_id: int | None) -> list[DataIssue]:
+    """Flag transactions with suspicious prices (0 or negative)."""
+    q = db.query(Transaction).filter(
+        Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
+    )
+    if import_id:
+        q = q.filter(Transaction.import_id == import_id)
+
+    issues = []
+    for tx in q.all():
+        if tx.price == 0 and tx.quantity > 0:
+            # Skip derivatives/options — they can expire worthless at price 0
+            if _DERIVATIVE_PATTERNS.search(tx.name) or _BOND_PATTERNS.search(tx.name):
+                continue
+            # Skip IBKR-style options [OPT] and FX [FX] entries
+            if tx.name.startswith("[OPT]") or tx.name.startswith("[FX]"):
+                continue
+
+            # Could be a scrip dividend (free shares) — check name
+            if _SCRIP_PATTERNS.search(tx.name):
+                issue = DataIssue(
+                    import_id=import_id,
+                    issue_type="scrip_dividend",
+                    severity="info",
+                    isin=tx.isin,
+                    name=tx.name,
+                    description=(
+                        f"Posible scrip dividend: {tx.type} {tx.quantity} uds de {tx.name} "
+                        f"a precio {tx.price}€. Verificar ratio de conversión."
+                    ),
+                    status="needs_input",
+                    resolution_data=json.dumps({
+                        "tx_id": tx.id,
+                        "quantity": str(tx.quantity),
+                        "trade_date": tx.trade_date.isoformat(),
+                    }),
+                )
+                issues.append(issue)
+            else:
+                issue = DataIssue(
+                    import_id=import_id,
+                    issue_type="zero_price",
+                    severity="warning",
+                    isin=tx.isin,
+                    name=tx.name,
+                    description=(
+                        f"Transacción {tx.type} de {tx.name} ({tx.isin}) con precio "
+                        f"{tx.price}€ el {tx.trade_date}. Precio sospechoso."
+                    ),
+                    status="needs_input",
+                    resolution_data=json.dumps({
+                        "tx_id": tx.id,
+                        "price": str(tx.price),
+                    }),
+                )
+                issues.append(issue)
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_name_for_isin(db: Session, isin: str) -> str:
+    """Get a human-readable name for an ISIN from existing data."""
+    row = (
+        db.query(Transaction.name)
+        .filter(Transaction.isin == isin, Transaction.name != "")
+        .first()
+    )
+    if row:
+        return row[0]
+    row = db.query(PortfolioHolding.name).filter(PortfolioHolding.isin == isin).first()
+    return row[0] if row else isin
+
+
+def _try_resolve_ticker(isin: str) -> str | None:
+    """Try to find a Yahoo Finance ticker for an ISIN."""
+    try:
+        import yfinance as yf
+
+        stock = yf.Ticker(isin)
+        info = stock.info
+        if info and info.get("symbol") and info.get("regularMarketPrice"):
+            return info["symbol"]
+    except Exception:
+        pass
+    return None
+
+
+def _get_splits_from_yfinance(ticker: str) -> list[tuple[date, Decimal]]:
+    """Get stock split history from yfinance."""
+    try:
+        import yfinance as yf
+
+        stock = yf.Ticker(ticker)
+        splits = stock.splits
+        if splits is not None and not splits.empty:
+            result = []
+            for dt, ratio in splits.items():
+                split_date = dt.date() if hasattr(dt, "date") else dt
+                result.append((split_date, Decimal(str(ratio))))
+            return result
+    except Exception as e:
+        logger.debug("Failed to get splits for %s: %s", ticker, e)
+    return []

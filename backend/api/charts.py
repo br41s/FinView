@@ -1,5 +1,6 @@
 """Chart and analytics API endpoints."""
 
+import logging
 import re
 from decimal import Decimal
 from typing import Annotated
@@ -11,6 +12,8 @@ from backend.database import DbSession
 from backend.models import PortfolioHolding, TaxLot, Transaction, TransactionType
 
 router = APIRouter(prefix="/charts", tags=["charts"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("/dividends-by-country")
@@ -84,8 +87,8 @@ def top_dividend_payers(
     """Top N dividend-paying companies."""
     q = db.query(
         Transaction.isin,
-        Transaction.name,
-        Transaction.country,
+        func.min(Transaction.name).label("name"),
+        func.max(Transaction.country).label("country"),
         func.sum(Transaction.gross_amount).label("gross"),
         func.sum(Transaction.withholding_tax).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
@@ -96,7 +99,7 @@ def top_dividend_payers(
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
 
     rows = (
-        q.group_by(Transaction.isin, Transaction.name, Transaction.country)
+        q.group_by(Transaction.isin)
         .order_by(func.sum(Transaction.gross_amount).desc())
         .limit(limit)
         .all()
@@ -234,7 +237,7 @@ def _avg_invested_at_dates(buys: list, sells: list, div_dates: list) -> Decimal:
 
 def _compute_isin_yield(
     d, buys_by_isin: dict, sells_by_isin: dict,
-    div_dates_by_isin: dict, price_map: dict,
+    price_map: dict,
     holdings_map: dict | None = None,
 ) -> dict:
     """Compute yield metrics for a single ISIN."""
@@ -243,13 +246,10 @@ def _compute_isin_yield(
 
     buys = buys_by_isin.get(isin, [])
     sells = sells_by_isin.get(isin, [])
-    div_dates = div_dates_by_isin.get(isin, [])
-
-    avg_invested = _avg_invested_at_dates(buys, sells, div_dates)
 
     total_sold = sum((abs(tx.quantity) for tx in sells), Decimal("0"))
     buy_pairs = [(abs(tx.quantity), abs(tx.net_amount_eur)) for tx in buys]
-    _, qty_remaining = _fifo_cost_basis(buy_pairs, total_sold)
+    cost_basis, qty_remaining = _fifo_cost_basis(buy_pairs, total_sold)
 
     latest_price = price_map.get(isin, Decimal("0"))
     current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
@@ -262,7 +262,7 @@ def _compute_isin_yield(
             qty_remaining = abs(holding.quantity)
             latest_price = abs(holding.price)
 
-    yield_on_cost = (total_div / avg_invested * 100) if avg_invested > 0 else Decimal("0")
+    yield_on_cost = (total_div / cost_basis * 100) if cost_basis > 0 else Decimal("0")
     yield_on_value = (total_div / current_value * 100) if current_value > 0 else Decimal("0")
 
     return {
@@ -270,7 +270,7 @@ def _compute_isin_yield(
         "name": d.name,
         "country": d.country,
         "total_dividends": str(total_div),
-        "total_invested": str(round(avg_invested, 2)),
+        "total_invested": str(round(cost_basis, 2)),
         "qty_remaining": str(qty_remaining),
         "latest_price": str(latest_price),
         "current_value": str(round(current_value, 2)),
@@ -352,8 +352,8 @@ def dividend_yield(
         div_dates_by_isin.setdefault(r.isin, []).append(r.trade_date)
 
     # Exclude synthetic transactions created by DEGIRO tax-lot import
-    synthetic_buy_ids = db.query(TaxLot.buy_tx_id).subquery()
-    synthetic_sell_ids = db.query(TaxLot.sell_tx_id).filter(TaxLot.sell_tx_id.isnot(None)).subquery()
+    synthetic_buy_ids = db.query(TaxLot.buy_tx_id).scalar_subquery()
+    synthetic_sell_ids = db.query(TaxLot.sell_tx_id).filter(TaxLot.sell_tx_id.isnot(None)).scalar_subquery()
 
     # Fetch all BUY transactions for these ISINs (ordered by date for FIFO)
     all_buys = (
@@ -384,7 +384,7 @@ def dividend_yield(
     # Latest price per ISIN (exclude synthetic transactions)
     all_synthetic_ids = db.query(TaxLot.buy_tx_id).union(
         db.query(TaxLot.sell_tx_id).filter(TaxLot.sell_tx_id.isnot(None))
-    ).subquery()
+    ).scalar_subquery()
     latest_prices_q = (
         db.query(Transaction.isin, func.abs(Transaction.price).label("price"))
         .filter(Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]))
@@ -394,6 +394,15 @@ def dividend_yield(
         .all()
     )
     price_map = _first_per_key(latest_prices_q, "isin", "price")
+
+    # Overlay with live Yahoo Finance prices when available
+    try:
+        from backend.services.prices import fetch_and_cache_prices
+
+        yahoo_prices = fetch_and_cache_prices(db, div_isins)
+        price_map.update(yahoo_prices)
+    except Exception:
+        logger.debug("Yahoo Finance prices unavailable, using historical prices")
 
     # Fetch portfolio holdings to supplement ISINs without buy/sell history
     holdings_q = db.query(PortfolioHolding).filter(
@@ -406,7 +415,7 @@ def dividend_yield(
         holdings_map.setdefault(h.isin, h)
 
     results = [
-        _compute_isin_yield(d, buys_by_isin, sells_by_isin, div_dates_by_isin, price_map, holdings_map)
+        _compute_isin_yield(d, buys_by_isin, sells_by_isin, price_map, holdings_map)
         for d in div_rows
     ]
     results.sort(key=lambda x: float(x["yield_on_cost"]), reverse=True)
@@ -426,23 +435,23 @@ def withholdings_by_country(
         func.sum(Transaction.net_amount_eur).label("net"),
     ).filter(
         Transaction.type == TransactionType.DIVIDEND.value,
-        Transaction.withholding_tax > 0,
+        Transaction.withholding_tax < 0,
     )
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
 
-    rows = q.group_by("country").order_by(func.sum(Transaction.withholding_tax).desc()).all()
+    rows = q.group_by("country").order_by(func.sum(Transaction.withholding_tax).asc()).all()
 
     return [
         {
             "country": r.country,
             "gross": str(r.gross or 0),
-            "withholding": str(r.withholding or 0),
+            "withholding": str(abs(r.withholding) if r.withholding else 0),
             "net": str(r.net or 0),
             "effective_rate": str(
                 round(
-                    (r.withholding / r.gross * 100) if r.gross and r.gross > 0 else 0,
+                    (abs(r.withholding) / r.gross * 100) if r.gross and r.gross > 0 else 0,
                     2,
                 )
             ),

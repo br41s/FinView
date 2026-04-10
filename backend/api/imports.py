@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
-from backend.api.schemas import ImportRecordOut, ImportResult
+from backend.api.schemas import DataIssueOut, ImportRecordOut, ImportResult, ResolveIssueRequest
 from backend.database import DbSession
 from backend.importers.bbva import (
     compute_file_hash as bbva_compute_hash,
@@ -29,7 +29,7 @@ from backend.importers.ing import (
     parse_ing_report,
 )
 from backend.importers.tr import compute_file_hash, parse_tr_tax_report
-from backend.models import ImportRecord
+from backend.models import DataIssue, ImportRecord
 from backend.services.import_service import (
     import_bbva_report,
     import_dg_report,
@@ -199,3 +199,52 @@ def delete_import(import_id: int, db: DbSession):
     _delete_import_data(db, import_id)
     db.commit()
     return {"status": "deleted", "message": f"Importación {import_id} eliminada"}
+
+
+# ---------------------------------------------------------------------------
+# Data issues endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/issues", response_model=list[DataIssueOut])
+def list_issues(db: DbSession, status: str | None = None, import_id: int | None = None):
+    """List data quality issues, optionally filtered by status or import."""
+    q = db.query(DataIssue).order_by(DataIssue.created_at.desc())
+    if status:
+        q = q.filter(DataIssue.status == status)
+    if import_id:
+        q = q.filter(DataIssue.import_id == import_id)
+    return q.all()
+
+
+@router.post("/issues/{issue_id}/resolve", response_model=DataIssueOut)
+def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession):
+    """Resolve a pending data issue."""
+    issue = db.query(DataIssue).filter(DataIssue.id == issue_id).first()
+    if not issue:
+        raise HTTPException(status_code=404, detail="Issue no encontrado")
+    if issue.status not in ("pending", "needs_input"):
+        raise HTTPException(status_code=400, detail=f"Issue ya está en estado '{issue.status}'")
+
+    if body.action == "dismiss":
+        issue.status = "dismissed"
+    elif body.action == "resolve":
+        issue.status = "resolved"
+        if body.data:
+            import json
+            issue.resolution_data = json.dumps(body.data)
+    else:
+        raise HTTPException(status_code=400, detail=f"Acción no válida: {body.action}")
+
+    db.commit()
+    return issue
+
+
+@router.post("/audit", response_model=list[DataIssueOut])
+def run_full_audit(db: DbSession):
+    """Run the data supervisor on all existing data (full audit)."""
+    from backend.services.data_supervisor import run_checks
+
+    issues = run_checks(db, import_id=None)
+    db.commit()
+    return issues

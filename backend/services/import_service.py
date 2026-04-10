@@ -1,5 +1,6 @@
 """Service to import parsed broker data into the database."""
 
+import logging
 from datetime import date
 from decimal import Decimal
 
@@ -35,6 +36,32 @@ from backend.models import (
     TransactionType,
 )
 from backend.services.fifo_engine import recalculate_cross_broker_fifo
+
+logger = logging.getLogger(__name__)
+
+
+def _run_supervisor(db: Session, import_id: int) -> list[dict]:
+    """Run data supervisor checks and return serialized issues."""
+    from backend.services.data_supervisor import run_checks
+
+    try:
+        issues = run_checks(db, import_id=import_id)
+        return [
+            {
+                "id": i.id,
+                "issue_type": i.issue_type,
+                "severity": i.severity,
+                "isin": i.isin,
+                "name": i.name,
+                "description": i.description,
+                "status": i.status,
+                "auto_resolution": i.auto_resolution,
+            }
+            for i in issues
+        ]
+    except Exception:
+        logger.exception("Data supervisor failed for import %d", import_id)
+        return []
 
 
 TX_TYPE_MAP = {
@@ -303,6 +330,9 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
 
+    # Run data supervisor checks
+    issues = _run_supervisor(db, import_rec.id)
+
     db.commit()
 
     return {
@@ -319,6 +349,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
             "withholdings": len(report.withholdings),
             "fifo_cross_broker": fifo_result["lots_created"],
         },
+        "issues": issues,
     }
 
 
@@ -537,6 +568,9 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
 
+    # Run data supervisor checks
+    issues = _run_supervisor(db, import_rec.id)
+
     db.commit()
 
     return {
@@ -553,6 +587,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
             "gains_summary": len(report.gains_summary),
             "fifo_cross_broker": fifo_result["lots_created"],
         },
+        "issues": issues,
     }
 
 
@@ -628,6 +663,9 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
 
+    # Run data supervisor checks
+    issues = _run_supervisor(db, import_rec.id)
+
     db.commit()
 
     return {
@@ -643,6 +681,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
             "holdings": hold_count,
             "fifo_cross_broker": fifo_result["lots_created"],
         },
+        "issues": issues,
     }
 
 
@@ -731,6 +770,9 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
 
+    # Run data supervisor checks
+    issues = _run_supervisor(db, import_rec.id)
+
     db.commit()
 
     return {
@@ -746,6 +788,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
             "holdings": hold_count,
             "fifo_cross_broker": fifo_result["lots_created"],
         },
+        "issues": issues,
     }
 
 
@@ -797,6 +840,9 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
 
+    # Run data supervisor checks
+    issues = _run_supervisor(db, import_rec.id)
+
     db.commit()
 
     return {
@@ -810,6 +856,7 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
             "casillas": len(casillas),
             "fifo_cross_broker": fifo_result["lots_created"],
         },
+        "issues": issues,
     }
 
 
@@ -971,6 +1018,9 @@ def import_ibkr_report(
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
 
+    # Run data supervisor checks
+    issues = _run_supervisor(db, import_rec.id)
+
     db.commit()
 
     return {
@@ -988,6 +1038,7 @@ def import_ibkr_report(
             "fifo_cross_broker": fifo_result["lots_created"],
             "option_assignments": len(report.assignments),
         },
+        "issues": issues,
         "assignments": [
             {
                 "date": a.assignment_date.isoformat(),

@@ -170,7 +170,7 @@ def _parse_dividends(wb: openpyxl.Workbook) -> list[ParsedTransaction]:
             currency="EUR",
             gross_amount=net_eur + wh_eur,
             net_amount_eur=net_eur,
-            withholding_tax=wh_eur,
+            withholding_tax=-wh_eur,
             withholding_rate=_parse_withholding_rate(row[i_wh_rate]),
         ))
 

@@ -28,6 +28,15 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "ES0139140174": "COL.MC",     # Inmobiliaria Colonial
     "ES0178430E18": "TEF.MC",     # Telefonica
     "ES0113679I37": "BKT.MC",     # Bankinter
+    "ES0105046009": "AENA.MC",    # AENA
+    "ES0109067019": "AMS.MC",     # Amadeus
+    "ES0113211835": "BBVA.MC",    # BBVA
+    "ES0113900J37": "SAN.MC",     # Banco Santander
+    "ES0130670112": "ELE.MC",     # Endesa
+    "ES0144580Y14": "IBE.MC",     # Iberdrola
+    "ES0148396007": "ITX.MC",     # Inditex
+    "ES0173093024": "RED.MC",     # Redeia Corporacion
+    "ES0173516115": "REP.MC",     # Repsol
     # Germany
     "DE0008404005": "ALV.DE",     # Allianz
     "DE0007100000": "MBG.DE",     # Mercedes-Benz
@@ -38,6 +47,7 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "DE0005552004": "DHL.DE",     # DHL Group
     "DE000ENAG999": "EOAN.DE",    # E.ON
     "DE0006048408": "HEN.DE",     # Henkel
+    "DE000DTR0CK8": "DTG.DE",    # Daimler Truck
     # France
     "FR0000120628": "CS.PA",      # AXA
     "FR0000120172": "CA.PA",      # Carrefour
@@ -69,6 +79,12 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "US50155Q1004": "KD",         # Kyndryl
     "US19260Q1076": "COIN",       # Coinbase
     "US66987V1098": "NVS",        # Novartis ADR
+    "US00206R1023": "T",          # AT&T
+    "US0394831020": "ADM",        # Archer Daniels Midland
+    "US45841N1072": "IBKR",       # Interactive Brokers
+    "US49177J1025": "KVUE",       # Kenvue
+    "US5949181045": "MSFT",       # Microsoft
+    "US92343V1044": "VZ",         # Verizon
     # Netherlands
     "NL0010773842": "NN.AS",      # NN Group
     "NL0000379121": "RAND.AS",    # Randstad

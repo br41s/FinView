@@ -6,12 +6,26 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 
+class DataIssueOut(BaseModel):
+    id: int
+    issue_type: str
+    severity: str
+    isin: str | None
+    name: str
+    description: str
+    status: str
+    auto_resolution: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class ImportResult(BaseModel):
     status: str
     message: str | None = None
     import_id: int | None = None
     fiscal_year: int | None = None
     counts: dict[str, int] | None = None
+    issues: list[DataIssueOut] = []
 
 
 class TransactionOut(BaseModel):
@@ -81,6 +95,8 @@ class AggregatedCasillaOut(BaseModel):
     amount_eur: Decimal
     brokers: list[BrokerAmount]
     fifo_adjustment_eur: Decimal | None = None
+    tr_reference_amount: Decimal | None = None
+    validation_status: str | None = None  # "match" | "mismatch" | None
 
 
 class CrossBrokerLotOut(BaseModel):
@@ -168,3 +184,8 @@ class OptionAssignmentOut(BaseModel):
     stock_quantity: Decimal
     stock_isin: str
     premium_eur: Decimal
+
+
+class ResolveIssueRequest(BaseModel):
+    action: str  # "dismiss", "resolve", "add_data"
+    data: dict | None = None  # action-specific payload

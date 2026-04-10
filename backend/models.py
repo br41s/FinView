@@ -280,3 +280,46 @@ class PortfolioHolding(Base):
     __table_args__ = (
         Index("ix_holdings_year_isin", "fiscal_year", "isin"),
     )
+
+
+class DataIssue(Base):
+    """Issues detected by the data supervisor during import."""
+
+    __tablename__ = "data_issues"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    import_id: Mapped[int | None] = mapped_column(ForeignKey("import_records.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    issue_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)  # info, warning, error
+    isin: Mapped[str | None] = mapped_column(String(12))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # pending | auto_resolved | needs_input | resolved | dismissed
+    auto_resolution: Mapped[str | None] = mapped_column(Text)
+    resolution_data: Mapped[str | None] = mapped_column(Text)  # JSON with action details
+
+    __table_args__ = (
+        Index("ix_data_issues_import", "import_id"),
+        Index("ix_data_issues_status", "status"),
+    )
+
+
+class PriceCache(Base):
+    """Cache for Yahoo Finance daily prices."""
+
+    __tablename__ = "price_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    isin: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    yahoo_ticker: Mapped[str | None] = mapped_column(String(20))
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    fetched_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("isin", "fetched_date"),
+    )

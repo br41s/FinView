@@ -1,8 +1,11 @@
 """API endpoints for fiscal / tax data."""
 
+import csv
+import io
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func
 
 from backend.api.schemas import (
@@ -66,6 +69,17 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
             for i in items
         ]
         adj_val = fifo_adj_by_casilla.get(casilla)
+
+        # TR validation: find TR broker's reference amount for this casilla
+        tr_ref = None
+        validation = None
+        for i in items:
+            if i.broker == "TR" and i.tr_reference_amount is not None:
+                tr_ref = i.tr_reference_amount
+                # Compare aggregated total against TR reference
+                validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
+                break
+
         result.append(AggregatedCasillaOut(
             modelo=modelo,
             casilla=casilla,
@@ -73,6 +87,8 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
             amount_eur=total,
             brokers=brokers,
             fifo_adjustment_eur=adj_val,
+            tr_reference_amount=tr_ref,
+            validation_status=validation,
         ))
     return result
 
@@ -257,3 +273,48 @@ def list_option_assignments(db: DbSession, fiscal_year: int):
         .all()
     )
     return records
+
+
+@router.get("/export/{fiscal_year}")
+def export_fiscal_data(
+    db: DbSession,
+    fiscal_year: int,
+    format: str = "json",
+):
+    """Export fiscal data for a year. Supports format=json or format=csv."""
+    casillas = list_casillas(db, fiscal_year=fiscal_year)
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "modelo", "casilla", "descripcion", "importe_eur",
+            "brokers", "ajuste_fifo_eur", "referencia_tr_eur", "validacion",
+        ])
+        for c in casillas:
+            brokers_str = "; ".join(
+                f"{b.broker}: {b.amount_eur}" for b in c.brokers
+            )
+            writer.writerow([
+                c.modelo,
+                c.casilla,
+                c.description,
+                str(c.amount_eur),
+                brokers_str,
+                str(c.fifo_adjustment_eur) if c.fifo_adjustment_eur else "",
+                str(c.tr_reference_amount) if c.tr_reference_amount else "",
+                c.validation_status or "",
+            ])
+        output.seek(0)
+        filename = f"finview_casillas_{fiscal_year}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # Default: JSON
+    return {
+        "fiscal_year": fiscal_year,
+        "casillas": [c.model_dump() for c in casillas],
+    }

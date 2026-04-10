@@ -43,8 +43,8 @@ def dividend_summary(db: DbSession, fiscal_year: int | None = None):
     """Aggregate dividends by ISIN."""
     q = db.query(
         Transaction.isin,
-        Transaction.name,
-        Transaction.country,
+        func.min(Transaction.name).label("name"),
+        func.max(Transaction.country).label("country"),
         func.sum(Transaction.gross_amount).label("total_gross_eur"),
         func.sum(Transaction.withholding_tax).label("total_withholding_eur"),
         func.sum(Transaction.net_amount_eur).label("total_net_eur"),
@@ -54,7 +54,7 @@ def dividend_summary(db: DbSession, fiscal_year: int | None = None):
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
 
-    rows = q.group_by(Transaction.isin, Transaction.name, Transaction.country).all()
+    rows = q.group_by(Transaction.isin).all()
 
     return [
         DividendSummary(
