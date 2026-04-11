@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
+from backend.api.auth import CurrentUser
 from backend.api.schemas import DataIssueOut, ImportRecordOut, ImportResult, ResolveIssueRequest
 from backend.database import DbSession
 from backend.importers.bbva import (
@@ -44,7 +45,7 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 
 
 @router.post("/tr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
-def upload_tr_report(file: UploadFile, db: DbSession):
+def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a Trade Republic Tax Report PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
@@ -58,7 +59,7 @@ def upload_tr_report(file: UploadFile, db: DbSession):
     try:
         file_hash = compute_file_hash(tmp_path)
         report = parse_tr_tax_report(tmp_path)
-        result = import_tr_report(db, report, file_hash, file.filename)
+        result = import_tr_report(db, report, file_hash, file.filename, user_id=user.id)
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
@@ -67,7 +68,7 @@ def upload_tr_report(file: UploadFile, db: DbSession):
 
 
 @router.post("/degiro", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
-def upload_dg_report(file: UploadFile, db: DbSession):
+def upload_dg_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a DEGIRO Annual Report PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
@@ -80,7 +81,7 @@ def upload_dg_report(file: UploadFile, db: DbSession):
     try:
         file_hash = dg_compute_hash(tmp_path)
         report = parse_dg_annual_report(tmp_path)
-        result = import_dg_report(db, report, file_hash, file.filename)
+        result = import_dg_report(db, report, file_hash, file.filename, user_id=user.id)
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
@@ -89,7 +90,7 @@ def upload_dg_report(file: UploadFile, db: DbSession):
 
 
 @router.post("/ibkr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos CSV"}, 422: {"description": "Error al procesar el CSV"}})
-def upload_ibkr_report(file: UploadFile, db: DbSession):
+def upload_ibkr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an IBKR Activity Statement CSV."""
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos CSV")
@@ -102,7 +103,7 @@ def upload_ibkr_report(file: UploadFile, db: DbSession):
     try:
         file_hash = ibkr_compute_hash(tmp_path)
         report = parse_ibkr_activity_statement(tmp_path)
-        result = import_ibkr_report(db, report, file_hash, file.filename)
+        result = import_ibkr_report(db, report, file_hash, file.filename, user_id=user.id)
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar el CSV: {e}")
@@ -111,7 +112,7 @@ def upload_ibkr_report(file: UploadFile, db: DbSession):
 
 
 @router.post("/ing", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
-def upload_ing_report(file: UploadFile, db: DbSession):
+def upload_ing_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an ING Información Fiscal PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
@@ -124,7 +125,7 @@ def upload_ing_report(file: UploadFile, db: DbSession):
     try:
         file_hash = ing_compute_hash(tmp_path)
         report = parse_ing_report(tmp_path)
-        result = import_ing_report(db, report, file_hash, file.filename)
+        result = import_ing_report(db, report, file_hash, file.filename, user_id=user.id)
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
@@ -133,7 +134,7 @@ def upload_ing_report(file: UploadFile, db: DbSession):
 
 
 @router.post("/bbva", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar los PDFs"}})
-def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3 BBVA PDFs")], db: DbSession):
+def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3 BBVA PDFs")], db: DbSession, user: CurrentUser):
     """Upload 1-3 BBVA PDFs (operaciones, dividendos, patrimonio)."""
     if not files or len(files) > 3:
         raise HTTPException(status_code=400, detail="Se aceptan entre 1 y 3 archivos PDF de BBVA")
@@ -153,7 +154,7 @@ def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3
         file_hash = bbva_compute_hash(tmp_paths)
         report = parse_bbva_pdfs(tmp_paths)
         filenames = ", ".join(f.filename or "unknown" for f in files)
-        result = import_bbva_report(db, report, file_hash, filenames)
+        result = import_bbva_report(db, report, file_hash, filenames, user_id=user.id)
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar los PDFs de BBVA: {e}")
@@ -163,7 +164,7 @@ def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3
 
 
 @router.post("/etoro", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos XLSX"}, 422: {"description": "Error al procesar el XLSX"}})
-def upload_etoro_report(file: UploadFile, db: DbSession):
+def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an eToro annual account statement XLSX."""
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos XLSX")
@@ -176,7 +177,7 @@ def upload_etoro_report(file: UploadFile, db: DbSession):
     try:
         file_hash = etoro_compute_hash(tmp_path)
         report = parse_etoro_statement(tmp_path)
-        result = import_etoro_report(db, report, file_hash, file.filename)
+        result = import_etoro_report(db, report, file_hash, file.filename, user_id=user.id)
         return result
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al procesar el XLSX de eToro: {e}")

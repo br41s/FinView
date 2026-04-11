@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { LoadingDots } from "@/components/loading-dots";
 
 interface Subscription {
   tier: string;
@@ -30,7 +31,7 @@ export default function BillingPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <p className="text-muted-foreground">Cargando...</p>
+          <LoadingDots text="Cargando facturación" />
         </div>
       }
     >
@@ -71,7 +72,7 @@ function BillingContent() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Cargando...</p>
+        <LoadingDots text="Cargando facturación" />
       </div>
     );
   }

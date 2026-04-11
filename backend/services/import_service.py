@@ -74,7 +74,7 @@ TX_TYPE_MAP = {
 }
 
 
-def _get_or_create_account(db: Session, broker: Broker, account_id: str) -> Account:
+def _get_or_create_account(db: Session, broker: Broker, account_id: str, user_id: int | None = None) -> Account:
     account = (
         db.query(Account)
         .filter(Account.broker == broker.value, Account.account_id == account_id)
@@ -85,8 +85,12 @@ def _get_or_create_account(db: Session, broker: Broker, account_id: str) -> Acco
             broker=broker.value,
             account_id=account_id,
             name=f"{broker.value} - {account_id}",
+            user_id=user_id,
         )
         db.add(account)
+        db.flush()
+    elif account.user_id is None and user_id is not None:
+        account.user_id = user_id
         db.flush()
     return account
 
@@ -274,7 +278,7 @@ def _store_casillas(
     return results
 
 
-def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename: str) -> dict:
+def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed TR Tax Report into the database.
 
     Returns summary dict with counts and status.
@@ -295,7 +299,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.TR, report.client_id)
+    account = _get_or_create_account(db, Broker.TR, report.client_id, user_id)
 
     import_rec = ImportRecord(
         account_id=account.id,
@@ -514,7 +518,7 @@ def _compute_broker_casillas(
     return results
 
 
-def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str) -> dict:
+def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed DEGIRO Annual Report into the database."""
     existing = _check_duplicate(db, file_hash, Broker.DEGIRO)
     if existing:
@@ -531,7 +535,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.DEGIRO, "DEGIRO")
+    account = _get_or_create_account(db, Broker.DEGIRO, "DEGIRO", user_id)
 
     import_rec = ImportRecord(
         account_id=account.id,
@@ -591,7 +595,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     }
 
 
-def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, filename: str) -> dict:
+def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed ING Información Fiscal PDF into the database."""
     existing = _check_duplicate(db, file_hash, Broker.ING)
     if existing:
@@ -607,7 +611,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.ING, "ING")
+    account = _get_or_create_account(db, Broker.ING, "ING", user_id)
 
     record_count = len(report.interest) + len(report.dividends) + len(report.transactions)
     import_rec = ImportRecord(
@@ -685,7 +689,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
     }
 
 
-def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, filename: str) -> dict:
+def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed BBVA annual report (from 1-3 PDFs) into the database."""
     existing = _check_duplicate(db, file_hash, Broker.BBVA)
     if existing:
@@ -701,7 +705,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.BBVA, "BBVA")
+    account = _get_or_create_account(db, Broker.BBVA, "BBVA", user_id)
 
     record_count = len(report.dividends) + len(report.transactions)
     import_rec = ImportRecord(
@@ -792,7 +796,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
     }
 
 
-def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, filename: str) -> dict:
+def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed eToro annual account statement into the database."""
     existing = _check_duplicate(db, file_hash, Broker.ETORO)
     if existing:
@@ -808,7 +812,7 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.ETORO, "ETORO")
+    account = _get_or_create_account(db, Broker.ETORO, "ETORO", user_id)
 
     record_count = len(report.dividends) + len(report.transactions)
     import_rec = ImportRecord(
@@ -939,7 +943,7 @@ def _create_ibkr_tax_lots(
 
 
 def import_ibkr_report(
-    db: Session, report: IBKRAnnualReport, file_hash: str, filename: str
+    db: Session, report: IBKRAnnualReport, file_hash: str, filename: str, user_id: int | None = None
 ) -> dict:
     """Import a parsed IBKR Activity Statement into the database."""
     existing = _check_duplicate(db, file_hash, Broker.IBKR)
@@ -957,7 +961,7 @@ def import_ibkr_report(
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.IBKR, report.account_id)
+    account = _get_or_create_account(db, Broker.IBKR, report.account_id, user_id)
 
     import_rec = ImportRecord(
         account_id=account.id,

@@ -108,6 +108,29 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Import — prominent CTA */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={currentView === "importar"}
+                  onClick={() => onViewChange("importar")}
+                  tooltip="Importar datos"
+                  className={
+                    currentView === "importar"
+                      ? undefined
+                      : "bg-white text-black hover:bg-white/90 hover:text-black font-medium"
+                  }
+                >
+                  <Upload />
+                  <span>Importar</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         {/* Year Selector */}
         {fiscalYears.length > 0 && (
           <SidebarGroup>
@@ -224,24 +247,6 @@ export function AppSidebar({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Import */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={currentView === "importar"}
-                  onClick={() => onViewChange("importar")}
-                  tooltip="Importar datos"
-                >
-                  <Upload />
-                  <span>Importar</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingDots } from "@/components/loading-dots";
 import { AppSidebar, type View } from "@/components/app-sidebar";
 import { FileUpload } from "@/components/FileUpload";
 import { ImportedFilesList } from "@/components/ImportedFilesList";
@@ -58,20 +59,8 @@ import {
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {["s1", "s2", "s3", "s4"].map((id) => (
-          <Skeleton key={id} className="h-24 rounded-xl" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-72 rounded-xl" />
-        <Skeleton className="h-72 rounded-xl" />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-72 rounded-xl" />
-        <Skeleton className="h-72 rounded-xl" />
-      </div>
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <LoadingDots text="Cargando datos fiscales" />
     </div>
   );
 }

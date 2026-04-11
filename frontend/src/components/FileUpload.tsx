@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
   uploadTRReport,
@@ -21,6 +21,51 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
+
+const BROKERS = [
+  {
+    key: "tr",
+    label: "Trade Republic",
+    accept: ".pdf",
+    color: "bg-neutral-800 hover:bg-neutral-700 border-neutral-600",
+    multi: false,
+  },
+  {
+    key: "degiro",
+    label: "DEGIRO",
+    accept: ".pdf",
+    color: "bg-orange-950/50 hover:bg-orange-900/50 border-orange-700/40",
+    multi: false,
+  },
+  {
+    key: "ibkr",
+    label: "IBKR",
+    accept: ".csv",
+    color: "bg-red-950/50 hover:bg-red-900/50 border-red-700/40",
+    multi: false,
+  },
+  {
+    key: "ing",
+    label: "ING",
+    accept: ".pdf",
+    color: "bg-orange-950/40 hover:bg-orange-900/40 border-orange-600/30",
+    multi: false,
+  },
+  {
+    key: "bbva",
+    label: "BBVA",
+    accept: ".pdf",
+    color: "bg-blue-950/50 hover:bg-blue-900/50 border-blue-700/40",
+    multi: true,
+  },
+  {
+    key: "etoro",
+    label: "eToro",
+    accept: ".xlsx",
+    color: "bg-green-950/50 hover:bg-green-900/50 border-green-700/40",
+    multi: false,
+  },
+] as const;
 
 function detectBroker(
   filename: string,
@@ -61,8 +106,10 @@ export function FileUpload({
 }: Readonly<{ onImported: () => void }>) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingBroker, setLoadingBroker] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const brokerInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const notifyResult = useCallback(
     (res: ImportResult) => {
@@ -114,6 +161,7 @@ export function FileUpload({
       const hasBBVA = brokers.includes("bbva");
 
       setLoading(true);
+      setLoadingBroker(null);
       setError(null);
       setResult(null);
 
@@ -212,6 +260,76 @@ export function FileUpload({
             </>
           )}
         </Button>
+
+        {/* Broker-specific buttons */}
+        <div className="mt-6 border-t border-border pt-5">
+          <p className="text-xs text-muted-foreground mb-3">
+            O selecciona directamente por broker:
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {BROKERS.map((b) => (
+              <div key={b.key}>
+                <input
+                  type="file"
+                  accept={b.accept}
+                  multiple={b.multi}
+                  className="hidden"
+                  aria-label={`Importar archivo de ${b.label}`}
+                  ref={(el) => {
+                    brokerInputRefs.current[b.key] = el;
+                  }}
+                  onChange={async (e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length === 0) return;
+                    setLoading(true);
+                    setLoadingBroker(b.key);
+                    setError(null);
+                    setResult(null);
+                    try {
+                      let res: ImportResult;
+                      if (b.key === "bbva") {
+                        res = await uploadBBVAReport(files);
+                      } else {
+                        res = await uploadBroker(files[0], b.key);
+                      }
+                      setResult(res);
+                      notifyResult(res);
+                    } catch (err: unknown) {
+                      const msg =
+                        err instanceof Error
+                          ? err.message
+                          : "Error desconocido";
+                      setError(msg);
+                      toast.error("Error de importación", { description: msg });
+                    } finally {
+                      setLoading(false);
+                      setLoadingBroker(null);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`w-full text-xs border ${b.color}`}
+                  disabled={loading}
+                  onClick={() => brokerInputRefs.current[b.key]?.click()}
+                >
+                  {loadingBroker === b.key ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <span className="font-medium">{b.label}</span>
+                      <span className="text-muted-foreground ml-1 hidden sm:inline">
+                        {b.accept.replace(".", "").toUpperCase()}
+                      </span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {(result?.status === "success" || result?.status === "replaced") && (
           <div className="mt-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-sm">

@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingDots } from "@/components/loading-dots";
 
 const BROKERS = ["BBVA", "DEGIRO", "ETORO", "IBKR", "ING", "TR"];
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF"];
@@ -124,9 +125,8 @@ function AccountsContent() {
 
   if (loading) {
     return (
-      <div className="space-y-6 p-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64" />
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <LoadingDots text="Cargando cuentas" />
       </div>
     );
   }

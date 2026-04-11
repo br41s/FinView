@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingDots } from "@/components/loading-dots";
 
 interface Position {
   isin: string;
@@ -92,14 +93,8 @@ function PortfolioContent() {
 
   if (loading) {
     return (
-      <div className="space-y-6 p-6">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-28" />
-          ))}
-        </div>
-        <Skeleton className="h-96" />
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <LoadingDots text="Obteniendo precios de mercado" />
       </div>
     );
   }

@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingDots } from "@/components/loading-dots";
 
 interface AccountBreakdown {
   broker: string;
@@ -106,14 +107,8 @@ function PositionDetailContent() {
 
   if (loading) {
     return (
-      <div className="space-y-6 p-6">
-        <Skeleton className="h-8 w-64" />
-        <div className="grid gap-4 sm:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-28" />
-          ))}
-        </div>
-        <Skeleton className="h-64" />
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <LoadingDots text="Obteniendo datos de la posición" />
       </div>
     );
   }
