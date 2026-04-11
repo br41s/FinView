@@ -52,20 +52,37 @@ class TransactionType(PyEnum):
     CORPORATE_ACTION = "CORPORATE_ACTION"
 
 
+class User(Base):
+    """Application user (multi-tenant owner of accounts)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), default="")
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    accounts: Mapped[list["Account"]] = relationship(back_populates="user")
+
+
 class Account(Base):
     __tablename__ = "accounts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     broker: Mapped[str] = mapped_column(Enum(Broker), nullable=False)
     account_id: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(100), default="")
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    user: Mapped["User | None"] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
     imports: Mapped[list["ImportRecord"]] = relationship(back_populates="account")
 
-    __table_args__ = (UniqueConstraint("broker", "account_id"),)
+    __table_args__ = (UniqueConstraint("broker", "account_id", "user_id"),)
 
 
 class Transaction(Base):

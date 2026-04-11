@@ -10,11 +10,14 @@ import {
   Calendar,
   ShieldCheck,
   CalendarRange,
+  LogOut,
 } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -83,6 +86,7 @@ export function AppSidebar({
   counts,
 }: Readonly<AppSidebarProps>) {
   const showFiscal = selectedYear !== null;
+  const { data: session } = useSession();
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
@@ -239,6 +243,22 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip={session?.user?.email ?? "Cerrar sesión"}
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
+              <LogOut />
+              <span className="truncate">
+                {session?.user?.name || session?.user?.email || "Salir"}
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

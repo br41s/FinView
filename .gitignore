@@ -21,3 +21,4 @@ node_modules/
 # Temp
 test_parser.py
 test_api.py
+.env.local

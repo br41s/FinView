@@ -3,6 +3,7 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
@@ -24,8 +25,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <TooltipProvider>{children}</TooltipProvider>
-        <Toaster richColors position="bottom-right" />
+        <AuthProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+          <Toaster richColors position="bottom-right" />
+        </AuthProvider>
       </body>
     </html>
   );

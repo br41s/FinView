@@ -1,3 +1,5 @@
+import { getSession } from "next-auth/react";
+
 const BASE = "/api";
 
 function qs(params: Record<string, string | number | undefined>): string {
@@ -9,8 +11,17 @@ function qs(params: Record<string, string | number | undefined>): string {
   );
 }
 
+async function authHeaders(): Promise<HeadersInit> {
+  const session = await getSession();
+  if (session?.accessToken) {
+    return { Authorization: `Bearer ${session.accessToken}` };
+  }
+  return {};
+}
+
 async function fetchJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}${path}`, { cache: "no-store", headers });
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
@@ -18,7 +29,12 @@ async function fetchJSON<T>(path: string): Promise<T> {
 export async function uploadTRReport(file: File) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE}/imports/tr`, { method: "POST", body: form });
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/imports/tr`, {
+    method: "POST",
+    body: form,
+    headers,
+  });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
@@ -26,9 +42,11 @@ export async function uploadTRReport(file: File) {
 export async function uploadDGReport(file: File) {
   const form = new FormData();
   form.append("file", file);
+  const headers = await authHeaders();
   const res = await fetch(`${BASE}/imports/degiro`, {
     method: "POST",
     body: form,
+    headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
@@ -37,9 +55,11 @@ export async function uploadDGReport(file: File) {
 export async function uploadIBKRReport(file: File) {
   const form = new FormData();
   form.append("file", file);
+  const headers = await authHeaders();
   const res = await fetch(`${BASE}/imports/ibkr`, {
     method: "POST",
     body: form,
+    headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
@@ -48,9 +68,11 @@ export async function uploadIBKRReport(file: File) {
 export async function uploadINGReport(file: File) {
   const form = new FormData();
   form.append("file", file);
+  const headers = await authHeaders();
   const res = await fetch(`${BASE}/imports/ing`, {
     method: "POST",
     body: form,
+    headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
@@ -61,9 +83,11 @@ export async function uploadBBVAReport(files: File[]) {
   for (const file of files) {
     form.append("files", file);
   }
+  const headers = await authHeaders();
   const res = await fetch(`${BASE}/imports/bbva`, {
     method: "POST",
     body: form,
+    headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
@@ -72,16 +96,22 @@ export async function uploadBBVAReport(files: File[]) {
 export async function uploadEToroReport(file: File) {
   const form = new FormData();
   form.append("file", file);
+  const headers = await authHeaders();
   const res = await fetch(`${BASE}/imports/etoro`, {
     method: "POST",
     body: form,
+    headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
   return res.json();
 }
 
 export async function deleteImport(importId: number) {
-  const res = await fetch(`${BASE}/imports/${importId}`, { method: "DELETE" });
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/imports/${importId}`, {
+    method: "DELETE",
+    headers,
+  });
   if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
   return res.json();
 }
@@ -93,8 +123,10 @@ export const api = {
   casillas: (year?: number) =>
     fetchJSON(`/fiscal/casillas${qs({ fiscal_year: year })}`),
   exportFiscal: async (year: number, format: "json" | "csv" = "json") => {
+    const headers = await authHeaders();
     const res = await fetch(`${BASE}/fiscal/export/${year}?format=${format}`, {
       cache: "no-store",
+      headers,
     });
     if (!res.ok) throw new Error(`Export error: ${await res.text()}`);
     if (format === "csv") {

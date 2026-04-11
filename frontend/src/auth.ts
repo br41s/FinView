@@ -1,0 +1,67 @@
+import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
+
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  providers: [
+    Credentials({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const res = await fetch("http://localhost:8000/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: credentials?.email,
+            password: credentials?.password,
+          }),
+        });
+
+        if (!res.ok) return null;
+
+        const data = await res.json();
+        return {
+          id: String(data.user.id),
+          email: data.user.email,
+          name: data.user.name,
+          accessToken: data.token,
+        };
+      },
+    }),
+  ],
+  pages: {
+    signIn: "/login",
+  },
+  session: { strategy: "jwt" },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.accessToken = (user as { accessToken: string }).accessToken;
+        token.userId = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.accessToken = token.accessToken as string;
+      if (session.user) {
+        session.user.id = token.userId as string;
+      }
+      return session;
+    },
+    authorized({ auth, request: { nextUrl } }) {
+      const isLoggedIn = !!auth?.user;
+      const isAuthPage =
+        nextUrl.pathname.startsWith("/login") ||
+        nextUrl.pathname.startsWith("/register");
+
+      if (isAuthPage) {
+        if (isLoggedIn) return Response.redirect(new URL("/", nextUrl));
+        return true;
+      }
+
+      return isLoggedIn;
+    },
+  },
+});
