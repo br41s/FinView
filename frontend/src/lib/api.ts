@@ -19,9 +19,13 @@ async function authHeaders(): Promise<HeadersInit> {
   return {};
 }
 
-async function fetchJSON<T>(path: string): Promise<T> {
+async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = await authHeaders();
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store", headers });
+  const res = await fetch(`${BASE}${path}`, {
+    cache: "no-store",
+    ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string>) },
+  });
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
@@ -168,6 +172,8 @@ export const api = {
       fetchJSON(`/portfolio/summary${skipPrices ? "?skip_prices=true" : ""}`),
     positionDetail: (isin: string) =>
       fetchJSON(`/portfolio/positions/${encodeURIComponent(isin)}`),
+    warmPrices: () =>
+      fetchJSON("/portfolio/warm-prices", { method: "POST" }).catch(() => {}),
   },
 
   // Accounts

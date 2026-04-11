@@ -125,6 +125,10 @@ export default function Home() {
   const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
     const y = year ?? undefined;
+
+    // Fire-and-forget: warm price cache in background so portfolio/options load fast
+    api.portfolio.warmPrices();
+
     try {
       const [dashData, casData, divData, gainsData] = await Promise.all([
         api.dashboard(y) as Promise<DashboardStats>,

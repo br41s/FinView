@@ -1,16 +1,58 @@
 """API endpoints for portfolio positions and holdings."""
 
+import threading
+
 from fastapi import APIRouter, HTTPException
 
 from backend.api.auth import CurrentUser
-from backend.database import DbSession
+from backend.database import DbSession, SessionLocal
 from backend.services.portfolio_service import (
     get_open_positions,
     get_portfolio_summary,
     get_position_detail,
 )
+from backend.services.prices import fetch_and_cache_prices
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
+
+# Track in-flight warm requests per user to avoid duplicate work
+_warming: set[int] = set()
+_warming_lock = threading.Lock()
+
+
+def _warm_prices_background(user_id: int) -> None:
+    """Fetch and cache prices for all open positions in a background thread."""
+    try:
+        db = SessionLocal()
+        try:
+            positions = get_open_positions(db, user_id, skip_prices=True)
+            isins = list({p.isin for p in positions})
+            if isins:
+                fetch_and_cache_prices(db, isins)
+        finally:
+            db.close()
+    finally:
+        with _warming_lock:
+            _warming.discard(user_id)
+
+
+@router.post("/warm-prices")
+def warm_prices(user: CurrentUser):
+    """Trigger background price fetch for all open positions.
+
+    Returns immediately. Prices land in the DB cache so subsequent
+    calls to /positions or /summary are instant.
+    """
+    with _warming_lock:
+        if user.id in _warming:
+            return {"status": "already_warming"}
+        _warming.add(user.id)
+
+    thread = threading.Thread(
+        target=_warm_prices_background, args=(user.id,), daemon=True,
+    )
+    thread.start()
+    return {"status": "warming"}
 
 
 @router.get("/positions")
