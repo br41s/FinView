@@ -162,8 +162,10 @@ export const api = {
 
   // Portfolio
   portfolio: {
-    positions: () => fetchJSON("/portfolio/positions"),
-    summary: () => fetchJSON("/portfolio/summary"),
+    positions: (skipPrices?: boolean) =>
+      fetchJSON(`/portfolio/positions${skipPrices ? "?skip_prices=true" : ""}`),
+    summary: (skipPrices?: boolean) =>
+      fetchJSON(`/portfolio/summary${skipPrices ? "?skip_prices=true" : ""}`),
     positionDetail: (isin: string) =>
       fetchJSON(`/portfolio/positions/${encodeURIComponent(isin)}`),
   },

@@ -124,6 +124,7 @@ function PortfolioContent() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pricesLoaded, setPricesLoaded] = useState(false);
   const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
   const [details, setDetails] = useState<Map<string, PositionDetail>>(
     new Map(),
@@ -133,15 +134,25 @@ function PortfolioContent() {
   useEffect(() => {
     async function load() {
       try {
+        // Phase 1: instant — positions + summary without external prices
         const [pos, sum] = await Promise.all([
-          api.portfolio.positions() as Promise<Position[]>,
-          api.portfolio.summary() as Promise<Summary>,
+          api.portfolio.positions(true) as Promise<Position[]>,
+          api.portfolio.summary(true) as Promise<Summary>,
         ]);
         setPositions(pos);
         setSummary(sum);
+        setLoading(false);
+
+        // Phase 2: fetch live prices in background
+        const [posWithPrices, sumWithPrices] = await Promise.all([
+          api.portfolio.positions() as Promise<Position[]>,
+          api.portfolio.summary() as Promise<Summary>,
+        ]);
+        setPositions(posWithPrices);
+        setSummary(sumWithPrices);
+        setPricesLoaded(true);
       } catch (e) {
         console.error("Failed to load portfolio:", e);
-      } finally {
         setLoading(false);
       }
     }
@@ -175,7 +186,7 @@ function PortfolioContent() {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-6">
-        <LoadingDots text="Obteniendo precios de mercado" />
+        <LoadingDots text="Cargando cartera" />
       </div>
     );
   }
@@ -217,12 +228,18 @@ function PortfolioContent() {
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {fmt(summary.total_market_value)} €
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Invertido: {fmt(summary.total_invested)} €
-              </p>
+              {pricesLoaded ? (
+                <>
+                  <div className="text-2xl font-bold">
+                    {fmt(summary.total_market_value)} €
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Invertido: {fmt(summary.total_invested)} €
+                  </p>
+                </>
+              ) : (
+                <LoadingDots text="" />
+              )}
             </CardContent>
           </Card>
 
@@ -231,17 +248,27 @@ function PortfolioContent() {
               <CardTitle className="text-sm font-medium">
                 Rentabilidad
               </CardTitle>
-              <PlIcon className={`h-4 w-4 ${plColor}`} />
+              {pricesLoaded ? (
+                <PlIcon className={`h-4 w-4 ${plColor}`} />
+              ) : (
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              )}
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${plColor}`}>
-                {summary.unrealized_pl >= 0 ? "+" : ""}
-                {fmt(summary.unrealized_pl)} €
-              </div>
-              <p className={`text-xs ${plColor}`}>
-                {summary.unrealized_pl_pct >= 0 ? "+" : ""}
-                {fmt(summary.unrealized_pl_pct)}%
-              </p>
+              {pricesLoaded ? (
+                <>
+                  <div className={`text-2xl font-bold ${plColor}`}>
+                    {summary.unrealized_pl >= 0 ? "+" : ""}
+                    {fmt(summary.unrealized_pl)} €
+                  </div>
+                  <p className={`text-xs ${plColor}`}>
+                    {summary.unrealized_pl_pct >= 0 ? "+" : ""}
+                    {fmt(summary.unrealized_pl_pct)}%
+                  </p>
+                </>
+              ) : (
+                <LoadingDots text="" />
+              )}
             </CardContent>
           </Card>
 
@@ -355,19 +382,53 @@ function PortfolioContent() {
                           {fmt(p.avg_cost_eur, 2)} €
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {p.current_price_eur
-                            ? `${fmt(p.current_price_eur, 2)} €`
-                            : "—"}
+                          {!pricesLoaded ? (
+                            <span className="inline-flex gap-0.5 text-muted-foreground">
+                              <span className="animate-pulse">·</span>
+                              <span className="animate-pulse [animation-delay:150ms]">
+                                ·
+                              </span>
+                              <span className="animate-pulse [animation-delay:300ms]">
+                                ·
+                              </span>
+                            </span>
+                          ) : p.current_price_eur ? (
+                            `${fmt(p.current_price_eur, 2)} €`
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                         <TableCell className="text-right tabular-nums font-medium">
-                          {p.market_value_eur
-                            ? `${fmt(p.market_value_eur)} €`
-                            : "—"}
+                          {!pricesLoaded ? (
+                            <span className="inline-flex gap-0.5 text-muted-foreground">
+                              <span className="animate-pulse">·</span>
+                              <span className="animate-pulse [animation-delay:150ms]">
+                                ·
+                              </span>
+                              <span className="animate-pulse [animation-delay:300ms]">
+                                ·
+                              </span>
+                            </span>
+                          ) : p.market_value_eur ? (
+                            `${fmt(p.market_value_eur)} €`
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                         <TableCell
-                          className={`text-right tabular-nums ${plClass}`}
+                          className={`text-right tabular-nums ${pricesLoaded ? plClass : ""}`}
                         >
-                          {p.unrealized_pl_eur != null ? (
+                          {!pricesLoaded ? (
+                            <span className="inline-flex gap-0.5 text-muted-foreground">
+                              <span className="animate-pulse">·</span>
+                              <span className="animate-pulse [animation-delay:150ms]">
+                                ·
+                              </span>
+                              <span className="animate-pulse [animation-delay:300ms]">
+                                ·
+                              </span>
+                            </span>
+                          ) : p.unrealized_pl_eur != null ? (
                             <div>
                               <div>
                                 {plPositive ? "+" : ""}
@@ -383,7 +444,21 @@ function PortfolioContent() {
                           )}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {p.weight_pct ? `${fmt(p.weight_pct, 1)}%` : "—"}
+                          {!pricesLoaded ? (
+                            <span className="inline-flex gap-0.5 text-muted-foreground">
+                              <span className="animate-pulse">·</span>
+                              <span className="animate-pulse [animation-delay:150ms]">
+                                ·
+                              </span>
+                              <span className="animate-pulse [animation-delay:300ms]">
+                                ·
+                              </span>
+                            </span>
+                          ) : p.weight_pct ? (
+                            `${fmt(p.weight_pct, 1)}%`
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                       </TableRow>
 

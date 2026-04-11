@@ -35,10 +35,12 @@ class Position:
     weight_pct: Decimal | None = None  # filled later
 
 
-def get_open_positions(db: Session, user_id: int | None = None) -> list[Position]:
+def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: bool = False) -> list[Position]:
     """Compute open positions by aggregating BUY - SELL per ISIN per account.
 
     Uses FIFO-style average cost: sum(cost of buys consumed) / remaining qty.
+    When *skip_prices* is True the expensive yfinance call is skipped and
+    price-dependent fields (current_price, market_value, P&L, weight) stay None.
     """
     # Get accounts
     account_q = db.query(Account)
@@ -109,9 +111,9 @@ def get_open_positions(db: Session, user_id: int | None = None) -> list[Position
         if pos.quantity > ZERO:
             pos.avg_cost_eur = pos.total_cost_eur / pos.quantity
 
-    # Fetch live prices
+    # Fetch live prices (skippable for fast first-paint)
     isins = list({p.isin for p in open_positions})
-    if isins:
+    if isins and not skip_prices:
         prices = fetch_and_cache_prices(db, isins)
         total_market_value = ZERO
 
@@ -140,9 +142,9 @@ def get_open_positions(db: Session, user_id: int | None = None) -> list[Position
     return open_positions
 
 
-def get_portfolio_summary(db: Session, user_id: int | None = None) -> dict:
+def get_portfolio_summary(db: Session, user_id: int | None = None, *, skip_prices: bool = False) -> dict:
     """Return aggregated portfolio stats."""
-    positions = get_open_positions(db, user_id)
+    positions = get_open_positions(db, user_id, skip_prices=skip_prices)
 
     total_cost = sum((p.total_cost_eur for p in positions), ZERO)
     total_value = sum((p.market_value_eur for p in positions if p.market_value_eur), ZERO)

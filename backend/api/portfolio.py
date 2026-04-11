@@ -14,9 +14,9 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
 @router.get("/positions")
-def list_positions(db: DbSession, user: CurrentUser):
+def list_positions(db: DbSession, user: CurrentUser, skip_prices: bool = False):
     """Get all open positions with live prices and P&L."""
-    positions = get_open_positions(db, user.id)
+    positions = get_open_positions(db, user.id, skip_prices=skip_prices)
     return [
         {
             "isin": p.isin,
@@ -38,9 +38,9 @@ def list_positions(db: DbSession, user: CurrentUser):
 
 
 @router.get("/summary")
-def portfolio_summary(db: DbSession, user: CurrentUser):
+def portfolio_summary(db: DbSession, user: CurrentUser, skip_prices: bool = False):
     """Aggregated portfolio statistics."""
-    return get_portfolio_summary(db, user.id)
+    return get_portfolio_summary(db, user.id, skip_prices=skip_prices)
 
 
 @router.get("/positions/{isin}")
