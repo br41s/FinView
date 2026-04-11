@@ -1,0 +1,256 @@
+"""Options monitor API — watchlist, snapshots, alerts, agent control."""
+
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import func
+
+from backend.api.auth import CurrentUser
+from backend.api.schemas import (
+    AgentCycleResult,
+    AgentStatusOut,
+    OptionsAlertOut,
+    OptionsSnapshotOut,
+    UnusualActivityOut,
+    WatchlistItemIn,
+    WatchlistItemOut,
+)
+from backend.config import settings
+from backend.database import DbSession
+from backend.models import (
+    OptionsAgentLog,
+    OptionsAlert,
+    OptionsSnapshot,
+    UnusualActivity,
+    WatchlistItem,
+)
+from backend.services.options_agent import run_cycle
+
+router = APIRouter(prefix="/options", tags=["options"])
+
+# ── Watchlist CRUD ───────────────────────────────────────────────────
+
+
+@router.get("/watchlist", response_model=list[WatchlistItemOut])
+def list_watchlist(db: DbSession, user: CurrentUser):
+    return (
+        db.query(WatchlistItem)
+        .filter(WatchlistItem.user_id == user.id)
+        .order_by(WatchlistItem.created_at)
+        .all()
+    )
+
+
+@router.post("/watchlist", response_model=WatchlistItemOut, status_code=201)
+def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
+    existing = (
+        db.query(WatchlistItem)
+        .filter(WatchlistItem.user_id == user.id, WatchlistItem.ticker == body.ticker.upper())
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Ticker already in watchlist")
+
+    item = WatchlistItem(
+        user_id=user.id,
+        ticker=body.ticker.upper(),
+        name=body.name,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/watchlist/{item_id}")
+def toggle_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
+    item = (
+        db.query(WatchlistItem)
+        .filter(WatchlistItem.id == item_id, WatchlistItem.user_id == user.id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item.enabled = not item.enabled
+    db.commit()
+    return {"id": item.id, "enabled": item.enabled}
+
+
+@router.delete("/watchlist/{item_id}", status_code=204)
+def remove_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
+    item = (
+        db.query(WatchlistItem)
+        .filter(WatchlistItem.id == item_id, WatchlistItem.user_id == user.id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(item)
+    db.commit()
+
+
+# ── Snapshots ────────────────────────────────────────────────────────
+
+
+@router.get("/snapshots", response_model=list[OptionsSnapshotOut])
+def list_snapshots(
+    db: DbSession,
+    user: CurrentUser,
+    ticker: str | None = None,
+    days: int = 7,
+    limit: int = 100,
+):
+    q = (
+        db.query(OptionsSnapshot)
+        .filter(
+            OptionsSnapshot.user_id == user.id,
+            OptionsSnapshot.timestamp >= datetime.utcnow() - timedelta(days=days),
+        )
+    )
+    if ticker:
+        q = q.filter(OptionsSnapshot.ticker == ticker.upper())
+    return q.order_by(OptionsSnapshot.timestamp.desc()).limit(limit).all()
+
+
+@router.get("/snapshots/{snapshot_id}/chain")
+def get_snapshot_chain(snapshot_id: int, db: DbSession, user: CurrentUser):
+    snap = (
+        db.query(OptionsSnapshot)
+        .filter(OptionsSnapshot.id == snapshot_id, OptionsSnapshot.user_id == user.id)
+        .first()
+    )
+    if not snap:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    import json
+    chain = json.loads(snap.chain_data) if snap.chain_data else {"calls": [], "puts": []}
+    return {"ticker": snap.ticker, "timestamp": snap.timestamp, **chain}
+
+
+# ── Alerts ───────────────────────────────────────────────────────────
+
+
+@router.get("/alerts", response_model=list[OptionsAlertOut])
+def list_alerts(
+    db: DbSession,
+    user: CurrentUser,
+    ticker: str | None = None,
+    unread: bool = False,
+    days: int = 7,
+    limit: int = 100,
+):
+    q = (
+        db.query(OptionsAlert)
+        .filter(
+            OptionsAlert.user_id == user.id,
+            OptionsAlert.timestamp >= datetime.utcnow() - timedelta(days=days),
+        )
+    )
+    if ticker:
+        q = q.filter(OptionsAlert.ticker == ticker.upper())
+    if unread:
+        q = q.filter(OptionsAlert.acknowledged.is_(False))
+    return q.order_by(OptionsAlert.timestamp.desc()).limit(limit).all()
+
+
+@router.patch("/alerts/{alert_id}/ack")
+def acknowledge_alert(alert_id: int, db: DbSession, user: CurrentUser):
+    alert = (
+        db.query(OptionsAlert)
+        .filter(OptionsAlert.id == alert_id, OptionsAlert.user_id == user.id)
+        .first()
+    )
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    alert.acknowledged = True
+    db.commit()
+    return {"id": alert.id, "acknowledged": True}
+
+
+@router.post("/alerts/ack-all")
+def acknowledge_all_alerts(db: DbSession, user: CurrentUser):
+    count = (
+        db.query(OptionsAlert)
+        .filter(OptionsAlert.user_id == user.id, OptionsAlert.acknowledged.is_(False))
+        .update({"acknowledged": True})
+    )
+    db.commit()
+    return {"acknowledged": count}
+
+
+# ── Unusual Activity ─────────────────────────────────────────────────
+
+
+@router.get("/unusual", response_model=list[UnusualActivityOut])
+def list_unusual_activity(
+    db: DbSession,
+    user: CurrentUser,
+    ticker: str | None = None,
+    days: int = 7,
+    limit: int = 50,
+):
+    q = (
+        db.query(UnusualActivity)
+        .filter(
+            UnusualActivity.user_id == user.id,
+            UnusualActivity.timestamp >= datetime.utcnow() - timedelta(days=days),
+        )
+    )
+    if ticker:
+        q = q.filter(UnusualActivity.ticker == ticker.upper())
+    return q.order_by(UnusualActivity.timestamp.desc()).limit(limit).all()
+
+
+# ── Agent Control ────────────────────────────────────────────────────
+
+# Module-level flag for scheduler state
+_scheduler_running = False
+
+
+@router.post("/agent/run", response_model=AgentCycleResult)
+def trigger_cycle(db: DbSession, user: CurrentUser):
+    """Manually trigger one monitoring cycle."""
+    result = run_cycle(user.id)
+    return AgentCycleResult(**result)
+
+
+@router.get("/agent/status", response_model=AgentStatusOut)
+def agent_status(db: DbSession, user: CurrentUser):
+    last_log = (
+        db.query(OptionsAgentLog)
+        .filter(OptionsAgentLog.user_id == user.id)
+        .order_by(OptionsAgentLog.timestamp.desc())
+        .first()
+    )
+    total = (
+        db.query(func.count(OptionsAgentLog.id))
+        .filter(OptionsAgentLog.user_id == user.id)
+        .scalar()
+    )
+    return AgentStatusOut(
+        running=_scheduler_running,
+        interval_minutes=settings.options_monitor_interval_minutes,
+        last_cycle=last_log.timestamp if last_log else None,
+        total_cycles=total or 0,
+    )
+
+
+@router.post("/agent/start")
+def start_scheduler(user: CurrentUser):
+    """Start the APScheduler background job for this user."""
+    global _scheduler_running
+    from backend.services.options_scheduler import start_user_schedule
+
+    start_user_schedule(user.id)
+    _scheduler_running = True
+    return {"status": "started", "interval_minutes": settings.options_monitor_interval_minutes}
+
+
+@router.post("/agent/stop")
+def stop_scheduler(user: CurrentUser):
+    """Stop the APScheduler background job."""
+    global _scheduler_running
+    from backend.services.options_scheduler import stop_user_schedule
+
+    stop_user_schedule(user.id)
+    _scheduler_running = False
+    return {"status": "stopped"}

@@ -229,3 +229,87 @@ class YearlyMetrics(BaseModel):
 
 class YearlyComparisonResult(BaseModel):
     years: list[YearlyMetrics]
+
+
+# ── Options Monitor Schemas ──────────────────────────────────────────
+
+
+class WatchlistItemIn(BaseModel):
+    ticker: str
+    name: str = ""
+
+
+class WatchlistItemOut(BaseModel):
+    id: int
+    ticker: str
+    name: str
+    enabled: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OptionsSnapshotOut(BaseModel):
+    id: int
+    timestamp: datetime
+    ticker: str
+    current_price: Decimal
+    call_volume: int
+    put_volume: int
+    call_open_interest: int
+    put_open_interest: int
+    put_call_ratio_volume: Decimal | None
+    put_call_ratio_oi: Decimal | None
+    avg_call_iv: Decimal | None
+    avg_put_iv: Decimal | None
+    historical_volatility: Decimal | None
+    iv_skew: Decimal | None
+    market_sentiment: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class OptionsAlertOut(BaseModel):
+    id: int
+    timestamp: datetime
+    ticker: str
+    alert_type: str
+    message: str
+    severity: str
+    acknowledged: bool
+
+    model_config = {"from_attributes": True}
+
+
+class UnusualActivityOut(BaseModel):
+    id: int
+    timestamp: datetime
+    ticker: str
+    option_type: str
+    strike: Decimal
+    expiration: str
+    volume: int
+    open_interest: int
+    vol_oi_ratio: Decimal
+    implied_volatility: Decimal | None
+    last_price: Decimal | None
+
+    model_config = {"from_attributes": True}
+
+
+class AgentCycleResult(BaseModel):
+    status: str
+    cycle: int | None = None
+    tickers_analyzed: int | None = None
+    snapshots_saved: int | None = None
+    alerts: int | None = None
+    unusual: int | None = None
+    execution_time: float | None = None
+    claude_analysis: str | None = None
+
+
+class AgentStatusOut(BaseModel):
+    running: bool
+    interval_minutes: int
+    last_cycle: datetime | None = None
+    total_cycles: int = 0

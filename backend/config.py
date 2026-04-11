@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     stripe_price_unlimited: str = ""  # Stripe Price ID for Unlimited plan
     frontend_url: str = "http://localhost:3000"
 
+    # Options monitor
+    anthropic_api_key: str = ""
+    ntfy_topic: str = ""
+    notify_email_to: str = ""
+    notify_email_from: str = ""
+    notify_email_password: str = ""
+    options_monitor_interval_minutes: int = 15
+
     model_config = {"env_prefix": "FINVIEW_"}
 
 

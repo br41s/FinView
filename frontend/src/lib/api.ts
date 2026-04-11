@@ -251,4 +251,94 @@ export const api = {
     dividendsByCompanyYearly: () =>
       fetchJSON("/charts/dividends-by-company-yearly"),
   },
+
+  // Options monitor
+  options: {
+    watchlist: () => fetchJSON("/options/watchlist"),
+    addToWatchlist: async (ticker: string, name = "") => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/watchlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker, name }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    toggleWatchlistItem: async (id: number) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/watchlist/${id}`, {
+        method: "PATCH",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    removeFromWatchlist: async (id: number) => {
+      const headers = await authHeaders();
+      await fetch(`${BASE}/options/watchlist/${id}`, {
+        method: "DELETE",
+        headers,
+      });
+    },
+    snapshots: (ticker?: string, days = 7) =>
+      fetchJSON(`/options/snapshots${qs({ ticker, days })}`),
+    snapshotChain: (id: number) => fetchJSON(`/options/snapshots/${id}/chain`),
+    alerts: (ticker?: string, unread?: boolean, days = 7) =>
+      fetchJSON(
+        `/options/alerts${qs({
+          ticker,
+          unread: unread ? "true" : undefined,
+          days,
+        })}`,
+      ),
+    ackAlert: async (id: number) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/alerts/${id}/ack`, {
+        method: "PATCH",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    ackAllAlerts: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/alerts/ack-all`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    unusual: (ticker?: string, days = 7) =>
+      fetchJSON(`/options/unusual${qs({ ticker, days })}`),
+    agentStatus: () => fetchJSON("/options/agent/status"),
+    runCycle: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/agent/run`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    startAgent: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/agent/start`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    stopAgent: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/agent/stop`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+  },
 };

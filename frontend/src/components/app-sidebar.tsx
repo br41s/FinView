@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   BarChart3,
   TrendingUp,
   Coins,
@@ -255,6 +256,15 @@ export function AppSidebar({
             >
               <Briefcase />
               <span>Cartera</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Opciones"
+              onClick={() => (window.location.href = "/options")}
+            >
+              <Activity />
+              <span>Opciones</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
