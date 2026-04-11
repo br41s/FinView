@@ -30,6 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppSidebar, type View } from "@/components/app-sidebar";
 import { FileUpload } from "@/components/FileUpload";
+import { ImportedFilesList } from "@/components/ImportedFilesList";
 import { StatsCards } from "@/components/StatsCards";
 import { CasillasTable } from "@/components/CasillasTable";
 import { DividendsTable } from "@/components/DividendsTable";
@@ -113,6 +114,7 @@ export default function Home() {
   const [gains, setGains] = useState<CapitalGain[]>([]);
   const [view, setView] = useState<View>("graficas");
   const [loading, setLoading] = useState(true);
+  const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   // Chart data
@@ -260,8 +262,20 @@ export default function Home() {
         <main className="flex-1 overflow-auto p-3 sm:p-6">
           {/* Import view */}
           {view === "importar" && (
-            <div className="max-w-3xl mx-auto">
-              <FileUpload onImported={() => loadData(selectedYear)} />
+            <div className="max-w-3xl mx-auto space-y-6">
+              <FileUpload
+                onImported={() => {
+                  loadData(selectedYear);
+                  setImportRefreshKey((k) => k + 1);
+                }}
+              />
+              <ImportedFilesList
+                key={importRefreshKey}
+                onDeleted={() => {
+                  loadData(selectedYear);
+                  setImportRefreshKey((k) => k + 1);
+                }}
+              />
             </div>
           )}
 
