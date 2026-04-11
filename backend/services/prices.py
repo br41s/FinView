@@ -267,19 +267,25 @@ def _fetch_yahoo_prices(tickers: list[str]) -> dict[str, float]:
         if data.empty:
             return result
 
-        if len(tickers) == 1:
-            # Single ticker: data columns are just price columns
-            last_close = data["Close"].dropna().iloc[-1] if not data["Close"].dropna().empty else None
-            if last_close is not None:
-                result[tickers[0]] = float(last_close)
-        else:
-            # Multiple tickers: MultiIndex columns (price_type, ticker)
-            close_data = data["Close"]
+        # yfinance ≥0.2.x always returns MultiIndex columns (price, ticker)
+        close_data = data["Close"]
+        if isinstance(close_data, __import__("pandas").Series):
+            # Fallback: single ticker returns a Series
+            vals = close_data.dropna()
+            if not vals.empty:
+                result[tickers[0]] = float(vals.iloc[-1])
+        elif isinstance(close_data, __import__("pandas").DataFrame):
+            if close_data.columns.nlevels > 1:
+                close_data = close_data.droplevel(0, axis=1)
             for ticker in tickers:
                 if ticker in close_data.columns:
                     series = close_data[ticker].dropna()
                     if not series.empty:
                         result[ticker] = float(series.iloc[-1])
+                elif len(tickers) == 1 and len(close_data.columns) == 1:
+                    series = close_data.iloc[:, 0].dropna()
+                    if not series.empty:
+                        result[tickers[0]] = float(series.iloc[-1])
     except Exception:
         logger.exception("Error fetching Yahoo Finance prices")
 

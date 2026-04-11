@@ -12,6 +12,7 @@ import {
   CalendarRange,
   LogOut,
   CreditCard,
+  Briefcase,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -247,6 +248,15 @@ export function AppSidebar({
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Cartera"
+              onClick={() => (window.location.href = "/portfolio")}
+            >
+              <Briefcase />
+              <span>Cartera</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Facturación"

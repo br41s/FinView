@@ -160,6 +160,52 @@ export const api = {
   },
   imports: () => fetchJSON("/imports/"),
 
+  // Portfolio
+  portfolio: {
+    positions: () => fetchJSON("/portfolio/positions"),
+    summary: () => fetchJSON("/portfolio/summary"),
+    positionDetail: (isin: string) =>
+      fetchJSON(`/portfolio/positions/${encodeURIComponent(isin)}`),
+  },
+
+  // Accounts
+  accounts: {
+    list: () => fetchJSON("/accounts/"),
+    create: async (data: {
+      broker: string;
+      account_id: string;
+      name?: string;
+      currency?: string;
+    }) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/accounts/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    update: async (id: number, data: { name?: string; currency?: string }) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/accounts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    delete: async (id: number) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/accounts/${id}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+    },
+  },
+
   // Billing
   billing: {
     subscription: () => fetchJSON("/billing/subscription"),

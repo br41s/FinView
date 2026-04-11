@@ -1,19 +1,50 @@
 """API endpoints for transactions, dividends, holdings."""
 
+from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func
 
+from backend.api.auth import CurrentUser
 from backend.api.schemas import (
     CapitalGainOut,
     DividendSummary,
     TransactionOut,
 )
 from backend.database import DbSession, LimitParam, OffsetParam
-from backend.models import TaxLot, Transaction, TransactionType
+from backend.models import Account, TaxLot, Transaction, TransactionType
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+# --------------- manual transaction schemas ---------------
+
+
+class TransactionCreate(BaseModel):
+    account_id: int
+    type: str  # BUY, SELL, DIVIDEND, etc.
+    trade_date: date
+    isin: str | None = None
+    ticker: str | None = None
+    name: str = ""
+    country: str | None = None
+    quantity: Decimal
+    price: Decimal
+    currency: str = "EUR"
+    exchange_rate: Decimal = Decimal("1")
+    fees: Decimal = Decimal("0")
+    withholding_tax: Decimal = Decimal("0")
+
+
+class TransactionUpdate(BaseModel):
+    name: str | None = None
+    ticker: str | None = None
+    country: str | None = None
+    quantity: Decimal | None = None
+    price: Decimal | None = None
+    fees: Decimal | None = None
 
 
 @router.get("/", response_model=list[TransactionOut])
@@ -95,3 +126,113 @@ def capital_gains(db: DbSession, fiscal_year: int | None = None):
         )
         for lot in lots
     ]
+
+
+# --------------- manual transaction CRUD ---------------
+
+
+@router.post("/", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
+def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser):
+    """Manually add a transaction."""
+    # Validate account ownership
+    account = (
+        db.query(Account)
+        .filter(Account.id == data.account_id, Account.user_id == user.id)
+        .first()
+    )
+    if not account:
+        raise HTTPException(404, "Account not found")
+
+    # Validate type
+    valid_types = [t.value for t in TransactionType]
+    if data.type not in valid_types:
+        raise HTTPException(400, f"Invalid type. Must be one of: {valid_types}")
+
+    gross = data.quantity * data.price
+    net_eur = (gross - data.fees - data.withholding_tax) * data.exchange_rate
+
+    tx = Transaction(
+        account_id=data.account_id,
+        import_id=None,  # manual entry
+        type=data.type,
+        trade_date=data.trade_date,
+        isin=data.isin,
+        ticker=data.ticker,
+        name=data.name,
+        country=data.country,
+        quantity=data.quantity,
+        price=data.price,
+        currency=data.currency,
+        exchange_rate=data.exchange_rate,
+        gross_amount=gross,
+        fees=data.fees,
+        withholding_tax=data.withholding_tax,
+        net_amount_eur=net_eur,
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
+@router.patch("/{tx_id}", response_model=TransactionOut)
+def update_transaction(tx_id: int, data: TransactionUpdate, db: DbSession, user: CurrentUser):
+    """Update a manually-added transaction (import_id must be NULL)."""
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+
+    # Verify ownership
+    account = (
+        db.query(Account)
+        .filter(Account.id == tx.account_id, Account.user_id == user.id)
+        .first()
+    )
+    if not account:
+        raise HTTPException(404, "Transaction not found")
+
+    if tx.import_id is not None:
+        raise HTTPException(409, "Cannot edit imported transactions. Delete the import instead.")
+
+    if data.name is not None:
+        tx.name = data.name
+    if data.ticker is not None:
+        tx.ticker = data.ticker
+    if data.country is not None:
+        tx.country = data.country
+    if data.quantity is not None:
+        tx.quantity = data.quantity
+    if data.price is not None:
+        tx.price = data.price
+    if data.fees is not None:
+        tx.fees = data.fees
+
+    # Recompute amounts
+    tx.gross_amount = tx.quantity * tx.price
+    tx.net_amount_eur = (tx.gross_amount - tx.fees - tx.withholding_tax) * tx.exchange_rate
+
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
+@router.delete("/{tx_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_transaction(tx_id: int, db: DbSession, user: CurrentUser):
+    """Delete a manually-added transaction."""
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+
+    account = (
+        db.query(Account)
+        .filter(Account.id == tx.account_id, Account.user_id == user.id)
+        .first()
+    )
+    if not account:
+        raise HTTPException(404, "Transaction not found")
+
+    if tx.import_id is not None:
+        raise HTTPException(409, "Cannot delete imported transactions. Delete the import instead.")
+
+    db.delete(tx)
+    db.commit()
