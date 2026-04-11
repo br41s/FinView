@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { Fragment, useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
@@ -10,6 +10,8 @@ import {
   PieChart,
   BarChart3,
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -59,6 +61,40 @@ interface Summary {
   unrealized_pl_pct: number;
 }
 
+interface AccountBreakdown {
+  broker: string;
+  account_id: number;
+  quantity: number;
+  cost_eur: number;
+  value_eur: number | null;
+}
+
+interface TxHistory {
+  id: number;
+  type: string;
+  date: string;
+  quantity: number;
+  price: number;
+  currency: string;
+  net_eur: number;
+}
+
+interface PositionDetail {
+  isin: string;
+  name: string;
+  ticker: string | null;
+  country: string | null;
+  total_quantity: number;
+  avg_cost_eur: number;
+  total_cost_eur: number;
+  current_price_eur: number | null;
+  market_value_eur: number;
+  unrealized_pl_eur: number;
+  unrealized_pl_pct: number;
+  accounts: AccountBreakdown[];
+  transactions: TxHistory[];
+}
+
 function fmt(n: number | null | undefined, decimals = 2): string {
   if (n == null) return "—";
   return n.toLocaleString("es-ES", {
@@ -67,11 +103,32 @@ function fmt(n: number | null | undefined, decimals = 2): string {
   });
 }
 
+const TX_LABELS: Record<string, string> = {
+  BUY: "Compra",
+  SELL: "Venta",
+  DIVIDEND: "Dividendo",
+  INTEREST: "Interés",
+  FEE: "Comisión",
+  SPINOFF: "Spinoff",
+  CORPORATE_ACTION: "Acción corporativa",
+};
+
+const TX_COLORS: Record<string, string> = {
+  BUY: "bg-emerald-100 text-emerald-700",
+  SELL: "bg-red-100 text-red-700",
+  DIVIDEND: "bg-blue-100 text-blue-700",
+};
+
 function PortfolioContent() {
   const router = useRouter();
   const [positions, setPositions] = useState<Position[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
+  const [details, setDetails] = useState<Map<string, PositionDetail>>(
+    new Map(),
+  );
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -90,6 +147,30 @@ function PortfolioContent() {
     }
     load();
   }, []);
+
+  const handleExpand = useCallback(
+    async (isin: string) => {
+      if (expandedIsin === isin) {
+        setExpandedIsin(null);
+        return;
+      }
+      setExpandedIsin(isin);
+      if (!details.has(isin)) {
+        setLoadingDetail(isin);
+        try {
+          const data = (await api.portfolio.positionDetail(
+            isin,
+          )) as PositionDetail;
+          setDetails((prev) => new Map(prev).set(isin, data));
+        } catch (e) {
+          console.error("Failed to load detail:", e);
+        } finally {
+          setLoadingDetail(null);
+        }
+      }
+    },
+    [expandedIsin, details],
+  );
 
   if (loading) {
     return (
@@ -120,7 +201,7 @@ function PortfolioContent() {
           </Button>
           <Button variant="outline" onClick={() => router.push("/")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Dashboard fiscal
+            Dashboard
           </Button>
         </div>
       </div>
@@ -203,7 +284,7 @@ function PortfolioContent() {
             <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
             <CardTitle className="mb-2">Sin posiciones abiertas</CardTitle>
             <CardDescription>
-              Importa datos desde el dashboard fiscal o añade transacciones
+              Importa datos desde el dashboard o añade transacciones
               manualmente.
             </CardDescription>
           </CardContent>
@@ -212,11 +293,15 @@ function PortfolioContent() {
         <Card>
           <CardHeader>
             <CardTitle>Posiciones ({positions.length})</CardTitle>
+            <CardDescription>
+              Pulsa en una posición para ver detalle y transacciones
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8" />
                   <TableHead>Activo</TableHead>
                   <TableHead className="text-right">Cantidad</TableHead>
                   <TableHead className="text-right">Coste medio</TableHead>
@@ -228,70 +313,238 @@ function PortfolioContent() {
               </TableHeader>
               <TableBody>
                 {positions.map((p) => {
+                  const key = `${p.isin}-${p.broker}`;
+                  const isExpanded = expandedIsin === p.isin;
+                  const detail = details.get(p.isin);
+                  const isLoadingThis = loadingDetail === p.isin;
                   const plPositive =
                     p.unrealized_pl_eur != null && p.unrealized_pl_eur >= 0;
                   const plClass = plPositive
                     ? "text-emerald-600"
                     : "text-red-600";
                   return (
-                    <TableRow
-                      key={`${p.isin}-${p.broker}`}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() =>
-                        router.push(`/portfolio/${encodeURIComponent(p.isin)}`)
-                      }
-                    >
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {p.ticker || p.isin}
-                          </span>
-                          <span className="text-xs text-muted-foreground truncate max-w-50">
-                            {p.name}
-                          </span>
-                        </div>
-                        <Badge variant="outline" className="text-[10px] mt-1">
-                          {p.broker}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {fmt(p.quantity, 2)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {fmt(p.avg_cost_eur, 2)} €
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {p.current_price_eur
-                          ? `${fmt(p.current_price_eur, 2)} €`
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">
-                        {p.market_value_eur
-                          ? `${fmt(p.market_value_eur)} €`
-                          : "—"}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right tabular-nums ${plClass}`}
+                    <Fragment key={key}>
+                      <TableRow
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleExpand(p.isin)}
                       >
-                        {p.unrealized_pl_eur != null ? (
-                          <div>
-                            <div>
-                              {plPositive ? "+" : ""}
-                              {fmt(p.unrealized_pl_eur)} €
-                            </div>
-                            <div className="text-xs">
-                              {plPositive ? "+" : ""}
-                              {fmt(p.unrealized_pl_pct)}%
-                            </div>
+                        <TableCell className="w-8 pr-0">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {p.ticker || p.isin}
+                            </span>
+                            <span className="text-xs text-muted-foreground truncate max-w-50">
+                              {p.name}
+                            </span>
                           </div>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {p.weight_pct ? `${fmt(p.weight_pct, 1)}%` : "—"}
-                      </TableCell>
-                    </TableRow>
+                          <Badge variant="outline" className="text-[10px] mt-1">
+                            {p.broker}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {fmt(p.quantity, 2)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {fmt(p.avg_cost_eur, 2)} €
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {p.current_price_eur
+                            ? `${fmt(p.current_price_eur, 2)} €`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">
+                          {p.market_value_eur
+                            ? `${fmt(p.market_value_eur)} €`
+                            : "—"}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right tabular-nums ${plClass}`}
+                        >
+                          {p.unrealized_pl_eur != null ? (
+                            <div>
+                              <div>
+                                {plPositive ? "+" : ""}
+                                {fmt(p.unrealized_pl_eur)} €
+                              </div>
+                              <div className="text-xs">
+                                {plPositive ? "+" : ""}
+                                {fmt(p.unrealized_pl_pct)}%
+                              </div>
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {p.weight_pct ? `${fmt(p.weight_pct, 1)}%` : "—"}
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Expanded detail */}
+                      {isExpanded && (
+                        <TableRow key={`${key}-detail`}>
+                          <TableCell colSpan={8} className="bg-muted/30 p-4">
+                            {isLoadingThis && !detail ? (
+                              <LoadingDots text="Cargando detalle" />
+                            ) : detail ? (
+                              <div className="space-y-4">
+                                {/* Summary grid */}
+                                <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      ISIN
+                                    </p>
+                                    <p className="font-mono text-sm">
+                                      {p.isin}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      Total invertido
+                                    </p>
+                                    <p className="font-medium">
+                                      {fmt(p.total_cost_eur)} €
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      Rentabilidad
+                                    </p>
+                                    <p className={`font-medium ${plClass}`}>
+                                      {p.unrealized_pl_pct != null
+                                        ? `${p.unrealized_pl_pct >= 0 ? "+" : ""}${fmt(p.unrealized_pl_pct)}%`
+                                        : "—"}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      Peso cartera
+                                    </p>
+                                    <p className="font-medium">
+                                      {p.weight_pct
+                                        ? `${fmt(p.weight_pct, 1)}%`
+                                        : "—"}
+                                    </p>
+                                  </div>
+                                  {p.country && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">
+                                        País
+                                      </p>
+                                      <p className="font-medium">{p.country}</p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Account breakdown */}
+                                {detail.accounts.length > 1 && (
+                                  <div>
+                                    <h4 className="mb-2 text-sm font-semibold">
+                                      Distribución por cuenta
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                                      {detail.accounts.map((a) => (
+                                        <div
+                                          key={a.account_id}
+                                          className="rounded-md border p-2"
+                                        >
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px]"
+                                          >
+                                            {a.broker}
+                                          </Badge>
+                                          <p className="mt-1 text-sm">
+                                            {fmt(a.quantity)} uds
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {a.value_eur
+                                              ? `${fmt(a.value_eur)} €`
+                                              : `${fmt(a.cost_eur)} € (coste)`}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Transaction history */}
+                                <div>
+                                  <h4 className="mb-2 text-sm font-semibold">
+                                    Historial ({detail.transactions.length}{" "}
+                                    transacciones)
+                                  </h4>
+                                  {detail.transactions.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                      No hay transacciones registradas
+                                    </p>
+                                  ) : (
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>Tipo</TableHead>
+                                          <TableHead>Fecha</TableHead>
+                                          <TableHead className="text-right">
+                                            Cantidad
+                                          </TableHead>
+                                          <TableHead className="text-right">
+                                            Precio
+                                          </TableHead>
+                                          <TableHead className="text-right">
+                                            Neto (EUR)
+                                          </TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {detail.transactions.map((tx) => (
+                                          <TableRow key={tx.id}>
+                                            <TableCell>
+                                              <Badge
+                                                className={
+                                                  TX_COLORS[tx.type] ||
+                                                  "bg-gray-100 text-gray-700"
+                                                }
+                                              >
+                                                {TX_LABELS[tx.type] || tx.type}
+                                              </Badge>
+                                            </TableCell>
+                                            <TableCell className="tabular-nums">
+                                              {new Date(
+                                                tx.date,
+                                              ).toLocaleDateString("es-ES")}
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                              {fmt(tx.quantity)}
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                              {fmt(tx.price)} {tx.currency}
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums font-medium">
+                                              {fmt(tx.net_eur)} €
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Error al cargar detalle
+                              </p>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>

@@ -237,6 +237,12 @@ export default function OptionsPage() {
     setWatchlist((prev) => prev.filter((w) => w.id !== id));
   }
 
+  async function handleAddPositionToWatchlist(ticker: string, name: string) {
+    await api.options.addToWatchlist(ticker, name);
+    const wl = (await api.options.watchlist()) as WatchlistItem[];
+    setWatchlist(wl);
+  }
+
   async function handleAckAlert(id: number) {
     await api.options.ackAlert(id);
     setAlerts((prev) =>
@@ -258,6 +264,7 @@ export default function OptionsPage() {
   }
 
   const unreadAlerts = alerts.filter((a) => !a.acknowledged);
+  const watchlistTickers = new Set(watchlist.map((w) => w.ticker));
 
   // Get alerts/snapshots/unusual for a specific ticker
   function getTickerAlerts(ticker: string) {
@@ -427,6 +434,7 @@ export default function OptionsPage() {
                       <TableHead className="text-right">Precio</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                       <TableHead className="text-right">P&L</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -501,13 +509,39 @@ export default function OptionsPage() {
                                 "—"
                               )}
                             </TableCell>
+                            <TableCell className="text-center">
+                              {watchlistTickers.has(ticker) ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[10px] px-1.5"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </Badge>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  title="Añadir a watchlist"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddPositionToWatchlist(
+                                      ticker,
+                                      p.name,
+                                    );
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              )}
+                            </TableCell>
                           </TableRow>
 
                           {/* Expanded details */}
                           {isExpanded && (
                             <TableRow key={`${p.isin}-${p.broker}-detail`}>
                               <TableCell
-                                colSpan={8}
+                                colSpan={9}
                                 className="bg-muted/30 p-4"
                               >
                                 <div className="space-y-4">

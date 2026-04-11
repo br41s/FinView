@@ -248,7 +248,7 @@ function AccountsContent() {
             <CardTitle className="mb-2">Sin cuentas</CardTitle>
             <CardDescription>
               Crea tu primera cuenta de broker o importa datos desde el
-              dashboard fiscal.
+              dashboard.
             </CardDescription>
           </CardContent>
         </Card>

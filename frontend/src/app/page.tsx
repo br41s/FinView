@@ -18,7 +18,6 @@ import type {
   DividendYield,
   WithholdingsByCountry,
   CompanyDividendsYearly,
-  CrossValidationResult,
   YearlyMetrics,
 } from "@/lib/types";
 import {
@@ -37,7 +36,6 @@ import { CasillasTable } from "@/components/CasillasTable";
 import { DividendsTable } from "@/components/DividendsTable";
 import { CapitalGainsTable } from "@/components/CapitalGainsTable";
 import { DividendYieldTable } from "@/components/DividendYieldTable";
-import { CrossValidationTable } from "@/components/CrossValidationTable";
 import { YearlyComparisonView } from "@/components/YearlyComparisonView";
 import { DividendsByCountryChart } from "@/components/charts/DividendsByCountryChart";
 import { DividendsMonthlyChart } from "@/components/charts/DividendsMonthlyChart";
@@ -53,7 +51,6 @@ import {
   Coins,
   FileText,
   LineChart,
-  ShieldCheck,
   CalendarRange,
 } from "lucide-react";
 
@@ -91,7 +88,6 @@ const viewTitles: Record<View, string> = {
   casillas: "Casillas fiscales",
   dividendos: "Dividendos",
   ganancias: "Ganancias de capital",
-  validacion: "Validación cruzada TR",
   comparativa: "Comparativa anual",
   importar: "Importar datos",
 };
@@ -124,8 +120,6 @@ export default function Home() {
   const [optionAssignments, setOptionAssignments] = useState<
     OptionAssignment[]
   >([]);
-  const [crossValidation, setCrossValidation] =
-    useState<CrossValidationResult | null>(null);
   const [yearlyComparison, setYearlyComparison] = useState<YearlyMetrics[]>([]);
 
   const loadData = useCallback(async (year?: number | null) => {
@@ -144,21 +138,18 @@ export default function Home() {
       setGains(gainsData);
 
       if (y) {
-        const [cblData, adjData, assignData, cvData] = await Promise.all([
+        const [cblData, adjData, assignData] = await Promise.all([
           api.crossBrokerLots(y) as Promise<CrossBrokerLot[]>,
           api.fifoAdjustments(y) as Promise<FIFOAdjustment[]>,
           api.optionAssignments(y) as Promise<OptionAssignment[]>,
-          api.crossValidation(y) as Promise<CrossValidationResult>,
         ]);
         setCrossBrokerLots(cblData);
         setFifoAdjustments(adjData);
         setOptionAssignments(assignData);
-        setCrossValidation(cvData);
       } else {
         setCrossBrokerLots([]);
         setFifoAdjustments([]);
         setOptionAssignments([]);
-        setCrossValidation(null);
       }
 
       const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv, ycData] =
@@ -205,10 +196,7 @@ export default function Home() {
 
   // Reset to non-fiscal view when switching to "Todos los años"
   useEffect(() => {
-    if (
-      !showFiscal &&
-      (view === "casillas" || view === "ganancias" || view === "validacion")
-    ) {
+    if (!showFiscal && (view === "casillas" || view === "ganancias")) {
       setView("graficas");
     }
   }, [showFiscal, view]);
@@ -367,19 +355,6 @@ export default function Home() {
                 icon={LineChart}
                 title="Sin ganancias de capital"
                 description="No se encontraron operaciones de compra/venta para el periodo seleccionado."
-              />
-            ))}
-
-          {/* Validación cruzada TR */}
-          {view === "validacion" &&
-            hasData &&
-            (crossValidation ? (
-              <CrossValidationTable data={crossValidation} />
-            ) : (
-              <EmptyState
-                icon={ShieldCheck}
-                title="Sin datos de validación"
-                description="Selecciona un año fiscal para comparar los datos de FinView con el informe de Trade Republic."
               />
             ))}
 

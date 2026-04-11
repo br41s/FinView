@@ -9,7 +9,6 @@ import {
   LineChart,
   Upload,
   Calendar,
-  ShieldCheck,
   CalendarRange,
   LogOut,
   CreditCard,
@@ -38,7 +37,6 @@ export type View =
   | "casillas"
   | "dividendos"
   | "ganancias"
-  | "validacion"
   | "comparativa"
   | "importar";
 
@@ -65,11 +63,6 @@ const mainNav = [
 const fiscalNav = [
   { key: "casillas" as const, label: "Casillas fiscales", icon: FileText },
   { key: "ganancias" as const, label: "Ganancias de capital", icon: LineChart },
-  {
-    key: "validacion" as const,
-    label: "Validación TR",
-    icon: ShieldCheck,
-  },
 ];
 
 const analysisNav = [
@@ -100,9 +93,7 @@ export function AppSidebar({
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold">FinView</span>
-            <span className="text-xs text-muted-foreground">
-              Dashboard fiscal
-            </span>
+            <span className="text-xs text-muted-foreground">Dashboard</span>
           </div>
         </div>
       </SidebarHeader>
@@ -194,6 +185,15 @@ export function AppSidebar({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Cartera"
+                  onClick={() => (window.location.href = "/portfolio")}
+                >
+                  <Briefcase />
+                  <span>Cartera</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -250,28 +250,28 @@ export function AppSidebar({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Derivados */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Derivados</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Opciones"
+                  onClick={() => (window.location.href = "/options")}
+                >
+                  <Activity />
+                  <span>Opciones</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Cartera"
-              onClick={() => (window.location.href = "/portfolio")}
-            >
-              <Briefcase />
-              <span>Cartera</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Opciones"
-              onClick={() => (window.location.href = "/options")}
-            >
-              <Activity />
-              <span>Opciones</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Facturación"
