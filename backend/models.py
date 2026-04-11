@@ -52,6 +52,19 @@ class TransactionType(PyEnum):
     CORPORATE_ACTION = "CORPORATE_ACTION"
 
 
+class SubscriptionTier(PyEnum):
+    FREE = "FREE"
+    PRO = "PRO"
+    UNLIMITED = "UNLIMITED"
+
+
+class SubscriptionStatus(PyEnum):
+    ACTIVE = "ACTIVE"
+    PAST_DUE = "PAST_DUE"
+    CANCELED = "CANCELED"
+    INCOMPLETE = "INCOMPLETE"
+
+
 class User(Base):
     """Application user (multi-tenant owner of accounts)."""
 
@@ -63,6 +76,15 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Stripe / subscription
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    subscription_tier: Mapped[str] = mapped_column(
+        Enum(SubscriptionTier), default=SubscriptionTier.FREE.value
+    )
+    subscription_status: Mapped[str | None] = mapped_column(Enum(SubscriptionStatus))
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    subscription_current_period_end: Mapped[datetime | None] = mapped_column(DateTime)
 
     accounts: Mapped[list["Account"]] = relationship(back_populates="user")
 

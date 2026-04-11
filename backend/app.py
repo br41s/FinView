@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.auth import router as auth_router
+from backend.api.billing import router as billing_router
 from backend.api.imports import router as imports_router
 from backend.api.transactions import router as transactions_router
 from backend.api.fiscal import router as fiscal_router
@@ -29,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(billing_router, prefix="/api")
 app.include_router(imports_router, prefix="/api")
 app.include_router(transactions_router, prefix="/api")
 app.include_router(fiscal_router, prefix="/api")

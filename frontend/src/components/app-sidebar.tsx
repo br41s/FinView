@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   CalendarRange,
   LogOut,
+  CreditCard,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -246,6 +247,24 @@ export function AppSidebar({
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Facturación"
+              onClick={() => (window.location.href = "/billing")}
+            >
+              <CreditCard />
+              <span className="flex items-center gap-2">
+                Facturación
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  {session?.user?.subscription_tier === "PRO"
+                    ? "Pro"
+                    : session?.user?.subscription_tier === "UNLIMITED"
+                      ? "∞"
+                      : "Free"}
+                </Badge>
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip={session?.user?.email ?? "Cerrar sesión"}

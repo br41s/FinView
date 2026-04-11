@@ -27,6 +27,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: data.user.email,
           name: data.user.name,
           accessToken: data.token,
+          subscriptionTier: data.user.subscription_tier || "FREE",
         };
       },
     }),
@@ -40,6 +41,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user) {
         token.accessToken = (user as { accessToken: string }).accessToken;
         token.userId = user.id;
+        token.subscriptionTier = (
+          user as { subscriptionTier: string }
+        ).subscriptionTier;
       }
       return token;
     },
@@ -47,6 +51,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.accessToken = token.accessToken as string;
       if (session.user) {
         session.user.id = token.userId as string;
+        (session.user as { subscription_tier?: string }).subscription_tier =
+          (token.subscriptionTier as string) || "FREE";
       }
       return session;
     },
@@ -55,6 +61,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const isAuthPage =
         nextUrl.pathname.startsWith("/login") ||
         nextUrl.pathname.startsWith("/register");
+      const isPublicPage = nextUrl.pathname.startsWith("/pricing");
+
+      if (isPublicPage) return true;
 
       if (isAuthPage) {
         if (isLoggedIn) return Response.redirect(new URL("/", nextUrl));

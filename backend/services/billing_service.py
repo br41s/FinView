@@ -1,0 +1,251 @@
+"""Stripe billing service: checkout sessions, customer portal, webhook handling."""
+
+from datetime import datetime
+
+import stripe
+from sqlalchemy.orm import Session
+
+from backend.config import settings
+from backend.models import SubscriptionStatus, SubscriptionTier, User
+
+stripe.api_key = settings.stripe_secret_key
+
+# ---------- plan limits ----------
+
+PLAN_LIMITS: dict[str, dict] = {
+    SubscriptionTier.FREE.value: {
+        "max_accounts": 2,
+        "max_imports_per_month": 5,
+        "label": "Free",
+    },
+    SubscriptionTier.PRO.value: {
+        "max_accounts": 10,
+        "max_imports_per_month": 50,
+        "label": "Pro",
+    },
+    SubscriptionTier.UNLIMITED.value: {
+        "max_accounts": 999,
+        "max_imports_per_month": 999,
+        "label": "Unlimited",
+    },
+}
+
+# Map Stripe price IDs → tiers
+PRICE_TO_TIER: dict[str, str] = {}
+
+
+def _build_price_map() -> None:
+    """Build price→tier map from config (called lazily)."""
+    if PRICE_TO_TIER:
+        return
+    if settings.stripe_price_pro:
+        PRICE_TO_TIER[settings.stripe_price_pro] = SubscriptionTier.PRO.value
+    if settings.stripe_price_unlimited:
+        PRICE_TO_TIER[settings.stripe_price_unlimited] = SubscriptionTier.UNLIMITED.value
+
+
+# ---------- Stripe customer ----------
+
+
+def get_or_create_stripe_customer(db: Session, user: User) -> str:
+    """Return existing Stripe customer ID or create one."""
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
+
+    customer = stripe.Customer.create(
+        email=user.email,
+        name=user.name or user.email,
+        metadata={"finview_user_id": str(user.id)},
+    )
+    user.stripe_customer_id = customer.id
+    db.commit()
+    return customer.id
+
+
+# ---------- checkout ----------
+
+
+def create_checkout_session(db: Session, user: User, price_id: str) -> str:
+    """Create a Stripe Checkout Session and return the URL."""
+    customer_id = get_or_create_stripe_customer(db, user)
+
+    session = stripe.checkout.Session.create(
+        customer=customer_id,
+        mode="subscription",
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=f"{settings.frontend_url}/billing?success=true",
+        cancel_url=f"{settings.frontend_url}/billing?canceled=true",
+        metadata={"finview_user_id": str(user.id)},
+    )
+    return session.url
+
+
+# ---------- customer portal ----------
+
+
+def create_portal_session(db: Session, user: User) -> str:
+    """Create a Stripe Customer Portal Session and return the URL."""
+    customer_id = get_or_create_stripe_customer(db, user)
+
+    session = stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=f"{settings.frontend_url}/billing",
+    )
+    return session.url
+
+
+# ---------- webhook processing ----------
+
+
+def handle_webhook_event(payload: bytes, sig_header: str) -> dict:
+    """Verify and process a Stripe webhook event. Returns summary dict."""
+    event = stripe.Webhook.construct_event(
+        payload, sig_header, settings.stripe_webhook_secret
+    )
+    return _process_event(event)
+
+
+def _process_event(event: stripe.Event) -> dict:
+    """Route event to handler. Returns summary."""
+    event_type = event["type"]
+    data_object = event["data"]["object"]
+
+    if event_type == "checkout.session.completed":
+        return _handle_checkout_completed(data_object)
+    elif event_type in (
+        "customer.subscription.updated",
+        "customer.subscription.deleted",
+    ):
+        return _handle_subscription_change(data_object)
+    elif event_type == "invoice.payment_failed":
+        return _handle_payment_failed(data_object)
+
+    return {"handled": False, "event_type": event_type}
+
+
+def _handle_checkout_completed(session_obj: dict) -> dict:
+    """Activate subscription after successful checkout."""
+    from backend.database import SessionLocal
+
+    _build_price_map()
+
+    subscription_id = session_obj.get("subscription")
+    if not subscription_id:
+        return {"handled": False, "reason": "no subscription in session"}
+
+    subscription = stripe.Subscription.retrieve(subscription_id)
+    customer_id = subscription.customer
+    price_id = subscription["items"]["data"][0]["price"]["id"]
+    tier = PRICE_TO_TIER.get(price_id, SubscriptionTier.PRO.value)
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+        if not user:
+            return {"handled": False, "reason": "user not found"}
+
+        user.subscription_tier = tier
+        user.subscription_status = SubscriptionStatus.ACTIVE.value
+        user.stripe_subscription_id = subscription.id
+        user.subscription_current_period_end = datetime.fromtimestamp(
+            subscription.current_period_end
+        )
+        db.commit()
+        return {"handled": True, "event": "checkout_completed", "tier": tier}
+    finally:
+        db.close()
+
+
+def _handle_subscription_change(sub_obj: dict) -> dict:
+    """Handle subscription updates (upgrade/downgrade/cancel)."""
+    from backend.database import SessionLocal
+
+    _build_price_map()
+
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .filter(User.stripe_customer_id == sub_obj["customer"])
+            .first()
+        )
+        if not user:
+            return {"handled": False, "reason": "user not found"}
+
+        stripe_status = sub_obj["status"]
+        if stripe_status == "active":
+            price_id = sub_obj["items"]["data"][0]["price"]["id"]
+            user.subscription_tier = PRICE_TO_TIER.get(
+                price_id, SubscriptionTier.PRO.value
+            )
+            user.subscription_status = SubscriptionStatus.ACTIVE.value
+            user.subscription_current_period_end = datetime.fromtimestamp(
+                sub_obj["current_period_end"]
+            )
+        elif stripe_status == "canceled":
+            user.subscription_tier = SubscriptionTier.FREE.value
+            user.subscription_status = SubscriptionStatus.CANCELED.value
+            user.stripe_subscription_id = None
+        elif stripe_status == "past_due":
+            user.subscription_status = SubscriptionStatus.PAST_DUE.value
+        else:
+            user.subscription_status = SubscriptionStatus.INCOMPLETE.value
+
+        db.commit()
+        return {"handled": True, "event": "subscription_change", "status": stripe_status}
+    finally:
+        db.close()
+
+
+def _handle_payment_failed(invoice_obj: dict) -> dict:
+    """Mark subscription as past_due on payment failure."""
+    from backend.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .filter(User.stripe_customer_id == invoice_obj["customer"])
+            .first()
+        )
+        if not user:
+            return {"handled": False, "reason": "user not found"}
+
+        user.subscription_status = SubscriptionStatus.PAST_DUE.value
+        db.commit()
+        return {"handled": True, "event": "payment_failed"}
+    finally:
+        db.close()
+
+
+# ---------- query helpers ----------
+
+
+def get_user_subscription(user: User) -> dict:
+    """Return current subscription info for a user."""
+    tier = user.subscription_tier or SubscriptionTier.FREE.value
+    limits = PLAN_LIMITS.get(tier, PLAN_LIMITS[SubscriptionTier.FREE.value])
+
+    return {
+        "tier": tier,
+        "status": user.subscription_status,
+        "label": limits["label"],
+        "max_accounts": limits["max_accounts"],
+        "max_imports_per_month": limits["max_imports_per_month"],
+        "current_period_end": (
+            user.subscription_current_period_end.isoformat()
+            if user.subscription_current_period_end
+            else None
+        ),
+        "has_stripe_subscription": bool(user.stripe_subscription_id),
+    }
+
+
+def check_account_limit(db: Session, user: User) -> bool:
+    """Return True if user can create more accounts within their plan."""
+    from backend.models import Account
+
+    tier = user.subscription_tier or SubscriptionTier.FREE.value
+    limits = PLAN_LIMITS.get(tier, PLAN_LIMITS[SubscriptionTier.FREE.value])
+    count = db.query(Account).filter(Account.user_id == user.id).count()
+    return count < limits["max_accounts"]

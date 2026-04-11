@@ -7,11 +7,13 @@ declare module "next-auth" {
       id: string;
       email: string;
       name: string;
+      subscription_tier?: string;
     };
   }
 
   interface User {
     accessToken?: string;
+    subscriptionTier?: string;
   }
 }
 
@@ -19,5 +21,6 @@ declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
     userId?: string;
+    subscriptionTier?: string;
   }
 }

@@ -45,6 +45,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     is_active: bool
+    subscription_tier: str = "FREE"
 
 
 # --------------- dependency ---------------
@@ -89,7 +90,13 @@ OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 
 
 def _user_dict(user: User) -> dict:
-    return {"id": user.id, "email": user.email, "name": user.name, "is_active": user.is_active}
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "is_active": user.is_active,
+        "subscription_tier": user.subscription_tier or "FREE",
+    }
 
 
 @router.post("/register", response_model=AuthResponse, responses={400: {"description": "Email already registered or weak password"}})

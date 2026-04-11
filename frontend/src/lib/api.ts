@@ -160,6 +160,30 @@ export const api = {
   },
   imports: () => fetchJSON("/imports/"),
 
+  // Billing
+  billing: {
+    subscription: () => fetchJSON("/billing/subscription"),
+    checkout: async (priceId: string) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/billing/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ price_id: priceId }),
+      });
+      if (!res.ok) throw new Error(`Checkout error: ${await res.text()}`);
+      return res.json() as Promise<{ url: string }>;
+    },
+    portal: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/billing/portal`, {
+        method: "POST",
+        headers: { ...headers },
+      });
+      if (!res.ok) throw new Error(`Portal error: ${await res.text()}`);
+      return res.json() as Promise<{ url: string }>;
+    },
+  },
+
   // Charts
   charts: {
     dividendsByCountry: (year?: number) =>
