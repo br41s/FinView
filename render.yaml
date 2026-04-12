@@ -21,7 +21,7 @@ services:
       - key: FINVIEW_DATABASE_URL
         fromDatabase:
           name: finview-db
-          property: connectionURI
+          property: connectionString
       - key: FINVIEW_SECRET_KEY
         generateValue: true
       - key: FINVIEW_AUTH_SECRET
