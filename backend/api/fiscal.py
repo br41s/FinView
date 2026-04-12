@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func
 
+from backend.api.auth import CurrentUser
 from backend.api.schemas import (
     AggregatedCasillaOut,
     CasillaOut,
@@ -39,9 +40,9 @@ router = APIRouter(prefix="/fiscal", tags=["fiscal"])
 
 
 @router.get("/casillas", response_model=list[AggregatedCasillaOut])
-def list_casillas(db: DbSession, fiscal_year: int | None = None):
+def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """List tax casillas aggregated across all brokers."""
-    q = db.query(TaxResult)
+    q = db.query(TaxResult).filter(TaxResult.user_id == user.id)
     if fiscal_year:
         q = q.filter(TaxResult.fiscal_year == fiscal_year)
     rows = q.order_by(TaxResult.modelo, TaxResult.casilla).all()
@@ -56,6 +57,7 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
     fifo_adj_by_casilla: dict[int, Decimal] = {}
     if fiscal_year:
         adjs = db.query(FIFOAdjustment).filter(
+            FIFOAdjustment.user_id == user.id,
             FIFOAdjustment.fiscal_year == fiscal_year
         ).all()
         for adj in adjs:
@@ -99,13 +101,14 @@ def list_casillas(db: DbSession, fiscal_year: int | None = None):
 
 
 @router.get("/summary/{fiscal_year}", response_model=FiscalSummary)
-def fiscal_summary(db: DbSession, fiscal_year: int):
+def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
     """Get complete fiscal summary for a year using TaxResult (broker truth)."""
     # Helper to sum a casilla across all brokers
     def _sum_casilla(casilla: int) -> Decimal:
         val = (
             db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
             .filter(
+                TaxResult.user_id == user.id,
                 TaxResult.fiscal_year == fiscal_year,
                 TaxResult.casilla == casilla,
             )
@@ -120,7 +123,9 @@ def fiscal_summary(db: DbSession, fiscal_year: int):
             func.coalesce(func.sum(Transaction.net_amount_eur), 0).label("net"),
             func.coalesce(func.sum(Transaction.withholding_tax), 0).label("whg"),
         )
+        .join(Account)
         .filter(
+            Account.user_id == user.id,
             Transaction.type == TransactionType.DIVIDEND.value,
             func.strftime("%Y", Transaction.trade_date) == str(fiscal_year),
         )
@@ -133,7 +138,7 @@ def fiscal_summary(db: DbSession, fiscal_year: int):
     # Aggregate casillas across brokers
     casilla_rows = (
         db.query(TaxResult)
-        .filter(TaxResult.fiscal_year == fiscal_year)
+        .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == fiscal_year)
         .order_by(TaxResult.modelo, TaxResult.casilla)
         .all()
     )
@@ -170,13 +175,13 @@ def fiscal_summary(db: DbSession, fiscal_year: int):
 
 
 @router.get("/dashboard", response_model=DashboardStats)
-def dashboard_stats(db: DbSession, fiscal_year: int | None = None):
+def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """Quick dashboard stats, optionally filtered by fiscal year.
 
     When a fiscal_year is selected, dividends/gains/losses come from
     TaxResult (broker PDF truth) instead of computed Transaction/TaxLot data.
     """
-    tx_q = db.query(func.count(Transaction.id))
+    tx_q = db.query(func.count(Transaction.id)).join(Account).filter(Account.user_id == user.id)
     if fiscal_year:
         tx_q = tx_q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
     total_tx = tx_q.scalar() or 0
@@ -187,6 +192,7 @@ def dashboard_stats(db: DbSession, fiscal_year: int | None = None):
             val = (
                 db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
                 .filter(
+                    TaxResult.user_id == user.id,
                     TaxResult.fiscal_year == fiscal_year,
                     TaxResult.casilla == casilla,
                 )
@@ -201,28 +207,39 @@ def dashboard_stats(db: DbSession, fiscal_year: int | None = None):
         # All-years view: compute from Transaction/TaxLot
         div_total = (
             db.query(func.coalesce(func.sum(Transaction.gross_amount), 0))
-            .filter(Transaction.type == TransactionType.DIVIDEND.value)
+            .join(Account)
+            .filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
             .scalar()
         ) or Decimal("0")
 
         gains = (
             db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
-            .filter(TaxLot.realized_pl_eur > 0)
+            .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+            .join(Account)
+            .filter(Account.user_id == user.id, TaxLot.realized_pl_eur > 0)
             .scalar()
         ) or Decimal("0")
 
         losses = (
             db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
-            .filter(TaxLot.realized_pl_eur < 0)
+            .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+            .join(Account)
+            .filter(Account.user_id == user.id, TaxLot.realized_pl_eur < 0)
             .scalar()
         ) or Decimal("0")
 
-    accounts = db.query(func.count(Account.id)).scalar() or 0
-    imports = db.query(func.count(ImportRecord.id)).scalar() or 0
+    accounts = db.query(func.count(Account.id)).filter(Account.user_id == user.id).scalar() or 0
+    imports = (
+        db.query(func.count(ImportRecord.id))
+        .join(Account)
+        .filter(Account.user_id == user.id)
+        .scalar()
+    ) or 0
 
     years = (
         db.query(ImportRecord.fiscal_year)
-        .filter(ImportRecord.fiscal_year.isnot(None))
+        .join(Account)
+        .filter(Account.user_id == user.id, ImportRecord.fiscal_year.isnot(None))
         .distinct()
         .order_by(ImportRecord.fiscal_year.desc())
         .all()
@@ -241,11 +258,13 @@ def dashboard_stats(db: DbSession, fiscal_year: int | None = None):
 
 
 @router.get("/cross-broker-lots", response_model=list[CrossBrokerLotOut])
-def list_cross_broker_lots(db: DbSession, fiscal_year: int):
+def list_cross_broker_lots(db: DbSession, user: CurrentUser, fiscal_year: int):
     """List cross-broker FIFO lots for a fiscal year."""
     lots = (
         db.query(CrossBrokerLot)
-        .filter(CrossBrokerLot.fiscal_year == fiscal_year)
+        .join(Transaction, CrossBrokerLot.buy_tx_id == Transaction.id)
+        .join(Account)
+        .filter(Account.user_id == user.id, CrossBrokerLot.fiscal_year == fiscal_year)
         .order_by(CrossBrokerLot.isin, CrossBrokerLot.id)
         .all()
     )
@@ -253,11 +272,11 @@ def list_cross_broker_lots(db: DbSession, fiscal_year: int):
 
 
 @router.get("/fifo-adjustments", response_model=list[FIFOAdjustmentOut])
-def list_fifo_adjustments(db: DbSession, fiscal_year: int):
+def list_fifo_adjustments(db: DbSession, user: CurrentUser, fiscal_year: int):
     """List FIFO adjustments (cross-broker vs broker) for a fiscal year."""
     adjs = (
         db.query(FIFOAdjustment)
-        .filter(FIFOAdjustment.fiscal_year == fiscal_year)
+        .filter(FIFOAdjustment.user_id == user.id, FIFOAdjustment.fiscal_year == fiscal_year)
         .order_by(FIFOAdjustment.isin)
         .all()
     )
@@ -265,7 +284,7 @@ def list_fifo_adjustments(db: DbSession, fiscal_year: int):
 
 
 @router.get("/option-assignments", response_model=list[OptionAssignmentOut])
-def list_option_assignments(db: DbSession, fiscal_year: int):
+def list_option_assignments(db: DbSession, user: CurrentUser, fiscal_year: int):
     """List detected option assignments for a fiscal year.
 
     Assignments are informational — IBKR's Realized P/L already embeds
@@ -273,7 +292,9 @@ def list_option_assignments(db: DbSession, fiscal_year: int):
     """
     records = (
         db.query(OptionAssignmentRecord)
-        .filter(OptionAssignmentRecord.fiscal_year == fiscal_year)
+        .join(ImportRecord, OptionAssignmentRecord.import_id == ImportRecord.id)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(Account.user_id == user.id, OptionAssignmentRecord.fiscal_year == fiscal_year)
         .order_by(OptionAssignmentRecord.assignment_date)
         .all()
     )
@@ -283,11 +304,12 @@ def list_option_assignments(db: DbSession, fiscal_year: int):
 @router.get("/export/{fiscal_year}")
 def export_fiscal_data(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int,
     format: str = "json",
 ):
     """Export fiscal data for a year. Supports format=json or format=csv."""
-    casillas = list_casillas(db, fiscal_year=fiscal_year)
+    casillas = list_casillas(db, user=user, fiscal_year=fiscal_year)
 
     if format == "csv":
         output = io.StringIO()
@@ -326,11 +348,11 @@ def export_fiscal_data(
 
 
 @router.get("/cross-validation/{fiscal_year}", response_model=CrossValidationResult)
-def cross_validation(db: DbSession, fiscal_year: int):
+def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
     """Compare FinView-calculated casillas against TR reference values."""
     rows = (
         db.query(TaxResult)
-        .filter(TaxResult.fiscal_year == fiscal_year)
+        .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == fiscal_year)
         .order_by(TaxResult.modelo, TaxResult.casilla)
         .all()
     )
@@ -344,6 +366,7 @@ def cross_validation(db: DbSession, fiscal_year: int):
     # Load FIFO adjustments
     fifo_adj: dict[int, Decimal] = {}
     adjs = db.query(FIFOAdjustment).filter(
+        FIFOAdjustment.user_id == user.id,
         FIFOAdjustment.fiscal_year == fiscal_year,
     ).all()
     for adj in adjs:
@@ -409,11 +432,12 @@ def cross_validation(db: DbSession, fiscal_year: int):
 
 
 @router.get("/yearly-comparison", response_model=YearlyComparisonResult)
-def yearly_comparison(db: DbSession):
+def yearly_comparison(db: DbSession, user: CurrentUser):
     """Get fiscal metrics aggregated per year for multi-year comparison."""
     # Get all distinct fiscal years
     years = (
         db.query(TaxResult.fiscal_year)
+        .filter(TaxResult.user_id == user.id)
         .distinct()
         .order_by(TaxResult.fiscal_year)
         .all()
@@ -424,7 +448,7 @@ def yearly_comparison(db: DbSession):
         def _sum_casilla(c: int) -> Decimal:
             val = (
                 db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
-                .filter(TaxResult.fiscal_year == year, TaxResult.casilla == c)
+                .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == year, TaxResult.casilla == c)
                 .scalar()
             )
             return val or Decimal("0")
@@ -436,7 +460,9 @@ def yearly_comparison(db: DbSession):
         # Withholdings from transactions
         whg = (
             db.query(func.coalesce(func.sum(Transaction.withholding_tax), 0))
+            .join(Account)
             .filter(
+                Account.user_id == user.id,
                 Transaction.type == TransactionType.DIVIDEND.value,
                 func.strftime("%Y", Transaction.trade_date) == str(year),
             )
@@ -446,14 +472,16 @@ def yearly_comparison(db: DbSession):
         # Number of distinct brokers with data this year
         broker_count = (
             db.query(func.count(func.distinct(TaxResult.broker)))
-            .filter(TaxResult.fiscal_year == year)
+            .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == year)
             .scalar()
         ) or 0
 
         # Number of distinct ISINs with dividends this year
         pos_count = (
             db.query(func.count(func.distinct(Transaction.isin)))
+            .join(Account)
             .filter(
+                Account.user_id == user.id,
                 Transaction.type == TransactionType.DIVIDEND.value,
                 func.strftime("%Y", Transaction.trade_date) == str(year),
             )

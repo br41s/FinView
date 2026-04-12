@@ -264,7 +264,7 @@ def _find_multi_broker_isins(db: Session, fiscal_year: int) -> list[str]:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def recalculate_cross_broker_fifo(db: Session, fiscal_year: int) -> dict:
+def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int | None = None) -> dict:
     """Recalculate cross-broker FIFO for a fiscal year.
 
     1. Delete existing CrossBrokerLots and FIFOAdjustments for the year
@@ -274,13 +274,13 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int) -> dict:
 
     Returns summary dict with counts.
     """
-    # Clean previous results for this year
-    db.query(CrossBrokerLot).filter(
-        CrossBrokerLot.fiscal_year == fiscal_year
-    ).delete(synchronize_session="fetch")
-    db.query(FIFOAdjustment).filter(
-        FIFOAdjustment.fiscal_year == fiscal_year
-    ).delete(synchronize_session="fetch")
+    # Clean previous results for this year (scoped to user if provided)
+    cbl_q = db.query(CrossBrokerLot).filter(CrossBrokerLot.fiscal_year == fiscal_year)
+    adj_q = db.query(FIFOAdjustment).filter(FIFOAdjustment.fiscal_year == fiscal_year)
+    if user_id:
+        adj_q = adj_q.filter(FIFOAdjustment.user_id == user_id)
+    cbl_q.delete(synchronize_session="fetch")
+    adj_q.delete(synchronize_session="fetch")
     db.flush()
 
     multi_isins = _find_multi_broker_isins(db, fiscal_year)
@@ -335,6 +335,7 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int) -> dict:
                 broker_pl_eur=broker_pl,
                 fifo_pl_eur=fifo_pl,
                 adjustment_eur=adjustment,
+                user_id=user_id or 1,
                 note=(
                     f"FIFO cruzado difiere del broker: "
                     f"broker={broker_pl:.2f}€, FIFO={fifo_pl:.2f}€, "

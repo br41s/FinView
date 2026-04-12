@@ -50,6 +50,7 @@ class TransactionUpdate(BaseModel):
 @router.get("/", response_model=list[TransactionOut])
 def list_transactions(
     db: DbSession,
+    user: CurrentUser,
     limit: LimitParam = 200,
     offset: OffsetParam = 0,
     fiscal_year: int | None = None,
@@ -57,7 +58,7 @@ def list_transactions(
     isin: str | None = None,
 ):
     """List transactions with filters."""
-    q = db.query(Transaction)
+    q = db.query(Transaction).join(Account).filter(Account.user_id == user.id)
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
@@ -70,7 +71,7 @@ def list_transactions(
 
 
 @router.get("/dividends/summary", response_model=list[DividendSummary])
-def dividend_summary(db: DbSession, fiscal_year: int | None = None):
+def dividend_summary(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """Aggregate dividends by ISIN."""
     q = db.query(
         Transaction.isin,
@@ -80,7 +81,7 @@ def dividend_summary(db: DbSession, fiscal_year: int | None = None):
         func.sum(Transaction.withholding_tax).label("total_withholding_eur"),
         func.sum(Transaction.net_amount_eur).label("total_net_eur"),
         func.count().label("payment_count"),
-    ).filter(Transaction.type == TransactionType.DIVIDEND.value)
+    ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
@@ -102,9 +103,14 @@ def dividend_summary(db: DbSession, fiscal_year: int | None = None):
 
 
 @router.get("/capital-gains", response_model=list[CapitalGainOut])
-def capital_gains(db: DbSession, fiscal_year: int | None = None):
+def capital_gains(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """List realized capital gains/losses from FIFO lots."""
-    q = db.query(TaxLot).filter(TaxLot.sell_tx_id.isnot(None))
+    q = (
+        db.query(TaxLot)
+        .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+        .join(Account)
+        .filter(Account.user_id == user.id, TaxLot.sell_tx_id.isnot(None))
+    )
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", TaxLot.close_date) == str(fiscal_year))

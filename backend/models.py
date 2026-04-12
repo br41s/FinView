@@ -181,6 +181,7 @@ class TaxResult(Base):
     __tablename__ = "tax_results"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, default=1)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
     broker: Mapped[str | None] = mapped_column(Enum(Broker))
     modelo: Mapped[int] = mapped_column(Integer, nullable=False)  # 100 or 714
@@ -193,7 +194,7 @@ class TaxResult(Base):
 
     __table_args__ = (
         Index("ix_tax_year_modelo", "fiscal_year", "modelo"),
-        UniqueConstraint("fiscal_year", "broker", "modelo", "casilla"),
+        UniqueConstraint("user_id", "fiscal_year", "broker", "modelo", "casilla"),
     )
 
 
@@ -234,6 +235,7 @@ class FIFOAdjustment(Base):
     __tablename__ = "fifo_adjustments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, default=1)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
     isin: Mapped[str] = mapped_column(String(12), nullable=False)
     name: Mapped[str] = mapped_column(String(200), default="")
@@ -244,7 +246,7 @@ class FIFOAdjustment(Base):
     note: Mapped[str] = mapped_column(Text, default="")
 
     __table_args__ = (
-        UniqueConstraint("fiscal_year", "isin"),
+        UniqueConstraint("user_id", "fiscal_year", "isin"),
     )
 
 

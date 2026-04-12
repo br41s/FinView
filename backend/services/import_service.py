@@ -260,7 +260,7 @@ def _store_capital_gains_as_lots(
 
 
 def _store_casillas(
-    db: Session, casillas: list[ParsedCasilla], fiscal_year: int, broker: Broker
+    db: Session, casillas: list[ParsedCasilla], fiscal_year: int, broker: Broker, user_id: int | None = None
 ) -> list[TaxResult]:
     results = []
     for c in casillas:
@@ -272,6 +272,7 @@ def _store_casillas(
             description=c.description,
             amount_eur=c.amount_eur,
             tr_reference_amount=c.amount_eur,
+            user_id=user_id or 1,
         )
         db.add(tr)
         results.append(tr)
@@ -329,10 +330,10 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
 
     # Store casillas (Modelo 100 + 714)
     all_casillas = report.casillas_modelo_100 + report.casillas_modelo_714
-    _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR)
+    _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR, user_id=user_id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -451,7 +452,7 @@ def _create_dg_tax_lots(
 
 
 def _compute_broker_casillas(
-    db: Session, broker: Broker, fiscal_year: int, account_id: int
+    db: Session, broker: Broker, fiscal_year: int, account_id: int, user_id: int | None = None
 ) -> list[TaxResult]:
     """Compute Modelo 100 casilla values from Transaction/TaxLot data.
 
@@ -512,6 +513,7 @@ def _compute_broker_casillas(
             casilla=casilla,
             description=desc,
             amount_eur=amount,
+            user_id=user_id or 1,
         )
         db.add(tr)
         results.append(tr)
@@ -567,10 +569,10 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     )
 
     # Compute and store casillas from transaction/lot data
-    casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id)
+    casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -662,10 +664,10 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
         hold_count += 1
 
     # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id)
+    casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id, user_id=user_id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -769,10 +771,10 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
         hold_count += 1
 
     # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id)
+    casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id, user_id=user_id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -839,10 +841,10 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
         tx_count += 1
 
     # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id)
+    casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -1016,11 +1018,11 @@ def import_ibkr_report(
 
     # Compute casillas from the stored data
     casillas = _compute_broker_casillas(
-        db, Broker.IBKR, report.fiscal_year, account.id
+        db, Broker.IBKR, report.fiscal_year, account.id, user_id=user_id
     )
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year)
+    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)

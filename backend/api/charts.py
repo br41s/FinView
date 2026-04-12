@@ -8,8 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from sqlalchemy import case, func
 
+from backend.api.auth import CurrentUser
 from backend.database import DbSession
-from backend.models import PortfolioHolding, TaxLot, Transaction, TransactionType
+from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
 
 router = APIRouter(prefix="/charts", tags=["charts"])
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 @router.get("/dividends-by-country")
 def dividends_by_country(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int | None = None,
 ):
     """Dividends aggregated by country for donut chart."""
@@ -28,7 +30,7 @@ def dividends_by_country(
         func.sum(Transaction.withholding_tax).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
         func.count().label("count"),
-    ).filter(Transaction.type == TransactionType.DIVIDEND.value)
+    ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
@@ -50,6 +52,7 @@ def dividends_by_country(
 @router.get("/dividends-monthly")
 def dividends_monthly(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int | None = None,
 ):
     """Monthly dividend income for bar chart."""
@@ -59,7 +62,7 @@ def dividends_monthly(
         func.sum(Transaction.withholding_tax).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
         func.count().label("count"),
-    ).filter(Transaction.type == TransactionType.DIVIDEND.value)
+    ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
@@ -81,6 +84,7 @@ def dividends_monthly(
 @router.get("/top-dividend-payers")
 def top_dividend_payers(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int | None = None,
     limit: Annotated[int, Query(le=50)] = 10,
 ):
@@ -93,7 +97,7 @@ def top_dividend_payers(
         func.sum(Transaction.withholding_tax).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
         func.count().label("count"),
-    ).filter(Transaction.type == TransactionType.DIVIDEND.value)
+    ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
@@ -122,6 +126,7 @@ def top_dividend_payers(
 @router.get("/capital-gains-breakdown")
 def capital_gains_breakdown(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int | None = None,
 ):
     """Capital gains/losses per ISIN for bar chart."""
@@ -135,7 +140,9 @@ def capital_gains_breakdown(
         ).label("losses"),
         func.sum(TaxLot.realized_pl_eur).label("net"),
         func.count().label("trades"),
-    ).filter(TaxLot.sell_tx_id.isnot(None))
+    ).join(Transaction, TaxLot.buy_tx_id == Transaction.id).join(Account).filter(
+        Account.user_id == user.id, TaxLot.sell_tx_id.isnot(None)
+    )
 
     if fiscal_year:
         q = q.filter(func.strftime("%Y", TaxLot.close_date) == str(fiscal_year))
@@ -166,11 +173,11 @@ def capital_gains_breakdown(
 
 
 @router.get("/patrimonio-composition")
-def patrimonio_composition(db: DbSession, fiscal_year: int | None = None):
+def patrimonio_composition(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """Portfolio composition from Modelo 714 casillas."""
     from backend.models import TaxResult
 
-    q = db.query(TaxResult).filter(TaxResult.modelo == 714)
+    q = db.query(TaxResult).filter(TaxResult.user_id == user.id, TaxResult.modelo == 714)
     if fiscal_year:
         q = q.filter(TaxResult.fiscal_year == fiscal_year)
     rows = q.order_by(TaxResult.fiscal_year.desc(), TaxResult.casilla).all()
@@ -304,6 +311,7 @@ def _first_per_key(rows, key_attr: str, val_attr: str) -> dict:
 @router.get("/dividend-yield")
 def dividend_yield(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int | None = None,
 ):
     """Dividend yield per ISIN: dividends vs avg invested at dividend dates.
@@ -322,7 +330,7 @@ def dividend_yield(
         func.max(Transaction.country).label("country"),
         func.sum(Transaction.gross_amount).label("total_dividends"),
         func.count().label("payment_count"),
-    ).filter(Transaction.type == TransactionType.DIVIDEND.value)
+    ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
         div_q = div_q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
@@ -339,7 +347,8 @@ def dividend_yield(
     div_dates_q = db.query(
         Transaction.isin,
         Transaction.trade_date,
-    ).filter(
+    ).join(Account).filter(
+        Account.user_id == user.id,
         Transaction.type == TransactionType.DIVIDEND.value,
         Transaction.isin.in_(div_isins),
     )
@@ -361,7 +370,9 @@ def dividend_yield(
     # Fetch all BUY transactions for these ISINs (ordered by date for FIFO)
     all_buys = (
         db.query(Transaction)
+        .join(Account)
         .filter(
+            Account.user_id == user.id,
             Transaction.type == TransactionType.BUY.value,
             Transaction.isin.in_(div_isins),
             Transaction.id.notin_(synthetic_buy_ids),
@@ -374,7 +385,9 @@ def dividend_yield(
     # Fetch all SELL transactions for these ISINs (ordered by date for FIFO)
     all_sells = (
         db.query(Transaction)
+        .join(Account)
         .filter(
+            Account.user_id == user.id,
             Transaction.type == TransactionType.SELL.value,
             Transaction.isin.in_(div_isins),
             Transaction.id.notin_(synthetic_sell_ids),
@@ -390,6 +403,8 @@ def dividend_yield(
     ).scalar_subquery()
     latest_prices_q = (
         db.query(Transaction.isin, func.abs(Transaction.price).label("price"))
+        .join(Account)
+        .filter(Account.user_id == user.id)
         .filter(Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]))
         .filter(Transaction.isin.in_(div_isins))
         .filter(Transaction.id.notin_(all_synthetic_ids))
@@ -410,7 +425,8 @@ def dividend_yield(
         currency_info = {}
 
     # Fetch portfolio holdings to supplement ISINs without buy/sell history
-    holdings_q = db.query(PortfolioHolding).filter(
+    holdings_q = db.query(PortfolioHolding).join(Account).filter(
+        Account.user_id == user.id,
         PortfolioHolding.isin.in_(div_isins),
     )
     if fiscal_year:
@@ -435,6 +451,7 @@ def dividend_yield(
 @router.get("/withholdings-by-country")
 def withholdings_by_country(
     db: DbSession,
+    user: CurrentUser,
     fiscal_year: int | None = None,
 ):
     """Withholding tax breakdown by country for double taxation analysis."""
@@ -443,7 +460,8 @@ def withholdings_by_country(
         func.sum(Transaction.gross_amount).label("gross"),
         func.sum(Transaction.withholding_tax).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
-    ).filter(
+    ).join(Account).filter(
+        Account.user_id == user.id,
         Transaction.type == TransactionType.DIVIDEND.value,
         Transaction.withholding_tax < 0,
     )
@@ -495,7 +513,7 @@ def _best_display_name(names: list[str]) -> str:
 
 
 @router.get("/dividends-by-company-yearly")
-def dividends_by_company_yearly(db: DbSession):
+def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
     """Dividends per company per year for multi-year timeline chart."""
     rows = (
         db.query(
@@ -503,7 +521,9 @@ def dividends_by_company_yearly(db: DbSession):
             func.strftime("%Y", Transaction.trade_date).label("year"),
             func.sum(Transaction.gross_amount).label("gross"),
         )
+        .join(Account)
         .filter(
+            Account.user_id == user.id,
             Transaction.type == TransactionType.DIVIDEND.value,
             Transaction.isin.isnot(None),
         )
@@ -513,7 +533,9 @@ def dividends_by_company_yearly(db: DbSession):
 
     name_rows = (
         db.query(Transaction.isin, Transaction.name)
+        .join(Account)
         .filter(
+            Account.user_id == user.id,
             Transaction.type == TransactionType.DIVIDEND.value,
             Transaction.isin.isnot(None),
         )

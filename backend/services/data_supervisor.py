@@ -21,6 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models import (
+    Account,
     DataIssue,
     PortfolioHolding,
     Transaction,
@@ -28,6 +29,13 @@ from backend.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _scope_tx_query(q, user_id: int | None):
+    """Add user-scoping via Account join if user_id is provided."""
+    if user_id:
+        q = q.join(Account, Transaction.account_id == Account.id).filter(Account.user_id == user_id)
+    return q
 
 # Patterns that indicate rights/derechos (not actual share sales)
 _RIGHTS_PATTERNS = re.compile(
@@ -54,20 +62,20 @@ _BOND_PATTERNS = re.compile(
 )
 
 
-def run_checks(db: Session, import_id: int | None = None) -> list[DataIssue]:
+def run_checks(db: Session, import_id: int | None = None, user_id: int | None = None) -> list[DataIssue]:
     """Run all data quality checks and return issues found.
 
     If import_id is given, focus checks on transactions from that import.
-    Otherwise run on all data (useful for full audit).
+    If user_id is given (full audit), scope to that user's accounts.
     """
     issues: list[DataIssue] = []
 
-    issues.extend(_check_rights_as_sells(db, import_id))
-    issues.extend(_check_missing_buys(db, import_id))
-    issues.extend(_check_holdings_mismatch(db, import_id))
-    issues.extend(_check_missing_ticker(db, import_id))
-    issues.extend(_check_split_candidates(db, import_id))
-    issues.extend(_check_price_sanity(db, import_id))
+    issues.extend(_check_rights_as_sells(db, import_id, user_id))
+    issues.extend(_check_missing_buys(db, import_id, user_id))
+    issues.extend(_check_holdings_mismatch(db, import_id, user_id))
+    issues.extend(_check_missing_ticker(db, import_id, user_id))
+    issues.extend(_check_split_candidates(db, import_id, user_id))
+    issues.extend(_check_price_sanity(db, import_id, user_id))
 
     # Persist all issues
     for issue in issues:
@@ -86,7 +94,7 @@ def run_checks(db: Session, import_id: int | None = None) -> list[DataIssue]:
 # Check 1: Rights misclassified as SELL
 # ---------------------------------------------------------------------------
 
-def _check_rights_as_sells(db: Session, import_id: int | None) -> list[DataIssue]:
+def _check_rights_as_sells(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
     """Detect SELL transactions whose name contains 'derechos/rights'.
 
     These are typically scrip dividend rights sold for cash — they should
@@ -97,6 +105,8 @@ def _check_rights_as_sells(db: Session, import_id: int | None) -> list[DataIssue
     )
     if import_id:
         q = q.filter(Transaction.import_id == import_id)
+    elif user_id:
+        q = _scope_tx_query(q, user_id)
 
     issues = []
     for tx in q.all():
@@ -136,7 +146,7 @@ def _check_rights_as_sells(db: Session, import_id: int | None) -> list[DataIssue
 # Check 2: Missing buy transactions
 # ---------------------------------------------------------------------------
 
-def _check_missing_buys(db: Session, import_id: int | None) -> list[DataIssue]:
+def _check_missing_buys(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
     """Detect ISINs that have dividends/holdings but no BUY transaction.
 
     This means the buy happened outside imported data — user needs to provide it.
@@ -233,7 +243,7 @@ def _check_missing_buys(db: Session, import_id: int | None) -> list[DataIssue]:
 # Check 3: Portfolio holdings vs calculated qty mismatch
 # ---------------------------------------------------------------------------
 
-def _check_holdings_mismatch(db: Session, import_id: int | None) -> list[DataIssue]:
+def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
     """Compare portfolio holdings qty with net qty from transactions.
 
     If a holding says 100 shares but transactions show net 80,
@@ -302,7 +312,7 @@ def _check_holdings_mismatch(db: Session, import_id: int | None) -> list[DataIss
 # Check 4: Missing Yahoo Finance ticker
 # ---------------------------------------------------------------------------
 
-def _check_missing_ticker(db: Session, import_id: int | None) -> list[DataIssue]:
+def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
     """Detect ISINs not in the Yahoo Finance ticker map.
 
     These will show "—" for current price in the UI.
@@ -391,7 +401,7 @@ def _check_missing_ticker(db: Session, import_id: int | None) -> list[DataIssue]
 # Check 5: Stock split candidates
 # ---------------------------------------------------------------------------
 
-def _check_split_candidates(db: Session, import_id: int | None) -> list[DataIssue]:
+def _check_split_candidates(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
     """Detect potential stock splits via yfinance history.
 
     Checks active ISINs for splits reported by Yahoo Finance
@@ -465,8 +475,8 @@ def _check_price_sanity(db: Session, import_id: int | None) -> list[DataIssue]:
         Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
     )
     if import_id:
-        q = q.filter(Transaction.import_id == import_id)
-
+        q = q.filter(Transaction.import_id == import_id)    elif user_id:
+        q = _scope_tx_query(q, user_id)
     issues = []
     for tx in q.all():
         if tx.price == 0 and tx.quantity > 0:

@@ -30,7 +30,7 @@ from backend.importers.ing import (
     parse_ing_report,
 )
 from backend.importers.tr import compute_file_hash, parse_tr_tax_report
-from backend.models import DataIssue, ImportRecord
+from backend.models import Account, DataIssue, ImportRecord
 from backend.services.import_service import (
     import_bbva_report,
     import_dg_report,
@@ -186,15 +186,26 @@ def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
 
 
 @router.get("/", response_model=list[ImportRecordOut])
-def list_imports(db: DbSession):
+def list_imports(db: DbSession, user: CurrentUser):
     """List all import records."""
-    return db.query(ImportRecord).order_by(ImportRecord.imported_at.desc()).all()
+    return (
+        db.query(ImportRecord)
+        .join(Account)
+        .filter(Account.user_id == user.id)
+        .order_by(ImportRecord.imported_at.desc())
+        .all()
+    )
 
 
 @router.delete("/{import_id}", responses={404: {"description": "Importación no encontrada"}})
-def delete_import(import_id: int, db: DbSession):
+def delete_import(import_id: int, db: DbSession, user: CurrentUser):
     """Delete an import and all its associated data."""
-    record = db.query(ImportRecord).filter(ImportRecord.id == import_id).first()
+    record = (
+        db.query(ImportRecord)
+        .join(Account)
+        .filter(ImportRecord.id == import_id, Account.user_id == user.id)
+        .first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Importación no encontrada")
     _delete_import_data(db, import_id)
@@ -208,9 +219,15 @@ def delete_import(import_id: int, db: DbSession):
 
 
 @router.get("/issues", response_model=list[DataIssueOut])
-def list_issues(db: DbSession, status: str | None = None, import_id: int | None = None):
+def list_issues(db: DbSession, user: CurrentUser, status: str | None = None, import_id: int | None = None):
     """List data quality issues, optionally filtered by status or import."""
-    q = db.query(DataIssue).order_by(DataIssue.created_at.desc())
+    q = (
+        db.query(DataIssue)
+        .join(ImportRecord, DataIssue.import_id == ImportRecord.id)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(Account.user_id == user.id)
+        .order_by(DataIssue.created_at.desc())
+    )
     if status:
         q = q.filter(DataIssue.status == status)
     if import_id:
@@ -219,9 +236,15 @@ def list_issues(db: DbSession, status: str | None = None, import_id: int | None 
 
 
 @router.post("/issues/{issue_id}/resolve", response_model=DataIssueOut)
-def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession):
+def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user: CurrentUser):
     """Resolve a pending data issue."""
-    issue = db.query(DataIssue).filter(DataIssue.id == issue_id).first()
+    issue = (
+        db.query(DataIssue)
+        .join(ImportRecord, DataIssue.import_id == ImportRecord.id)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(DataIssue.id == issue_id, Account.user_id == user.id)
+        .first()
+    )
     if not issue:
         raise HTTPException(status_code=404, detail="Issue no encontrado")
     if issue.status not in ("pending", "needs_input"):
@@ -242,10 +265,10 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession):
 
 
 @router.post("/audit", response_model=list[DataIssueOut])
-def run_full_audit(db: DbSession):
+def run_full_audit(db: DbSession, user: CurrentUser):
     """Run the data supervisor on all existing data (full audit)."""
     from backend.services.data_supervisor import run_checks
 
-    issues = run_checks(db, import_id=None)
+    issues = run_checks(db, import_id=None, user_id=user.id)
     db.commit()
     return issues
