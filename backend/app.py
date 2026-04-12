@@ -14,6 +14,7 @@ from backend.api.portfolio import router as portfolio_router
 from backend.api.fiscal import router as fiscal_router
 from backend.api.charts import router as charts_router
 from backend.api.options import router as options_router
+from backend.config import settings
 from backend.database import engine
 from backend.models import Base
 from backend.services.options_scheduler import shutdown_scheduler
@@ -38,7 +39,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[settings.frontend_url],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
