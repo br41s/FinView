@@ -22,3 +22,5 @@ node_modules/
 test_parser.py
 test_api.py
 .env.local
+.env.production
+*.dump
