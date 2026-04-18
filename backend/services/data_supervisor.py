@@ -475,7 +475,8 @@ def _check_price_sanity(db: Session, import_id: int | None) -> list[DataIssue]:
         Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
     )
     if import_id:
-        q = q.filter(Transaction.import_id == import_id)    elif user_id:
+        q = q.filter(Transaction.import_id == import_id)
+    elif user_id:
         q = _scope_tx_query(q, user_id)
     issues = []
     for tx in q.all():
