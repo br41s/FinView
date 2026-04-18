@@ -15,6 +15,7 @@ from backend.api.schemas import (
 )
 from backend.database import DbSession, LimitParam, OffsetParam
 from backend.models import Account, TaxLot, Transaction, TransactionType
+from backend.services.sql_compat import year_str
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -61,7 +62,7 @@ def list_transactions(
     q = db.query(Transaction).join(Account).filter(Account.user_id == user.id)
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
     if tx_type:
         q = q.filter(Transaction.type == tx_type)
     if isin:
@@ -84,7 +85,7 @@ def dividend_summary(db: DbSession, user: CurrentUser, fiscal_year: int | None =
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
 
     rows = q.group_by(Transaction.isin).all()
 
@@ -113,7 +114,7 @@ def capital_gains(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
     )
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", TaxLot.close_date) == str(fiscal_year))
+        q = q.filter(year_str(TaxLot.close_date) == str(fiscal_year))
 
     lots = q.order_by(TaxLot.close_date.desc()).all()
 

@@ -36,6 +36,7 @@ from backend.models import (
     TransactionType,
 )
 from backend.services.fifo_engine import recalculate_cross_broker_fifo
+from backend.services.sql_compat import year_str
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +461,7 @@ def _compute_broker_casillas(
     """
     from sqlalchemy import func
 
-    year_str = str(fiscal_year)
+    year_value = str(fiscal_year)
 
     # Casilla 29 — Dividendos brutos
     div_gross = (
@@ -468,7 +469,7 @@ def _compute_broker_casillas(
         .filter(
             Transaction.account_id == account_id,
             Transaction.type == TransactionType.DIVIDEND.value,
-            func.strftime("%Y", Transaction.trade_date) == year_str,
+            year_str(Transaction.trade_date) == year_value,
         )
         .scalar()
     ) or Decimal("0")
@@ -480,7 +481,7 @@ def _compute_broker_casillas(
         .filter(
             Transaction.account_id == account_id,
             TaxLot.realized_pl_eur > 0,
-            func.strftime("%Y", TaxLot.close_date) == year_str,
+            year_str(TaxLot.close_date) == year_value,
         )
         .scalar()
     ) or Decimal("0")
@@ -491,7 +492,7 @@ def _compute_broker_casillas(
         .filter(
             Transaction.account_id == account_id,
             TaxLot.realized_pl_eur < 0,
-            func.strftime("%Y", TaxLot.close_date) == year_str,
+            year_str(TaxLot.close_date) == year_value,
         )
         .scalar()
     ) or Decimal("0")

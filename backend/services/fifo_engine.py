@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from backend.services.sql_compat import year_str as _year_str
 from backend.models import (
     Account,
     CrossBrokerLot,
@@ -134,7 +135,7 @@ def _get_real_sells(db: Session, isin: str, fiscal_year: int) -> list[_SellRecor
         .scalar_subquery()
     )
 
-    year_str = str(fiscal_year)
+    year_value = str(fiscal_year)
     rows = (
         db.query(Transaction, Account.broker)
         .join(Account, Transaction.account_id == Account.id)
@@ -142,7 +143,7 @@ def _get_real_sells(db: Session, isin: str, fiscal_year: int) -> list[_SellRecor
             Transaction.isin == isin,
             Transaction.type == TransactionType.SELL.value,
             Transaction.id.notin_(synthetic_sell_ids),
-            func.strftime("%Y", Transaction.trade_date) == year_str,
+            _year_str(Transaction.trade_date) == year_value,
         )
         .order_by(Transaction.trade_date.asc(), Transaction.id.asc())
         .all()
@@ -208,12 +209,12 @@ def _fifo_match(buys: list[_BuySlice], sells: list[_SellRecord]) -> list[_Matche
 
 def _get_broker_pl_for_isin(db: Session, isin: str, fiscal_year: int) -> Decimal:
     """Sum broker-reported P&L for an ISIN from TaxLot table."""
-    year_str = str(fiscal_year)
+    year_value = str(fiscal_year)
     result = (
         db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
         .filter(
             TaxLot.isin == isin,
-            func.strftime("%Y", TaxLot.close_date) == year_str,
+            _year_str(TaxLot.close_date) == year_value,
         )
         .scalar()
     )
@@ -227,12 +228,12 @@ def _find_multi_broker_isins(db: Session, fiscal_year: int) -> list[str]:
     different brokers and then sold at one of them.
     """
     # All ISINs that have sells in this fiscal year
-    year_str = str(fiscal_year)
+    year_value = str(fiscal_year)
     sell_isins = (
         db.query(Transaction.isin)
         .filter(
             Transaction.type == TransactionType.SELL.value,
-            func.strftime("%Y", Transaction.trade_date) == year_str,
+            _year_str(Transaction.trade_date) == year_value,
         )
         .distinct()
         .scalar_subquery()

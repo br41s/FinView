@@ -23,6 +23,7 @@ from backend.api.schemas import (
     YearlyMetrics,
 )
 from backend.database import DbSession
+from backend.services.sql_compat import year_str
 from backend.models import (
     Account,
     Broker,
@@ -127,7 +128,7 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
         .filter(
             Account.user_id == user.id,
             Transaction.type == TransactionType.DIVIDEND.value,
-            func.strftime("%Y", Transaction.trade_date) == str(fiscal_year),
+            year_str(Transaction.trade_date) == str(fiscal_year),
         )
         .one()
     )
@@ -183,7 +184,7 @@ def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = 
     """
     tx_q = db.query(func.count(Transaction.id)).join(Account).filter(Account.user_id == user.id)
     if fiscal_year:
-        tx_q = tx_q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        tx_q = tx_q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
     total_tx = tx_q.scalar() or 0
 
     if fiscal_year:
@@ -464,7 +465,7 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
             .filter(
                 Account.user_id == user.id,
                 Transaction.type == TransactionType.DIVIDEND.value,
-                func.strftime("%Y", Transaction.trade_date) == str(year),
+                year_str(Transaction.trade_date) == str(year),
             )
             .scalar()
         ) or Decimal("0")
@@ -483,7 +484,7 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
             .filter(
                 Account.user_id == user.id,
                 Transaction.type == TransactionType.DIVIDEND.value,
-                func.strftime("%Y", Transaction.trade_date) == str(year),
+                year_str(Transaction.trade_date) == str(year),
             )
             .scalar()
         ) or 0

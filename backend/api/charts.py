@@ -11,6 +11,7 @@ from sqlalchemy import case, func
 from backend.api.auth import CurrentUser
 from backend.database import DbSession
 from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
+from backend.services.sql_compat import year_str, year_month_str
 
 router = APIRouter(prefix="/charts", tags=["charts"])
 
@@ -33,7 +34,7 @@ def dividends_by_country(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
 
     rows = q.group_by("country").order_by(func.sum(Transaction.gross_amount).desc()).all()
 
@@ -57,7 +58,7 @@ def dividends_monthly(
 ):
     """Monthly dividend income for bar chart."""
     q = db.query(
-        func.strftime("%Y-%m", Transaction.trade_date).label("month"),
+        year_month_str(Transaction.trade_date).label("month"),
         func.sum(Transaction.gross_amount).label("gross"),
         func.sum(Transaction.withholding_tax).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
@@ -65,7 +66,7 @@ def dividends_monthly(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
 
     rows = q.group_by("month").order_by("month").all()
 
@@ -100,7 +101,7 @@ def top_dividend_payers(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
 
     rows = (
         q.group_by(Transaction.isin)
@@ -145,7 +146,7 @@ def capital_gains_breakdown(
     )
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", TaxLot.close_date) == str(fiscal_year))
+        q = q.filter(year_str(TaxLot.close_date) == str(fiscal_year))
 
     rows = q.group_by(TaxLot.isin).order_by(func.sum(TaxLot.realized_pl_eur)).all()
 
@@ -333,7 +334,7 @@ def dividend_yield(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        div_q = div_q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        div_q = div_q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
 
     div_rows = div_q.group_by(Transaction.isin).all()
 
@@ -354,7 +355,7 @@ def dividend_yield(
     )
     if fiscal_year:
         div_dates_q = div_dates_q.filter(
-            func.strftime("%Y", Transaction.trade_date) == str(fiscal_year)
+            year_str(Transaction.trade_date) == str(fiscal_year)
         )
     div_dates_rows = div_dates_q.all()
 
@@ -467,7 +468,7 @@ def withholdings_by_country(
     )
 
     if fiscal_year:
-        q = q.filter(func.strftime("%Y", Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
 
     rows = q.group_by("country").order_by(func.sum(Transaction.withholding_tax).asc()).all()
 
@@ -518,7 +519,7 @@ def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
     rows = (
         db.query(
             Transaction.isin,
-            func.strftime("%Y", Transaction.trade_date).label("year"),
+            year_str(Transaction.trade_date).label("year"),
             func.sum(Transaction.gross_amount).label("gross"),
         )
         .join(Account)
@@ -527,7 +528,7 @@ def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
             Transaction.type == TransactionType.DIVIDEND.value,
             Transaction.isin.isnot(None),
         )
-        .group_by(Transaction.isin, func.strftime("%Y", Transaction.trade_date))
+        .group_by(Transaction.isin, year_str(Transaction.trade_date))
         .all()
     )
 
