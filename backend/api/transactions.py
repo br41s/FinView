@@ -48,6 +48,7 @@ class TransactionUpdate(BaseModel):
     fees: Decimal | None = None
 
 
+@router.get("", response_model=list[TransactionOut], include_in_schema=False)
 @router.get("/", response_model=list[TransactionOut])
 def list_transactions(
     db: DbSession,

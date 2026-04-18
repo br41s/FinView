@@ -185,6 +185,7 @@ def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
         tmp_path.unlink(missing_ok=True)
 
 
+@router.get("", response_model=list[ImportRecordOut], include_in_schema=False)
 @router.get("/", response_model=list[ImportRecordOut])
 def list_imports(db: DbSession, user: CurrentUser):
     """List all import records."""

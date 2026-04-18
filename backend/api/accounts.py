@@ -41,6 +41,7 @@ class AccountOut(BaseModel):
 # --------------- routes ---------------
 
 
+@router.get("", response_model=list[AccountOut], include_in_schema=False)
 @router.get("/", response_model=list[AccountOut])
 def list_accounts(db: DbSession, user: CurrentUser):
     """List all broker accounts for the current user."""
