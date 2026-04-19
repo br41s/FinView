@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.models import Account, Transaction, TransactionType
+from backend.models import Account, PortfolioHolding, Transaction, TransactionType
 from backend.services.prices import fetch_and_cache_prices
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,40 @@ def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: 
             pos.name = tx.name
         if tx.ticker and not pos.ticker:
             pos.ticker = tx.ticker
+
+    # Supplement with year-end holdings snapshots (ING, DEGIRO, etc.) for
+    # ISINs with no transaction history — typical when only the Información
+    # Fiscal PDF is imported and actual buys happened before the earliest
+    # imported fiscal year.
+    tx_keys = set(positions.keys())
+    snapshot_q = (
+        db.query(PortfolioHolding)
+        .filter(
+            PortfolioHolding.account_id.in_(account_ids),
+            PortfolioHolding.isin.isnot(None),
+            PortfolioHolding.isin != "",
+            PortfolioHolding.quantity > 0,
+        )
+        .order_by(PortfolioHolding.fiscal_year.desc())
+    )
+    seen_snapshot: set[tuple[int, str]] = set()
+    for h in snapshot_q.all():
+        key = (h.account_id, h.isin)
+        if key in tx_keys or key in seen_snapshot:
+            continue
+        seen_snapshot.add(key)
+        acct = accounts[h.account_id]
+        positions[key] = Position(
+            isin=h.isin,
+            ticker=None,
+            name=h.name,
+            country=h.country,
+            broker=acct.broker,
+            account_id=h.account_id,
+            quantity=h.quantity,
+            avg_cost_eur=ZERO,
+            total_cost_eur=h.value_eur or ZERO,
+        )
 
     # Filter out closed positions (qty <= 0)
     open_positions = [p for p in positions.values() if p.quantity > ZERO]

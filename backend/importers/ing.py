@@ -56,6 +56,9 @@ _KNOWN_ISINS: dict[str, str] = {
     "INM.COLONIAL": "ES0139140174",
     "COLONIAL": "ES0139140174",
     "COLONIAL SFL": "ES0139140174",
+    # International stocks that may appear in ING's older "without-ISIN" format
+    "TWITTER INC": "US90184L1026",
+    "TWITTER": "US90184L1026",
 }
 
 
@@ -323,6 +326,11 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
         if not isin and name.upper().startswith("IBE"):
             isin = name_isin.get("IBERDROLA", _KNOWN_ISINS.get("IBERDROLA", "ES0144580Y14"))
 
+        # Handle Repsol scrip dividends (REP MM.YY → Repsol ISIN)
+        if not isin and name.upper().startswith("REP"):
+            isin = name_isin.get("REPSOL", _KNOWN_ISINS.get("REPSOL", "ES0173516115"))
+            name = f"REPSOL scrip {name}"
+
         results.append(ParsedTransaction(
             tx_type=tx_type,
             trade_date=trade_date,
@@ -349,14 +357,18 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
         # Also strip trailing date codes: "IBERDROLA 07.2025" → "IBERDROLA"
         stock_name = raw_name.split(",")[0].strip()
         stock_name = re.sub(r"\s+\d{2}\.\d{4}$", "", stock_name)
-        isin = name_isin.get(stock_name.upper(), "")
+        parent_isin = name_isin.get(stock_name.upper(), "")
 
+        # Rights have their own ISIN separate from the parent stock; we don't
+        # know it here, so leave ISIN empty to keep FIFO of the parent stock
+        # intact. The venta de derechos is still a "ganancia patrimonial" and
+        # the withholding is preserved.
         results.append(ParsedTransaction(
             tx_type=TxType.SELL,
             trade_date=trade_date,
-            isin=isin,
+            isin="",
             name=f"Derechos {stock_name}",
-            country=country_from_isin(isin) if isin else "España",
+            country=country_from_isin(parent_isin) if parent_isin else "España",
             quantity=qty,
             price=amount / qty if qty else _D("0"),
             currency="EUR",
