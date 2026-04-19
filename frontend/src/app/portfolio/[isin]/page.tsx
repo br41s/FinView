@@ -28,7 +28,7 @@ interface AccountBreakdown {
   broker: string;
   account_id: number;
   quantity: number;
-  cost_eur: number;
+  cost_eur: number | null;
   value_eur: number | null;
 }
 
@@ -48,12 +48,12 @@ interface PositionDetail {
   ticker: string | null;
   country: string | null;
   total_quantity: number;
-  avg_cost_eur: number;
-  total_cost_eur: number;
+  avg_cost_eur: number | null;
+  total_cost_eur: number | null;
   current_price_eur: number | null;
   market_value_eur: number;
-  unrealized_pl_eur: number;
-  unrealized_pl_pct: number;
+  unrealized_pl_eur: number | null;
+  unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
   transactions: TxHistory[];
 }
@@ -187,7 +187,7 @@ function PositionDetailContent() {
                 : "—"}
             </div>
             <p className="text-xs text-muted-foreground">
-              Coste medio: {fmt(detail.avg_cost_eur)} €
+              Coste medio: {detail.avg_cost_eur != null ? `${fmt(detail.avg_cost_eur)} €` : "—"}
             </p>
           </CardContent>
         </Card>
@@ -201,7 +201,7 @@ function PositionDetailContent() {
               {fmt(detail.market_value_eur)} €
             </div>
             <p className="text-xs text-muted-foreground">
-              Invertido: {fmt(detail.total_cost_eur)} €
+              Invertido: {detail.total_cost_eur != null ? `${fmt(detail.total_cost_eur)} €` : "—"}
             </p>
           </CardContent>
         </Card>
@@ -252,7 +252,7 @@ function PositionDetailContent() {
                       {fmt(a.quantity)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {fmt(a.cost_eur)} €
+                      {a.cost_eur != null ? `${fmt(a.cost_eur)} €` : "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {a.value_eur ? `${fmt(a.value_eur)} €` : "—"}

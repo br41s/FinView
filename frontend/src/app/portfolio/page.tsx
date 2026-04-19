@@ -42,8 +42,8 @@ interface Position {
   country: string | null;
   broker: string;
   quantity: number;
-  avg_cost_eur: number;
-  total_cost_eur: number;
+  avg_cost_eur: number | null;
+  total_cost_eur: number | null;
   current_price_eur: number | null;
   market_value_eur: number | null;
   unrealized_pl_eur: number | null;
@@ -65,7 +65,7 @@ interface AccountBreakdown {
   broker: string;
   account_id: number;
   quantity: number;
-  cost_eur: number;
+  cost_eur: number | null;
   value_eur: number | null;
 }
 
@@ -85,12 +85,12 @@ interface PositionDetail {
   ticker: string | null;
   country: string | null;
   total_quantity: number;
-  avg_cost_eur: number;
-  total_cost_eur: number;
+  avg_cost_eur: number | null;
+  total_cost_eur: number | null;
   current_price_eur: number | null;
   market_value_eur: number;
-  unrealized_pl_eur: number;
-  unrealized_pl_pct: number;
+  unrealized_pl_eur: number | null;
+  unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
   transactions: TxHistory[];
 }
@@ -379,7 +379,7 @@ function PortfolioContent() {
                           {fmt(p.quantity, 2)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {fmt(p.avg_cost_eur, 2)} €
+                          {p.avg_cost_eur != null ? `${fmt(p.avg_cost_eur, 2)} €` : "—"}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {!pricesLoaded ? (
@@ -485,7 +485,7 @@ function PortfolioContent() {
                                       Total invertido
                                     </p>
                                     <p className="font-medium">
-                                      {fmt(p.total_cost_eur)} €
+                                      {p.total_cost_eur != null ? `${fmt(p.total_cost_eur)} €` : "—"}
                                     </p>
                                   </div>
                                   <div>
