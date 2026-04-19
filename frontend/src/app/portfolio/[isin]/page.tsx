@@ -128,8 +128,13 @@ function PositionDetailContent() {
     );
   }
 
-  const plPositive = detail.unrealized_pl_eur >= 0;
-  const plColor = plPositive ? "text-emerald-600" : "text-red-600";
+  const plKnown = detail.unrealized_pl_eur != null;
+  const plPositive = (detail.unrealized_pl_eur ?? 0) >= 0;
+  const plColor = !plKnown
+    ? "text-muted-foreground"
+    : plPositive
+      ? "text-emerald-600"
+      : "text-red-600";
   const PlIcon = plPositive ? ArrowUpRight : ArrowDownRight;
 
   return (
@@ -210,17 +215,29 @@ function PositionDetailContent() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-1">
               P&L
-              <PlIcon className={`h-4 w-4 ${plColor}`} />
+              {plKnown && <PlIcon className={`h-4 w-4 ${plColor}`} />}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${plColor}`}>
-              {plPositive ? "+" : ""}
-              {fmt(detail.unrealized_pl_eur)} €
+              {plKnown ? (
+                <>
+                  {plPositive ? "+" : ""}
+                  {fmt(detail.unrealized_pl_eur)} €
+                </>
+              ) : (
+                "—"
+              )}
             </div>
             <p className={`text-xs ${plColor}`}>
-              {plPositive ? "+" : ""}
-              {fmt(detail.unrealized_pl_pct)}%
+              {plKnown ? (
+                <>
+                  {plPositive ? "+" : ""}
+                  {fmt(detail.unrealized_pl_pct)}%
+                </>
+              ) : (
+                "Coste desconocido"
+              )}
             </p>
           </CardContent>
         </Card>
