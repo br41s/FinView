@@ -56,7 +56,10 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "ES0148396007": "ITX.MC",     # Inditex
     "ES0173093024": "RED.MC",     # Redeia Corporacion
     "ES0173516115": "REP.MC",     # Repsol
+    "ES0105684007": "IFLEX.MC",   # Iflex (Industria de Diseno)
+    "ES0169350016": "PVA.MC",     # Pescanova
     # Germany
+    "DE000PAG9113": "P911.DE",    # Porsche AG
     "DE0008404005": "ALV.DE",     # Allianz
     "DE0007100000": "MBG.DE",     # Mercedes-Benz
     "DE0007236101": "SIE.DE",     # Siemens
@@ -73,6 +76,7 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "FR0000133308": "ORA.PA",     # Orange
     "FR0000125486": "DG.PA",      # VINCI
     "FR0013447729": "VRLA.PA",    # Verallia
+    "FR0010208488": "ENGI.PA",    # Engie
     # UK
     "GB0006731235": "ABF.L",      # Associated British Foods
     "GB00BPQY8M80": "AV.L",      # Aviva
@@ -85,7 +89,11 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "GB00B1FH8J72": "SVT.L",    # Severn Trent
     "GB00B39J2M42": "UU.L",     # United Utilities
     "GB00BZ3CNK81": "TORM.CO",   # TORM (Copenhagen)
+    # Singapore
+    "SG1M31001969": "U11.SI",     # UOB (United Overseas Bank)
     # US
+    "US62914V1061": "NIO",        # NIO Inc ADR
+    "US91332U1016": "U",          # Unity Software
     "US88579Y1010": "MMM",        # 3M
     "US7134481081": "PEP",        # PepsiCo
     "US5007541064": "KHC",        # Kraft Heinz

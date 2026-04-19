@@ -248,15 +248,31 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
 
     If a holding says 100 shares but transactions show net 80,
     something is missing (BUY, split, scrip, etc.).
+
+    Scoped to each account's own latest fiscal_year so that ISINs no longer
+    held (Twitter 2021, AENA pre-split, etc.) don't generate false positives.
     """
-    # Get latest portfolio holdings per ISIN
-    latest_holdings = {}
-    for h in db.query(PortfolioHolding).order_by(PortfolioHolding.fiscal_year.desc()).all():
-        if h.isin not in latest_holdings:
-            latest_holdings[h.isin] = h
+    # Latest fiscal_year per account
+    max_fy_by_acct: dict[int, int] = {}
+    holdings_q = db.query(PortfolioHolding)
+    if user_id:
+        holdings_q = holdings_q.join(Account, PortfolioHolding.account_id == Account.id).filter(
+            Account.user_id == user_id
+        )
+    all_holdings = holdings_q.all()
+    for h in all_holdings:
+        if h.account_id not in max_fy_by_acct or h.fiscal_year > max_fy_by_acct[h.account_id]:
+            max_fy_by_acct[h.account_id] = h.fiscal_year
+
+    # Keep only holdings from each account's latest year
+    latest_holdings = [
+        h for h in all_holdings
+        if h.fiscal_year == max_fy_by_acct.get(h.account_id) and h.quantity > 0
+    ]
 
     issues = []
-    for isin, holding in sorted(latest_holdings.items(), key=lambda x: x[0]):
+    for holding in sorted(latest_holdings, key=lambda h: h.isin):
+        isin = holding.isin
         # Calculate net qty from BUY/SELL transactions
         buys = (
             db.query(func.coalesce(func.sum(Transaction.quantity), 0))
@@ -438,29 +454,34 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
             continue
 
         for split_date, ratio in splits:
-            if split_date > first_buy:
-                # Check if we already adjusted for this split
-                # (buy price should be split-adjusted if split was applied)
-                issue = DataIssue(
-                    import_id=import_id,
-                    issue_type="potential_split",
-                    severity="info",
-                    isin=isin,
-                    name=_get_name_for_isin(db, isin),
-                    description=(
-                        f"Split detectado para {ticker} ({isin}): ratio {ratio} "
-                        f"el {split_date.isoformat()}. Verificar que las transacciones "
-                        f"y holdings reflejan el split correctamente."
-                    ),
-                    status="needs_input",
-                    resolution_data=json.dumps({
-                        "ticker": ticker,
-                        "split_date": split_date.isoformat(),
-                        "ratio": str(ratio),
-                        "first_buy": first_buy.isoformat(),
-                    }),
-                )
-                issues.append(issue)
+            if split_date <= first_buy:
+                continue
+            # Skip scrip-dividend ratios (e.g., 1.01x yearly Iberdrola scrip).
+            # Real splits are almost always outside [0.9, 1.1].
+            if Decimal("0.9") <= ratio <= Decimal("1.1"):
+                continue
+            # Check if we already adjusted for this split
+            # (buy price should be split-adjusted if split was applied)
+            issue = DataIssue(
+                import_id=import_id,
+                issue_type="potential_split",
+                severity="info",
+                isin=isin,
+                name=_get_name_for_isin(db, isin),
+                description=(
+                    f"Split detectado para {ticker} ({isin}): ratio {ratio} "
+                    f"el {split_date.isoformat()}. Verificar que las transacciones "
+                    f"y holdings reflejan el split correctamente."
+                ),
+                status="needs_input",
+                resolution_data=json.dumps({
+                    "ticker": ticker,
+                    "split_date": split_date.isoformat(),
+                    "ratio": str(ratio),
+                    "first_buy": first_buy.isoformat(),
+                }),
+            )
+            issues.append(issue)
 
     return issues
 
@@ -469,7 +490,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 # Check 6: Price sanity
 # ---------------------------------------------------------------------------
 
-def _check_price_sanity(db: Session, import_id: int | None) -> list[DataIssue]:
+def _check_price_sanity(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
     """Flag transactions with suspicious prices (0 or negative)."""
     q = db.query(Transaction).filter(
         Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
