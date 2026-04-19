@@ -20,6 +20,7 @@ import openpyxl
 
 from backend.importers.base import (
     EToroAnnualReport,
+    ParsedCapitalGain,
     ParsedTransaction,
     TxType,
     country_from_isin,
@@ -177,17 +178,22 @@ def _parse_dividends(wb: openpyxl.Workbook) -> list[ParsedTransaction]:
     return results
 
 
-def _parse_closed_positions(wb: openpyxl.Workbook) -> list[ParsedTransaction]:
-    """Parse Closed Positions sheet → BUY + SELL transaction pairs."""
+def _parse_closed_positions(wb: openpyxl.Workbook) -> list[ParsedCapitalGain]:
+    """Parse Closed Positions sheet → matched buy/sell pairs with realized P&L.
+
+    eToro reports Profit(EUR) directly. Cost/proceeds in EUR are derived from
+    the USD amounts + the implied FX ratio (profit_eur / profit_usd) so that
+    proceeds_eur − cost_basis_eur == profit_eur exactly.
+    """
     headers, data_rows = _read_sheet(wb, "Closed Positions")
     if not data_rows:
         return []
 
     i_action = _require_col(headers, "Action")
-    i_amount = _require_col(headers, "Amount")
     i_units = _require_col(headers, "Units / Contracts")
     i_open_date = _require_col(headers, "Open Date")
     i_close_date = _require_col(headers, "Close Date")
+    i_profit_usd = _require_col(headers, "Profit(USD)")
     i_profit_eur = _require_col(headers, "Profit(EUR)")
     i_open_rate = _require_col(headers, "Open Rate")
     i_close_rate = _require_col(headers, "Close Rate")
@@ -203,7 +209,6 @@ def _parse_closed_positions(wb: openpyxl.Workbook) -> list[ParsedTransaction]:
 
         isin = str(row[i_isin]).strip() if row[i_isin] else ""
         action_str = str(row[i_action]).strip() if row[i_action] else ""
-        # Extract name from action: "Buy MSFT/USD" → "MSFT"
         name = action_str.replace("Buy ", "").replace("Sell ", "").split("/")[0].strip()
 
         units = _to_decimal(row[i_units])
@@ -211,37 +216,39 @@ def _parse_closed_positions(wb: openpyxl.Workbook) -> list[ParsedTransaction]:
         close_date = _to_date(row[i_close_date])
         open_rate = _to_decimal(row[i_open_rate])
         close_rate = _to_decimal(row[i_close_rate])
+        profit_usd = _to_decimal(row[i_profit_usd])
         profit_eur = _to_decimal(row[i_profit_eur])
+        proceeds_usd = units * close_rate
 
-        amount_usd = _to_decimal(row[i_amount])
+        # Derive USD→EUR ratio from the two Profit columns so EUR totals match
+        if profit_usd != 0:
+            fx = profit_eur / profit_usd
+        else:
+            fx = _D("1")
+        proceeds_eur = (proceeds_usd * fx).quantize(_D("0.01"))
+        cost_basis_eur = (proceeds_eur - profit_eur).quantize(_D("0.01"))
 
-        # Store as BUY (at open) and SELL (at close) with realized P&L on the sell
+        holding_days = (close_date - open_date).days
+        holding_period = ">1y" if holding_days >= 365 else "<1y"
+        casilla = 332 if profit_eur >= 0 else 337
 
-        results.append(ParsedTransaction(
-            tx_type=TxType.BUY,
-            trade_date=open_date,
+        results.append(ParsedCapitalGain(
             isin=isin,
             name=name,
             country=country_from_isin(isin),
-            quantity=units,
-            price=open_rate,
-            currency="USD",
-            gross_amount=amount_usd,
-            net_amount_eur=amount_usd,  # Will be recalculated by FIFO
-        ))
-
-        results.append(ParsedTransaction(
-            tx_type=TxType.SELL,
-            trade_date=close_date,
-            isin=isin,
-            name=name,
-            country=country_from_isin(isin),
-            quantity=units,
-            price=close_rate,
-            currency="USD",
-            gross_amount=units * close_rate,
-            net_amount_eur=units * close_rate,  # Will be recalculated by FIFO
+            buy_date=open_date,
+            buy_quantity=units,
+            buy_price=open_rate,
+            buy_fees=_D("0"),
+            buy_total_eur=cost_basis_eur,
+            sell_date=close_date,
+            sell_quantity=units,
+            sell_price=close_rate,
+            sell_fees=_D("0"),
+            sell_total_eur=proceeds_eur,
             realized_pl_eur=profit_eur,
+            holding_period=holding_period,
+            casilla=casilla,
         ))
 
     return results
@@ -320,18 +327,22 @@ def _get_closed_position_ids(wb: openpyxl.Workbook) -> set[str]:
     return {str(row[i_pos_id]).strip() for row in data_rows if row and row[i_pos_id]}
 
 
-def _build_isin_map(dividends: list[ParsedTransaction], closed: list[ParsedTransaction]) -> dict[str, str]:
+def _build_isin_map(
+    dividends: list[ParsedTransaction],
+    closed: list[ParsedCapitalGain],
+) -> dict[str, str]:
     """Build name → ISIN map from parsed data. Keys include both full names and ticker symbols."""
     name_to_isin: dict[str, str] = {}
-    for tx in dividends + closed:
-        if tx.isin and tx.name:
-            name_to_isin[tx.name.upper()] = tx.isin
-            # Also store ticker extracted from name: "Unity Software Inc. (U)" → "U"
-            # and "Microsoft" stays as-is
-            if "(" in tx.name and ")" in tx.name:
-                ticker = tx.name.split("(")[-1].rstrip(")").strip()
-                if ticker:
-                    name_to_isin[ticker.upper()] = tx.isin
+    entries: list[tuple[str, str]] = [(d.name, d.isin) for d in dividends]
+    entries.extend((c.name, c.isin) for c in closed)
+    for name, isin in entries:
+        if not isin or not name:
+            continue
+        name_to_isin[name.upper()] = isin
+        if "(" in name and ")" in name:
+            ticker = name.split("(")[-1].rstrip(")").strip()
+            if ticker:
+                name_to_isin[ticker.upper()] = isin
     return name_to_isin
 
 
@@ -360,17 +371,14 @@ def parse_etoro_statement(xlsx_path: Path) -> EToroAnnualReport:
         closed_positions = _parse_closed_positions(wb)
         open_positions = _parse_open_positions(wb)
 
-        # Enrich open positions with ISINs from dividends/closed
         isin_map = _build_isin_map(dividends, closed_positions)
         open_positions = _enrich_open_positions(open_positions, isin_map)
-
-        # Merge all transactions (closed positions are BUY+SELL pairs)
-        transactions = closed_positions + open_positions
 
         return EToroAnnualReport(
             fiscal_year=fiscal_year,
             dividends=dividends,
-            transactions=transactions,
+            transactions=open_positions,
+            closed_positions=closed_positions,
         )
     finally:
         wb.close()

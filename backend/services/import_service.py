@@ -817,7 +817,9 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
 
     account = _get_or_create_account(db, Broker.ETORO, "ETORO", user_id)
 
-    record_count = len(report.dividends) + len(report.transactions)
+    record_count = (
+        len(report.dividends) + len(report.transactions) + len(report.closed_positions) * 2
+    )
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
@@ -829,19 +831,24 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
     db.add(import_rec)
     db.flush()
 
-    # Store dividends
+    # Dividends
     div_count = 0
     for div in report.dividends:
         _store_transaction(db, div, account.id, import_rec.id)
         div_count += 1
 
-    # Store buy/sell transactions
+    # Open positions (buys still held)
     tx_count = 0
     for tx in report.transactions:
         _store_transaction(db, tx, account.id, import_rec.id)
         tx_count += 1
 
-    # Compute casillas from stored transactions
+    # Closed positions → BUY+SELL pairs + TaxLots with realized P&L
+    lots = _store_capital_gains_as_lots(
+        db, report.closed_positions, account.id, import_rec.id
+    )
+    tx_count += len(lots) * 2
+
     casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id)
 
     # Recalculate cross-broker FIFO

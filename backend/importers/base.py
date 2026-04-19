@@ -251,3 +251,4 @@ class EToroAnnualReport:
     fiscal_year: int
     dividends: list[ParsedTransaction] = field(default_factory=list)
     transactions: list[ParsedTransaction] = field(default_factory=list)
+    closed_positions: list[ParsedCapitalGain] = field(default_factory=list)
