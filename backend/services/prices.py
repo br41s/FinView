@@ -46,7 +46,8 @@ _ISIN_TICKER_MAP: dict[str, str] = {
     "ES0139140174": "COL.MC",     # Inmobiliaria Colonial
     "ES0178430E18": "TEF.MC",     # Telefonica
     "ES0113679I37": "BKT.MC",     # Bankinter
-    "ES0105046009": "AENA.MC",    # AENA
+    "ES0105046009": "AENA.MC",    # AENA (pre-split, 1:10 hasta 2025)
+    "ES0105046017": "AENA.MC",    # AENA (post-split 2025)
     "ES0109067019": "AMS.MC",     # Amadeus
     "ES0113211835": "BBVA.MC",    # BBVA
     "ES0113900J37": "SAN.MC",     # Banco Santander
