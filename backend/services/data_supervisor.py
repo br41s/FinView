@@ -77,9 +77,20 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     issues.extend(_check_split_candidates(db, import_id, user_id))
     issues.extend(_check_price_sanity(db, import_id, user_id))
 
-    # Persist all issues
+    # Persist issues, deduplicating against existing needs_input rows so
+    # repeated supervisor runs don't create 5× copies of the same warning.
+    existing_needs_input = {
+        (row.issue_type, row.isin)
+        for row in db.query(DataIssue.issue_type, DataIssue.isin).filter(
+            DataIssue.status == "needs_input",
+        ).all()
+    }
     for issue in issues:
+        if issue.status == "needs_input" and (issue.issue_type, issue.isin) in existing_needs_input:
+            continue
         db.add(issue)
+        if issue.status == "needs_input":
+            existing_needs_input.add((issue.issue_type, issue.isin))
     db.flush()
 
     logger.info(
@@ -271,14 +282,19 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
     ]
 
     issues = []
-    for holding in sorted(latest_holdings, key=lambda h: h.isin):
+    for holding in sorted(latest_holdings, key=lambda h: (h.account_id, h.isin)):
         isin = holding.isin
-        # Calculate net qty from BUY/SELL transactions
+        snap_end = date(holding.fiscal_year, 12, 31)
+        # Scope tx sums to this holding's account AND to trade_date ≤ snap year-end,
+        # so cross-broker positions and post-snapshot activity don't trigger
+        # false positives.
         buys = (
             db.query(func.coalesce(func.sum(Transaction.quantity), 0))
             .filter(
+                Transaction.account_id == holding.account_id,
                 Transaction.isin == isin,
                 Transaction.type == TransactionType.BUY.value,
+                Transaction.trade_date <= snap_end,
             )
             .scalar()
         ) or Decimal("0")
@@ -286,8 +302,10 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
         sells = (
             db.query(func.coalesce(func.sum(Transaction.quantity), 0))
             .filter(
+                Transaction.account_id == holding.account_id,
                 Transaction.isin == isin,
                 Transaction.type == TransactionType.SELL.value,
+                Transaction.trade_date <= snap_end,
             )
             .scalar()
         ) or Decimal("0")
@@ -307,12 +325,14 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
                 isin=isin,
                 name=holding.name,
                 description=(
-                    f"Holdings de {holding.name} ({isin}): broker reporta {expected_qty} uds "
-                    f"a cierre {holding.fiscal_year}, pero transacciones dan {net_qty} "
-                    f"(diferencia: {diff:+}). Posible split, scrip dividend, o transacción faltante."
+                    f"Holdings de {holding.name} ({isin}) en cuenta {holding.account_id}: "
+                    f"broker reporta {expected_qty} uds a cierre {holding.fiscal_year}, "
+                    f"pero transacciones dan {net_qty} (diferencia: {diff:+}). "
+                    f"Posible split, scrip dividend, o transacción faltante."
                 ),
                 status="needs_input",
                 resolution_data=json.dumps({
+                    "account_id": holding.account_id,
                     "expected_qty": str(expected_qty),
                     "calculated_qty": str(net_qty),
                     "difference": str(diff),
