@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -34,28 +35,27 @@ class Position:
     weight_pct: Decimal | None = None  # filled later
 
 
-def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: bool = False) -> list[Position]:
-    """Compute open positions by aggregating BUY - SELL per ISIN per account.
+PosKey = tuple[int, str]
+QTY_TOLERANCE = Decimal("0.01")
 
-    Uses FIFO-style average cost: sum(cost of buys consumed) / remaining qty.
-    When *skip_prices* is True the expensive yfinance call is skipped and
-    price-dependent fields (current_price, market_value, P&L, weight) stay None.
-    """
-    # Get accounts
-    account_q = db.query(Account)
+
+def _load_accounts(db: Session, user_id: int | None) -> dict[int, Account]:
+    q = db.query(Account)
     if user_id is not None:
-        account_q = account_q.filter(Account.user_id == user_id)
-    accounts = {a.id: a for a in account_q.all()}
+        q = q.filter(Account.user_id == user_id)
+    return {a.id: a for a in q.all()}
 
-    if not accounts:
-        return []
 
-    account_ids = list(accounts.keys())
+def _load_snapshots(
+    db: Session, account_ids: list[int]
+) -> tuple[dict[PosKey, PortfolioHolding], set[PosKey], dict[int, date]]:
+    """Return (latest_snapshots, all_historical_keys, snap_end_date_by_acct).
 
-    # Load all snapshots: year-end holdings snapshots from fiscal reports
-    # (ING, DEGIRO, BBVA, etc.). The latest year's snapshot is authoritative
-    # for quantity held today.
-    snapshot_rows = (
+    The latest fiscal-year snapshot is authoritative for quantity held today.
+    snap_end_date is Dec 31 of that year — used to partition transactions into
+    pre- vs post-snapshot when reconciling.
+    """
+    rows = (
         db.query(PortfolioHolding)
         .filter(
             PortfolioHolding.account_id.in_(account_ids),
@@ -64,20 +64,43 @@ def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: 
         )
         .all()
     )
-    max_snap_year_by_acct: dict[int, int] = {}
-    historical_snap_keys: set[tuple[int, str]] = set()
-    latest_snapshots: dict[tuple[int, str], PortfolioHolding] = {}
-    for h in snapshot_rows:
-        historical_snap_keys.add((h.account_id, h.isin))
-        if h.account_id not in max_snap_year_by_acct or h.fiscal_year > max_snap_year_by_acct[h.account_id]:
-            max_snap_year_by_acct[h.account_id] = h.fiscal_year
-    for h in snapshot_rows:
-        if h.fiscal_year == max_snap_year_by_acct.get(h.account_id) and h.quantity > 0:
-            latest_snapshots[(h.account_id, h.isin)] = h
+    max_year: dict[int, int] = {}
+    historical: set[PosKey] = set()
+    for h in rows:
+        historical.add((h.account_id, h.isin))
+        if h.account_id not in max_year or h.fiscal_year > max_year[h.account_id]:
+            max_year[h.account_id] = h.fiscal_year
+    latest: dict[PosKey, PortfolioHolding] = {
+        (h.account_id, h.isin): h
+        for h in rows
+        if h.fiscal_year == max_year.get(h.account_id) and h.quantity > 0
+    }
+    end_dates = {acct_id: date(fy, 12, 31) for acct_id, fy in max_year.items()}
+    return latest, historical, end_dates
 
-    # Run FIFO over ALL transactions to build the tx-based view. This gives
-    # us real cost basis for broker reports that include full acquisition
-    # history (BBVA, eToro). We'll reconcile with snapshots afterwards.
+
+def _apply_tx_to_position(pos: Position, tx: Transaction) -> None:
+    if tx.type == TransactionType.BUY:
+        pos.total_cost_eur = (pos.total_cost_eur or ZERO) + abs(tx.net_amount_eur)
+        pos.quantity += tx.quantity
+    elif tx.type == TransactionType.SELL:
+        sell_qty = abs(tx.quantity)
+        if pos.quantity > ZERO and pos.total_cost_eur is not None:
+            pos.total_cost_eur -= (sell_qty / pos.quantity) * pos.total_cost_eur
+        pos.quantity -= sell_qty
+    if tx.name and not pos.name:
+        pos.name = tx.name
+    if tx.ticker and not pos.ticker:
+        pos.ticker = tx.ticker
+
+
+def _build_tx_positions(
+    db: Session,
+    account_ids: list[int],
+    accounts: dict[int, Account],
+    snap_end_by_acct: dict[int, date],
+) -> tuple[dict[PosKey, Position], dict[PosKey, Decimal]]:
+    """FIFO aggregate of all BUY/SELL transactions, plus qty-at-snap-date."""
     txs = (
         db.query(Transaction)
         .filter(
@@ -88,118 +111,114 @@ def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: 
         .order_by(Transaction.trade_date.asc(), Transaction.id.asc())
         .all()
     )
-    tx_positions: dict[tuple[int, str], Position] = {}
+    positions: dict[PosKey, Position] = {}
+    qty_at_snap: dict[PosKey, Decimal] = {}
     for tx in txs:
         key = (tx.account_id, tx.isin)
-        if key not in tx_positions:
+        if key not in positions:
             acct = accounts[tx.account_id]
-            tx_positions[key] = Position(
-                isin=tx.isin,
-                ticker=tx.ticker,
-                name=tx.name,
-                country=tx.country,
-                broker=acct.broker,
-                account_id=tx.account_id,
-                quantity=ZERO,
-                total_cost_eur=ZERO,
-            )
-        pos = tx_positions[key]
-        if tx.type == TransactionType.BUY:
-            pos.total_cost_eur = (pos.total_cost_eur or ZERO) + abs(tx.net_amount_eur)
-            pos.quantity += tx.quantity
-        elif tx.type == TransactionType.SELL:
-            sell_qty = abs(tx.quantity)
-            if pos.quantity > ZERO and pos.total_cost_eur is not None:
-                cost_fraction = (sell_qty / pos.quantity) * pos.total_cost_eur
-                pos.total_cost_eur -= cost_fraction
-            pos.quantity -= sell_qty
-        if tx.name and not pos.name:
-            pos.name = tx.name
-        if tx.ticker and not pos.ticker:
-            pos.ticker = tx.ticker
-
-    # Reconcile tx-based positions with latest snapshots:
-    # - For accounts WITHOUT any snapshot history: trust tx-based (eToro/IBKR).
-    # - For accounts WITH snapshots:
-    #     * Snapshot exists AND tx qty matches snapshot qty (±0.01): use tx-based
-    #       (preserves real cost basis).
-    #     * Snapshot exists but tx qty differs: snapshot wins, cost unknown
-    #       (txs are incomplete — e.g., ING fiscal PDFs that only cover partial
-    #       history and include scrip subscriptions already reflected in snapshot).
-    #     * Snapshot doesn't include this ISIN but txs do: position was closed
-    #       by year-end (or never in snapshot) → check tx qty. If > 0 and no
-    #       historical snapshot entry → flow-through (eToro-like). Include.
-    #       If historical snapshot entry exists (was sold): exclude.
-    positions: dict[tuple[int, str], Position] = {}
-    qty_tolerance = Decimal("0.01")
-
-    for key, snap in latest_snapshots.items():
-        acct = accounts[snap.account_id]
-        tx_pos = tx_positions.get(key)
-        if tx_pos is not None and abs(tx_pos.quantity - snap.quantity) <= qty_tolerance:
-            # Tx history matches snapshot — use tx-based (keeps real cost)
-            positions[key] = tx_pos
-            positions[key].quantity = snap.quantity  # snap is the source of truth
-        else:
-            # Snapshot is authoritative, cost basis unknown
             positions[key] = Position(
+                isin=tx.isin, ticker=tx.ticker, name=tx.name, country=tx.country,
+                broker=acct.broker, account_id=tx.account_id,
+                quantity=ZERO, total_cost_eur=ZERO,
+            )
+        snap_end = snap_end_by_acct.get(tx.account_id)
+        if snap_end is not None and tx.trade_date <= snap_end:
+            delta = tx.quantity if tx.type == TransactionType.BUY else -abs(tx.quantity)
+            qty_at_snap[key] = qty_at_snap.get(key, ZERO) + delta
+        _apply_tx_to_position(positions[key], tx)
+    return positions, qty_at_snap
+
+
+def _reconcile(
+    latest_snapshots: dict[PosKey, PortfolioHolding],
+    historical_snap_keys: set[PosKey],
+    tx_positions: dict[PosKey, Position],
+    tx_qty_at_snap: dict[PosKey, Decimal],
+    accounts: dict[int, Account],
+) -> dict[PosKey, Position]:
+    """Merge snapshot-authoritative and tx-derived views.
+
+    - Snapshot present AND tx qty at snap date matches (±0.01): use tx_pos
+      (preserves real cost basis, including post-snapshot activity).
+    - Snapshot present but tx qty differs: snapshot wins, cost unknown.
+    - Tx-only position, never in any snapshot: flow-through (eToro/IBKR).
+    - Tx-only position that was in historical snapshots but not latest: sold, skip.
+    """
+    out: dict[PosKey, Position] = {}
+    for key, snap in latest_snapshots.items():
+        tx_pos = tx_positions.get(key)
+        tx_qty_snap = tx_qty_at_snap.get(key, ZERO)
+        if tx_pos is not None and abs(tx_qty_snap - snap.quantity) <= QTY_TOLERANCE:
+            out[key] = tx_pos
+        else:
+            acct = accounts[snap.account_id]
+            out[key] = Position(
                 isin=snap.isin,
                 ticker=tx_pos.ticker if tx_pos else None,
-                name=snap.name,
-                country=snap.country,
-                broker=acct.broker,
-                account_id=snap.account_id,
+                name=snap.name, country=snap.country,
+                broker=acct.broker, account_id=snap.account_id,
                 quantity=snap.quantity,
             )
-
-    # Include tx-only positions (no snapshot for this account/isin) where
-    # no historical snapshot existed either → genuine positions from brokers
-    # without fiscal reports (eToro, etc.).
     for key, pos in tx_positions.items():
-        if key in positions:
-            continue
-        if key in historical_snap_keys:
-            # Was in snapshot history but not in latest → sold. Skip.
-            continue
-        positions[key] = pos
+        if key not in out and key not in historical_snap_keys:
+            out[key] = pos
+    return out
 
-    # Filter out closed positions (qty <= 0)
+
+def _apply_prices(db: Session, positions: list[Position]) -> None:
+    """Fetch live prices and fill market_value, P&L, and weight_pct in place."""
+    isins = list({p.isin for p in positions})
+    if not isins:
+        return
+    prices = fetch_and_cache_prices(db, isins)
+    total_mv = ZERO
+    for pos in positions:
+        price = prices.get(pos.isin)
+        if price is None:
+            continue
+        pos.current_price_eur = price
+        pos.market_value_eur = price * pos.quantity
+        if pos.total_cost_eur is not None:
+            pos.unrealized_pl_eur = pos.market_value_eur - pos.total_cost_eur
+            if pos.total_cost_eur > ZERO:
+                pos.unrealized_pl_pct = (pos.unrealized_pl_eur / pos.total_cost_eur) * Decimal("100")
+        total_mv += pos.market_value_eur
+    if total_mv > ZERO:
+        for pos in positions:
+            if pos.market_value_eur is not None:
+                pos.weight_pct = (pos.market_value_eur / total_mv) * Decimal("100")
+
+
+def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: bool = False) -> list[Position]:
+    """Compute open positions by aggregating BUY - SELL per ISIN per account.
+
+    Uses FIFO-style average cost: sum(cost of buys consumed) / remaining qty.
+    When *skip_prices* is True the expensive yfinance call is skipped and
+    price-dependent fields (current_price, market_value, P&L, weight) stay None.
+    """
+    accounts = _load_accounts(db, user_id)
+    if not accounts:
+        return []
+    account_ids = list(accounts.keys())
+
+    latest_snapshots, historical_keys, snap_end_by_acct = _load_snapshots(db, account_ids)
+    tx_positions, tx_qty_at_snap = _build_tx_positions(
+        db, account_ids, accounts, snap_end_by_acct,
+    )
+    positions = _reconcile(
+        latest_snapshots, historical_keys, tx_positions, tx_qty_at_snap, accounts,
+    )
+
     open_positions = [p for p in positions.values() if p.quantity > ZERO]
-
-    # Compute avg cost only when total cost is known
     for pos in open_positions:
         if pos.total_cost_eur is not None and pos.quantity > ZERO:
             pos.avg_cost_eur = pos.total_cost_eur / pos.quantity
 
-    # Fetch live prices (skippable for fast first-paint)
-    isins = list({p.isin for p in open_positions})
-    if isins and not skip_prices:
-        prices = fetch_and_cache_prices(db, isins)
-        total_market_value = ZERO
+    if not skip_prices:
+        _apply_prices(db, open_positions)
 
-        for pos in open_positions:
-            price = prices.get(pos.isin)
-            if price is not None:
-                pos.current_price_eur = price
-                pos.market_value_eur = price * pos.quantity
-                if pos.total_cost_eur is not None:
-                    pos.unrealized_pl_eur = pos.market_value_eur - pos.total_cost_eur
-                    if pos.total_cost_eur > ZERO:
-                        pos.unrealized_pl_pct = (pos.unrealized_pl_eur / pos.total_cost_eur) * Decimal("100")
-                total_market_value += pos.market_value_eur
-
-        # Compute weight
-        if total_market_value > ZERO:
-            for pos in open_positions:
-                if pos.market_value_eur is not None:
-                    pos.weight_pct = (pos.market_value_eur / total_market_value) * Decimal("100")
-
-    # Sort by market value descending (positions without price at end)
-    open_positions.sort(
-        key=lambda p: p.market_value_eur or ZERO,
-        reverse=True,
-    )
-
+    open_positions.sort(key=lambda p: p.market_value_eur or ZERO, reverse=True)
     return open_positions
 
 
