@@ -4,15 +4,17 @@ Dashboard de inversiones personales con importación multi-broker y motor fiscal
 
 ## Stack
 
-- **Backend:** FastAPI · SQLAlchemy · SQLite · pdfplumber · openpyxl
-- **Frontend:** Next.js 16 · React 19 · TailwindCSS · Recharts
+- **Backend:** FastAPI · SQLAlchemy · pdfplumber · openpyxl
+- **Frontend:** Next.js 16 · React 19 · TailwindCSS · Recharts · NextAuth
+- **DB:** Neon Postgres (prod) · SQLite (local fallback)
+- **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
 - **Tests:** pytest (128 tests)
 
 ## Brokers soportados
 
 | Broker | Formato | Datos extraídos |
 |--------|---------|-----------------|
-| Trade Republic | PDF (Steuerbericht) | Dividendos, plusvalías, retenciones, casillas, cartera |
+| Trade Republic | PDF (Steuerbericht) + CSV (Transaction export) | Dividendos, plusvalías, retenciones, casillas, cartera (PDF) · ledger de transacciones multi-año + intereses (CSV) |
 | DEGIRO | PDF (Informe Anual) | Dividendos, ganancias/pérdidas, cartera, transacciones |
 | Interactive Brokers | CSV (Activity Statement) | Trades, dividendos, retenciones, P&L realizado, opciones |
 | ING | PDF (Información Fiscal) | Intereses, dividendos, transacciones, cartera |
@@ -86,7 +88,7 @@ FinView/
 Base URL: `http://localhost:8000/api`
 
 ### Imports
-- `POST /imports/tr` — Trade Republic PDF
+- `POST /imports/tr` — Trade Republic PDF o CSV (dispatch por extensión)
 - `POST /imports/degiro` — DEGIRO PDF  
 - `POST /imports/ibkr` — IBKR CSV
 - `POST /imports/ing` — ING PDF
@@ -117,3 +119,9 @@ pytest tests/ backend/tests/ -v
 ```
 
 128 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
+
+## Despliegue y CI/CD
+
+Ver [docs/deployment.md](docs/deployment.md) para el esquema completo (Vercel + Cloud Run + Neon + Cloud Build), env vars requeridas, y cómo actualizar secretos.
+
+**Flujo:** commit local → push a `main` → Vercel redesplaza frontend automáticamente; Cloud Build redesplaza `finview-api` en Cloud Run cuando el push toca `backend/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`. Neon es la base de datos compartida y no se despliega.
