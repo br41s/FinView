@@ -66,7 +66,8 @@ Configuradas en Vercel → Project Settings → Environment Variables:
 - **Cómo:** Cloud Build trigger `finview-api-deploy` escucha GitHub via Cloud Build GitHub App (1ª gen, región `global`).
 - **Disparadores:** push a `main` que toque `backend/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`.
 - **Build + deploy:** definido en [cloudbuild.yaml](../cloudbuild.yaml). Construye imagen Docker, la sube a Artifact Registry, y llama `gcloud run deploy finview-api --image=... --region=europe-west1`. Preserva env vars existentes.
-- **Service account de Cloud Build:** `748911075551@cloudbuild.gserviceaccount.com` con roles `run.admin` + `iam.serviceAccountUser`.
+- **Service account del trigger:** `github-actions-deployer@finview-brais-2026.iam.gserviceaccount.com` con roles `run.admin`, `iam.serviceAccountUser`, `cloudbuild.builds.editor`, `storage.admin`, `artifactregistry.writer`, `logging.viewer`, `logging.logWriter`. Proyectos nuevos de GCP **no permiten** usar la SA por defecto (`<PROJECT_NUM>@cloudbuild.gserviceaccount.com`) — siempre user-managed.
+- **Gotcha `includedFiles`:** en la UI del wizard hay que introducir **cada patrón en su propia línea** (Enter entre patrones). Si los pegas separados por espacios se guardan como una sola cadena y el trigger no matchea nada. Si se rompe, exportar con `gcloud beta builds triggers export finview-api-deploy --region=global`, arreglar el YAML y reimportar.
 
 Monitorizar builds: https://console.cloud.google.com/cloud-build/builds?project=finview-brais-2026
 
