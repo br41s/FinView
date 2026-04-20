@@ -480,8 +480,19 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
             # Real splits are almost always outside [0.9, 1.1].
             if Decimal("0.9") <= ratio <= Decimal("1.1"):
                 continue
-            # Check if we already adjusted for this split
-            # (buy price should be split-adjusted if split was applied)
+            # Skip if we've already recorded a synthetic split SELL on that
+            # date (manual adjustment to preserve cost basis across ISIN change).
+            already_handled = (
+                db.query(Transaction)
+                .filter(
+                    Transaction.isin == isin,
+                    Transaction.trade_date == split_date,
+                    Transaction.type == TransactionType.SELL.value,
+                )
+                .first()
+            )
+            if already_handled:
+                continue
             issue = DataIssue(
                 import_id=import_id,
                 issue_type="potential_split",
@@ -529,8 +540,15 @@ def _check_price_sanity(db: Session, import_id: int | None, user_id: int | None 
             if tx.name.startswith("[OPT]") or tx.name.startswith("[FX]"):
                 continue
 
+            # Synthetic split adjustments we insert manually: name includes
+            # "(split" — already acknowledged, skip entirely.
+            if "(split" in tx.name.lower():
+                continue
+
             # Could be a scrip dividend (free shares) — check name
             if _SCRIP_PATTERNS.search(tx.name):
+                # Scrip dividends at €0 are normal and expected; emit as
+                # auto_resolved so they don't nag the user.
                 issue = DataIssue(
                     import_id=import_id,
                     issue_type="scrip_dividend",
@@ -538,10 +556,10 @@ def _check_price_sanity(db: Session, import_id: int | None, user_id: int | None 
                     isin=tx.isin,
                     name=tx.name,
                     description=(
-                        f"Posible scrip dividend: {tx.type} {tx.quantity} uds de {tx.name} "
-                        f"a precio {tx.price}€. Verificar ratio de conversión."
+                        f"Scrip dividend: {tx.type} {tx.quantity} uds de {tx.name} "
+                        f"a precio {tx.price}€."
                     ),
-                    status="needs_input",
+                    status="auto_resolved",
                     resolution_data=json.dumps({
                         "tx_id": tx.id,
                         "quantity": str(tx.quantity),
