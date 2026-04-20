@@ -26,7 +26,7 @@ const BROKERS = [
   {
     key: "tr",
     label: "Trade Republic",
-    accept: ".pdf",
+    accept: ".pdf,.csv",
     color: "bg-neutral-800 hover:bg-neutral-700 border-neutral-600",
     multi: false,
   },
@@ -80,7 +80,8 @@ function detectBroker(
   if (
     lower.startsWith("tr-") ||
     lower.includes("trade republic") ||
-    lower.includes("tax_report")
+    lower.includes("tax_report") ||
+    lower.includes("transaction export")
   )
     return "tr";
   if (
@@ -228,8 +229,8 @@ export function FileUpload({
           <Upload className="h-10 w-10 mx-auto text-muted-foreground" />
         </div>
         <p className="text-muted-foreground mb-4 text-sm">
-          Arrastra aquí archivos de Trade Republic (PDF), DEGIRO (PDF), IBKR
-          (CSV), ING (PDF), BBVA (1-3 PDFs) o eToro (XLSX)
+          Arrastra aquí archivos de Trade Republic (PDF o CSV), DEGIRO (PDF),
+          IBKR (CSV), ING (PDF), BBVA (1-3 PDFs) o eToro (XLSX)
         </p>
         <input
           type="file"

@@ -30,6 +30,10 @@ from backend.importers.ing import (
     parse_ing_report,
 )
 from backend.importers.tr import compute_file_hash, parse_tr_tax_report
+from backend.importers.tr_csv import (
+    compute_file_hash as tr_csv_compute_hash,
+    parse_tr_csv,
+)
 from backend.models import Account, DataIssue, ImportRecord
 from backend.services.import_service import (
     import_bbva_report,
@@ -37,6 +41,7 @@ from backend.services.import_service import (
     import_etoro_report,
     import_ibkr_report,
     import_ing_report,
+    import_tr_csv_report,
     import_tr_report,
     _delete_import_data,
 )
@@ -44,25 +49,42 @@ from backend.services.import_service import (
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 
-@router.post("/tr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post("/tr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF o CSV"}, 422: {"description": "Error al procesar el archivo"}})
 def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
-    """Upload a Trade Republic Tax Report PDF."""
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
+    """Upload a Trade Republic Tax Report PDF or Transaction export CSV.
 
-    # Save to temp file for processing
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+    PDF → full year-end tax report (capital gains, holdings, casillas).
+    CSV → running transaction ledger across all years (idempotent, dedups
+    against already-imported TR transactions).
+    """
+    name = (file.filename or "").lower()
+    if name.endswith(".pdf"):
+        is_csv = False
+        suffix = ".pdf"
+    elif name.endswith(".csv"):
+        is_csv = True
+        suffix = ".csv"
+    else:
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF o CSV")
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         content = file.file.read()
         tmp.write(content)
         tmp_path = Path(tmp.name)
 
     try:
-        file_hash = compute_file_hash(tmp_path)
-        report = parse_tr_tax_report(tmp_path)
-        result = import_tr_report(db, report, file_hash, file.filename, user_id=user.id)
+        if is_csv:
+            file_hash = tr_csv_compute_hash(tmp_path)
+            report = parse_tr_csv(tmp_path)
+            result = import_tr_csv_report(db, report, file_hash, file.filename, user_id=user.id)
+        else:
+            file_hash = compute_file_hash(tmp_path)
+            report = parse_tr_tax_report(tmp_path)
+            result = import_tr_report(db, report, file_hash, file.filename, user_id=user.id)
         return result
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
+        kind = "CSV" if is_csv else "PDF"
+        raise HTTPException(status_code=422, detail=f"Error al procesar el {kind}: {e}")
     finally:
         tmp_path.unlink(missing_ok=True)
 

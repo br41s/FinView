@@ -359,6 +359,104 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     }
 
 
+def import_tr_csv_report(
+    db: Session,
+    report: TRTaxReport,
+    file_hash: str,
+    filename: str,
+    user_id: int | None = None,
+) -> dict:
+    """Import a TR Transaction export CSV.
+
+    Unlike `import_tr_report`, this path:
+    - does NOT auto-replace prior-year imports (CSV spans multiple years);
+    - dedups transactions against what's already in the DB for the TR account
+      by (account_id, trade_date, isin, type, quantity);
+    - skips holdings / capital_gains / casillas entirely (CSV doesn't carry
+      them — the TR PDF remains source of truth for year-end fiscal figures).
+    """
+    existing = _check_duplicate(db, file_hash, Broker.TR)
+    if existing:
+        return {
+            "status": "duplicate",
+            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
+            "import_id": existing.id,
+        }
+
+    account = _get_or_create_account(db, Broker.TR, report.client_id, user_id)
+
+    import_rec = ImportRecord(
+        account_id=account.id,
+        filename=filename,
+        file_hash=file_hash,
+        broker=Broker.TR.value,
+        fiscal_year=report.fiscal_year,
+        record_count=len(report.transactions) + len(report.dividends),
+    )
+    db.add(import_rec)
+    db.flush()
+
+    existing_keys: set[tuple[date, str, str, Decimal]] = {
+        (t.trade_date, (t.isin or ""), t.type, t.quantity)
+        for t in db.query(
+            Transaction.trade_date,
+            Transaction.isin,
+            Transaction.type,
+            Transaction.quantity,
+        )
+        .filter(Transaction.account_id == account.id)
+        .all()
+    }
+
+    def _dedup_insert(items: list[ParsedTransaction]) -> tuple[int, int]:
+        added = skipped = 0
+        for tx in items:
+            key = (
+                tx.trade_date,
+                tx.isin or "",
+                TX_TYPE_MAP.get(tx.tx_type, TransactionType.BUY).value,
+                tx.quantity,
+            )
+            if key in existing_keys:
+                skipped += 1
+                continue
+            _store_transaction(db, tx, account.id, import_rec.id)
+            existing_keys.add(key)
+            added += 1
+        return added, skipped
+
+    div_count, div_skipped = _dedup_insert(report.dividends)
+    tx_count, tx_skipped = _dedup_insert(report.transactions)
+
+    # Cross-broker FIFO for every year the CSV touched.
+    years = {d.trade_date.year for d in report.transactions} | {
+        d.trade_date.year for d in report.dividends
+    }
+    fifo_lots_created = 0
+    for yr in sorted(years):
+        fifo_lots_created += recalculate_cross_broker_fifo(
+            db, yr, user_id=user_id
+        )["lots_created"]
+
+    issues = _run_supervisor(db, import_rec.id)
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "import_id": import_rec.id,
+        "fiscal_year": report.fiscal_year,
+        "counts": {
+            "dividends": div_count,
+            "transactions": tx_count,
+            "dividends_skipped": div_skipped,
+            "transactions_skipped": tx_skipped,
+            "fifo_cross_broker": fifo_lots_created,
+        },
+        "issues": issues,
+    }
+
+
 def _create_dg_tax_lots(
     db: Session,
     gains: list[ParsedGainLoss],
