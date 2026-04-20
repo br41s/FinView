@@ -24,3 +24,6 @@ test_api.py
 .env.local
 .env.production
 *.dump
+.gstack/
+.claude/
+**/tsconfig.tsbuildinfo

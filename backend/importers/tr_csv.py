@@ -22,8 +22,6 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-_ISIN_IN_DESC = re.compile(r"\b([A-Z]{2}[A-Z0-9]{9}\d)\b")
-
 from backend.importers.base import (
     ParsedTransaction,
     TRTaxReport,
@@ -31,16 +29,7 @@ from backend.importers.base import (
     country_from_isin,
 )
 
-# Category/type combos we import.
-_KEEP: set[tuple[str, str]] = {
-    ("TRADING", "BUY"),
-    ("TRADING", "SELL"),
-    ("CASH", "DIVIDEND"),
-    ("CASH", "INTEREST_PAYMENT"),
-    ("CORPORATE_ACTION", "SPIN_OFF"),
-    ("CORPORATE_ACTION", "INTERMEDIATE_SECURITIES_DISTRIBUTION"),
-    ("CORPORATE_ACTION", "DIVIDEND_REINVESTMENT"),
-}
+_ISIN_IN_DESC = re.compile(r"\b([A-Z]{2}[A-Z0-9]{9}\d)\b")
 
 
 def _dec(s: str | None) -> Decimal:
