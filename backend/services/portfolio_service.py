@@ -190,12 +190,83 @@ def _apply_prices(db: Session, positions: list[Position]) -> None:
                 pos.weight_pct = (pos.market_value_eur / total_mv) * Decimal("100")
 
 
-def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: bool = False) -> list[Position]:
+def _aggregate_by_isin(positions: list[Position]) -> list[Position]:
+    """Collapse per-account positions into one row per ISIN.
+
+    Sums quantity and cost, merges broker labels, recomputes avg cost and
+    weights. Preserves unknown cost basis (None) when any contributing lot
+    lacks it by propagating the unknown: if *all* contributions are unknown,
+    total_cost stays None; if some are known, only the known fraction is
+    summed (consistent with get_position_detail).
+    """
+    by_isin: dict[str, list[Position]] = {}
+    for p in positions:
+        by_isin.setdefault(p.isin, []).append(p)
+
+    out: list[Position] = []
+    for isin, group in by_isin.items():
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        total_qty = sum((p.quantity for p in group), ZERO)
+        known_costs = [p.total_cost_eur for p in group if p.total_cost_eur is not None]
+        total_cost = sum(known_costs, ZERO) if known_costs else None
+        brokers = sorted({p.broker for p in group if p.broker})
+        current_price = next(
+            (p.current_price_eur for p in group if p.current_price_eur is not None),
+            None,
+        )
+        market_value = current_price * total_qty if current_price is not None else None
+        unrealized_pl = None
+        unrealized_pl_pct = None
+        if total_cost is not None and market_value is not None:
+            unrealized_pl = market_value - total_cost
+            if total_cost > ZERO:
+                unrealized_pl_pct = unrealized_pl / total_cost * Decimal("100")
+        avg_cost = (total_cost / total_qty) if (total_cost is not None and total_qty > ZERO) else None
+        first = group[0]
+        out.append(
+            Position(
+                isin=isin,
+                ticker=next((p.ticker for p in group if p.ticker), None),
+                name=first.name,
+                country=next((p.country for p in group if p.country), None),
+                broker=", ".join(brokers),
+                account_id=first.account_id,
+                quantity=total_qty,
+                avg_cost_eur=avg_cost,
+                total_cost_eur=total_cost,
+                current_price_eur=current_price,
+                market_value_eur=market_value,
+                unrealized_pl_eur=unrealized_pl,
+                unrealized_pl_pct=unrealized_pl_pct,
+            )
+        )
+
+    total_mv = sum((p.market_value_eur for p in out if p.market_value_eur is not None), ZERO)
+    if total_mv > ZERO:
+        for p in out:
+            if p.market_value_eur is not None:
+                p.weight_pct = p.market_value_eur / total_mv * Decimal("100")
+    out.sort(key=lambda p: p.market_value_eur or ZERO, reverse=True)
+    return out
+
+
+def get_open_positions(
+    db: Session,
+    user_id: int | None = None,
+    *,
+    skip_prices: bool = False,
+    aggregate: bool = True,
+) -> list[Position]:
     """Compute open positions by aggregating BUY - SELL per ISIN per account.
 
     Uses FIFO-style average cost: sum(cost of buys consumed) / remaining qty.
     When *skip_prices* is True the expensive yfinance call is skipped and
     price-dependent fields (current_price, market_value, P&L, weight) stay None.
+    When *aggregate* is True (default) positions are collapsed by ISIN so the
+    same asset held across multiple brokers/accounts shows as a single row.
+    Set to False for callers that need the per-account breakdown.
     """
     accounts = _load_accounts(db, user_id)
     if not accounts:
@@ -218,22 +289,25 @@ def get_open_positions(db: Session, user_id: int | None = None, *, skip_prices: 
     if not skip_prices:
         _apply_prices(db, open_positions)
 
-    open_positions.sort(key=lambda p: p.market_value_eur or ZERO, reverse=True)
+    if aggregate:
+        open_positions = _aggregate_by_isin(open_positions)
+    else:
+        open_positions.sort(key=lambda p: p.market_value_eur or ZERO, reverse=True)
     return open_positions
 
 
 def get_portfolio_summary(db: Session, user_id: int | None = None, *, skip_prices: bool = False) -> dict:
     """Return aggregated portfolio stats."""
-    positions = get_open_positions(db, user_id, skip_prices=skip_prices)
+    raw = get_open_positions(db, user_id, skip_prices=skip_prices, aggregate=False)
+    positions = _aggregate_by_isin(raw)
 
     total_cost = sum((p.total_cost_eur for p in positions if p.total_cost_eur is not None), ZERO)
     total_value = sum((p.market_value_eur for p in positions if p.market_value_eur), ZERO)
     total_pl = sum((p.unrealized_pl_eur for p in positions if p.unrealized_pl_eur), ZERO)
     total_pl_pct = (total_pl / total_cost * Decimal("100")) if total_cost > ZERO else ZERO
 
-    # Count unique ISINs and brokers
-    unique_isins = {p.isin for p in positions}
-    unique_brokers = {p.broker for p in positions}
+    unique_isins = {p.isin for p in raw}
+    unique_brokers = {p.broker for p in raw if p.broker}
 
     return {
         "total_positions": len(positions),
@@ -248,7 +322,7 @@ def get_portfolio_summary(db: Session, user_id: int | None = None, *, skip_price
 
 def get_position_detail(db: Session, isin: str, user_id: int | None = None) -> dict | None:
     """Detailed info for a single ISIN across all accounts."""
-    positions = get_open_positions(db, user_id)
+    positions = get_open_positions(db, user_id, aggregate=False)
     isin_positions = [p for p in positions if p.isin == isin]
 
     if not isin_positions:

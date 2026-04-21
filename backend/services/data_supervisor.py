@@ -85,20 +85,23 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
             DataIssue.status == "needs_input",
         ).all()
     }
+    persisted: list[DataIssue] = []
     for issue in issues:
         if issue.status == "needs_input" and (issue.issue_type, issue.isin) in existing_needs_input:
             continue
         db.add(issue)
+        persisted.append(issue)
         if issue.status == "needs_input":
             existing_needs_input.add((issue.issue_type, issue.isin))
     db.flush()
 
     logger.info(
-        "Data supervisor: %d issues found (import_id=%s)",
+        "Data supervisor: %d issues found, %d persisted (import_id=%s)",
         len(issues),
+        len(persisted),
         import_id,
     )
-    return issues
+    return persisted
 
 
 # ---------------------------------------------------------------------------

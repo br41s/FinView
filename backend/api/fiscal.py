@@ -179,55 +179,36 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
 def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """Quick dashboard stats, optionally filtered by fiscal year.
 
-    When a fiscal_year is selected, dividends/gains/losses come from
-    TaxResult (broker PDF truth) instead of computed Transaction/TaxLot data.
+    Dividendos, ganancias y pérdidas se calculan siempre desde
+    Transaction/TaxLot para que los totales del dashboard cuadren con
+    los desgloses (por país, por compañía, etc.), que usan la misma
+    fuente.
     """
-    tx_q = db.query(func.count(Transaction.id)).join(Account).filter(Account.user_id == user.id)
-    if fiscal_year:
-        tx_q = tx_q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
-    total_tx = tx_q.scalar() or 0
+    def _with_year(q):
+        return q.filter(year_str(Transaction.trade_date) == str(fiscal_year)) if fiscal_year else q
 
-    if fiscal_year:
-        # Use broker truth (TaxResult) for fiscal metrics
-        def _sum_casilla(casilla: int) -> Decimal:
-            val = (
-                db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
-                .filter(
-                    TaxResult.user_id == user.id,
-                    TaxResult.fiscal_year == fiscal_year,
-                    TaxResult.casilla == casilla,
-                )
-                .scalar()
-            )
-            return val or Decimal("0")
+    total_tx = _with_year(
+        db.query(func.count(Transaction.id)).join(Account).filter(Account.user_id == user.id)
+    ).scalar() or 0
 
-        div_total = _sum_casilla(29)   # Dividendos brutos
-        gains = _sum_casilla(332)      # Ganancias patrimoniales
-        losses = _sum_casilla(337)     # Pérdidas patrimoniales
-    else:
-        # All-years view: compute from Transaction/TaxLot
-        div_total = (
-            db.query(func.coalesce(func.sum(Transaction.gross_amount), 0))
-            .join(Account)
-            .filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
-            .scalar()
-        ) or Decimal("0")
+    div_total = _with_year(
+        db.query(func.coalesce(func.sum(Transaction.gross_amount), 0))
+        .join(Account)
+        .filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
+    ).scalar() or Decimal("0")
 
-        gains = (
+    def _sum_realized_pl(positive: bool) -> Decimal:
+        cond = TaxLot.realized_pl_eur > 0 if positive else TaxLot.realized_pl_eur < 0
+        q = (
             db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
-            .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+            .join(Transaction, TaxLot.sell_tx_id == Transaction.id)
             .join(Account)
-            .filter(Account.user_id == user.id, TaxLot.realized_pl_eur > 0)
-            .scalar()
-        ) or Decimal("0")
+            .filter(Account.user_id == user.id, cond)
+        )
+        return _with_year(q).scalar() or Decimal("0")
 
-        losses = (
-            db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
-            .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
-            .join(Account)
-            .filter(Account.user_id == user.id, TaxLot.realized_pl_eur < 0)
-            .scalar()
-        ) or Decimal("0")
+    gains = _sum_realized_pl(positive=True)
+    losses = _sum_realized_pl(positive=False)
 
     accounts = db.query(func.count(Account.id)).filter(Account.user_id == user.id).scalar() or 0
     imports = (
