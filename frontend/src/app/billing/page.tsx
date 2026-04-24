@@ -21,9 +21,9 @@ interface Subscription {
 }
 
 const tierBadgeColor: Record<string, string> = {
-  FREE: "bg-zinc-700 text-zinc-200",
-  PRO: "bg-blue-600 text-white",
-  UNLIMITED: "bg-purple-600 text-white",
+  FREE: "bg-secondary text-secondary-foreground",
+  PRO: "bg-primary text-primary-foreground",
+  UNLIMITED: "bg-foreground text-background",
 };
 
 export default function BillingPage() {
@@ -82,13 +82,13 @@ function BillingContent() {
       <h1 className="text-3xl font-bold mb-6">Facturación</h1>
 
       {success && (
-        <div className="mb-6 rounded-lg bg-green-500/10 border border-green-500/20 p-4 text-green-400">
+        <div className="mb-6 rounded-lg border p-4 text-sm" style={{ background: 'rgba(107,122,58,0.08)', borderColor: 'rgba(107,122,58,0.25)', color: 'var(--fv-success,#6B7A3A)' }}>
           ¡Tu suscripción se ha activado correctamente!
         </div>
       )}
 
       {canceled && (
-        <div className="mb-6 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-4 text-yellow-400">
+        <div className="mb-6 rounded-lg border p-4 text-sm" style={{ background: 'rgba(154,107,31,0.08)', borderColor: 'rgba(154,107,31,0.25)', color: 'var(--fv-ochre,#9A6B1F)' }}>
           El pago fue cancelado. Tu plan no ha cambiado.
         </div>
       )}
@@ -171,7 +171,7 @@ function BillingContent() {
         </CardContent>
       </Card>
 
-      <Button variant="ghost" className="mt-6" onClick={() => router.push("/")}>
+      <Button variant="ghost" className="mt-6" onClick={() => router.push("/dashboard")}>
         Volver al dashboard
       </Button>
     </div>

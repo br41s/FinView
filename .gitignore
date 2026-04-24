@@ -18,6 +18,9 @@ node_modules/
 # OS
 .DS_Store
 
+# Design handoff artifacts
+design_handoff_finview_intro/
+
 # Temp
 test_parser.py
 test_api.py

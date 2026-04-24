@@ -60,18 +60,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      const isAuthPage =
-        nextUrl.pathname.startsWith("/login") ||
-        nextUrl.pathname.startsWith("/register");
-      const isPublicPage = nextUrl.pathname.startsWith("/pricing");
+      const { pathname } = nextUrl;
 
-      if (isPublicPage) return true;
-
-      if (isAuthPage) {
-        if (isLoggedIn) return Response.redirect(new URL("/", nextUrl));
+      // Landing page: public, but redirect logged-in users straight to the dashboard
+      if (pathname === "/") {
+        if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl));
         return true;
       }
 
+      // Auth pages: redirect logged-in users to dashboard
+      const isAuthPage =
+        pathname.startsWith("/login") || pathname.startsWith("/register");
+      if (isAuthPage) {
+        if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl));
+        return true;
+      }
+
+      // Public marketing pages
+      if (pathname.startsWith("/pricing")) return true;
+      if (pathname.startsWith("/features")) return true;
+      if (pathname.startsWith("/blog")) return true;
+
+      // Everything else (including /dashboard) requires auth
       return isLoggedIn;
     },
   },

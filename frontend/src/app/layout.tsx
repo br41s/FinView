@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Geist } from "next/font/google";
+import { Geist, Fraunces, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
+const fraunces = Fraunces({ subsets: ["latin"], axes: ["opsz"], variable: "--fv-font-fraunces" });
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--fv-font-jetbrains" });
 
 export const metadata: Metadata = {
   title: "FinView",
@@ -21,7 +23,7 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={cn("dark font-sans", geist.variable)}
+      className={cn("font-sans", geist.variable, fraunces.variable, jetbrainsMono.variable)}
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background text-foreground antialiased">

@@ -8,38 +8,150 @@
   --green: #22c55e;
   --red: #ef4444;
   --yellow: #eab308;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+
+  /* ── shadcn tokens mapped to FinView warm palette ── */
+  --background:            #F5F1E8;
+  --foreground:            #1F1B16;
+  --card:                  #FEFCF5;
+  --card-foreground:       #1F1B16;
+  --popover:               #FEFCF5;
+  --popover-foreground:    #1F1B16;
+  --primary:               #9A6B1F;
+  --primary-foreground:    #F5F1E8;
+  --secondary:             #EDE8DE;
+  --secondary-foreground:  #1F1B16;
+  --muted:                 #EDE8DE;
+  --muted-foreground:      rgba(31,27,22,0.55);
+  --accent:                rgba(154,107,31,0.10);
+  --accent-foreground:     #9A6B1F;
+  --destructive:           #9B3D2C;
+  --border:                rgba(31,27,22,0.14);
+  --input:                 rgba(31,27,22,0.14);
+  --ring:                  #9A6B1F;
+
+  /* ── Chart palette — warm earthy tones ── */
+  --chart-1: #9A6B1F;
+  --chart-2: #6B7A3A;
+  --chart-3: #C4855A;
+  --chart-4: #825416;
+  --chart-5: #D4B07A;
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── Sidebar — dark ink panel ── */
+  --sidebar:                    #1F1B16;
+  --sidebar-foreground:         #F5F1E8;
+  --sidebar-primary:            #9A6B1F;
+  --sidebar-primary-foreground: #F5F1E8;
+  --sidebar-accent:             rgba(245,241,232,0.08);
+  --sidebar-accent-foreground:  #F5F1E8;
+  --sidebar-border:             rgba(245,241,232,0.10);
+  --sidebar-ring:               #9A6B1F;
+
+  /* ── FinView design system tokens ── */
+  --fv-paper:        #F5F1E8;
+  --fv-ink:          #1F1B16;
+  --fv-ochre:        #9A6B1F;
+  --fv-ochre-dark:   #825416;
+  --fv-ochre-soft:   #D4B07A;
+  --fv-ochre-ghost:  rgba(154, 107, 31, 0.10);
+
+  --fv-ink-90:  rgba(31,27,22,0.90);
+  --fv-ink-70:  rgba(31,27,22,0.70);
+  --fv-ink-60:  rgba(31,27,22,0.60);
+  --fv-ink-40:  rgba(31,27,22,0.40);
+  --fv-ink-30:  rgba(31,27,22,0.30);
+  --fv-ink-15:  rgba(31,27,22,0.15);
+  --fv-ink-10:  rgba(31,27,22,0.10);
+  --fv-ink-05:  rgba(31,27,22,0.05);
+
+  --fv-success: #6B7A3A;
+  --fv-danger:  #9B3D2C;
+
+  --fv-font-display: var(--fv-font-fraunces), Georgia, 'Times New Roman', serif;
+  --fv-font-sans:    var(--font-sans), system-ui, sans-serif;
+  --fv-font-mono:    var(--fv-font-jetbrains), ui-monospace, 'SF Mono', monospace;
+
+  --fv-r-sm:   2px;
+  --fv-r-md:   6px;
+  --fv-r-lg:   12px;
+  --fv-r-pill: 999px;
+
+  --fv-shadow-sm: 0 1px 2px rgba(31,27,22,0.06);
+  --fv-shadow-md: 0 4px 16px rgba(31,27,22,0.08);
+  --fv-shadow-lg: 0 16px 48px rgba(31,27,22,0.12);
+
+  --fv-ease:      cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fv-dur-fast:  120ms;
+  --fv-dur:       200ms;
+  --fv-dur-slow:  400ms;
+  --fv-dur-page:  600ms;
+}
+
+/* ── FinView intro animation keyframes ── */
+@keyframes fv-draw { to { stroke-dashoffset: 0; } }
+@keyframes fv-draw-long { to { stroke-dashoffset: 0; } }
+@keyframes fv-pop {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+@keyframes fv-petal {
+  0%   { transform: scale(0); }
+  70%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+@keyframes fv-petal-inner {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+@keyframes fv-core {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+@keyframes fv-leaf-in {
+  from { opacity: 0; transform: scale(0) rotate(-10deg); }
+  to   { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes fv-drift {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  15%  { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(20px, -80px) scale(1); }
+}
+@keyframes fv-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50%      { transform: rotate(2deg); }
+}
+@keyframes fv-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fv-bloom {
+  transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fv-bloom:hover {
+  transform: scale(1.25);
+}
+.fv-bloom .petal-outer {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transform: scale(0) rotate(0deg);
+  transition: transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  opacity: 0.85;
+}
+.fv-bloom:hover .petal-outer {
+  transform: scale(1.15) rotate(36deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fv-bloom,
+  .fv-bloom * {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 @theme inline {
@@ -130,3 +242,4 @@
     @apply font-sans;
   }
 }
+

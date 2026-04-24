@@ -111,7 +111,7 @@ export function AppSidebar({
                   className={
                     currentView === "importar"
                       ? undefined
-                      : "bg-white text-black hover:bg-white/90 hover:text-black font-medium"
+                      : "bg-sidebar-primary text-sidebar-primary-foreground hover:opacity-90 font-medium"
                   }
                 >
                   <Upload />
