@@ -2,6 +2,7 @@
 
 import logging
 import math
+import re
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -17,6 +18,9 @@ MEFF_PROXY = "https://api.allorigins.win/raw?url="
 MEFF_DEFAULT_DAYS = 30
 
 _SQRT_2PI = math.sqrt(2 * math.pi)
+
+_ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')
+_ISIN_CACHE: dict[str, str] = {}  # ISIN → resolved ticker symbol
 
 
 # ── Math helpers ─────────────────────────────────────────────────────
@@ -56,11 +60,42 @@ def _safe_float(val, default: float = 0.0) -> float:
         return default
 
 
+# ── ISIN resolution ──────────────────────────────────────────────────
+
+
+def _resolve_isin(isin: str) -> str | None:
+    """Resolve an ISIN to a ticker symbol via Yahoo Finance search. Result is cached."""
+    if isin in _ISIN_CACHE:
+        return _ISIN_CACHE[isin]
+    try:
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}&quotesCount=1&newsCount=0"
+        resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code == 200:
+            quotes = resp.json().get("quotes", [])
+            if quotes:
+                symbol = quotes[0].get("symbol")
+                if symbol:
+                    _ISIN_CACHE[isin] = symbol
+                    logger.info("ISIN %s resolved to ticker %s", isin, symbol)
+                    return symbol
+    except Exception:
+        logger.warning("ISIN resolution failed for %s", isin)
+    return None
+
+
 # ── Public API ───────────────────────────────────────────────────────
 
 
 def fetch_options(ticker: str) -> dict | None:
-    """Fetch options chain for a ticker. Returns structured options data or None."""
+    """Fetch options chain for a ticker. Returns structured options data or None.
+
+    If *ticker* looks like an ISIN (e.g. ES0178430E18), it is first resolved
+    to the proper exchange symbol (e.g. TEF.MC) via Yahoo Finance search.
+    """
+    if _ISIN_RE.match(ticker):
+        resolved = _resolve_isin(ticker)
+        if resolved:
+            ticker = resolved
     if ticker.endswith(".MC"):
         data = _fetch_meff(ticker)
         if data:
