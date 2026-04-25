@@ -1,6 +1,7 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func
@@ -28,6 +29,10 @@ from backend.services.options_agent import run_cycle
 
 router = APIRouter(prefix="/options", tags=["options"])
 
+_404 = {404: {"description": "Not found"}}
+_now = lambda: datetime.now(timezone.utc)  # noqa: E731
+
+
 # ── Watchlist CRUD ───────────────────────────────────────────────────
 
 
@@ -41,7 +46,12 @@ def list_watchlist(db: DbSession, user: CurrentUser):
     )
 
 
-@router.post("/watchlist", response_model=WatchlistItemOut, status_code=201)
+@router.post(
+    "/watchlist",
+    response_model=WatchlistItemOut,
+    status_code=201,
+    responses={409: {"description": "Ticker already in watchlist"}},
+)
 def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
     existing = (
         db.query(WatchlistItem)
@@ -51,18 +61,14 @@ def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
     if existing:
         raise HTTPException(status_code=409, detail="Ticker already in watchlist")
 
-    item = WatchlistItem(
-        user_id=user.id,
-        ticker=body.ticker.upper(),
-        name=body.name,
-    )
+    item = WatchlistItem(user_id=user.id, ticker=body.ticker.upper(), name=body.name)
     db.add(item)
     db.commit()
     db.refresh(item)
     return item
 
 
-@router.patch("/watchlist/{item_id}")
+@router.patch("/watchlist/{item_id}", responses=_404)
 def toggle_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
     item = (
         db.query(WatchlistItem)
@@ -76,7 +82,7 @@ def toggle_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
     return {"id": item.id, "enabled": item.enabled}
 
 
-@router.delete("/watchlist/{item_id}", status_code=204)
+@router.delete("/watchlist/{item_id}", status_code=204, responses=_404)
 def remove_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
     item = (
         db.query(WatchlistItem)
@@ -104,7 +110,7 @@ def list_snapshots(
         db.query(OptionsSnapshot)
         .filter(
             OptionsSnapshot.user_id == user.id,
-            OptionsSnapshot.timestamp >= datetime.utcnow() - timedelta(days=days),
+            OptionsSnapshot.timestamp >= _now() - timedelta(days=days),
         )
     )
     if ticker:
@@ -112,7 +118,7 @@ def list_snapshots(
     return q.order_by(OptionsSnapshot.timestamp.desc()).limit(limit).all()
 
 
-@router.get("/snapshots/{snapshot_id}/chain")
+@router.get("/snapshots/{snapshot_id}/chain", responses=_404)
 def get_snapshot_chain(snapshot_id: int, db: DbSession, user: CurrentUser):
     snap = (
         db.query(OptionsSnapshot)
@@ -121,7 +127,6 @@ def get_snapshot_chain(snapshot_id: int, db: DbSession, user: CurrentUser):
     )
     if not snap:
         raise HTTPException(status_code=404, detail="Snapshot not found")
-    import json
     chain = json.loads(snap.chain_data) if snap.chain_data else {"calls": [], "puts": []}
     return {"ticker": snap.ticker, "timestamp": snap.timestamp, **chain}
 
@@ -142,7 +147,7 @@ def list_alerts(
         db.query(OptionsAlert)
         .filter(
             OptionsAlert.user_id == user.id,
-            OptionsAlert.timestamp >= datetime.utcnow() - timedelta(days=days),
+            OptionsAlert.timestamp >= _now() - timedelta(days=days),
         )
     )
     if ticker:
@@ -152,7 +157,7 @@ def list_alerts(
     return q.order_by(OptionsAlert.timestamp.desc()).limit(limit).all()
 
 
-@router.patch("/alerts/{alert_id}/ack")
+@router.patch("/alerts/{alert_id}/ack", responses=_404)
 def acknowledge_alert(alert_id: int, db: DbSession, user: CurrentUser):
     alert = (
         db.query(OptionsAlert)
@@ -192,7 +197,7 @@ def list_unusual_activity(
         db.query(UnusualActivity)
         .filter(
             UnusualActivity.user_id == user.id,
-            UnusualActivity.timestamp >= datetime.utcnow() - timedelta(days=days),
+            UnusualActivity.timestamp >= _now() - timedelta(days=days),
         )
     )
     if ticker:
@@ -202,12 +207,11 @@ def list_unusual_activity(
 
 # ── Agent Control ────────────────────────────────────────────────────
 
-# Module-level flag for scheduler state
 _scheduler_running = False
 
 
 @router.post("/agent/run", response_model=AgentCycleResult)
-def trigger_cycle(db: DbSession, user: CurrentUser):
+def trigger_cycle(user: CurrentUser):
     """Manually trigger one monitoring cycle."""
     result = run_cycle(user.id)
     return AgentCycleResult(**result)

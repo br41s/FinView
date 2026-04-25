@@ -4,7 +4,6 @@ Ported from OptionsAI/options_monitor_agent/tools/analysis_tool.py
 """
 
 import logging
-from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 """Options monitor agent — background worker that runs periodic analysis cycles.
 
-Ported from OptionsAI/options_monitor_agent/agent.py.
+Flow per cycle: Observe → Calculate Greeks → Analyze → Store → Notify → (optional) Claude AI.
 Runs as an APScheduler job inside the FastAPI process.
 """
 
@@ -8,6 +8,12 @@ import json
 import logging
 import time
 from datetime import datetime
+
+try:
+    import anthropic as _anthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _ANTHROPIC_AVAILABLE = False
 
 from sqlalchemy.orm import Session
 
@@ -27,20 +33,29 @@ from backend.services.options_scraper import fetch_options
 
 logger = logging.getLogger(__name__)
 
-# In-memory state per user (user_id -> cycle count)
+# In-memory cycle counter per user (resets on restart — DB log is authoritative)
 _cycle_counts: dict[int, int] = {}
+
+# Sentiment priority for aggregation across tickers
+_SENTIMENT_RANK = {"BEARISH 🐻": 2, "BULLISH 🐂": 1, "NEUTRAL 😐": 0}
+
+
+def _aggregate_sentiment(sentiments: list[str]) -> str:
+    """Return the most extreme sentiment from a list."""
+    if not sentiments:
+        return "NEUTRAL 😐"
+    return max(sentiments, key=lambda s: _SENTIMENT_RANK.get(s, 0))
 
 
 def run_cycle(user_id: int) -> dict:
     """Execute one full monitoring cycle for a user.
 
-    Flow: Observe → Calculate Greeks → Analyze → Store → Notify
-    Returns summary dict.
+    Returns a summary dict with cycle results.
     """
     start = time.time()
     db: Session = SessionLocal()
     try:
-        # 1. Get user's watchlist
+        # 1. Get user's enabled watchlist
         items = (
             db.query(WatchlistItem)
             .filter(WatchlistItem.user_id == user_id, WatchlistItem.enabled.is_(True))
@@ -55,19 +70,20 @@ def run_cycle(user_id: int) -> dict:
 
         all_alerts: list[dict] = []
         all_unusual: list[dict] = []
+        all_sentiments: list[str] = []
         snapshots_saved = 0
 
         for ticker in tickers:
-            # PHASE 1: Observe — fetch options data
+            # Phase 1: Observe
             options_data = fetch_options(ticker)
             if not options_data:
                 logger.warning("No data for %s", ticker)
                 continue
 
-            # PHASE 2: Calculate Greeks
+            # Phase 2: Greeks
             options_data = enrich_options_with_greeks(options_data)
 
-            # PHASE 3: Analyze
+            # Phase 3: Analyze
             analysis = analyze_ticker(options_data)
             summary = analysis["summary"]
             alerts = analysis["alerts"]
@@ -75,8 +91,9 @@ def run_cycle(user_id: int) -> dict:
 
             all_alerts.extend(alerts)
             all_unusual.extend(unusual)
+            all_sentiments.append(summary["market_sentiment"])
 
-            # PHASE 4: Store snapshot
+            # Phase 4: Store snapshot
             snapshot = OptionsSnapshot(
                 user_id=user_id,
                 ticker=ticker,
@@ -93,14 +110,13 @@ def run_cycle(user_id: int) -> dict:
                 iv_skew=summary["iv_skew"],
                 market_sentiment=summary["market_sentiment"],
                 chain_data=json.dumps({
-                    "calls": options_data.get("calls", [])[:20],  # top 20 per type
+                    "calls": options_data.get("calls", [])[:20],
                     "puts": options_data.get("puts", [])[:20],
                 }),
             )
             db.add(snapshot)
             snapshots_saved += 1
 
-            # Store alerts
             for alert in alerts:
                 db.add(OptionsAlert(
                     user_id=user_id,
@@ -110,7 +126,6 @@ def run_cycle(user_id: int) -> dict:
                     severity=alert["severity"],
                 ))
 
-            # Store unusual activity
             for ua in unusual:
                 db.add(UnusualActivity(
                     user_id=user_id,
@@ -125,28 +140,28 @@ def run_cycle(user_id: int) -> dict:
                     last_price=ua.get("last_price"),
                 ))
 
-        elapsed = time.time() - start
-
-        # Claude analysis (optional — only if API key configured)
+        # Phase 5: Optional Claude AI analysis (included in timing)
         claude_analysis = None
-        if settings.anthropic_api_key and all_alerts:
+        if _ANTHROPIC_AVAILABLE and settings.anthropic_api_key and all_alerts:
             claude_analysis = _run_claude_analysis(tickers, all_alerts, all_unusual)
 
-        # Log cycle
+        elapsed = time.time() - start
+        overall_sentiment = _aggregate_sentiment(all_sentiments)
+
         log_entry = OptionsAgentLog(
             user_id=user_id,
             cycle_number=cycle_num,
             tickers_analyzed=len(tickers),
             alerts_generated=len(all_alerts),
             unusual_activities=len(all_unusual),
-            market_sentiment=all_alerts[0]["severity"] if all_alerts else "NEUTRAL",
+            market_sentiment=overall_sentiment,
             claude_analysis=claude_analysis[:5000] if claude_analysis else None,
             execution_time_seconds=round(elapsed, 2),
         )
         db.add(log_entry)
         db.commit()
 
-        # PHASE 5: Notify
+        # Phase 6: Notify
         if all_alerts:
             try:
                 notify_alerts(all_alerts)
@@ -160,6 +175,7 @@ def run_cycle(user_id: int) -> dict:
             "snapshots_saved": snapshots_saved,
             "alerts": len(all_alerts),
             "unusual": len(all_unusual),
+            "market_sentiment": overall_sentiment,
             "execution_time": round(elapsed, 2),
             "claude_analysis": claude_analysis,
         }
@@ -172,34 +188,31 @@ def run_cycle(user_id: int) -> dict:
 
 
 def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[dict]) -> str | None:
-    """Optional Claude AI analysis of the current cycle results."""
+    """Run Claude AI narrative analysis on cycle results. Returns None on failure."""
     try:
-        import anthropic
+        client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-        context = f"""=== OPTIONS ANALYSIS CYCLE ===
-Tickers: {', '.join(tickers)}
-Timestamp: {datetime.now().isoformat()}
-
-=== ALERTS ({len(alerts)}) ===
-{json.dumps(alerts, indent=2)}
-
-=== UNUSUAL ACTIVITY ({len(unusual)}) ===
-{json.dumps(unusual, indent=2)}
-
-Analyze this data. Focus on Greeks, IV vs HV, Smart Money, and actionable insights."""
+        context = (
+            f"=== OPTIONS ANALYSIS CYCLE ===\n"
+            f"Tickers: {', '.join(tickers)}\n"
+            f"Timestamp: {datetime.now().isoformat()}\n\n"
+            f"=== ALERTS ({len(alerts)}) ===\n"
+            f"{json.dumps(alerts, indent=2)}\n\n"
+            f"=== UNUSUAL ACTIVITY ({len(unusual)}) ===\n"
+            f"{json.dumps(unusual, indent=2)}\n\n"
+            f"Analiza estos datos. Enfócate en Greeks, IV vs HV, Smart Money y oportunidades accionables."
+        )
 
         response = client.messages.create(
-            model="claude-haiku-3-5-20241022",
-            max_tokens=2048,
-            temperature=0.3,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
             system=(
                 "Eres un experto en análisis de opciones financieras. "
-                "Analiza los datos y da un resumen conciso con: "
+                "Da un resumen conciso con: "
                 "1) Resumen ejecutivo 2) Top picks 3) Greeks insights "
-                "4) Alertas 5) Smart money 6) Interpretación. "
-                "Usa emojis. NUNCA des consejos de inversión directos."
+                "4) Alertas clave 5) Smart money 6) Interpretación global. "
+                "Usa emojis. Máximo 600 palabras. "
+                "NUNCA des consejos de inversión directos."
             ),
             messages=[{"role": "user", "content": context}],
         )
