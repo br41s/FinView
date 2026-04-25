@@ -130,6 +130,11 @@ def _delete_import_data(db: Session, import_id: int) -> None:
     ]
 
     if tx_ids:
+        # Delete CrossBrokerLots before transactions (FK: buy_tx_id/sell_tx_id → transactions.id)
+        db.query(CrossBrokerLot).filter(
+            (CrossBrokerLot.buy_tx_id.in_(tx_ids)) | (CrossBrokerLot.sell_tx_id.in_(tx_ids))
+        ).delete(synchronize_session="fetch")
+
         # Delete TaxLots that reference these transactions
         db.query(TaxLot).filter(
             (TaxLot.buy_tx_id.in_(tx_ids)) | (TaxLot.sell_tx_id.in_(tx_ids))
