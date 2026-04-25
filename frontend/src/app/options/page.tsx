@@ -97,6 +97,26 @@ interface Unusual {
   last_price: string | number | null;
 }
 
+interface ChainContract {
+  strike: number;
+  expiration: string;
+  daysToExpiry: number;
+  impliedVolatility: number;
+  bid: number;
+  ask: number;
+  volume: number;
+  openInterest: number;
+  lastPrice: number;
+  type: string;
+}
+
+interface ChainData {
+  ticker: string;
+  timestamp: string;
+  calls: ChainContract[];
+  puts: ChainContract[];
+}
+
 interface AgentStatus {
   running: boolean;
   interval_minutes: number;
@@ -159,15 +179,45 @@ export default function OptionsPage() {
   const [running, setRunning] = useState(false);
   const [newTicker, setNewTicker] = useState("");
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+  const [chainBySnapshot, setChainBySnapshot] = useState<Record<number, ChainData>>({});
+  const [loadingChain, setLoadingChain] = useState<Set<number>>(new Set());
 
-  // Load portfolio positions first (fast, no external calls if cached)
+  // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
     api.portfolio
-      .positions()
+      .positions(true)
       .then((pos) => setPositions(pos as Position[]))
       .catch((e) => console.error("Failed to load positions:", e))
       .finally(() => setLoadingPositions(false));
   }, []);
+
+  // Load options chain when a ticker is expanded
+  useEffect(() => {
+    if (!expandedTicker) return;
+    const snap = snapshots.find((s) => s.ticker === expandedTicker);
+    if (!snap) return;
+    if (chainBySnapshot[snap.id] !== undefined) return;
+    if (loadingChain.has(snap.id)) return;
+
+    setLoadingChain((prev) => new Set(prev).add(snap.id));
+    (api.options.snapshotChain(snap.id) as Promise<ChainData>)
+      .then((data) =>
+        setChainBySnapshot((prev) => ({ ...prev, [snap.id]: data })),
+      )
+      .catch(() =>
+        setChainBySnapshot((prev) => ({
+          ...prev,
+          [snap.id]: { ticker: expandedTicker, timestamp: "", calls: [], puts: [] },
+        })),
+      )
+      .finally(() =>
+        setLoadingChain((prev) => {
+          const next = new Set(prev);
+          next.delete(snap.id);
+          return next;
+        }),
+      );
+  }, [expandedTicker, snapshots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load options data in parallel (independent of positions)
   useEffect(() => {
@@ -661,6 +711,64 @@ export default function OptionsPage() {
                                       a la watchlist y ejecuta un ciclo.
                                     </p>
                                   )}
+
+                                  {/* Options chain (calls + puts) */}
+                                  {snap && (() => {
+                                    const chain = chainBySnapshot[snap.id];
+                                    const isLoadingChain = loadingChain.has(snap.id);
+                                    if (isLoadingChain) {
+                                      return <Skeleton className="h-32 w-full" />;
+                                    }
+                                    if (!chain || (chain.calls.length === 0 && chain.puts.length === 0)) {
+                                      return null;
+                                    }
+                                    const renderContracts = (contracts: ChainContract[], label: string) => (
+                                      <div>
+                                        <h5 className="mb-1 text-xs font-semibold text-muted-foreground">
+                                          {label} ({contracts.length})
+                                        </h5>
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full text-xs">
+                                            <thead>
+                                              <tr className="border-b text-muted-foreground">
+                                                <th className="py-1 pr-3 text-right">Strike</th>
+                                                <th className="py-1 pr-3 text-right">Vto</th>
+                                                <th className="py-1 pr-3 text-right">IV</th>
+                                                <th className="py-1 pr-3 text-right">Bid</th>
+                                                <th className="py-1 pr-3 text-right">Ask</th>
+                                                <th className="py-1 pr-3 text-right">Vol</th>
+                                                <th className="py-1 text-right">OI</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {contracts.slice(0, 20).map((c, i) => (
+                                                <tr key={i} className="border-b border-muted/30">
+                                                  <td className="py-1 pr-3 text-right tabular-nums font-medium">{fmt(c.strike)}</td>
+                                                  <td className="py-1 pr-3 text-right text-muted-foreground">{c.expiration}</td>
+                                                  <td className="py-1 pr-3 text-right">
+                                                    {c.impliedVolatility ? `${(c.impliedVolatility * 100).toFixed(1)}%` : "—"}
+                                                  </td>
+                                                  <td className="py-1 pr-3 text-right tabular-nums">{fmt(c.bid)}</td>
+                                                  <td className="py-1 pr-3 text-right tabular-nums">{fmt(c.ask)}</td>
+                                                  <td className="py-1 pr-3 text-right tabular-nums">{c.volume.toLocaleString()}</td>
+                                                  <td className="py-1 text-right tabular-nums">{c.openInterest.toLocaleString()}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    );
+                                    return (
+                                      <div>
+                                        <h4 className="mb-2 text-sm font-semibold">Cadena de opciones</h4>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                          {renderContracts(chain.calls, "Calls")}
+                                          {renderContracts(chain.puts, "Puts")}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
 
                                   {/* Alerts for this ticker */}
                                   {tickerAlerts.length > 0 && (
