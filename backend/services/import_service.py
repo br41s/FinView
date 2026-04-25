@@ -26,6 +26,7 @@ from backend.models import (
     Account,
     Broker,
     CrossBrokerLot,
+    DataIssue,
     FIFOAdjustment,
     ImportRecord,
     OptionAssignmentRecord,
@@ -162,6 +163,11 @@ def _delete_import_data(db: Session, import_id: int) -> None:
     # Delete portfolio holdings for this import
     db.query(PortfolioHolding).filter(
         PortfolioHolding.import_id == import_id,
+    ).delete(synchronize_session="fetch")
+
+    # Delete data issues for this import
+    db.query(DataIssue).filter(
+        DataIssue.import_id == import_id,
     ).delete(synchronize_session="fetch")
 
     # Delete the import record

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PublicNav } from '@/components/PublicNav';
 import { PublicFooter } from '@/components/PublicFooter';
 import { api } from '@/lib/api';
+import styles from './pricing.module.css';
 
 const PLANS = [
   {
@@ -100,8 +101,8 @@ function CheckIcon({ inverted }: { inverted?: boolean }) {
 export default function PricingPage() {
   return (
     <Suspense fallback={
-      <div style={{ background: 'var(--fv-paper)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: 'var(--fv-ink-40)', fontFamily: 'var(--fv-font-sans)' }}>Cargando...</p>
+      <div className={styles.loading}>
+        <p className={styles.loadingText}>Cargando...</p>
       </div>
     }>
       <PricingContent />
@@ -138,169 +139,89 @@ function PricingContent() {
   }
 
   return (
-    <div style={{ background: 'var(--fv-paper)', color: 'var(--fv-ink)', minHeight: '100vh', fontFamily: 'var(--fv-font-sans)' }}>
+    <div className={styles.page}>
       <PublicNav />
 
       {/* ── Hero ── */}
-      <section style={{ maxWidth: 1320, margin: '0 auto', padding: '80px 32px 64px', textAlign: 'center' }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          fontSize: 11, fontWeight: 500, textTransform: 'uppercase',
-          letterSpacing: '0.18em', color: 'var(--fv-ink-40)', marginBottom: 24,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--fv-ochre)', display: 'inline-block' }} />
+      <section className={styles.hero}>
+        <span className={styles.eyebrow}>
+          <span className={styles.dot} />
           Precios
         </span>
-        <h1 style={{
-          fontFamily: 'var(--fv-font-display)', fontWeight: 400,
-          fontSize: 'clamp(2.4rem, 5vw, 4.5rem)', lineHeight: 1.05,
-          letterSpacing: '-0.02em', color: 'var(--fv-ink)',
-          margin: '0 0 20px',
-        }}>
+        <h1 className={styles.h1}>
           Transparente, sin{' '}
-          <em style={{ color: 'var(--fv-ochre)', fontStyle: 'italic' }}>letra pequeña</em>
+          <em className={styles.em}>letra pequeña</em>
         </h1>
-        <p style={{ fontSize: 18, lineHeight: 1.6, color: 'var(--fv-ink-70)', maxWidth: 440, margin: '0 auto' }}>
+        <p className={styles.lead}>
           Empieza gratis. Actualiza solo si necesitas más. Sin permanencia, sin sorpresas.
         </p>
       </section>
 
       {/* ── Alerts ── */}
       {(success || canceled) && (
-        <div style={{ maxWidth: 600, margin: '0 auto 24px', padding: '0 32px' }}>
-          {success && (
-            <div style={{
-              background: 'rgba(107,122,58,0.08)', border: '1px solid rgba(107,122,58,0.2)',
-              borderRadius: 12, padding: '16px 20px', color: 'var(--fv-success)', fontSize: 14,
-            }}>
-              ¡Suscripción activada! Redirigiendo al panel...
-            </div>
-          )}
-          {canceled && (
-            <div style={{
-              background: 'rgba(154,107,31,0.08)', border: '1px solid rgba(154,107,31,0.2)',
-              borderRadius: 12, padding: '16px 20px', color: 'var(--fv-ochre)', fontSize: 14,
-            }}>
-              Pago cancelado. Puedes elegir un plan cuando quieras.
-            </div>
-          )}
+        <div className={styles.alertWrap}>
+          {success && <div className={styles.alertSuccess}>¡Suscripción activada! Redirigiendo al panel...</div>}
+          {canceled && <div className={styles.alertCanceled}>Pago cancelado. Puedes elegir un plan cuando quieras.</div>}
         </div>
       )}
 
       {/* ── Plans ── */}
-      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px 96px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, alignItems: 'start' }}>
-          {PLANS.map((plan) => (
-            <div key={plan.tier} style={{
-              background: plan.highlight ? 'var(--fv-ink)' : 'var(--fv-paper)',
-              border: plan.highlight ? 'none' : '1px solid var(--fv-ink-15)',
-              borderRadius: 20, padding: '40px 32px', position: 'relative',
-              boxShadow: plan.highlight ? 'var(--fv-shadow-lg)' : 'none',
-            }}>
-              {plan.highlight && (
-                <span style={{
-                  position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)',
-                  background: 'var(--fv-ochre)', color: 'var(--fv-paper)',
-                  fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em',
-                  borderRadius: 999, padding: '5px 14px',
-                }}>
-                  Más popular
-                </span>
-              )}
-              <p style={{
-                fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em',
-                color: plan.highlight ? 'rgba(245,241,232,0.5)' : 'var(--fv-ink-40)', margin: '0 0 12px',
-              }}>
-                {plan.name}
-              </p>
-              <div style={{ marginBottom: 8 }}>
-                <span style={{
-                  fontFamily: 'var(--fv-font-display)', fontSize: 40,
-                  color: plan.highlight ? 'var(--fv-paper)' : 'var(--fv-ink)', lineHeight: 1,
-                }}>
-                  {plan.price}
-                </span>
-                <span style={{ fontSize: 15, color: plan.highlight ? 'rgba(245,241,232,0.6)' : 'var(--fv-ink-60)', marginLeft: 4 }}>
-                  {plan.period}
-                </span>
+      <section className={styles.plansSection}>
+        <div className={styles.plansGrid}>
+          {PLANS.map((plan) => {
+            const isHighlight = plan.highlight;
+            const btnCls = [
+              isHighlight ? styles.planBtnHighlight : styles.planBtn,
+              loading === plan.tier ? styles.planBtnLoading : '',
+            ].filter(Boolean).join(' ');
+
+            return (
+              <div key={plan.tier} className={isHighlight ? styles.planCardHighlight : styles.planCard}>
+                {isHighlight && <span className={styles.planBadge}>Más popular</span>}
+                <p className={isHighlight ? styles.planNameHighlight : styles.planName}>{plan.name}</p>
+                <div className={styles.planPriceRow}>
+                  <span className={isHighlight ? styles.planPriceHighlight : styles.planPrice}>{plan.price}</span>
+                  <span className={isHighlight ? styles.planPeriodHighlight : styles.planPeriod}>{plan.period}</span>
+                </div>
+                <p className={isHighlight ? styles.planDescHighlight : styles.planDesc}>{plan.desc}</p>
+                <button
+                  type="button"
+                  disabled={loading === plan.tier}
+                  onClick={() => handleCheckout(plan.priceId ?? '', plan.tier, plan.href)}
+                  className={btnCls}
+                >
+                  {loading === plan.tier ? 'Redirigiendo...' : plan.cta}
+                </button>
+                <ul className={styles.planFeatures}>
+                  {plan.features.map((f) => (
+                    <li key={f} className={isHighlight ? styles.planFeatureHighlight : styles.planFeature}>
+                      <span className={styles.featureIcon}><CheckIcon inverted={isHighlight} /></span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <p style={{
-                fontSize: 13, lineHeight: 1.5,
-                color: plan.highlight ? 'rgba(245,241,232,0.65)' : 'var(--fv-ink-60)',
-                margin: '0 0 28px', minHeight: 40,
-              }}>
-                {plan.desc}
-              </p>
-              <button
-                type="button"
-                disabled={loading === plan.tier}
-                onClick={() => handleCheckout(plan.priceId ?? '', plan.tier, plan.href)}
-                style={{
-                  width: '100%',
-                  background: plan.highlight ? 'var(--fv-ochre)' : 'transparent',
-                  color: plan.highlight ? 'var(--fv-paper)' : 'var(--fv-ink)',
-                  border: plan.highlight ? 'none' : '1px solid var(--fv-ink-30)',
-                  borderRadius: 'var(--fv-r-pill)', padding: '13px',
-                  fontSize: 14, fontFamily: 'var(--fv-font-sans)', fontWeight: 600,
-                  cursor: loading === plan.tier ? 'default' : 'pointer',
-                  marginBottom: 28, opacity: loading === plan.tier ? 0.6 : 1,
-                }}
-              >
-                {loading === plan.tier ? 'Redirigiendo...' : plan.cta}
-              </button>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {plan.features.map((f) => (
-                  <li key={f} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 10,
-                    fontSize: 13, color: plan.highlight ? 'rgba(245,241,232,0.8)' : 'var(--fv-ink-70)',
-                  }}>
-                    <span style={{ marginTop: 1, flexShrink: 0 }}>
-                      <CheckIcon inverted={plan.highlight} />
-                    </span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       {/* ── FAQ ── */}
-      <section style={{ background: 'var(--fv-ink-05)', padding: '80px 0' }}>
-        <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 32px' }}>
-          <h2 style={{
-            fontFamily: 'var(--fv-font-display)', fontWeight: 400,
-            fontSize: 'clamp(1.8rem, 3.5vw, 2.6rem)', letterSpacing: '-0.02em',
-            color: 'var(--fv-ink)', marginBottom: 40, textAlign: 'center',
-          }}>
-            Preguntas frecuentes
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <section className={styles.faqBg}>
+        <div className={styles.faqInner}>
+          <h2 className={styles.h2}>Preguntas frecuentes</h2>
+          <div className={styles.faqList}>
             {FAQ.map(({ q, a }, i) => (
-              <div key={q} style={{ borderBottom: '1px solid var(--fv-ink-10)' }}>
+              <div key={q} className={styles.faqItem}>
                 <button
                   type="button"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  style={{
-                    width: '100%', textAlign: 'left', background: 'none', border: 'none',
-                    padding: '20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    fontSize: 15, fontWeight: 500, color: 'var(--fv-ink)',
-                    fontFamily: 'var(--fv-font-sans)', cursor: 'pointer', gap: 16,
-                  }}
+                  className={styles.faqBtn}
                 >
                   {q}
-                  <span style={{
-                    color: 'var(--fv-ink-40)', fontSize: 20, lineHeight: 1, flexShrink: 0,
-                    transform: openFaq === i ? 'rotate(45deg)' : 'none',
-                    transition: 'transform 200ms', display: 'inline-block',
-                  }}>+</span>
+                  <span className={`${styles.faqToggle}${openFaq === i ? ` ${styles.faqToggleOpen}` : ''}`}>+</span>
                 </button>
-                {openFaq === i && (
-                  <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--fv-ink-70)', margin: '0 0 20px', paddingRight: 32 }}>
-                    {a}
-                  </p>
-                )}
+                {openFaq === i && <p className={styles.faqAnswer}>{a}</p>}
               </div>
             ))}
           </div>
@@ -308,18 +229,12 @@ function PricingContent() {
       </section>
 
       {/* ── Footer CTA ── */}
-      <section style={{ maxWidth: 1320, margin: '0 auto', padding: '80px 32px', textAlign: 'center' }}>
-        <p style={{ fontSize: 17, color: 'var(--fv-ink-70)', margin: '0 0 24px' }}>
+      <section className={styles.footerCta}>
+        <p className={styles.footerCtaText}>
           ¿Tienes dudas? Escríbenos a{' '}
-          <a href="mailto:hola@finview.app" style={{ color: 'var(--fv-ochre)', textDecoration: 'none' }}>hola@finview.app</a>
+          <a href="mailto:hola@finview.app" className={styles.footerCtaLink}>hola@finview.app</a>
         </p>
-        <a href="/register" style={{
-          background: 'var(--fv-ochre)', color: 'var(--fv-paper)',
-          borderRadius: 'var(--fv-r-pill)', padding: '14px 28px',
-          fontSize: 15, fontWeight: 500, textDecoration: 'none', display: 'inline-block',
-        }}>
-          Empezar gratis →
-        </a>
+        <a href="/register" className={styles.ctaPrimary}>Empezar gratis →</a>
       </section>
 
       <PublicFooter />

@@ -210,7 +210,7 @@ function PortfolioContent() {
           <Button variant="outline" onClick={() => router.push("/accounts")}>
             Cuentas
           </Button>
-          <Button variant="outline" onClick={() => router.push("/")}>
+          <Button variant="outline" onClick={() => router.push("/dashboard")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Dashboard
           </Button>

@@ -1,36 +1,102 @@
 import { PublicNav } from '@/components/PublicNav';
 import { PublicFooter } from '@/components/PublicFooter';
+import styles from './blog.module.css';
 
-// ── Data ────────────────────────────────────────────────────────────────────────
+// ── Post images ──────────────────────────────────────────────────────────────
 
-const POSTS = [
+function ImgDgi() {
+  return (
+    <div className={styles.postImgDgi}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        {([20,40,60,80,100,120,140,160,180]).map((x, i) => {
+          const heights = [20,32,44,38,56,70,62,84,96];
+          return (
+            <rect key={x} x={x - 12} y={110 - heights[i]} width="20" height={heights[i]}
+              fill={i === 8 ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'} rx="3"/>
+          );
+        })}
+        <polyline
+          points="8,90 28,78 48,66 68,72 88,54 108,40 128,48 148,26 168,14 188,4"
+          stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function ImgIrpf() {
+  type IrpfRow = { label: string; value: string; y: number };
+  const rows: IrpfRow[] = [
+    { label: 'Casilla 27',  value: '1.529,64 €',  y: 44 },
+    { label: 'Casilla 29',  value: '5.301,02 €',  y: 60 },
+    { label: 'Casilla 332', value: '297,40 €',    y: 76 },
+    { label: 'Casilla 337', value: '-2.155,11 €', y: 92 },
+  ];
+  return (
+    <div className={styles.postImgIrpf}>
+      <svg viewBox="0 0 180 120" width="180" height="120" fill="none" aria-hidden="true">
+        <rect x="20" y="10" width="140" height="100" rx="8" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <line x1="20" y1="32" x2="160" y2="32" stroke="var(--fv-ink-15)" strokeWidth="1"/>
+        {rows.map(({ label, value, y }) => (
+          <g key={label}>
+            <text x="30" y={y} fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui">{label}</text>
+            <text x="130" y={y} fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="end">{value}</text>
+          </g>
+        ))}
+        <rect x="28" y="18" width="40" height="8" rx="2" fill="var(--fv-ochre-ghost)"/>
+        <text x="48" y="25" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IRPF 2024</text>
+      </svg>
+    </div>
+  );
+}
+
+type YocBar = { label: string; value: string; faded: boolean; hClass: 'yocBarH60' | 'yocBarH112' };
+const YOC_BARS: YocBar[] = [
+  { label: 'YOP', value: '3.1%', faded: true,  hClass: 'yocBarH60'  },
+  { label: 'YOC', value: '8.4%', faded: false, hClass: 'yocBarH112' },
+];
+
+function ImgYoc() {
+  return (
+    <div className={styles.postImgYoc}>
+      <div className={styles.yocBars}>
+        {YOC_BARS.map(({ label, value, faded, hClass }) => {
+          const barCls = [styles.yocBarBlock, styles[hClass], faded ? styles.yocBarBlockFaded : ''].filter(Boolean).join(' ');
+          return (
+            <div key={label} className={styles.yocBar}>
+              <span className={styles.yocBarValue}>{value}</span>
+              <div className={barCls} />
+              <span className={styles.yocBarLabel}>{label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <span className={styles.yocCaption}>Compra: 2018 · Hoy: 2025</span>
+    </div>
+  );
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+
+type Post = {
+  slug: string;
+  tag: string;
+  date: string;
+  readTime: string;
+  title: string;
+  excerpt: string;
+  Image: () => React.ReactElement;
+};
+
+const POSTS: Post[] = [
   {
     slug: 'estrategia-dgi',
     tag: 'Estrategia',
     date: '10 abr 2025',
     readTime: '5 min',
     title: 'La estrategia DGI: cómo invertir para vivir de dividendos',
-    excerpt:
-      'Dividend Growth Investing no es comprar las acciones con mayor rentabilidad por dividendo. Es encontrar empresas que llevan décadas aumentando su pago año tras año, y dejar que el tiempo haga el resto.',
-    image: (
-      <div style={{
-        height: 200, borderRadius: '12px 12px 0 0',
-        background: 'linear-gradient(135deg, var(--fv-ochre-ghost) 0%, rgba(154,107,31,0.2) 100%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
-          {[20, 40, 60, 80, 100, 120, 140, 160, 180].map((x, i) => (
-            <rect key={x} x={x - 12} y={110 - [20,32,44,38,56,70,62,84,96][i]} width="20" height={[20,32,44,38,56,70,62,84,96][i]}
-              fill={i === 8 ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'} rx="3"/>
-          ))}
-          <polyline
-            points="8,90 28,78 48,66 68,72 88,54 108,40 128,48 148,26 168,14 188,4"
-            stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-    ),
+    excerpt: 'Dividend Growth Investing no es comprar las acciones con mayor rentabilidad por dividendo. Es encontrar empresas que llevan décadas aumentando su pago año tras año, y dejar que el tiempo haga el resto.',
+    Image: ImgDgi,
   },
   {
     slug: 'declarar-dividendos-espana',
@@ -38,28 +104,8 @@ const POSTS = [
     date: '2 abr 2025',
     readTime: '7 min',
     title: 'Cómo declarar los dividendos en España: guía 2025',
-    excerpt:
-      'Cada dividendo que cobras tiene implicaciones fiscales en España. Te explicamos qué casillas del Modelo 100 debes rellenar, cómo funciona la doble imposición y qué retenciones puedes deducir.',
-    image: (
-      <div style={{
-        height: 200, borderRadius: '12px 12px 0 0',
-        background: 'linear-gradient(135deg, rgba(31,27,22,0.04) 0%, rgba(31,27,22,0.08) 100%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <svg viewBox="0 0 180 120" width="180" height="120" fill="none" aria-hidden="true">
-          <rect x="20" y="10" width="140" height="100" rx="8" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
-          <line x1="20" y1="32" x2="160" y2="32" stroke="var(--fv-ink-15)" strokeWidth="1"/>
-          {[['Casilla 27', '1.529,64 €', 44], ['Casilla 29', '5.301,02 €', 60], ['Casilla 332', '297,40 €', 76], ['Casilla 337', '-2.155,11 €', 92]].map(([label, val, y]) => (
-            <g key={String(y)}>
-              <text x="30" y={Number(y)} fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui">{label}</text>
-              <text x="130" y={Number(y)} fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="end">{val}</text>
-            </g>
-          ))}
-          <rect x="28" y="18" width="40" height="8" rx="2" fill="var(--fv-ochre-ghost)"/>
-          <text x="48" y="25" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IRPF 2024</text>
-        </svg>
-      </div>
-    ),
+    excerpt: 'Cada dividendo que cobras tiene implicaciones fiscales en España. Te explicamos qué casillas del Modelo 100 debes rellenar, cómo funciona la doble imposición y qué retenciones puedes deducir.',
+    Image: ImgIrpf,
   },
   {
     slug: 'yield-on-cost',
@@ -67,29 +113,8 @@ const POSTS = [
     date: '15 mar 2025',
     readTime: '4 min',
     title: 'Yield on cost: la métrica que los grandes inversores de dividendos miden',
-    excerpt:
-      'El yield on price te dice lo que cobras hoy. El yield on cost te dice lo que cobras respecto a lo que pagaste. Con el tiempo, esta diferencia se convierte en la historia real de tu inversión.',
-    image: (
-      <div style={{
-        height: 200, borderRadius: '12px 12px 0 0',
-        background: 'linear-gradient(135deg, rgba(154,107,31,0.08) 0%, rgba(154,107,31,0.18) 100%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8,
-      }}>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end' }}>
-          {[
-            { label: 'YOP', value: '3.1%', h: 60 },
-            { label: 'YOC', value: '8.4%', h: 112 },
-          ].map(({ label, value, h }) => (
-            <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fv-ochre)', fontFamily: 'system-ui' }}>{value}</span>
-              <div style={{ width: 40, height: h, background: 'var(--fv-ochre)', borderRadius: '4px 4px 0 0', opacity: label === 'YOP' ? 0.35 : 1 }} />
-              <span style={{ fontSize: 10, color: 'var(--fv-ink-60)', fontFamily: 'system-ui' }}>{label}</span>
-            </div>
-          ))}
-        </div>
-        <span style={{ fontSize: 10, color: 'var(--fv-ink-40)', fontFamily: 'system-ui' }}>Compra: 2018 · Hoy: 2025</span>
-      </div>
-    ),
+    excerpt: 'El yield on price te dice lo que cobras hoy. El yield on cost te dice lo que cobras respecto a lo que pagaste. Con el tiempo, esta diferencia se convierte en la historia real de tu inversión.',
+    Image: ImgYoc,
   },
 ];
 
@@ -120,7 +145,7 @@ const SOCIAL_POSTS = [
   },
 ];
 
-// ── Icon ─────────────────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function XIcon() {
   return (
@@ -149,75 +174,42 @@ function RepostIcon() {
   );
 }
 
-// ── Page ────────────────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BlogPage() {
   return (
-    <div style={{ background: 'var(--fv-paper)', color: 'var(--fv-ink)', minHeight: '100vh', fontFamily: 'var(--fv-font-sans)' }}>
+    <div className={styles.page}>
       <PublicNav />
 
       {/* ── Hero ── */}
-      <section style={{ maxWidth: 1320, margin: '0 auto', padding: '80px 32px 64px', textAlign: 'center' }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          fontSize: 11, fontWeight: 500, textTransform: 'uppercase',
-          letterSpacing: '0.18em', color: 'var(--fv-ink-40)', marginBottom: 24,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--fv-ochre)', display: 'inline-block' }} />
+      <section className={styles.hero}>
+        <span className={styles.eyebrow}>
+          <span className={styles.dot} />
           Más información
         </span>
-        <h1 style={{
-          fontFamily: 'var(--fv-font-display)', fontWeight: 400,
-          fontSize: 'clamp(2.4rem, 5vw, 4.5rem)', lineHeight: 1.05,
-          letterSpacing: '-0.02em', color: 'var(--fv-ink)', maxWidth: '18ch',
-          margin: '0 auto 20px',
-        }}>
+        <h1 className={styles.h1}>
           Aprende a invertir en{' '}
-          <em style={{ color: 'var(--fv-ochre)', fontStyle: 'italic' }}>dividendos</em>
+          <em className={styles.em}>dividendos</em>
         </h1>
-        <p style={{ fontSize: 18, lineHeight: 1.6, color: 'var(--fv-ink-70)', maxWidth: 480, margin: '0 auto' }}>
+        <p className={styles.lead}>
           Estrategia, fiscalidad y métricas para el inversor de largo plazo en España.
         </p>
       </section>
 
       {/* ── Blog posts ── */}
-      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px 96px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-          {POSTS.map(({ slug, tag, date, readTime, title, excerpt, image }) => (
-            <article key={slug} style={{
-              background: 'var(--fv-paper)', border: '1px solid var(--fv-ink-10)',
-              borderRadius: 16, overflow: 'hidden',
-              display: 'flex', flexDirection: 'column',
-              transition: 'box-shadow 200ms, transform 200ms',
-            }}>
-              {image}
-              <div style={{ padding: '24px 28px 28px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em',
-                    color: 'var(--fv-ochre)', background: 'var(--fv-ochre-ghost)',
-                    borderRadius: 999, padding: '3px 10px',
-                  }}>
-                    {tag}
-                  </span>
-                  <span style={{ fontSize: 12, color: 'var(--fv-ink-40)' }}>{date} · {readTime}</span>
+      <section className={styles.postsSection}>
+        <div className={styles.postsGrid}>
+          {POSTS.map(({ slug, tag, date, readTime, title, excerpt, Image }) => (
+            <article key={slug} className={styles.postCard}>
+              <Image />
+              <div className={styles.postBody}>
+                <div className={styles.postMeta}>
+                  <span className={styles.postTag}>{tag}</span>
+                  <span className={styles.postDate}>{date} · {readTime}</span>
                 </div>
-                <h2 style={{
-                  fontFamily: 'var(--fv-font-display)', fontWeight: 400,
-                  fontSize: 19, lineHeight: 1.3, letterSpacing: '-0.01em',
-                  color: 'var(--fv-ink)', margin: '0 0 12px',
-                }}>
-                  {title}
-                </h2>
-                <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--fv-ink-70)', margin: '0 0 20px', flex: 1 }}>
-                  {excerpt}
-                </p>
-                <a href={`/blog/${slug}`} style={{
-                  fontSize: 13, fontWeight: 500, color: 'var(--fv-ochre)',
-                  textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4,
-                }}>
-                  Leer artículo →
-                </a>
+                <h2 className={styles.postTitle}>{title}</h2>
+                <p className={styles.postExcerpt}>{excerpt}</p>
+                <a href={`/blog/${slug}`} className={styles.postLink}>Leer artículo →</a>
               </div>
             </article>
           ))}
@@ -225,79 +217,36 @@ export default function BlogPage() {
       </section>
 
       {/* ── Social feeds ── */}
-      <section style={{ background: 'var(--fv-ink-05)', padding: '80px 0' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 40 }}>
+      <section className={styles.socialBg}>
+        <div className={styles.socialInner}>
+          <div className={styles.socialHeader}>
             <div>
-              <h2 style={{
-                fontFamily: 'var(--fv-font-display)', fontWeight: 400,
-                fontSize: 'clamp(1.8rem, 3.5vw, 2.6rem)', letterSpacing: '-0.02em',
-                color: 'var(--fv-ink)', margin: '0 0 8px',
-              }}>
-                En redes
-              </h2>
-              <p style={{ fontSize: 15, color: 'var(--fv-ink-60)', margin: 0 }}>
-                Seguimiento diario de dividendos, tips fiscales y noticias del mercado.
-              </p>
+              <h2 className={styles.socialTitle}>En redes</h2>
+              <p className={styles.socialSubtitle}>Seguimiento diario de dividendos, tips fiscales y noticias del mercado.</p>
             </div>
-            <a
-              href="https://x.com/finviewapp"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                background: 'var(--fv-ink)', color: 'var(--fv-paper)',
-                borderRadius: 'var(--fv-r-pill)', padding: '10px 18px',
-                fontSize: 13, fontWeight: 500, textDecoration: 'none',
-                flexShrink: 0,
-              }}
-            >
+            <a href="https://x.com/finviewapp" target="_blank" rel="noopener noreferrer" className={styles.followBtn}>
               <XIcon /> Seguir en X
             </a>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+          <div className={styles.socialGrid}>
             {SOCIAL_POSTS.map(({ handle, name, time, content, likes, reposts }) => (
-              <div key={content.slice(0, 20)} style={{
-                background: 'var(--fv-paper)', border: '1px solid var(--fv-ink-10)',
-                borderRadius: 16, padding: '24px',
-              }}>
-                {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: 999,
-                    background: 'var(--fv-ochre)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--fv-paper)', fontFamily: 'var(--fv-font-display)' }}>
-                      F
-                    </span>
+              <div key={content.slice(0, 20)} className={styles.tweet}>
+                <div className={styles.tweetHeader}>
+                  <div className={styles.tweetAvatar}>
+                    <span className={styles.tweetAvatarLetter}>F</span>
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--fv-ink)', margin: 0, lineHeight: 1.3 }}>{name}</p>
-                    <p style={{ fontSize: 12, color: 'var(--fv-ink-40)', margin: 0 }}>{handle}</p>
+                  <div className={styles.tweetInfo}>
+                    <p className={styles.tweetName}>{name}</p>
+                    <p className={styles.tweetHandle}>{handle}</p>
                   </div>
-                  <span style={{ color: 'var(--fv-ink-30)', flexShrink: 0 }}><XIcon /></span>
+                  <span className={styles.tweetXIcon}><XIcon /></span>
                 </div>
-
-                {/* Content */}
-                <p style={{
-                  fontSize: 14, lineHeight: 1.65, color: 'var(--fv-ink)',
-                  margin: '0 0 16px', whiteSpace: 'pre-line',
-                }}>
-                  {content}
-                </p>
-
-                {/* Footer */}
-                <div style={{ display: 'flex', gap: 20, borderTop: '1px solid var(--fv-ink-10)', paddingTop: 14 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--fv-ink-40)' }}>
-                    <HeartIcon /> {likes}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--fv-ink-40)' }}>
-                    <RepostIcon /> {reposts}
-                  </span>
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fv-ink-30)' }}>{time}</span>
+                <p className={styles.tweetContent}>{content}</p>
+                <div className={styles.tweetFooter}>
+                  <span className={styles.tweetStat}><HeartIcon /> {likes}</span>
+                  <span className={styles.tweetStat}><RepostIcon /> {reposts}</span>
+                  <span className={styles.tweetTime}>{time}</span>
                 </div>
               </div>
             ))}
@@ -305,29 +254,13 @@ export default function BlogPage() {
         </div>
       </section>
 
-      {/* ── Newsletter CTA ── */}
-      <section style={{ maxWidth: 1320, margin: '0 auto', padding: '80px 32px', textAlign: 'center' }}>
-        <h2 style={{
-          fontFamily: 'var(--fv-font-display)', fontWeight: 400,
-          fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)', letterSpacing: '-0.02em',
-          color: 'var(--fv-ink)', margin: '0 0 16px',
-        }}>
-          ¿Listo para ver cómo crecen tus dividendos?
-        </h2>
-        <p style={{ fontSize: 17, color: 'var(--fv-ink-70)', margin: '0 0 36px' }}>
-          Importa tu cartera y ten tus métricas listas en menos de un minuto.
-        </p>
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', alignItems: 'center' }}>
-          <a href="/register" style={{
-            background: 'var(--fv-ochre)', color: 'var(--fv-paper)',
-            borderRadius: 'var(--fv-r-pill)', padding: '14px 28px',
-            fontSize: 15, fontWeight: 500, textDecoration: 'none', display: 'inline-block',
-          }}>
-            Crear cuenta gratis →
-          </a>
-          <a href="/features" style={{ fontSize: 15, color: 'var(--fv-ink-70)', textDecoration: 'none' }}>
-            Ver funcionalidades
-          </a>
+      {/* ── CTA ── */}
+      <section className={styles.ctaSection}>
+        <h2 className={styles.ctaTitle}>¿Listo para ver cómo crecen tus dividendos?</h2>
+        <p className={styles.ctaLead}>Importa tu cartera y ten tus métricas listas en menos de un minuto.</p>
+        <div className={styles.ctaButtons}>
+          <a href="/register" className={styles.ctaPrimary}>Crear cuenta gratis →</a>
+          <a href="/features" className={styles.ctaSecondary}>Ver funcionalidades</a>
         </div>
       </section>
 

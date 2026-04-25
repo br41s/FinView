@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import styles from './index.module.css';
 
 function LogoMark() {
   return (
@@ -23,53 +24,28 @@ export function PublicNav() {
   const pathname = usePathname();
 
   return (
-    <header style={{
-      position: 'sticky', top: 0, zIndex: 10,
-      background: 'var(--fv-paper)',
-      borderBottom: '1px solid var(--fv-ink-10)',
-    }}>
-      <nav style={{
-        maxWidth: 1320, margin: '0 auto',
-        padding: '16px 32px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <a href="/" style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          fontFamily: 'var(--fv-font-display)', fontSize: 22,
-          color: 'var(--fv-ink)', textDecoration: 'none',
-        }}>
+    <header className={styles.header}>
+      <nav className={styles.nav}>
+        <a href="/" className={styles.brand}>
           <LogoMark />
           finview
         </a>
 
-        <div style={{ display: 'flex', gap: 28, fontSize: 15 }}>
+        <div className={styles.links}>
           {NAV_LINKS.map(({ label, href }) => (
-            <a key={href} href={href} style={{
-              color: pathname === href ? 'var(--fv-ink)' : 'var(--fv-ink-70)',
-              textDecoration: 'none',
-              fontWeight: pathname === href ? 500 : 400,
-              paddingBottom: 2,
-              borderBottom: pathname === href
-                ? '1.5px solid var(--fv-ochre)'
-                : '1.5px solid transparent',
-            }}>
+            <a
+              key={href}
+              href={href}
+              className={`${styles.link} ${pathname === href ? styles.linkActive : ''}`}
+            >
               {label}
             </a>
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-          <a href="/login" style={{ fontSize: 15, color: 'var(--fv-ink-70)', textDecoration: 'none' }}>
-            acceder
-          </a>
-          <a href="/dashboard" style={{
-            background: 'var(--fv-ink)', color: 'var(--fv-paper)',
-            border: 0, borderRadius: 'var(--fv-r-pill)', padding: '10px 18px',
-            fontSize: 14, fontFamily: 'var(--fv-font-sans)', fontWeight: 500,
-            textDecoration: 'none', display: 'inline-block',
-          }}>
-            Ir a tu panel
-          </a>
+        <div className={styles.actions}>
+          <a href="/login" className={styles.signIn}>acceder</a>
+          <a href="/dashboard" className={styles.cta}>Ir a tu panel</a>
         </div>
       </nav>
     </header>

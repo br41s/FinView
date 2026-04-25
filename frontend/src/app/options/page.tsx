@@ -313,7 +313,7 @@ export default function OptionsPage() {
               </>
             )}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => router.push("/")}>
+          <Button variant="outline" size="sm" onClick={() => router.push("/dashboard")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Dashboard
           </Button>

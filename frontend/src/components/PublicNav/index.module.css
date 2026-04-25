@@ -1,0 +1,71 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--fv-paper);
+  border-bottom: 1px solid var(--fv-ink-10);
+}
+
+.nav {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--fv-font-display);
+  font-size: 22px;
+  color: var(--fv-ink);
+  text-decoration: none;
+}
+
+.links {
+  display: flex;
+  gap: 28px;
+  font-size: 15px;
+}
+
+.link {
+  color: var(--fv-ink-70);
+  text-decoration: none;
+  font-weight: 400;
+  padding-bottom: 2px;
+  border-bottom: 1.5px solid transparent;
+  transition: color 150ms;
+}
+
+.linkActive {
+  color: var(--fv-ink);
+  font-weight: 500;
+  border-bottom-color: var(--fv-ochre);
+}
+
+.actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.signIn {
+  font-size: 15px;
+  color: var(--fv-ink-70);
+  text-decoration: none;
+}
+
+.cta {
+  background: var(--fv-ink);
+  color: var(--fv-paper);
+  border-radius: var(--fv-r-pill);
+  padding: 10px 18px;
+  font-size: 14px;
+  font-family: var(--fv-font-sans);
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-block;
+}

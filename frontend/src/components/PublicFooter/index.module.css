@@ -1,0 +1,16 @@
+.footer {
+  border-top: 1px solid var(--fv-ink-10);
+  padding: 32px;
+  text-align: center;
+}
+
+.text {
+  font-size: 13px;
+  color: var(--fv-ink-40);
+  margin: 0;
+}
+
+.link {
+  color: var(--fv-ink-40);
+  text-decoration: none;
+}

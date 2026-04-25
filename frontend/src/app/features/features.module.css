@@ -1,0 +1,368 @@
+.page {
+  background: var(--fv-paper);
+  color: var(--fv-ink);
+  min-height: 100vh;
+  font-family: var(--fv-font-sans);
+}
+
+/* ── Shared layout ── */
+.wrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* ── Hero ── */
+.hero {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 96px 32px 80px;
+  text-align: center;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--fv-ink-40);
+  margin-bottom: 24px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fv-ochre);
+  display: inline-block;
+}
+
+.h1 {
+  font-family: var(--fv-font-display);
+  font-weight: 400;
+  font-size: clamp(2.6rem, 6vw, 5rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--fv-ink);
+  max-width: 18ch;
+  margin: 0 auto 24px;
+}
+
+.em {
+  color: var(--fv-ochre);
+  font-style: italic;
+}
+
+.lead {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--fv-ink-70);
+  max-width: 520px;
+  margin: 0 auto 48px;
+}
+
+.ctaPrimary {
+  background: var(--fv-ochre);
+  color: var(--fv-paper);
+  border-radius: var(--fv-r-pill);
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-block;
+}
+
+/* ── Chart section ── */
+.chartWrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 32px 96px;
+}
+
+.chartInner {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.chart {
+  background: var(--fv-paper);
+  border: 1px solid var(--fv-ink-10);
+  border-radius: 16px;
+  padding: 32px 40px;
+  box-shadow: var(--fv-shadow-lg);
+}
+
+.chartLabel {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--fv-ink-40);
+  margin-bottom: 6px;
+}
+
+.chartTitle {
+  font-family: var(--fv-font-display);
+  font-size: 32px;
+  color: var(--fv-ink);
+  margin: 0 0 32px;
+  line-height: 1;
+}
+
+.chartTitleMuted {
+  font-size: 20px;
+  color: var(--fv-ink-60);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 140px;
+}
+
+.barCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bar {
+  width: 100%;
+  background: var(--fv-ochre-ghost);
+  border-radius: 4px 4px 0 0;
+  position: relative;
+}
+
+.barActive {
+  background: var(--fv-ochre);
+}
+
+.barLabel {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fv-ochre);
+  white-space: nowrap;
+}
+
+.barYear {
+  font-size: 11px;
+  color: var(--fv-ink-40);
+}
+
+.barH32  { height: 32px; }
+.barH48  { height: 48px; }
+.barH62  { height: 62px; }
+.barH80  { height: 80px; }
+.barH100 { height: 100px; }
+.barH118 { height: 118px; }
+
+.chartMeta {
+  display: flex;
+  gap: 24px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--fv-ink-10);
+}
+
+.chartMetaItem p:first-child {
+  font-size: 11px;
+  color: var(--fv-ink-40);
+  margin: 0;
+}
+
+.chartMetaItem p:last-child {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fv-ink);
+  margin: 2px 0 0;
+}
+
+/* ── Features grid ── */
+.featuresBg {
+  background: var(--fv-ink-05);
+  padding: 96px 0;
+}
+
+.h2 {
+  font-family: var(--fv-font-display);
+  font-weight: 400;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.02em;
+  color: var(--fv-ink);
+  margin-bottom: 56px;
+  text-align: center;
+}
+
+.featuresGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.featureCard {
+  background: var(--fv-paper);
+  border: 1px solid var(--fv-ink-10);
+  border-radius: 16px;
+  padding: 32px;
+}
+
+.featureIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--fv-ochre-ghost);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.featureTitle {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--fv-ink);
+  margin: 0 0 10px;
+}
+
+.featureDesc {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fv-ink-70);
+  margin: 0;
+}
+
+/* ── How it works ── */
+.steps {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 96px 32px;
+}
+
+.stepsHeader {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.stepsSubtitle {
+  font-size: 17px;
+  color: var(--fv-ink-70);
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.stepsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+
+.stepItem {
+  padding: 40px 36px;
+  position: relative;
+}
+
+.stepBorder {
+  border-right: 1px solid var(--fv-ink-10);
+}
+
+.stepNum {
+  font-family: var(--fv-font-display);
+  font-size: 64px;
+  font-weight: 400;
+  color: var(--fv-ink-05);
+  line-height: 1;
+  display: block;
+  margin-bottom: -8px;
+}
+
+.stepTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fv-ink);
+  margin: 0 0 12px;
+}
+
+.stepDesc {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fv-ink-70);
+  margin: 0 0 16px;
+}
+
+.stepBadge {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fv-ochre);
+  background: var(--fv-ochre-ghost);
+  border-radius: var(--fv-r-pill);
+  padding: 4px 12px;
+  display: inline-block;
+}
+
+/* ── Brokers ── */
+.brokersBg {
+  background: var(--fv-ink-05);
+  padding: 64px 0;
+}
+
+.brokersInner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 32px;
+  text-align: center;
+}
+
+.brokersLabel {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--fv-ink-40);
+  margin-bottom: 32px;
+}
+
+.brokerList {
+  display: flex;
+  gap: 48px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.brokerName {
+  font-family: var(--fv-font-display);
+  font-size: 22px;
+  color: var(--fv-ink-60);
+  letter-spacing: -0.01em;
+}
+
+/* ── CTA section ── */
+.ctaSection {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 96px 32px;
+  text-align: center;
+}
+
+.ctaLinks {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: center;
+}
+
+.ctaSecondary {
+  color: var(--fv-ink-70);
+  font-size: 15px;
+  text-decoration: none;
+}

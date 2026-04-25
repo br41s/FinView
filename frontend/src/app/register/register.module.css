@@ -1,0 +1,79 @@
+.page {
+  background: var(--fv-paper);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--fv-font-sans);
+  padding: 24px;
+}
+
+.container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.brand {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.logoWrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.title {
+  font-family: var(--fv-font-display);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--fv-ink);
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--fv-ink-60);
+  margin: 0;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--fv-ink-15);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: var(--fv-shadow-md);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.error {
+  font-size: 13px;
+  color: var(--fv-danger);
+  margin: 0;
+}
+
+.footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--fv-ink-60);
+}
+
+.footerLink {
+  color: var(--fv-ochre);
+  text-decoration: none;
+  font-weight: 500;
+}

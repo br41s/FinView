@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import styles from "./register.module.css";
 
 function LogoMark() {
   return (
@@ -61,46 +62,20 @@ export default function RegisterPage() {
   }
 
   return (
-    <div style={{
-      background: "var(--fv-paper,#F5F1E8)",
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontFamily: "var(--fv-font-sans,system-ui)",
-      padding: "24px",
-    }}>
-      <div style={{ width: "100%", maxWidth: 400 }}>
+    <div className={styles.page}>
+      <div className={styles.container}>
 
-        {/* Brand mark */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+        <div className={styles.brand}>
+          <div className={styles.logoWrap}>
             <LogoMark />
           </div>
-          <h1 style={{
-            fontFamily: "var(--fv-font-display,Georgia,serif)",
-            fontSize: 30, fontWeight: 400,
-            letterSpacing: "-0.02em",
-            color: "var(--fv-ink,#1F1B16)",
-            margin: "0 0 6px",
-          }}>
-            finview
-          </h1>
-          <p style={{ fontSize: 14, color: "var(--fv-ink-60,rgba(31,27,22,0.6))", margin: 0 }}>
-            Crea tu cuenta gratis
-          </p>
+          <h1 className={styles.title}>finview</h1>
+          <p className={styles.subtitle}>Crea tu cuenta gratis</p>
         </div>
 
-        {/* Form */}
-        <div style={{
-          background: "var(--card,#FEFCF5)",
-          border: "1px solid var(--fv-ink-15,rgba(31,27,22,0.15))",
-          borderRadius: 16,
-          padding: "32px",
-          boxShadow: "var(--fv-shadow-md,0 4px 16px rgba(31,27,22,0.08))",
-        }}>
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className={styles.card}>
+          <form onSubmit={handleSubmit} className={styles.form}>
+            <div className={styles.field}>
               <Label htmlFor="name">Nombre</Label>
               <Input
                 id="name"
@@ -111,7 +86,7 @@ export default function RegisterPage() {
                 autoComplete="name"
               />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className={styles.field}>
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -123,7 +98,7 @@ export default function RegisterPage() {
                 autoComplete="email"
               />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className={styles.field}>
               <Label htmlFor="password">Contraseña</Label>
               <Input
                 id="password"
@@ -136,23 +111,16 @@ export default function RegisterPage() {
                 autoComplete="new-password"
               />
             </div>
-            {error && (
-              <p style={{ fontSize: 13, color: "var(--fv-danger,#9B3D2C)", margin: 0 }}>
-                {error}
-              </p>
-            )}
+            {error && <p className={styles.error}>{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Creando cuenta..." : "Crear cuenta"}
             </Button>
           </form>
         </div>
 
-        <p style={{
-          marginTop: 24, textAlign: "center",
-          fontSize: 14, color: "var(--fv-ink-60,rgba(31,27,22,0.6))",
-        }}>
+        <p className={styles.footer}>
           ¿Ya tienes cuenta?{" "}
-          <Link href="/login" style={{ color: "var(--fv-ochre,#9A6B1F)", textDecoration: "none", fontWeight: 500 }}>
+          <Link href="/login" className={styles.footerLink}>
             Inicia sesión
           </Link>
         </p>

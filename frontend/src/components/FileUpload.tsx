@@ -22,10 +22,23 @@ import {
   Info,
 } from "lucide-react";
 
-const BROKERS = [
+type BrokerKey = "tr" | "degiro" | "ibkr" | "ing" | "bbva" | "etoro";
+type UploadMapKey = "tr" | "degiro" | "ibkr" | "ing" | "etoro";
+
+type BrokerConfig = {
+  readonly key: BrokerKey;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly accept: string;
+  readonly color: string;
+  readonly multi: boolean;
+};
+
+const BROKERS: BrokerConfig[] = [
   {
     key: "tr",
     label: "Trade Republic",
+    shortLabel: "TR",
     accept: ".pdf,.csv",
     color: "bg-neutral-800 hover:bg-neutral-700 border-neutral-600",
     multi: false,
@@ -33,6 +46,7 @@ const BROKERS = [
   {
     key: "degiro",
     label: "DEGIRO",
+    shortLabel: "DEGIRO",
     accept: ".pdf",
     color: "bg-orange-950/50 hover:bg-orange-900/50 border-orange-700/40",
     multi: false,
@@ -40,6 +54,7 @@ const BROKERS = [
   {
     key: "ibkr",
     label: "IBKR",
+    shortLabel: "IBKR",
     accept: ".csv",
     color: "bg-red-950/50 hover:bg-red-900/50 border-red-700/40",
     multi: false,
@@ -47,6 +62,7 @@ const BROKERS = [
   {
     key: "ing",
     label: "ING",
+    shortLabel: "ING",
     accept: ".pdf",
     color: "bg-orange-950/40 hover:bg-orange-900/40 border-orange-600/30",
     multi: false,
@@ -54,6 +70,7 @@ const BROKERS = [
   {
     key: "bbva",
     label: "BBVA",
+    shortLabel: "BBVA",
     accept: ".pdf",
     color: "bg-blue-950/50 hover:bg-blue-900/50 border-blue-700/40",
     multi: true,
@@ -61,11 +78,16 @@ const BROKERS = [
   {
     key: "etoro",
     label: "eToro",
+    shortLabel: "eToro",
     accept: ".xlsx",
     color: "bg-green-950/50 hover:bg-green-900/50 border-green-700/40",
     multi: false,
   },
-] as const;
+];
+
+interface FileUploadProps {
+  readonly onImported: () => void;
+}
 
 function detectBroker(
   filename: string,
@@ -102,15 +124,13 @@ function detectBroker(
   return null;
 }
 
-export function FileUpload({
-  onImported,
-}: Readonly<{ onImported: () => void }>) {
+export function FileUpload({ onImported }: FileUploadProps) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingBroker, setLoadingBroker] = useState<string | null>(null);
+  const [loadingBroker, setLoadingBroker] = useState(null as string | null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const brokerInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const brokerInputRefs = useRef({} as Record<string, HTMLInputElement | null>);
 
   const notifyResult = useCallback(
     (res: ImportResult) => {
@@ -138,8 +158,8 @@ export function FileUpload({
       ibkr: uploadIBKRReport,
       ing: uploadINGReport,
       etoro: uploadEToroReport,
-    } as const;
-    const upload = uploadMap[broker as keyof typeof uploadMap];
+    };
+    const upload = uploadMap[broker as UploadMapKey];
     return upload(file);
   }, []);
 
@@ -320,7 +340,7 @@ export function FileUpload({
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <>
-                      <span className="font-medium">{b.label}</span>
+                      <span className="font-medium">{b.shortLabel}</span>
                       <span className="text-muted-foreground ml-1 hidden sm:inline">
                         {b.accept.replace(".", "").toUpperCase()}
                       </span>
