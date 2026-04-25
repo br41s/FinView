@@ -211,7 +211,7 @@ def _aggregate_by_isin(positions: list[Position]) -> list[Position]:
         total_qty = sum((p.quantity for p in group), ZERO)
         known_costs = [p.total_cost_eur for p in group if p.total_cost_eur is not None]
         total_cost = sum(known_costs, ZERO) if known_costs else None
-        brokers = sorted({p.broker for p in group if p.broker}, key=lambda b: b.value if hasattr(b, "value") else str(b))
+        broker_labels = sorted({getattr(p.broker, "value", p.broker) for p in group if p.broker})
         current_price = next(
             (p.current_price_eur for p in group if p.current_price_eur is not None),
             None,
@@ -231,7 +231,7 @@ def _aggregate_by_isin(positions: list[Position]) -> list[Position]:
                 ticker=next((p.ticker for p in group if p.ticker), None),
                 name=first.name,
                 country=next((p.country for p in group if p.country), None),
-                broker=", ".join(brokers),
+                broker=", ".join(broker_labels),
                 account_id=first.account_id,
                 quantity=total_qty,
                 avg_cost_eur=avg_cost,
