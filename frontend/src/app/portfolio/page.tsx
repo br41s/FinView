@@ -13,8 +13,10 @@ import {
   ChevronDown,
   ChevronRight,
   Target,
+  Loader2,
 } from "lucide-react";
 
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
   Card,
@@ -132,6 +134,7 @@ function PortfolioContent() {
   );
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const [zcWatchlist, setZcWatchlist] = useState<Set<string>>(new Set());
+  const [zcAdding, setZcAdding] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.zonasClav
@@ -471,7 +474,7 @@ function PortfolioContent() {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          {zcWatchlist.has(p.ticker || p.isin) ? (
+                          {zcWatchlist.has((p.ticker ?? p.isin).toUpperCase()) ? (
                             <Badge variant="secondary" className="px-1.5 text-[10px]">
                               <Target className="h-3 w-3" />
                             </Badge>
@@ -481,14 +484,31 @@ function PortfolioContent() {
                               size="sm"
                               className="h-7 w-7 p-0"
                               title="Añadir a Zonas Clave"
+                              disabled={zcAdding.has(p.ticker ?? p.isin)}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                const ticker = p.ticker || p.isin;
-                                await api.zonasClav.addTicker(ticker, p.name);
-                                setZcWatchlist((prev) => new Set([...prev, ticker]));
+                                const ticker = p.ticker ?? p.isin;
+                                setZcAdding((prev) => new Set([...prev, ticker]));
+                                try {
+                                  await api.zonasClav.addTicker(ticker, p.name);
+                                  setZcWatchlist((prev) => new Set([...prev, ticker.toUpperCase()]));
+                                  toast.success(`${p.name} añadido a Zonas Clave`);
+                                } catch {
+                                  toast.error(`No se pudo añadir ${p.ticker ?? p.isin}`);
+                                } finally {
+                                  setZcAdding((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete(ticker);
+                                    return next;
+                                  });
+                                }
                               }}
                             >
-                              <Target className="h-4 w-4 text-muted-foreground" />
+                              {zcAdding.has(p.ticker ?? p.isin) ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Target className="h-4 w-4 text-muted-foreground" />
+                              )}
                             </Button>
                           )}
                         </TableCell>

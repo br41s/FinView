@@ -44,6 +44,7 @@ from backend.services.import_service import (
     import_tr_csv_report,
     import_tr_report,
     _delete_import_data,
+    delete_all_imports,
 )
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -218,6 +219,14 @@ def list_imports(db: DbSession, user: CurrentUser):
         .order_by(ImportRecord.imported_at.desc())
         .all()
     )
+
+
+@router.delete("/all")
+def delete_all_imports_endpoint(db: DbSession, user: CurrentUser):
+    """Delete all imports and associated data for the current user."""
+    result = delete_all_imports(db, user.id)
+    db.commit()
+    return {"status": "deleted", "deleted_imports": result["deleted_imports"]}
 
 
 @router.delete("/{import_id}", responses={404: {"description": "Importación no encontrada"}})

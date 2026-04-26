@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { api, deleteImport } from "@/lib/api";
+import { api, deleteImport, deleteAllImports } from "@/lib/api";
 import type { ImportRecord } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ export function ImportedFilesList({
   const [records, setRecords] = useState<ImportRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const loadRecords = useCallback(async () => {
     try {
@@ -90,6 +91,25 @@ export function ImportedFilesList({
     [loadRecords, onDeleted],
   );
 
+  const handleDeleteAll = useCallback(async () => {
+    const confirmed = window.confirm(
+      "¿Borrar TODOS los archivos importados?\n\nSe eliminarán todas las transacciones, posiciones, casillas y datos de todos los brokers. Esta acción no se puede deshacer.",
+    );
+    if (!confirmed) return;
+
+    setDeletingAll(true);
+    try {
+      await deleteAllImports();
+      toast.success("Todos los datos eliminados");
+      await loadRecords();
+      onDeleted();
+    } catch {
+      toast.error("Error al eliminar todos los datos");
+    } finally {
+      setDeletingAll(false);
+    }
+  }, [loadRecords, onDeleted]);
+
   // Group records by fiscal year
   const byYear = records.reduce<Record<number, ImportRecord[]>>((acc, r) => {
     const year = r.fiscal_year ?? 0;
@@ -122,6 +142,21 @@ export function ImportedFilesList({
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={handleDeleteAll}
+          disabled={deletingAll || deletingId !== null}
+        >
+          {deletingAll ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-2 h-4 w-4" />
+          )}
+          Borrar todo
+        </Button>
+      </div>
       {sortedYears.map((year) => (
         <div key={year}>
           <h3 className="text-sm font-medium text-muted-foreground mb-2">

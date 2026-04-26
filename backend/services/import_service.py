@@ -114,6 +114,16 @@ def _check_year_duplicate(db: Session, broker: Broker, fiscal_year: int) -> Impo
     )
 
 
+def _delete_tx_dependents(db: Session, tx_ids: list[int]) -> None:
+    """Delete CrossBrokerLots and TaxLots that reference the given transaction IDs."""
+    db.query(CrossBrokerLot).filter(
+        (CrossBrokerLot.buy_tx_id.in_(tx_ids)) | (CrossBrokerLot.sell_tx_id.in_(tx_ids))
+    ).delete(synchronize_session="fetch")
+    db.query(TaxLot).filter(
+        (TaxLot.buy_tx_id.in_(tx_ids)) | (TaxLot.sell_tx_id.in_(tx_ids))
+    ).delete(synchronize_session="fetch")
+
+
 def _delete_import_data(db: Session, import_id: int) -> None:
     """Cascade-delete all data from a previous import.
 
@@ -123,36 +133,24 @@ def _delete_import_data(db: Session, import_id: int) -> None:
     if not import_rec:
         return
 
-    # Get all transaction IDs from this import
+    account_id = import_rec.account_id
+
     tx_ids = [
         t.id for t in
         db.query(Transaction.id).filter(Transaction.import_id == import_id).all()
     ]
 
     if tx_ids:
-        # Delete CrossBrokerLots before transactions (FK: buy_tx_id/sell_tx_id → transactions.id)
-        db.query(CrossBrokerLot).filter(
-            (CrossBrokerLot.buy_tx_id.in_(tx_ids)) | (CrossBrokerLot.sell_tx_id.in_(tx_ids))
-        ).delete(synchronize_session="fetch")
-
-        # Delete TaxLots that reference these transactions
-        db.query(TaxLot).filter(
-            (TaxLot.buy_tx_id.in_(tx_ids)) | (TaxLot.sell_tx_id.in_(tx_ids))
-        ).delete(synchronize_session="fetch")
-
-        # Delete the transactions themselves
+        _delete_tx_dependents(db, tx_ids)
         db.query(Transaction).filter(Transaction.import_id == import_id).delete(
             synchronize_session="fetch"
         )
 
-    # Delete TaxResults for this broker + year
     if import_rec.fiscal_year:
         db.query(TaxResult).filter(
             TaxResult.broker == import_rec.broker,
             TaxResult.fiscal_year == import_rec.fiscal_year,
         ).delete(synchronize_session="fetch")
-
-        # Delete cross-broker FIFO data for this year (will be recalculated)
         db.query(CrossBrokerLot).filter(
             CrossBrokerLot.fiscal_year == import_rec.fiscal_year,
         ).delete(synchronize_session="fetch")
@@ -160,24 +158,87 @@ def _delete_import_data(db: Session, import_id: int) -> None:
             FIFOAdjustment.fiscal_year == import_rec.fiscal_year,
         ).delete(synchronize_session="fetch")
 
-    # Delete option assignment records for this import
     db.query(OptionAssignmentRecord).filter(
         OptionAssignmentRecord.import_id == import_id,
     ).delete(synchronize_session="fetch")
-
-    # Delete portfolio holdings for this import
     db.query(PortfolioHolding).filter(
         PortfolioHolding.import_id == import_id,
     ).delete(synchronize_session="fetch")
-
-    # Delete data issues for this import
     db.query(DataIssue).filter(
         DataIssue.import_id == import_id,
     ).delete(synchronize_session="fetch")
 
-    # Delete the import record
     db.delete(import_rec)
     db.flush()
+
+    # Clean up orphan transactions (import_id=NULL) for this account when
+    # this is the last import — avoids ghost positions after full broker wipe.
+    remaining = db.query(ImportRecord).filter(ImportRecord.account_id == account_id).count()
+    if remaining == 0:
+        orphan_tx_ids = [
+            t.id for t in
+            db.query(Transaction.id).filter(
+                Transaction.account_id == account_id,
+                Transaction.import_id.is_(None),
+            ).all()
+        ]
+        if orphan_tx_ids:
+            _delete_tx_dependents(db, orphan_tx_ids)
+            db.query(Transaction).filter(
+                Transaction.account_id == account_id,
+                Transaction.import_id.is_(None),
+            ).delete(synchronize_session="fetch")
+        db.flush()
+
+
+def delete_all_imports(db: Session, user_id: int) -> dict:
+    """Delete every import and all associated data for a user, including orphan transactions."""
+    if not db.query(Account).filter(Account.user_id == user_id).first():
+        return {"deleted_imports": 0}
+
+    # Use subqueries to avoid SQLite's 999-parameter IN-clause limit on large datasets.
+    account_subq = db.query(Account.id).filter(Account.user_id == user_id).subquery()
+    import_subq = db.query(ImportRecord.id).filter(
+        ImportRecord.account_id.in_(account_subq)
+    ).subquery()
+    tx_subq = db.query(Transaction.id).filter(
+        Transaction.account_id.in_(account_subq)
+    ).subquery()
+
+    deleted_count = db.query(ImportRecord).filter(
+        ImportRecord.account_id.in_(account_subq)
+    ).count()
+
+    db.query(CrossBrokerLot).filter(
+        CrossBrokerLot.buy_tx_id.in_(tx_subq) | CrossBrokerLot.sell_tx_id.in_(tx_subq)
+    ).delete(synchronize_session=False)
+    db.query(TaxLot).filter(
+        TaxLot.buy_tx_id.in_(tx_subq) | TaxLot.sell_tx_id.in_(tx_subq)
+    ).delete(synchronize_session=False)
+    db.query(Transaction).filter(Transaction.account_id.in_(account_subq)).delete(
+        synchronize_session=False
+    )
+
+    db.query(FIFOAdjustment).filter(FIFOAdjustment.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(TaxResult).filter(TaxResult.user_id == user_id).delete(synchronize_session=False)
+
+    db.query(OptionAssignmentRecord).filter(
+        OptionAssignmentRecord.import_id.in_(import_subq)
+    ).delete(synchronize_session=False)
+    db.query(PortfolioHolding).filter(
+        PortfolioHolding.import_id.in_(import_subq)
+    ).delete(synchronize_session=False)
+    db.query(DataIssue).filter(DataIssue.import_id.in_(import_subq)).delete(
+        synchronize_session=False
+    )
+    db.query(ImportRecord).filter(ImportRecord.account_id.in_(account_subq)).delete(
+        synchronize_session=False
+    )
+
+    db.flush()
+    return {"deleted_imports": deleted_count}
 
 
 def _store_transaction(db: Session, tx: ParsedTransaction, account_id: int, import_id: int) -> Transaction:

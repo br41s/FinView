@@ -163,6 +163,16 @@ export async function deleteImport(importId: number) {
   return res.json();
 }
 
+export async function deleteAllImports() {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/imports/all`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
+  return res.json();
+}
+
 export const api = {
   dashboard: (year?: number) =>
     fetchJSON(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
