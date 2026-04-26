@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  Target,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -130,6 +131,14 @@ function PortfolioContent() {
     new Map(),
   );
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const [zcWatchlist, setZcWatchlist] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    api.zonasClav
+      .watchlist()
+      .then((items) => setZcWatchlist(new Set(items.map((i) => i.ticker))))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -336,6 +345,7 @@ function PortfolioContent() {
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right">P&L</TableHead>
                   <TableHead className="text-right">Peso</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -460,12 +470,34 @@ function PortfolioContent() {
                             "—"
                           )}
                         </TableCell>
+                        <TableCell className="text-center">
+                          {zcWatchlist.has(p.ticker || p.isin) ? (
+                            <Badge variant="secondary" className="px-1.5 text-[10px]">
+                              <Target className="h-3 w-3" />
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              title="Añadir a Zonas Clave"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const ticker = p.ticker || p.isin;
+                                await api.zonasClav.addTicker(ticker, p.name);
+                                setZcWatchlist((prev) => new Set([...prev, ticker]));
+                              }}
+                            >
+                              <Target className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
 
                       {/* Expanded detail */}
                       {isExpanded && (
                         <TableRow key={`${key}-detail`}>
-                          <TableCell colSpan={8} className="bg-muted/30 p-4">
+                          <TableCell colSpan={9} className="bg-muted/30 p-4">
                             {isLoadingThis && !detail ? (
                               <LoadingDots text="Cargando detalle" />
                             ) : detail ? (

@@ -2,6 +2,49 @@ import { getSession } from "next-auth/react";
 
 const BASE = "/api";
 
+// ── Zonas Clave types ────────────────────────────────────────────────
+
+export interface ZcWatchlistItem {
+  id: number;
+  ticker: string;
+  name: string;
+  added_at: string;
+}
+
+export interface ZcZone {
+  level: number;
+  zone_type: "support" | "resistance";
+  strength: number;
+  touches: number;
+  volume_score: number;
+}
+
+export interface ZcPricePoint {
+  date: string;
+  close: number;
+  volume: number;
+}
+
+export interface ZcAnalysis {
+  id: number;
+  watchlist_item_id: number;
+  timestamp: string;
+  zones: ZcZone[];
+  trend_bias_bullish_pct: number | null;
+  trend_bias_bearish_pct: number | null;
+  rsi: number | null;
+  macd_signal: "bullish" | "bearish" | "neutral" | null;
+  macd_histogram: number | null;
+  current_price: number | null;
+  price_history: ZcPricePoint[];
+}
+
+export interface ZcSchedulerStatus {
+  running: boolean;
+  last_run: string | null;
+  total_items: number;
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return "";
@@ -343,6 +386,78 @@ export const api = {
     stopAgent: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/options/agent/stop`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+  },
+
+  // Zonas Clave
+  zonasClav: {
+    watchlist: () => fetchJSON<ZcWatchlistItem[]>("/zonas-clave/watchlist"),
+
+    addTicker: async (ticker: string, name = "") => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/zonas-clave/watchlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker, name }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<ZcWatchlistItem>;
+    },
+
+    removeTicker: async (id: number) => {
+      const headers = await authHeaders();
+      await fetch(`${BASE}/zonas-clave/watchlist/${id}`, {
+        method: "DELETE",
+        headers,
+      });
+    },
+
+    analysis: (ticker: string) =>
+      fetchJSON<ZcAnalysis>(`/zonas-clave/analysis/${encodeURIComponent(ticker)}`),
+
+    allAnalyses: () => fetchJSON<ZcAnalysis[]>("/zonas-clave/analysis"),
+
+    triggerAnalysis: async (ticker: string) => {
+      const headers = await authHeaders();
+      const res = await fetch(
+        `${BASE}/zonas-clave/analyze/${encodeURIComponent(ticker)}`,
+        { method: "POST", headers },
+      );
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<ZcAnalysis>;
+    },
+
+    triggerAll: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/zonas-clave/analyze-all`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+
+    schedulerStatus: () =>
+      fetchJSON<ZcSchedulerStatus>("/zonas-clave/scheduler/status"),
+
+    startScheduler: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/zonas-clave/scheduler/start`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+
+    stopScheduler: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/zonas-clave/scheduler/stop`, {
         method: "POST",
         headers,
       });

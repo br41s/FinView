@@ -483,3 +483,49 @@ class OptionsAgentLog(Base):
     market_sentiment: Mapped[str | None] = mapped_column(String(20))
     claude_analysis: Mapped[str | None] = mapped_column(Text)
     execution_time_seconds: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+
+# ── Zonas Clave ──────────────────────────────────────────────────────
+
+
+class ZonasClaveWatchlistItem(Base):
+    """Tickers the user wants to analyze for key support/resistance zones."""
+
+    __tablename__ = "zonas_clave_watchlist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    analyses: Mapped[list["ZonasClaveAnalysis"]] = relationship(
+        back_populates="watchlist_item", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "ticker"),)
+
+
+class ZonasClaveAnalysis(Base):
+    """Computed support/resistance zones, indicators and price history for one ticker."""
+
+    __tablename__ = "zonas_clave_analysis"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    watchlist_item_id: Mapped[int] = mapped_column(
+        ForeignKey("zonas_clave_watchlist.id"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    zones: Mapped[str | None] = mapped_column(Text)           # JSON list of zone dicts
+    trend_bias_bullish_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    trend_bias_bearish_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    rsi: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    macd_signal: Mapped[str | None] = mapped_column(String(20))  # bullish|bearish|neutral
+    macd_histogram: Mapped[float | None] = mapped_column(Numeric(10, 6))
+    price_history: Mapped[str | None] = mapped_column(Text)   # JSON [{date,close,volume}]
+    current_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
+
+    watchlist_item: Mapped["ZonasClaveWatchlistItem"] = relationship(back_populates="analyses")
+
+    __table_args__ = (Index("ix_zc_analysis_item_ts", "watchlist_item_id", "timestamp"),)

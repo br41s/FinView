@@ -13,6 +13,7 @@ import {
   LogOut,
   CreditCard,
   Briefcase,
+  Target,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -263,6 +264,24 @@ export function AppSidebar({
                 >
                   <Activity />
                   <span>Opciones</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Técnico */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Técnico</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Zonas Clave"
+                  onClick={() => (window.location.href = "/zonas-clave")}
+                >
+                  <Target />
+                  <span>Zonas Clave</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

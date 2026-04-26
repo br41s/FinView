@@ -313,3 +313,50 @@ class AgentStatusOut(BaseModel):
     interval_minutes: int
     last_cycle: datetime | None = None
     total_cycles: int = 0
+
+
+# ── Zonas Clave Schemas ──────────────────────────────────────────────
+
+
+class ZonasClaveWatchlistItemIn(BaseModel):
+    ticker: str
+    name: str = ""
+
+
+class ZcZoneOut(BaseModel):
+    level: float
+    zone_type: str       # "support" | "resistance"
+    strength: float      # 0–1 normalized score
+    touches: int
+    volume_score: float
+
+
+class ZonasClaveWatchlistItemOut(BaseModel):
+    id: int
+    ticker: str
+    name: str
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ZonasClaveAnalysisOut(BaseModel):
+    id: int
+    watchlist_item_id: int
+    timestamp: datetime
+    zones: list[ZcZoneOut]
+    trend_bias_bullish_pct: float | None
+    trend_bias_bearish_pct: float | None
+    rsi: float | None
+    macd_signal: str | None
+    macd_histogram: float | None
+    current_price: float | None
+    price_history: list[dict]
+
+    model_config = {"from_attributes": True}
+
+
+class ZonasClaveSchedulerStatus(BaseModel):
+    running: bool
+    last_run: datetime | None = None
+    total_items: int = 0
