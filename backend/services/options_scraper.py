@@ -3,7 +3,7 @@
 import logging
 import math
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
 import requests
@@ -13,9 +13,24 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 MAX_EXPIRATIONS = 3  # ~6 weeks of data
-MEFF_URL = "https://www.meff.es/esp/Derivados/Ficha/"
-MEFF_PROXY = "https://api.allorigins.win/raw?url="
-MEFF_DEFAULT_DAYS = 30
+
+# MEFF (Spanish exchange) — direct HTML scraping, no proxy needed
+_MEFF_BASE = "https://www.meff.es/ing/Financial-Derivatives/Spreadsheet/"
+_MEFF_SLUGS: dict[str, str] = {
+    "TEF": "TEF_Telefonica",
+    "BBVA": "BBVA_BBVA",
+    "SAN": "SAN_B__Santander",
+    "IBE": "IBE_Iberdrola",
+    "ITX": "ITX_Inditex",
+    "REP": "REP_Repsol",
+    "FER": "FER_Ferrovial",
+    "RED": "RED_REDEIA",
+    "NTGY": "NTGY_Naturgy",
+    "AENA": "AENA_AENA",
+    "ACX": "ACX_Acerinox",
+}
+# data-tipo codes: O{C=Call|P=Put}A{YYYYMMDD}
+_TIPO_RE = re.compile(r"^O(C|P)A(\d{8})$")
 
 _SQRT_2PI = math.sqrt(2 * math.pi)
 
@@ -202,46 +217,58 @@ def _yahoo_row_to_dict(row, days_to_exp: int, expiration: str, opt_type: str) ->
 
 
 def _get_meff_price(soup, ticker: str) -> float | None:
-    """Extract underlying price from MEFF page, falling back to yfinance."""
-    price_el = soup.find("span", class_="last-price")
-    if price_el:
-        try:
-            return float(price_el.text.replace(",", "."))
-        except ValueError:
-            pass
+    """Extract underlying price from MEFF SPOT table, falling back to yfinance."""
+    for caption in soup.find_all("caption"):
+        if "SPOT" in caption.text.upper():
+            table = caption.find_parent("table")
+            if table:
+                rows = table.find_all("tr")
+                if len(rows) >= 2:
+                    first_td = rows[1].find("td")
+                    if first_td:
+                        try:
+                            return float(first_td.text.strip().replace(",", "."))
+                        except ValueError:
+                            pass
     info = (yf.Ticker(ticker).info or {})
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     return float(price) if price else None
 
 
 def _parse_meff_tables(tables, current_price: float) -> tuple[list[dict], list[dict]]:
-    """Parse all MEFF option tables into calls and puts lists."""
+    """Parse MEFF tblOpciones rows using data-tipo attribute."""
     calls: list[dict] = []
     puts: list[dict] = []
     for table in tables:
-        for row in table.find_all("tr")[1:]:
-            cols = [td.text.strip().replace(",", ".") for td in row.find_all("td")]
-            if len(cols) < 6:
+        for row in table.find_all("tr"):
+            tipo = row.get("data-tipo", "")
+            m = _TIPO_RE.match(tipo)
+            if not m:
                 continue
-            try:
-                opt = _parse_meff_row(cols, current_price)
-                if opt:
-                    (calls if opt["type"] == "CALL" else puts).append(opt)
-            except (ValueError, IndexError):
-                continue
+            opt_type = "CALL" if m.group(1) == "C" else "PUT"
+            expiry_dt = datetime.strptime(m.group(2), "%Y%m%d")
+            days = max((expiry_dt - datetime.now()).days, 1)
+            expiry_iso = expiry_dt.strftime("%Y-%m-%d")
+            cols = [td.text.strip() for td in row.find_all("td")]
+            opt = _parse_meff_row(cols, current_price, opt_type, expiry_iso, days)
+            if opt:
+                (calls if opt_type == "CALL" else puts).append(opt)
     return calls, puts
 
 
 def _fetch_meff_soup(ticker: str) -> tuple | None:
-    """Fetch and parse MEFF HTML. Returns (soup, tables) or None."""
-    meff_ticker = ticker.replace(".MC", "")
-    url = f"{MEFF_PROXY}{MEFF_URL}{meff_ticker}"
-    resp = requests.get(url, timeout=15)
+    """Fetch and parse MEFF page. Returns (soup, [table]) or None."""
+    base = ticker.replace(".MC", "")
+    slug = _MEFF_SLUGS.get(base)
+    if not slug:
+        return None
+    url = f"{_MEFF_BASE}{slug}"
+    resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
     if resp.status_code != 200:
         return None
     soup = BeautifulSoup(resp.text, "html.parser")
-    tables = soup.find_all("table")
-    return (soup, tables) if tables else None
+    table = soup.find("table", id="tblOpciones")
+    return (soup, [table]) if table else None
 
 
 def _fetch_meff(ticker: str) -> dict | None:
@@ -285,31 +312,48 @@ def _fetch_meff(ticker: str) -> dict | None:
         return None
 
 
-def _parse_meff_row(cols: list[str], underlying_price: float) -> dict | None:
-    """Parse a MEFF table row into an option dict."""
-    strike = float(cols[0]) if cols[0] else None
+def _meff_cell(val: str) -> float:
+    """Parse a MEFF cell: '-' or empty → 0.0."""
+    if not val or val == "-":
+        return 0.0
+    try:
+        return float(val.replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def _parse_meff_row(
+    cols: list[str],
+    underlying_price: float,
+    opt_type: str,
+    expiration: str,
+    days_to_exp: int,
+) -> dict | None:
+    """Parse a MEFF tblOpciones row into an option dict.
+
+    Column layout: Strike | BidOrd BidVol BidPrice | AskPrice AskVol AskOrd |
+                   Last | Vol | Open | High | Low | Prev
+    """
+    if len(cols) < 13:
+        return None
+    strike = _meff_cell(cols[0])
     if not strike:
         return None
-
-    bid = float(cols[1]) if cols[1] else 0.0
-    ask = float(cols[2]) if cols[2] else 0.0
-    volume = int(float(cols[3])) if cols[3] else 0
-    oi = int(float(cols[4])) if cols[4] else 0
-    opt_type = cols[5].upper() if len(cols) > 5 else "CALL"
-
-    mid = (bid + ask) / 2 if (bid and ask) else bid or ask
-    iv = _solve_iv(underlying_price, strike, MEFF_DEFAULT_DAYS / 365.0, mid, opt_type)
-    expiration = (datetime.now() + timedelta(days=MEFF_DEFAULT_DAYS)).strftime("%Y-%m-%d")
-
+    bid = _meff_cell(cols[3])
+    ask = _meff_cell(cols[4])
+    last = _meff_cell(cols[7])
+    volume = int(_meff_cell(cols[8]))
+    mid = (bid + ask) / 2 if bid and ask else bid or ask or last
+    iv = _solve_iv(underlying_price, strike, days_to_exp / 365.0, mid, opt_type) if mid > 0 else 0.0
     return {
         "strike": strike,
         "bid": bid,
         "ask": ask,
-        "lastPrice": mid,
+        "lastPrice": last,
         "volume": volume,
-        "openInterest": oi,
+        "openInterest": 0,
         "impliedVolatility": iv,
-        "daysToExpiry": MEFF_DEFAULT_DAYS,
+        "daysToExpiry": days_to_exp,
         "expiration": expiration,
         "type": opt_type,
     }
