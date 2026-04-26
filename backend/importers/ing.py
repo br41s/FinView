@@ -1,10 +1,8 @@
-"""ING Bank (Spain) Información Fiscal PDF parser.
+"""ING Bank (Spain) PDF parser.
 
-Extracts:
-- Interest (Intereses de cuentas)
-- Dividends (Dividendos, primas de emisión y otras remuneraciones)
-- Transactions (Ganancias y pérdidas patrimoniales — compras y ventas)
-- Year-end holdings (Acciones y participaciones, Fondos de inversión)
+Supports two document types:
+- Información Fiscal (annual tax report): interest, dividends, buy/sell, holdings
+- Certificado de Operaciones (operations certificate): buy/sell transactions only
 """
 
 import hashlib
@@ -24,6 +22,7 @@ from backend.importers.base import (
 )
 
 _D = Decimal
+_ESPAÑA = "España"
 
 # ── Number / date helpers ──────────────────────────────────────────────
 
@@ -65,6 +64,22 @@ _KNOWN_ISINS: dict[str, str] = {
 # ── Regex patterns ─────────────────────────────────────────────────────
 
 YEAR_RE = re.compile(r"Información\s+Fiscal\s+(\d{4})")
+
+# Certificado de Operaciones detection and year extraction
+CERT_DOC_RE = re.compile(r"Certificado\s+de\s+Operaciones")
+CERT_YEAR_RE = re.compile(r"Fecha\s+inicio:\s*\d{2}/\d{2}/(\d{4})")
+
+# Certificado de Operaciones transaction line:
+# "30/12/2020 IBIO INC -25 1,090 USD 5,700"
+# "28/05/2020 AENA +10 135,400 EUR 1.364,110"
+CERT_TX_RE = re.compile(
+    r"(\d{2}/\d{2}/\d{4})\s+"                    # Date
+    r"([A-Z][A-Z0-9\s.]+?)\s+"                   # Name (lazy)
+    r"([+-]\d+)\s+"                               # Signed qty (+BUY / -SELL)
+    r"([\d.,]+)\s+"                              # Price
+    r"(EUR|USD|GBP|CHF|SEK|NOK|DKK|CAD)\s+"     # Currency
+    r"([\d.,]+)"                                 # Importe
+)
 
 # Interest line: "Cuenta NÓMINA  1714909886  1  200,00€  0,00 €  38,00€"
 INTEREST_RE = re.compile(
@@ -179,7 +194,7 @@ def _parse_interest(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             trade_date=date(fiscal_year, 12, 31),
             isin="",
             name=f"Intereses cuenta ING {m.group(1)}",
-            country="España",
+            country=_ESPAÑA,
             quantity=_D("0"),
             price=_D("0"),
             currency="EUR",
@@ -243,7 +258,7 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
                 trade_date=date(fiscal_year, 12, 31),
                 isin=isin,
                 name=name,
-                country=country_from_isin(isin) if isin else "España",
+                country=country_from_isin(isin) if isin else _ESPAÑA,
                 quantity=_D("0"),
                 price=_D("0"),
                 currency="EUR",
@@ -336,7 +351,7 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             trade_date=trade_date,
             isin=isin,
             name=name,
-            country=country_from_isin(isin) if isin else "España",
+            country=country_from_isin(isin) if isin else _ESPAÑA,
             quantity=qty,
             price=amount / qty if qty else _D("0"),
             currency="EUR",
@@ -368,7 +383,7 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             trade_date=trade_date,
             isin="",
             name=f"Derechos {stock_name}",
-            country=country_from_isin(parent_isin) if parent_isin else "España",
+            country=country_from_isin(parent_isin) if parent_isin else _ESPAÑA,
             quantity=qty,
             price=amount / qty if qty else _D("0"),
             currency="EUR",
@@ -452,7 +467,7 @@ def _parse_holdings(text: str, fiscal_year: int) -> list[ParsedPortfolioHolding]
                 name=name,
                 currency="EUR",
                 asset_type="Stock",
-                country=country_from_isin(isin) if isin else "España",
+                country=country_from_isin(isin) if isin else _ESPAÑA,
                 casilla_714=0,
                 quantity=qty,
                 avg_q4_balance=_D("0"),
@@ -464,28 +479,67 @@ def _parse_holdings(text: str, fiscal_year: int) -> list[ParsedPortfolioHolding]
     return holdings
 
 
+# ── Certificado de Operaciones parser ─────────────────────────────────
+
+
+def _parse_cert_transactions(text: str) -> list[ParsedTransaction]:
+    """Parse buy/sell transactions from a 'Certificado de Operaciones' PDF."""
+    name_isin: dict[str, str] = {k.upper(): v for k, v in _KNOWN_ISINS.items()}
+    results = []
+    for m in CERT_TX_RE.finditer(text):
+        trade_date = _parse_date(m.group(1))
+        name = m.group(2).strip()
+        qty_signed = int(m.group(3))
+        price = _parse_decimal(m.group(4))
+        currency = m.group(5)
+        amount = _parse_decimal(m.group(6))
+
+        qty = _D(abs(qty_signed))
+        tx_type = TxType.BUY if qty_signed > 0 else TxType.SELL
+        isin = name_isin.get(name.upper(), "")
+
+        results.append(ParsedTransaction(
+            tx_type=tx_type,
+            trade_date=trade_date,
+            isin=isin,
+            name=name,
+            country=country_from_isin(isin) if isin else _ESPAÑA,
+            quantity=qty,
+            price=price,
+            currency=currency,
+            gross_amount=amount,
+            fees=_D("0"),
+            net_amount_eur=amount,
+        ))
+    return results
+
+
 # ── Public API ─────────────────────────────────────────────────────────
 
 def parse_ing_report(pdf_path: Path) -> INGAnnualReport:
-    """Parse an ING Información Fiscal PDF.
-
-    Returns an INGAnnualReport with interest, dividends, transactions,
-    and year-end holdings.
-    """
+    """Parse an ING PDF (Información Fiscal or Certificado de Operaciones)."""
     text = _extract_all_text(pdf_path)
 
-    fiscal_year = _parse_fiscal_year(text)
-    interest = _parse_interest(text, fiscal_year)
-    dividends = _parse_dividends(text, fiscal_year)
-    transactions = _parse_transactions(text, fiscal_year)
-    holdings = _parse_holdings(text, fiscal_year)
+    if CERT_DOC_RE.search(text):
+        m = CERT_YEAR_RE.search(text)
+        if not m:
+            raise ValueError("No se encontró el año fiscal en el PDF de ING")
+        fiscal_year = int(m.group(1))
+        return INGAnnualReport(
+            fiscal_year=fiscal_year,
+            interest=[],
+            dividends=[],
+            transactions=_parse_cert_transactions(text),
+            holdings=[],
+        )
 
+    fiscal_year = _parse_fiscal_year(text)
     return INGAnnualReport(
         fiscal_year=fiscal_year,
-        interest=interest,
-        dividends=dividends,
-        transactions=transactions,
-        holdings=holdings,
+        interest=_parse_interest(text, fiscal_year),
+        dividends=_parse_dividends(text, fiscal_year),
+        transactions=_parse_transactions(text, fiscal_year),
+        holdings=_parse_holdings(text, fiscal_year),
     )
 
 
