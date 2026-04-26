@@ -13,6 +13,7 @@ import {
   Play,
   Square,
   RefreshCw,
+  Trash2,
   TrendingUp,
   TrendingDown,
   Zap,
@@ -285,9 +286,19 @@ export default function OptionsPage() {
     setWatchlist(wl);
   }
 
-  async function handleRemoveTicker(id: number) {
+  async function handleRemoveTicker(id: number, ticker?: string) {
     await api.options.removeFromWatchlist(id);
     setWatchlist((prev) => prev.filter((w) => w.id !== id));
+    if (ticker) {
+      setAlerts((prev) => prev.filter((a) => a.ticker !== ticker));
+      setUnusual((prev) => prev.filter((u) => u.ticker !== ticker));
+    }
+  }
+
+  async function handleRemoveFromCartera(ticker: string) {
+    const item = watchlist.find((w) => w.ticker === ticker);
+    if (!item) return;
+    await handleRemoveTicker(item.id, ticker);
   }
 
   async function handleAddPositionToWatchlist(ticker: string, name: string) {
@@ -564,12 +575,18 @@ export default function OptionsPage() {
                             </TableCell>
                             <TableCell className="text-center">
                               {watchlistTickers.has(ticker) ? (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-[10px] px-1.5"
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  title="Eliminar de watchlist"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveFromCartera(ticker);
+                                  }}
                                 >
-                                  <Eye className="h-3 w-3" />
-                                </Badge>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
                               ) : (
                                 <Button
                                   variant="ghost"
@@ -944,7 +961,7 @@ export default function OptionsPage() {
                               variant="ghost"
                               size="sm"
                               className="text-destructive"
-                              onClick={() => handleRemoveTicker(w.id)}
+                              onClick={() => handleRemoveTicker(w.id, w.ticker)}
                             >
                               Eliminar
                             </Button>

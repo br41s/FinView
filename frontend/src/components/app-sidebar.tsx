@@ -138,7 +138,7 @@ export function AppSidebar({
                   onChange={(e) =>
                     onYearChange(e.target.value ? Number(e.target.value) : null)
                   }
-                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">Todos los años</option>
                   {fiscalYears.map((y) => (

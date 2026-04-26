@@ -92,7 +92,17 @@ def remove_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
     )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    ticker = item.ticker
     db.delete(item)
+    db.query(OptionsAlert).filter(
+        OptionsAlert.user_id == user.id, OptionsAlert.ticker == ticker
+    ).delete(synchronize_session=False)
+    db.query(UnusualActivity).filter(
+        UnusualActivity.user_id == user.id, UnusualActivity.ticker == ticker
+    ).delete(synchronize_session=False)
+    db.query(OptionsSnapshot).filter(
+        OptionsSnapshot.user_id == user.id, OptionsSnapshot.ticker == ticker
+    ).delete(synchronize_session=False)
     db.commit()
 
 
