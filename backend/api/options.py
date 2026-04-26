@@ -26,6 +26,7 @@ from backend.models import (
     WatchlistItem,
 )
 from backend.services.options_agent import run_cycle
+from backend.services.options_scraper import fetch_options
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -116,6 +117,20 @@ def list_snapshots(
     if ticker:
         q = q.filter(OptionsSnapshot.ticker == ticker.upper())
     return q.order_by(OptionsSnapshot.timestamp.desc()).limit(limit).all()
+
+
+@router.get("/chain/{ticker}", responses=_404)
+def get_ticker_chain(ticker: str, user: CurrentUser):
+    """Fetch live options chain for a ticker without requiring a stored snapshot."""
+    data = fetch_options(ticker.upper())
+    if not data:
+        raise HTTPException(status_code=404, detail="No options data found for this ticker")
+    return {
+        "ticker": data["ticker"],
+        "timestamp": data["timestamp"],
+        "calls": data["calls"],
+        "puts": data["puts"],
+    }
 
 
 @router.get("/snapshots/{snapshot_id}/chain", responses=_404)

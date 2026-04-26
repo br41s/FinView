@@ -179,8 +179,8 @@ export default function OptionsPage() {
   const [running, setRunning] = useState(false);
   const [newTicker, setNewTicker] = useState("");
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
-  const [chainBySnapshot, setChainBySnapshot] = useState<Record<number, ChainData>>({});
-  const [loadingChain, setLoadingChain] = useState<Set<number>>(new Set());
+  const [chainByTicker, setChainByTicker] = useState<Record<string, ChainData>>({});
+  const [loadingChain, setLoadingChain] = useState<Set<string>>(new Set());
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
@@ -194,26 +194,29 @@ export default function OptionsPage() {
   // Load options chain when a ticker is expanded
   useEffect(() => {
     if (!expandedTicker) return;
-    const snap = snapshots.find((s) => s.ticker === expandedTicker);
-    if (!snap) return;
-    if (chainBySnapshot[snap.id] !== undefined) return;
-    if (loadingChain.has(snap.id)) return;
+    if (chainByTicker[expandedTicker] !== undefined) return;
+    if (loadingChain.has(expandedTicker)) return;
 
-    setLoadingChain((prev) => new Set(prev).add(snap.id));
-    (api.options.snapshotChain(snap.id) as Promise<ChainData>)
+    const snap = snapshots.find((s) => s.ticker === expandedTicker);
+    const fetcher = snap
+      ? (api.options.snapshotChain(snap.id) as Promise<ChainData>)
+      : (api.options.tickerChain(expandedTicker) as Promise<ChainData>);
+
+    setLoadingChain((prev) => new Set(prev).add(expandedTicker));
+    fetcher
       .then((data) =>
-        setChainBySnapshot((prev) => ({ ...prev, [snap.id]: data })),
+        setChainByTicker((prev) => ({ ...prev, [expandedTicker]: data })),
       )
       .catch(() =>
-        setChainBySnapshot((prev) => ({
+        setChainByTicker((prev) => ({
           ...prev,
-          [snap.id]: { ticker: expandedTicker, timestamp: "", calls: [], puts: [] },
+          [expandedTicker]: { ticker: expandedTicker, timestamp: "", calls: [], puts: [] },
         })),
       )
       .finally(() =>
         setLoadingChain((prev) => {
           const next = new Set(prev);
-          next.delete(snap.id);
+          next.delete(expandedTicker);
           return next;
         }),
       );
@@ -702,20 +705,12 @@ export default function OptionsPage() {
                                         </div>
                                       </div>
                                     </div>
-                                  ) : (
-                                    <p className="text-sm text-muted-foreground">
-                                      Sin datos de opciones. Añade{" "}
-                                      <span className="font-medium">
-                                        {ticker}
-                                      </span>{" "}
-                                      a la watchlist y ejecuta un ciclo.
-                                    </p>
-                                  )}
+                                  ) : null}
 
                                   {/* Options chain (calls + puts) */}
-                                  {snap && (() => {
-                                    const chain = chainBySnapshot[snap.id];
-                                    const isLoadingChain = loadingChain.has(snap.id);
+                                  {(() => {
+                                    const chain = chainByTicker[ticker];
+                                    const isLoadingChain = loadingChain.has(ticker);
                                     if (isLoadingChain) {
                                       return <Skeleton className="h-32 w-full" />;
                                     }

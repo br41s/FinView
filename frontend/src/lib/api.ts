@@ -292,6 +292,7 @@ export const api = {
     snapshots: (ticker?: string, days = 7) =>
       fetchJSON(`/options/snapshots${qs({ ticker, days })}`),
     snapshotChain: (id: number) => fetchJSON(`/options/snapshots/${id}/chain`),
+    tickerChain: (ticker: string) => fetchJSON(`/options/chain/${encodeURIComponent(ticker)}`),
     alerts: (ticker?: string, unread?: boolean, days = 7) =>
       fetchJSON(
         `/options/alerts${qs({
