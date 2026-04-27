@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     # Auth / JWT
     secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
+    jwt_expire_minutes: int = 60 * 24 * 90  # 90 days
 
     # NextAuth shared secret (must match AUTH_SECRET on frontend)
     auth_secret: str = "change-me-in-production"
