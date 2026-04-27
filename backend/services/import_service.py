@@ -58,6 +58,7 @@ def _run_supervisor(db: Session, import_id: int) -> list[dict]:
                 "description": i.description,
                 "status": i.status,
                 "auto_resolution": i.auto_resolution,
+                "resolution_data": i.resolution_data,
             }
             for i in issues
         ]

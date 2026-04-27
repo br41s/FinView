@@ -15,7 +15,7 @@ class DataIssueOut(BaseModel):
     description: str
     status: str
     auto_resolution: str | None
-    resolution_data: str | None
+    resolution_data: str | None = None
 
     model_config = {"from_attributes": True}
 
