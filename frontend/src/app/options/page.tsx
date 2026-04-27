@@ -4,12 +4,12 @@ import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
-  ArrowLeft,
   BarChart3,
   Bell,
   ChevronDown,
   ChevronRight,
   Eye,
+  EyeOff,
   Play,
   Square,
   RefreshCw,
@@ -183,12 +183,25 @@ export default function OptionsPage() {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [chainByTicker, setChainByTicker] = useState<Record<string, ChainData>>({});
   const [loadingChain, setLoadingChain] = useState<Set<string>>(new Set());
+  const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
+  const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
     api.portfolio
       .positions(true)
-      .then((pos) => setPositions(pos as Position[]))
+      .then(async (pos) => {
+        const loaded = pos as Position[];
+        setPositions(loaded);
+        if (loaded.length === 0) return;
+        const tickers = [...new Set(loaded.map((p) => (p.ticker || p.isin).toUpperCase()))];
+        try {
+          const { no_options } = await api.options.checkAvailability(tickers);
+          setNoOptionsTickers(new Set(no_options));
+        } catch {
+          // ignore — positions remain visible if check fails
+        }
+      })
       .catch((e) => console.error("Failed to load positions:", e))
       .finally(() => setLoadingPositions(false));
   }, []);
@@ -232,31 +245,35 @@ export default function OptionsPage() {
       api.options.unusual() as Promise<Unusual[]>,
       api.options.watchlist() as Promise<WatchlistItem[]>,
       api.options.agentStatus() as Promise<AgentStatus>,
+      api.options.hiddenPortfolioTickers() as Promise<string[]>,
     ])
-      .then(([snaps, alts, unu, wl, status]) => {
+      .then(([snaps, alts, unu, wl, status, hidden]) => {
         setSnapshots(snaps);
         setAlerts(alts);
         setUnusual(unu);
         setWatchlist(wl);
         setAgentStatus(status);
+        setHiddenTickers(new Set(hidden));
       })
       .catch((e) => console.error("Failed to load options data:", e))
       .finally(() => setLoadingOptions(false));
   }, []);
 
   async function reloadOptions() {
-    const [snaps, alts, unu, wl, status] = await Promise.all([
+    const [snaps, alts, unu, wl, status, hidden] = await Promise.all([
       api.options.snapshots() as Promise<Snapshot[]>,
       api.options.alerts() as Promise<Alert[]>,
       api.options.unusual() as Promise<Unusual[]>,
       api.options.watchlist() as Promise<WatchlistItem[]>,
       api.options.agentStatus() as Promise<AgentStatus>,
+      api.options.hiddenPortfolioTickers() as Promise<string[]>,
     ]);
     setSnapshots(snaps);
     setAlerts(alts);
     setUnusual(unu);
     setWatchlist(wl);
     setAgentStatus(status);
+    setHiddenTickers(new Set(hidden));
   }
 
   async function handleRunCycle() {
@@ -302,6 +319,16 @@ export default function OptionsPage() {
     await handleRemoveTicker(item.id, ticker);
   }
 
+  async function handleHidePosition(ticker: string) {
+    // Remove from watchlist if present
+    const item = watchlist.find((w) => w.ticker === ticker);
+    if (item) await handleRemoveTicker(item.id, ticker);
+    // Persist exclusion from options monitor
+    await api.options.hidePortfolioTicker(ticker);
+    setHiddenTickers((prev) => new Set([...prev, ticker]));
+    if (expandedTicker === ticker) setExpandedTicker(null);
+  }
+
   async function handleAddPositionToWatchlist(ticker: string, name: string) {
     await api.options.addToWatchlist(ticker, name);
     const wl = (await api.options.watchlist()) as WatchlistItem[];
@@ -330,6 +357,11 @@ export default function OptionsPage() {
 
   const unreadAlerts = alerts.filter((a) => !a.acknowledged);
   const watchlistTickers = new Set(watchlist.map((w) => w.ticker));
+
+  // Portfolio tab: split into positions with/without options (hidden excluded entirely)
+  const visiblePositions = positions.filter((p) => !hiddenTickers.has((p.ticker || p.isin).toUpperCase()));
+  const mainPositions = visiblePositions.filter((p) => !noOptionsTickers.has((p.ticker || p.isin).toUpperCase()));
+  const noOptPositions = visiblePositions.filter((p) => noOptionsTickers.has((p.ticker || p.isin).toUpperCase()));
 
   // Get alerts/snapshots/unusual for a specific ticker
   function getTickerAlerts(ticker: string) {
@@ -481,7 +513,7 @@ export default function OptionsPage() {
           ) : (
             <Card>
               <CardHeader>
-                <CardTitle>Posiciones ({positions.length})</CardTitle>
+                <CardTitle>Posiciones ({mainPositions.length})</CardTitle>
                 <CardDescription>
                   Pulsa en una posición para ver sus datos de opciones
                 </CardDescription>
@@ -498,11 +530,11 @@ export default function OptionsPage() {
                       <TableHead className="text-right">Precio</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                       <TableHead className="text-right">P&L</TableHead>
-                      <TableHead className="w-10" />
+                      <TableHead className="w-16" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {positions.map((p) => {
+                    {mainPositions.map((p) => {
                       const ticker = p.ticker || p.isin;
                       const isExpanded = expandedTicker === ticker;
                       const snap = latestByTicker.get(ticker);
@@ -574,36 +606,47 @@ export default function OptionsPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-center">
-                              {watchlistTickers.has(ticker) ? (
+                              <div className="flex items-center justify-center gap-0.5">
+                                {watchlistTickers.has(ticker) ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    title="Eliminar de watchlist"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveFromCartera(ticker);
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    title="Añadir a watchlist"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddPositionToWatchlist(ticker, p.name);
+                                    }}
+                                  >
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 w-7 p-0"
-                                  title="Eliminar de watchlist"
+                                  title="Ocultar del monitor de opciones"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleRemoveFromCartera(ticker);
+                                    handleHidePosition(ticker);
                                   }}
                                 >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                  <EyeOff className="h-4 w-4 text-muted-foreground" />
                                 </Button>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0"
-                                  title="Añadir a watchlist"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddPositionToWatchlist(
-                                      ticker,
-                                      p.name,
-                                    );
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                              )}
+                              </div>
                             </TableCell>
                           </TableRow>
 
@@ -869,6 +912,16 @@ export default function OptionsPage() {
                 </Table>
               </CardContent>
             </Card>
+          )}
+          {noOptPositions.length > 0 && (
+            <p className="px-1 text-sm text-muted-foreground">
+              Los siguientes tickers no se muestran en posiciones ya que no
+              tienen opciones disponibles en los mercados:{" "}
+              <span className="font-medium">
+                {noOptPositions.map((p) => p.ticker || p.isin).join(", ")}
+              </span>
+              .
+            </p>
           )}
         </TabsContent>
 

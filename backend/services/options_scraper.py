@@ -3,6 +3,7 @@
 import logging
 import math
 import re
+import time
 from datetime import datetime
 
 import numpy as np
@@ -36,6 +37,10 @@ _SQRT_2PI = math.sqrt(2 * math.pi)
 
 _ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')
 _ISIN_CACHE: dict[str, str] = {}  # ISIN → resolved ticker symbol
+
+# 5-minute in-memory cache for options chains: ticker → (data, unix_ts)
+_OPTIONS_CACHE: dict[str, tuple[dict, float]] = {}
+_OPTIONS_TTL = 300.0  # seconds
 
 
 # ── Math helpers ─────────────────────────────────────────────────────
@@ -106,16 +111,27 @@ def fetch_options(ticker: str) -> dict | None:
 
     If *ticker* looks like an ISIN (e.g. ES0178430E18), it is first resolved
     to the proper exchange symbol (e.g. TEF.MC) via Yahoo Finance search.
+    Results are cached in memory for 5 minutes.
     """
     if _ISIN_RE.match(ticker):
         resolved = _resolve_isin(ticker)
         if resolved:
             ticker = resolved
+
+    cache_key = ticker.upper()
+    cached = _OPTIONS_CACHE.get(cache_key)
+    if cached and time.time() - cached[1] < _OPTIONS_TTL:
+        return cached[0]
+
     if ticker.endswith(".MC"):
         data = _fetch_meff(ticker)
         if data:
+            _OPTIONS_CACHE[cache_key] = (data, time.time())
             return data
-    return _fetch_yahoo(ticker)
+    result = _fetch_yahoo(ticker)
+    if result:
+        _OPTIONS_CACHE[cache_key] = (result, time.time())
+    return result
 
 
 # ── Yahoo Finance ────────────────────────────────────────────────────

@@ -45,6 +45,26 @@ export interface ZcSchedulerStatus {
   total_items: number;
 }
 
+// ── 5-minute client-side cache for read-heavy GET endpoints ──────────
+const _memCache = new Map<string, { data: unknown; ts: number }>();
+const _CACHE_TTL = 5 * 60 * 1000; // 5 min in ms
+
+function _getCached(key: string): unknown | null {
+  const entry = _memCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > _CACHE_TTL) { _memCache.delete(key); return null; }
+  return entry.data;
+}
+function _setCached(key: string, data: unknown): void {
+  _memCache.set(key, { data, ts: Date.now() });
+}
+export function invalidateCache(prefix?: string): void {
+  if (!prefix) { _memCache.clear(); return; }
+  for (const key of _memCache.keys()) {
+    if (key.startsWith(prefix)) _memCache.delete(key);
+  }
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return "";
@@ -71,6 +91,14 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
+}
+
+async function fetchCached<T>(path: string): Promise<T> {
+  const hit = _getCached(path);
+  if (hit !== null) return hit as T;
+  const data = await fetchJSON<T>(path);
+  _setCached(path, data);
+  return data;
 }
 
 export async function uploadTRReport(file: File) {
@@ -235,9 +263,13 @@ export const api = {
   // Portfolio
   portfolio: {
     positions: (skipPrices?: boolean) =>
-      fetchJSON(`/portfolio/positions${skipPrices ? "?skip_prices=true" : ""}`),
+      skipPrices
+        ? fetchCached(`/portfolio/positions?skip_prices=true`)
+        : fetchJSON(`/portfolio/positions`),
     summary: (skipPrices?: boolean) =>
-      fetchJSON(`/portfolio/summary${skipPrices ? "?skip_prices=true" : ""}`),
+      skipPrices
+        ? fetchCached(`/portfolio/summary?skip_prices=true`)
+        : fetchJSON(`/portfolio/summary`),
     positionDetail: (isin: string) =>
       fetchJSON(`/portfolio/positions/${encodeURIComponent(isin)}`),
     warmPrices: () =>
@@ -330,7 +362,7 @@ export const api = {
 
   // Options monitor
   options: {
-    watchlist: () => fetchJSON("/options/watchlist"),
+    watchlist: () => fetchCached("/options/watchlist"),
     addToWatchlist: async (ticker: string, name = "") => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/options/watchlist`, {
@@ -339,6 +371,7 @@ export const api = {
         body: JSON.stringify({ ticker, name }),
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      invalidateCache("/options/watchlist");
       return res.json();
     },
     toggleWatchlistItem: async (id: number) => {
@@ -348,6 +381,7 @@ export const api = {
         headers,
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      invalidateCache("/options/watchlist");
       return res.json();
     },
     removeFromWatchlist: async (id: number) => {
@@ -356,11 +390,41 @@ export const api = {
         method: "DELETE",
         headers,
       });
+      invalidateCache("/options/watchlist");
     },
     snapshots: (ticker?: string, days = 7) =>
-      fetchJSON(`/options/snapshots${qs({ ticker, days })}`),
+      fetchCached(`/options/snapshots${qs({ ticker, days })}`),
     snapshotChain: (id: number) => fetchJSON(`/options/snapshots/${id}/chain`),
     tickerChain: (ticker: string) => fetchJSON(`/options/chain/${encodeURIComponent(ticker)}`),
+    hiddenPortfolioTickers: () =>
+      fetchCached<string[]>("/options/portfolio/hidden"),
+    hidePortfolioTicker: async (ticker: string) => {
+      const headers = await authHeaders();
+      await fetch(`${BASE}/options/portfolio/hidden`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker }),
+      });
+      invalidateCache("/options/portfolio/hidden");
+    },
+    unhidePortfolioTicker: async (ticker: string) => {
+      const headers = await authHeaders();
+      await fetch(`${BASE}/options/portfolio/hidden/${encodeURIComponent(ticker)}`, {
+        method: "DELETE",
+        headers,
+      });
+      invalidateCache("/options/portfolio/hidden");
+    },
+    checkAvailability: async (tickers: string[]) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/check-availability`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ tickers }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<{ has_options: string[]; no_options: string[] }>;
+    },
     alerts: (ticker?: string, unread?: boolean, days = 7) =>
       fetchJSON(
         `/options/alerts${qs({

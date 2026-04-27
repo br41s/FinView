@@ -485,6 +485,19 @@ class OptionsAgentLog(Base):
     execution_time_seconds: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
 
+class OptionsHiddenPortfolioTicker(Base):
+    """Tickers the user has hidden from the Options Monitor portfolio tab."""
+
+    __tablename__ = "options_hidden_portfolio_tickers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "ticker"),)
+
+
 # ── Zonas Clave ──────────────────────────────────────────────────────
 
 

@@ -1,9 +1,12 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func
 
 from backend.api.auth import CurrentUser
@@ -21,12 +24,18 @@ from backend.database import DbSession
 from backend.models import (
     OptionsAgentLog,
     OptionsAlert,
+    OptionsHiddenPortfolioTicker,
     OptionsSnapshot,
     UnusualActivity,
     WatchlistItem,
 )
 from backend.services.options_agent import run_cycle
 from backend.services.options_scraper import fetch_options
+
+# ── Availability cache ───────────────────────────────────────────────
+# ticker → (has_options, timestamp); 24-hour TTL
+_availability_cache: dict[str, tuple[bool, float]] = {}
+_AVAIL_TTL = 86_400  # seconds
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -228,6 +237,98 @@ def list_unusual_activity(
     if ticker:
         q = q.filter(UnusualActivity.ticker == ticker.upper())
     return q.order_by(UnusualActivity.timestamp.desc()).limit(limit).all()
+
+
+# ── Hidden portfolio tickers ─────────────────────────────────────────
+
+
+class _HideTicker(BaseModel):
+    ticker: str
+
+
+@router.get("/portfolio/hidden")
+def list_hidden_portfolio(db: DbSession, user: CurrentUser):
+    rows = (
+        db.query(OptionsHiddenPortfolioTicker)
+        .filter(OptionsHiddenPortfolioTicker.user_id == user.id)
+        .all()
+    )
+    return [r.ticker for r in rows]
+
+
+@router.post("/portfolio/hidden", status_code=201)
+def hide_portfolio_ticker(body: _HideTicker, db: DbSession, user: CurrentUser):
+    ticker = body.ticker.upper()
+    existing = (
+        db.query(OptionsHiddenPortfolioTicker)
+        .filter(
+            OptionsHiddenPortfolioTicker.user_id == user.id,
+            OptionsHiddenPortfolioTicker.ticker == ticker,
+        )
+        .first()
+    )
+    if not existing:
+        db.add(OptionsHiddenPortfolioTicker(user_id=user.id, ticker=ticker))
+        db.commit()
+    return {"ticker": ticker}
+
+
+@router.delete("/portfolio/hidden/{ticker}", status_code=204)
+def unhide_portfolio_ticker(ticker: str, db: DbSession, user: CurrentUser):
+    db.query(OptionsHiddenPortfolioTicker).filter(
+        OptionsHiddenPortfolioTicker.user_id == user.id,
+        OptionsHiddenPortfolioTicker.ticker == ticker.upper(),
+    ).delete(synchronize_session=False)
+    db.commit()
+
+
+# ── Options availability check ────────────────────────────────────────
+
+
+class _TickerListIn(BaseModel):
+    tickers: list[str]
+
+
+def _check_single_availability(ticker: str) -> tuple[str, bool]:
+    """Light availability check: does the ticker have any options expirations?"""
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        return ticker, bool(t.options)
+    except Exception:
+        return ticker, False
+
+
+@router.post("/check-availability")
+def check_options_availability(body: _TickerListIn, user: CurrentUser):
+    """Return which tickers have options available (cached 24 h)."""
+    now = time.time()
+    uncached = []
+    results: dict[str, bool] = {}
+
+    for raw in body.tickers:
+        ticker = raw.upper()
+        cached = _availability_cache.get(ticker)
+        if cached and now - cached[1] < _AVAIL_TTL:
+            results[ticker] = cached[0]
+        else:
+            uncached.append(ticker)
+
+    if uncached:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = {pool.submit(_check_single_availability, t): t for t in uncached}
+            for future in as_completed(futures, timeout=20):
+                try:
+                    ticker, has_opt = future.result()
+                    _availability_cache[ticker] = (has_opt, now)
+                    results[ticker] = has_opt
+                except Exception:
+                    ticker = futures[future]
+                    results[ticker] = True  # default to visible on error
+
+    has_options = [t for t, v in results.items() if v]
+    no_options = [t for t, v in results.items() if not v]
+    return {"has_options": has_options, "no_options": no_options}
 
 
 # ── Agent Control ────────────────────────────────────────────────────
