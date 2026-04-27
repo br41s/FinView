@@ -11,9 +11,24 @@ Si no tienes cuenta, pulsa **Regístrate** y crea una con tu email y contraseña
 
 ---
 
-## 2. Importar archivos de broker
+## 2. Navegación rápida
 
-### 2.1 Cómo importar
+Todas las páginas tienen un grupo de **4 iconos de acceso rápido** en la esquina superior derecha de la cabecera:
+
+| Icono | Destino |
+|-------|---------|
+| Gráfico de barras | Dashboard fiscal |
+| Maletín | Cartera |
+| Actividad | Derivados (Options Monitor) |
+| Diana | Técnico (Zonas Clave) |
+
+El icono de la página actual aparece en color sólido para indicar dónde estás.
+
+---
+
+## 3. Importar archivos de broker
+
+### 3.1 Cómo importar
 
 1. En el Dashboard, pulsa **Importar** (parte superior izquierda).
 2. Arrastra el archivo sobre la zona marcada, o pulsa **Seleccionar archivos**.
@@ -23,26 +38,41 @@ Si no tienes cuenta, pulsa **Regístrate** y crea una con tu email y contraseña
 > **Duplicados:** Si subes el mismo archivo dos veces, FinView lo rechaza automáticamente.  
 > **Reemplazo:** Si subes un archivo nuevo del mismo broker y año, reemplaza la importación anterior automáticamente.
 
-### 2.2 Formatos por broker
+### 3.2 Formatos por broker
 
 | Broker | Formato | Cómo descargarlo |
 |--------|---------|-----------------|
 | **Trade Republic** | PDF o CSV | App TR → Cuenta → Documentos → Informe fiscal anual (PDF) o Exportar transacciones (CSV) |
 | **DEGIRO** | PDF | Plataforma DEGIRO → Informes → Informes anuales → Informe Anual |
 | **Interactive Brokers** | CSV | IBKR → Informes → Extractos de actividad → Anual → Formato CSV (incluir todas las secciones) |
-| **ING** | PDF | ING Direct → Documentos → Información fiscal |
+| **ING** | PDF | ING Direct → Documentos → Información fiscal (soporta Certificado de Operaciones e Información Fiscal) |
 | **BBVA** | 1-3 PDFs | BBVA Bróker → Documentos fiscales → Seleccionar los PDFs de operaciones, dividendos y patrimonio |
 | **eToro** | XLSX | eToro → Configuración → Extractos de cuenta → Anual |
 
 > Para BBVA, selecciona hasta 3 PDFs a la vez en el mismo diálogo de importación.
 
-### 2.3 Eliminar importaciones
+### 3.3 Acciones corporativas — resolución automática
 
-En la pantalla de importación, cada archivo tiene un icono de papelera. Al eliminar, se borran en cascada todas las transacciones, lotes FIFO, casillas y holdings asociados.
+Al importar, el agente supervisor detecta y resuelve automáticamente las inconsistencias más comunes:
+
+| Tipo | Cómo se resuelve |
+|------|-----------------|
+| **Derechos (rights)** | Las ventas de derechos de suscripción se reclasifican automáticamente como dividendo. |
+| **Scrip dividend** | Las acciones gratuitas con precio €0 se reconocen y marcan como válidas. |
+| **Split con cambio de ISIN** | Si el mismo ticker tiene dos ISINs (antes y después del split), se detecta y confirma automáticamente sin acción del usuario. |
+| **Split de cantidad** | Si el ratio del split coincide con la discrepancia en holdings (±5%), las cantidades se ajustan automáticamente (qty × ratio, precio / ratio). |
+| **Ticker desconocido** | Se intenta resolver el ticker en Yahoo Finance automáticamente. |
+
+Cuando no es posible resolver automáticamente, aparece un aviso de color **amarillo o rojo** tras la importación con el problema y los datos disponibles para que puedas revisarlo.
+
+### 3.4 Eliminar importaciones
+
+En la pantalla de importación, cada archivo tiene un icono de papelera. Al eliminar, se borran en cascada todas las transacciones, lotes FIFO, casillas y holdings asociados.  
+El botón **Borrar todo** elimina todas las importaciones de todos los brokers a la vez.
 
 ---
 
-## 3. Dashboard fiscal
+## 4. Dashboard fiscal
 
 Usa el selector **Año fiscal** (parte superior) para filtrar por año. Los datos se muestran en varias pestañas:
 
@@ -55,8 +85,8 @@ Usa el selector **Año fiscal** (parte superior) para filtrar por año. Los dato
 - Top pagadores del año
 
 ### Rendimiento
-- Tarjetas: dividendos brutos, netos, ganancias, pérdidas, retenciones extranjeras
-- Desglose de retenciones por país de origen del dividendo
+- Tabla de rendimiento de dividendos por empresa: rentabilidad sobre coste, sobre valor de mercado, dividendos totales recibidos, posición actual
+- Empresas con split de ISIN se consolidan en una sola fila (los dividendos cobrados antes y después del split suman en la misma entrada)
 
 ### Dividendos
 - Tabla completa de dividendos agregados por empresa (ISIN)
@@ -73,7 +103,7 @@ Usa el selector **Año fiscal** (parte superior) para filtrar por año. Los dato
 
 ---
 
-## 4. Casillas IRPF (Modelo 100 y 714)
+## 5. Casillas IRPF (Modelo 100 y 714)
 
 En la pestaña **Rendimiento**, sección Casillas, encontrarás los valores precalculados para la declaración de la renta:
 
@@ -89,21 +119,48 @@ En la pestaña **Rendimiento**, sección Casillas, encontrarás los valores prec
 
 ---
 
-## 5. Monitor de opciones
+## 6. Cartera (portfolio)
 
-La pestaña **Opciones** permite monitorizar posiciones en derivados financieros.
+La página **Cartera** muestra tus posiciones abiertas con precios en tiempo real de Yahoo Finance.
 
-### 5.1 Watchlist
+### Resumen
+- Valor de mercado total, capital invertido, rentabilidad latente
+
+### Tabla de posiciones
+Al desplegar una posición verás:
+- **Desglose por cuenta:** cantidad y coste por broker
+- **Dividendos cobrados:** tabla anual (año, importe bruto, neto, número de pagos). Los pagos del mismo año se consolidan en una sola fila aunque el broker los haya registrado con fecha fiscal.
+- **Historial de operaciones:** compras y ventas, excluyendo dividendos (que aparecen en la sección anterior)
+
+### Añadir a Zonas Clave
+El icono de diana junto a cada posición la añade a la watchlist de Zonas Clave. Aparece un mensaje verde de confirmación con un botón **"Ir a Zonas Clave"** para navegar directamente.
+
+---
+
+## 7. Monitor de opciones (Derivados)
+
+La página **Derivados** permite monitorizar posiciones en opciones financieras.
+
+### 7.1 Pestañas
+
+| Pestaña | Contenido |
+|---------|-----------|
+| **Cartera** | Posiciones de opciones detectadas en tus importaciones de IBKR |
+| **Watchlist** | Tickers añadidos manualmente para seguimiento de opciones |
+| **Alertas** | Señales generadas automáticamente por el agente |
+| **Smart Money** | Actividad inusual (volumen > 3× Open Interest) |
+
+### 7.2 Watchlist
 
 Añade los tickers que quieres vigilar (por ejemplo: `AAPL`, `IBE.MC`, `MSFT`).  
 Los tickers con sufijo `.MC` se consultan en MEFF (bolsa española); el resto en Yahoo Finance.
 
 - **Activar/desactivar:** Cada ticker se puede pausar individualmente sin eliminarlo.
-- **Eliminar:** Botón de papelera junto al ticker.
+- **Eliminar:** Al eliminar un ticker de la watchlist se borran también sus snapshots, alertas y actividad inusual asociados.
 
-### 5.2 Ciclos de análisis
+### 7.3 Ciclos de análisis
 
-El agente ejecuta ciclos periódicos (cada 15 minutos por defecto) para cada ticker de tu watchlist:
+El agente ejecuta ciclos periódicos (cada 15 minutos por defecto) para cada ticker activo de tu watchlist:
 
 1. **Observar:** Descarga la cadena de opciones (calls y puts) del mercado.
 2. **Greeks:** Calcula delta, gamma, theta, vega y rho con Black-Scholes.
@@ -114,17 +171,7 @@ El agente ejecuta ciclos periódicos (cada 15 minutos por defecto) para cada tic
 
 Puedes lanzar un ciclo manualmente con el botón **Ejecutar ciclo**.
 
-### 5.3 Snapshots y cadena de opciones
-
-Cada ciclo guarda un snapshot por ticker con:
-- Volumen y Open Interest de calls/puts
-- Ratio Put/Call (volumen y OI)
-- IV media de calls y puts
-- Volatilidad histórica (30 días)
-- IV Skew (puts vs calls)
-- Sentimiento de mercado: BULLISH / NEUTRAL / BEARISH
-
-### 5.4 Alertas
+### 7.4 Alertas
 
 Las alertas se generan automáticamente cuando:
 
@@ -138,16 +185,47 @@ Las alertas se generan automáticamente cuando:
 
 Puedes marcar alertas como leídas individualmente o todas a la vez.
 
-### 5.5 Actividad inusual (Smart Money)
+### 7.5 Snapshots y cadena de opciones
 
-Se detecta cuando el volumen de una opción supera 3× su Open Interest. Puede indicar posicionamiento institucional.
+Cada ciclo guarda un snapshot por ticker con volumen y Open Interest de calls/puts, ratio Put/Call, IV media, volatilidad histórica (30 días), IV Skew y sentimiento (BULLISH / NEUTRAL / BEARISH).
 
 ---
 
-## 6. Preguntas frecuentes
+## 8. Zonas Clave (Técnico)
+
+La página **Zonas Clave** calcula soportes, resistencias y tendencia algorítmica para los tickers de tu watchlist.
+
+### 8.1 Watchlist
+
+Añade tickers manualmente (campo de texto) o directamente desde la **Cartera** usando el icono de diana junto a cada posición.
+
+### 8.2 Análisis por ticker
+
+Para cada ticker se calcula:
+
+| Campo | Descripción |
+|-------|-------------|
+| **Zonas de soporte/resistencia** | Niveles de precio con número de toques y score de volumen (0–1) |
+| **RSI** | Índice de fuerza relativa (14 períodos) |
+| **MACD** | Señal: bullish / bearish / neutral |
+| **Tendencia** | % sesgo alcista y bajista sobre el histórico |
+| **Precio actual** | Último precio conocido |
+| **Gráfico** | Precio histórico + zonas marcadas visualmente |
+
+### 8.3 Actualización
+
+- **Manual:** Botón "Actualizar todo" recalcula todos los tickers de la watchlist.
+- **Automático (24h):** El scheduler recalcula cada 24 horas cuando está activo.
+
+---
+
+## 9. Preguntas frecuentes
 
 **¿Por qué las ganancias calculadas difieren de las del broker?**  
 Cada broker calcula su FIFO internamente. FinView recalcula el FIFO combinando todos los brokers cronológicamente, como exige Hacienda. La diferencia se muestra como "ajuste FIFO".
+
+**¿Por qué aparece Aena (u otra empresa) dos veces en Rendimiento?**  
+Cuando una empresa cambia de ISIN (por ejemplo, en un split accionarial), el broker puede reportar dividendos bajo ambos ISINs. FinView los detecta automáticamente y los consolida en una sola fila usando el ticker de Yahoo Finance como referencia.
 
 **¿Puedo importar varios años?**  
 Sí. Cada importación se asocia a un año fiscal. Puedes tener datos de múltiples años de múltiples brokers simultáneamente.
@@ -160,3 +238,6 @@ Las asignaciones se detectan automáticamente por los trade codes del extracto I
 
 **¿Qué tickers puedo añadir al monitor de opciones?**  
 Cualquier ticker con opciones en Yahoo Finance (acciones US/EU) o en MEFF (tickers con sufijo `.MC` como `IBE.MC`, `SAN.MC`).
+
+**¿Qué tickers puedo añadir a Zonas Clave?**  
+Cualquier ticker que Yahoo Finance reconozca. Para bolsa española usa el sufijo `.MC` (ej. `SAN.MC`, `ITX.MC`).

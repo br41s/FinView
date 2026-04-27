@@ -312,59 +312,58 @@ def _first_per_key(rows, key_attr: str, val_attr: str) -> dict:
 def _merge_same_ticker_rows(rows: list[dict]) -> list[dict]:
     """Merge rows that share the same Yahoo Finance ticker.
 
-    After a stock split with an ISIN change, the old and new ISINs both appear
-    as separate rows (one for each ISIN). If both map to the same ticker we
-    collapse them into a single row by summing additive fields and
-    recalculating derived ratios.
+    After a stock split with an ISIN change, old and new ISINs appear as
+    separate rows. If both map to the same ticker, collapse them into one row
+    by summing additive fields and recalculating derived ratios.
     """
     try:
         from backend.services.prices import _ISIN_TICKER_MAP
     except Exception:
         return rows
 
-    # Build a lookup: ISIN → canonical key (ticker when available, else ISIN)
-    def _key(isin: str) -> str:
-        return _ISIN_TICKER_MAP.get(isin, isin)
+    # Accumulators per canonical ticker key
+    totals: dict[str, tuple[Decimal, Decimal, Decimal, Decimal]] = {}  # div, cost, qty, value
+    canonical: dict[str, dict] = {}  # representative row per key
 
-    merged: dict[str, dict] = {}
     for row in rows:
         isin = row["isin"]
-        key = _key(isin)
-        if key not in merged:
-            merged[key] = dict(row)
-            merged[key]["_total_div"] = Decimal(row["total_dividends"])
-            merged[key]["_cost"] = Decimal(row["total_invested"])
-            merged[key]["_qty"] = Decimal(row["qty_remaining"])
-            merged[key]["_value"] = Decimal(row["current_value"])
+        key = _ISIN_TICKER_MAP.get(isin, isin)
+        div = Decimal(row["total_dividends"])
+        cost = Decimal(row["total_invested"])
+        qty = Decimal(row["qty_remaining"])
+        value = Decimal(row["current_value"])
+        price = Decimal(row["latest_price"])
+
+        if key not in canonical:
+            canonical[key] = dict(row)
+            canonical[key]["_price"] = price
+            totals[key] = (div, cost, qty, value)
         else:
-            m = merged[key]
-            m["_total_div"] += Decimal(row["total_dividends"])
-            m["_cost"] += Decimal(row["total_invested"])
-            m["_qty"] += Decimal(row["qty_remaining"])
-            m["_value"] += Decimal(row["current_value"])
-            m["payment_count"] = m["payment_count"] + row["payment_count"]
-            # Prefer the row whose ISIN has a live price (newer ISIN post-split)
-            if Decimal(row["latest_price"]) > Decimal(m["latest_price"]):
-                m["isin"] = isin
-                m["latest_price"] = row["latest_price"]
-                m["currency"] = row["currency"]
-                m["original_price"] = row["original_price"]
-                m["fx_rate"] = row["fx_rate"]
+            prev_div, prev_cost, prev_qty, prev_value = totals[key]
+            totals[key] = (prev_div + div, prev_cost + cost, prev_qty + qty, prev_value + value)
+            canonical[key]["payment_count"] += row["payment_count"]
+            # Prefer the newer (post-split) ISIN — it carries the live price
+            if price > canonical[key]["_price"]:
+                canonical[key].update(
+                    isin=isin,
+                    latest_price=row["latest_price"],
+                    currency=row["currency"],
+                    original_price=row["original_price"],
+                    fx_rate=row["fx_rate"],
+                    _price=price,
+                )
 
     out = []
-    for m in merged.values():
-        total_div = m["_total_div"]
-        cost = m["_cost"]
-        value = m["_value"]
-        m["total_dividends"] = str(total_div)
-        m["total_invested"] = str(round(cost, 2))
-        m["qty_remaining"] = str(m["_qty"])
-        m["current_value"] = str(round(value, 2))
-        m["yield_on_cost"] = str(round((total_div / cost * 100) if cost > 0 else Decimal("0"), 2))
-        m["yield_on_value"] = str(round((total_div / value * 100) if value > 0 else Decimal("0"), 2))
-        for k in ("_total_div", "_cost", "_qty", "_value"):
-            m.pop(k)
-        out.append(m)
+    for key, row in canonical.items():
+        total_div, cost, qty, value = totals[key]
+        row.pop("_price")
+        row["total_dividends"] = str(total_div)
+        row["total_invested"] = str(round(cost, 2))
+        row["qty_remaining"] = str(qty)
+        row["current_value"] = str(round(value, 2))
+        row["yield_on_cost"] = str(round(total_div / cost * 100 if cost > 0 else Decimal("0"), 2))
+        row["yield_on_value"] = str(round(total_div / value * 100 if value > 0 else Decimal("0"), 2))
+        out.append(row)
     return out
 
 

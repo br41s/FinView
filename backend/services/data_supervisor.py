@@ -17,7 +17,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from backend.models import (
@@ -500,14 +500,15 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
             if len(all_isins_for_ticker) > 1:
                 # Verify transactions exist on both sides
                 old_isins = [i for i in all_isins_for_ticker if i != isin]
-                has_old = any(
-                    db.query(Transaction).filter(
-                        Transaction.isin == i,
+                has_old = (
+                    db.query(Transaction)
+                    .filter(
+                        Transaction.isin.in_(old_isins),
                         Transaction.type == TransactionType.BUY.value,
                         Transaction.trade_date < split_date,
-                    ).first()
-                    for i in old_isins
-                )
+                    )
+                    .first()
+                ) is not None
                 if has_old:
                     issue = DataIssue(
                         import_id=import_id,
@@ -521,7 +522,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
                             f"Los datos son correctos."
                         ),
                         status="auto_resolved",
-                        auto_resolution=f"Split por cambio de ISIN detectado automáticamente. No requiere acción.",
+                        auto_resolution="Split por cambio de ISIN detectado automáticamente. No requiere acción.",
                         resolution_data=json.dumps({
                             "ticker": ticker,
                             "split_date": split_date.isoformat(),
@@ -622,21 +623,23 @@ def _apply_qty_split(db: Session, isin: str, split_date: date, ratio: Decimal) -
     """Adjust pre-split BUY/SELL transaction quantities for a qty-only split.
 
     Cost basis (gross_amount, net_amount_eur) is preserved — only quantity
-    and unit price are adjusted so that qty × ratio and price / ratio.
+    and unit price are adjusted: qty × ratio, price / ratio.
+    Rows with price = 0 (scrip/free shares) keep price = 0.
     """
-    txs = (
-        db.query(Transaction)
-        .filter(
-            Transaction.isin == isin,
-            Transaction.trade_date < split_date,
-            Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
-        )
-        .all()
+    db.query(Transaction).filter(
+        Transaction.isin == isin,
+        Transaction.trade_date < split_date,
+        Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
+    ).update(
+        {
+            "quantity": Transaction.quantity * ratio,
+            "price": case(
+                (Transaction.price != 0, Transaction.price / ratio),
+                else_=Transaction.price,
+            ),
+        },
+        synchronize_session=False,
     )
-    for tx in txs:
-        tx.quantity = tx.quantity * ratio
-        if tx.price and tx.price != 0:
-            tx.price = tx.price / ratio
     db.flush()
 
 

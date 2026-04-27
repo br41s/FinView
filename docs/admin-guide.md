@@ -103,7 +103,7 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `users` | Usuarios registrados |
 | `accounts` | Cuentas por broker (una por broker importado) |
 | `import_records` | Registro de importaciones (hash SHA-256 para deduplicación) |
-| `transactions` | Todas las operaciones: BUY, SELL, DIVIDEND, INTEREST, FEE, SPINOFF |
+| `transactions` | Todas las operaciones: BUY, SELL, DIVIDEND, INTEREST, FEE, SPINOFF, CORPORATE_ACTION |
 | `tax_lots` | Lotes FIFO por broker |
 | `tax_results` | Casillas Modelo 100/714 precalculadas |
 | `cross_broker_lots` | Lotes FIFO cruzados entre todos los brokers |
@@ -117,6 +117,8 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `options_alerts` | Alertas generadas por el agente de opciones |
 | `unusual_activity` | Actividad inusual detectada (smart money) |
 | `options_agent_logs` | Log de cada ciclo del agente |
+| `zonas_clave_watchlist` | Tickers en watchlist de Zonas Clave por usuario |
+| `zonas_clave_analyses` | Análisis técnico calculado por ticker (zonas, RSI, MACD, precio) |
 
 ### Orden de borrado (FK constraints)
 
@@ -131,6 +133,8 @@ Al eliminar una importación (`import_records`), el orden de borrado debe ser:
 8. `data_issues`
 9. `import_records`
 
+Al eliminar una cuenta (`accounts`) se eliminan en cascada todas sus transacciones y holdings asociados.
+
 ### Reset de la DB (local)
 
 ```bash
@@ -140,7 +144,56 @@ rm data/finview.db
 
 ---
 
-## 5. Agente de opciones
+## 5. Supervisor de datos (import agent)
+
+`backend/services/data_supervisor.py` ejecuta checks de calidad tras cada import.  
+Se invoca automáticamente al final de cada importación de cualquier broker.
+
+### Checks y estrategia de resolución
+
+| Check | Detección | Resolución automática |
+|-------|-----------|----------------------|
+| `rights_as_sell` | SELL cuyo nombre contiene "derechos/rights/drets" | Reclasifica a DIVIDEND, qty = 0 |
+| `missing_buys` | Holdings sin transacciones de compra | Aviso `needs_input` |
+| `holdings_mismatch` | Qty en broker ≠ qty calculada de transacciones | Aviso `needs_input`; si coincide con un split conocido, se resuelve en `potential_split` |
+| `missing_ticker` | ISIN sin ticker en Yahoo Finance | Búsqueda automática en yfinance; si falla, aviso `needs_input` |
+| `potential_split` | Split detectado vía yfinance con ratio fuera de [0.9, 1.1] | **Tres casos:** |
+| | → Mismo ticker, múltiples ISINs con compras en ambos lados | `auto_resolved` — datos ya correctos |
+| | → Mismo ISIN, qty × ratio ≈ holdings (±5%) | `auto_resolved` — ajusta qty y precio en las transacciones previas |
+| | → No se puede confirmar | `needs_input` — aviso con datos para revisión manual |
+| `price_sanity` | BUY/SELL con precio = 0 | Scrip dividends: `auto_resolved`; otros: `needs_input` |
+
+### Estados de un `DataIssue`
+
+| Estado | Significado |
+|--------|-------------|
+| `auto_resolved` | El supervisor lo corrigió automáticamente; visible como informativo en la UI |
+| `needs_input` | Requiere revisión manual; aparece como aviso amarillo/rojo tras la importación |
+| `dismissed` | El usuario lo descartó manualmente |
+
+### Flujo del supervisor
+
+```
+Import → parse → save transactions/holdings/casillas
+    └─► recalculate_cross_broker_fifo()
+    └─► _run_supervisor(db, import_id)
+            ├─ _check_rights_as_sells()      → auto-fix
+            ├─ _check_missing_buys()         → flag
+            ├─ _check_holdings_mismatch()    → flag
+            ├─ _check_missing_ticker()       → auto-resolve / flag
+            ├─ _check_split_candidates()     → auto-resolve / auto-fix / flag
+            └─ _check_price_sanity()         → auto-resolve / flag
+    └─► db.commit()
+    └─► return ImportResult { issues: [...] }
+```
+
+### Lógica de deduplicación de issues
+
+Un `DataIssue` con `status=needs_input` no se crea dos veces para el mismo `(issue_type, isin)`. Si ya existe un aviso pendiente, la siguiente importación no lo duplica.
+
+---
+
+## 6. Agente de opciones
 
 El agente (`backend/services/options_agent.py`) es un worker APScheduler que corre dentro del proceso FastAPI.
 
@@ -195,9 +248,13 @@ Parámetros por defecto: r = 5.3%, q = 1.3%, 252 días de trading.
 | `POST` | `/options/agent/start` | Arrancar job periódico APScheduler |
 | `POST` | `/options/agent/stop` | Parar job periódico |
 
+### Cascade al eliminar un ticker de cartera
+
+Al eliminar un ticker de la cartera de opciones (posiciones IBKR), se eliminan en cascada sus entradas en `watchlist_items`, `options_alerts` y `unusual_activity`.
+
 ---
 
-## 6. Motor FIFO cruzado
+## 7. Motor FIFO cruzado
 
 El motor en `backend/services/fifo_engine.py`:
 
@@ -212,7 +269,67 @@ Se recalcula automáticamente en cada import y delete.
 
 ---
 
-## 7. Tests
+## 8. Zonas Clave
+
+`backend/services/zonas_clave_service.py` calcula soporte/resistencia algorítmico para cada ticker.
+
+### Arquitectura
+
+```
+ZcWatchlistItem (DB)
+    └─► yfinance.download(ticker, period="1y")
+    └─► _compute_zones() → soporte/resistencia por clustering de máximos/mínimos
+    └─► _compute_indicators() → RSI(14), MACD(12,26,9)
+    └─► ZcAnalysis (DB) → zones, rsi, macd_signal, price_history
+```
+
+### Endpoints
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/zonas-clave/watchlist` | Lista de tickers en watchlist |
+| `POST` | `/zonas-clave/watchlist` | Añadir ticker |
+| `DELETE` | `/zonas-clave/watchlist/{id}` | Eliminar ticker |
+| `GET` | `/zonas-clave/analysis/{ticker}` | Último análisis de un ticker |
+| `GET` | `/zonas-clave/analysis` | Últimos análisis de todos los tickers |
+| `POST` | `/zonas-clave/analyze/{ticker}` | Forzar recálculo de un ticker |
+| `POST` | `/zonas-clave/analyze-all` | Recalcular todos los tickers |
+| `GET` | `/zonas-clave/scheduler/status` | Estado del scheduler |
+| `POST` | `/zonas-clave/scheduler/start` | Arrancar scheduler 24h |
+| `POST` | `/zonas-clave/scheduler/stop` | Parar scheduler |
+
+---
+
+## 9. Componentes de navegación frontend
+
+### QuickNav (`frontend/src/components/QuickNav.tsx`)
+
+Barra de 4 iconos de acceso rápido presente en todas las páginas internas.  
+Acepta la prop `current: QuickNavPage` (literal de la ruta activa) para resaltar el icono correspondiente.
+
+```tsx
+<QuickNav current="/portfolio" />
+```
+
+Destinos fijos: `/dashboard`, `/portfolio`, `/options`, `/zonas-clave`.  
+Usa `TooltipTrigger` de `@base-ui/react/tooltip` para mostrar el nombre al hover.
+
+### Portfolio position detail
+
+El endpoint `GET /portfolio/positions/{isin}` devuelve ahora dos arrays separados:
+- `transactions`: solo BUY/SELL/CORPORATE_ACTION (sin DIVIDEND), limitado a 200
+- `dividends_by_year`: dividendos agregados por año fiscal `{ year, gross_eur, net_eur, count }`
+
+Esto evita que dividendos con fecha fiscal idéntica (p.ej. ING reporta todos los dividendos con fecha `YYYY-12-31`) aparezcan duplicados en la UI.
+
+### Rendimiento — consolidación de ISINs
+
+`backend/api/charts._merge_same_ticker_rows()` post-procesa el endpoint `/charts/dividend-yield`:  
+Cuando dos ISINs distintos mapean al mismo ticker de Yahoo Finance (split con cambio de ISIN), sus filas se fusionan sumando dividendos, coste y valor, y recalculando los ratios de rentabilidad.
+
+---
+
+## 10. Tests
 
 ```bash
 # Todos los tests
@@ -229,9 +346,9 @@ Los tests que necesitan archivos reales (PDFs/CSVs en `files/`) se saltan autom�
 
 ---
 
-## 8. Añadir un nuevo broker
+## 11. Añadir un nuevo broker
 
-### 8.1 Parser
+### 11.1 Parser
 
 Crear `backend/importers/<broker>.py`:
 
@@ -251,7 +368,7 @@ def parse_new_broker(file_path: Path) -> NewBrokerReport: ...
 def compute_file_hash(path: Path) -> str: ...
 ```
 
-### 8.2 Broker enum
+### 11.2 Broker enum
 
 En `backend/models.py`:
 ```python
@@ -259,7 +376,7 @@ class Broker(str, Enum):
     NEW_BROKER = "NEW_BROKER"
 ```
 
-### 8.3 Import service
+### 11.3 Import service
 
 En `backend/services/import_service.py`, añadir `import_new_broker_report()` siguiendo el patrón existente:
 1. `_check_duplicate()` → hash SHA-256
@@ -271,7 +388,7 @@ En `backend/services/import_service.py`, añadir `import_new_broker_report()` si
 7. `_run_supervisor(db, import_rec.id)`
 8. `db.commit()`
 
-### 8.4 Endpoint API
+### 11.4 Endpoint API
 
 En `backend/api/imports.py`:
 ```python
@@ -279,7 +396,7 @@ En `backend/api/imports.py`:
 def upload_new_broker(file: UploadFile, db: DbSession, user: CurrentUser): ...
 ```
 
-### 8.5 Frontend
+### 11.5 Frontend
 
 En `frontend/src/lib/api.ts`:
 ```typescript
@@ -297,22 +414,10 @@ En `frontend/src/components/FileUpload.tsx`:
 
 ---
 
-## 9. Supervisor de datos
-
-`backend/services/data_supervisor.py` ejecuta checks de calidad tras cada import:
-
-- Detecta ISINs sin precio de mercado
-- Valida coherencia de retenciones
-- Marca auto-resoluciones cuando es posible
-
-Los avisos se almacenan en `data_issues` y se muestran en el UI tras la importación.
-
----
-
-## 10. Troubleshooting
+## 12. Troubleshooting
 
 **Error 500 al borrar importación**  
-Causa más común: FK violation en `cross_broker_lots` (referencias a transacciones). El orden de borrado en `_delete_import_data` debe eliminar CrossBrokerLots antes que Transactions.
+Causa más común: FK violation en `cross_broker_lots`. El orden de borrado en `_delete_import_data` debe eliminar CrossBrokerLots antes que Transactions.
 
 **"duplicate import"**  
 El archivo ya fue importado (mismo hash SHA-256). Eliminar la importación anterior primero.
@@ -331,3 +436,10 @@ Verificar que `FINVIEW_ANTHROPIC_API_KEY` está configurado en Cloud Run y que e
 
 **MEFF no devuelve datos**  
 El proxy `allorigins.win` puede estar caído. El agente hace fallback a Yahoo Finance para el precio y devuelve `None` para la cadena de opciones.
+
+**Empresa duplicada en Rendimiento (ej. Aena)**  
+Causa: dos ISINs para la misma empresa (pre/post-split) con dividendos en ambos.  
+Resolución automática: `_merge_same_ticker_rows` los consolida si ambos ISINs están en `_ISIN_TICKER_MAP` con el mismo ticker. Si el ticker no está mapeado, añadirlo en `backend/services/prices.py → _ISIN_TICKER_MAP`.
+
+**Split no detectado automáticamente**  
+El check `potential_split` solo actúa sobre ISINs presentes en `portfolio_holdings`. Si el ISIN ya no tiene holdings activos, no se comprueba. Verificar manualmente en el extracto del broker.
