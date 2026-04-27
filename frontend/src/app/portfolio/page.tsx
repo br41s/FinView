@@ -82,6 +82,13 @@ interface TxHistory {
   net_eur: number;
 }
 
+interface DividendByYear {
+  year: number;
+  gross_eur: number;
+  net_eur: number;
+  count: number;
+}
+
 interface PositionDetail {
   isin: string;
   name: string;
@@ -96,6 +103,7 @@ interface PositionDetail {
   unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
   transactions: TxHistory[];
+  dividends_by_year: DividendByYear[];
 }
 
 function fmt(n: number | null | undefined, decimals = 2): string {
@@ -602,15 +610,56 @@ function PortfolioContent() {
                                   </div>
                                 )}
 
-                                {/* Transaction history */}
+                                {detail.dividends_by_year.length > 0 && (
+                                  <div>
+                                    <h4 className="mb-2 text-sm font-semibold">
+                                      Dividendos cobrados
+                                    </h4>
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>Año</TableHead>
+                                          <TableHead className="text-right">
+                                            Bruto (EUR)
+                                          </TableHead>
+                                          <TableHead className="text-right">
+                                            Neto (EUR)
+                                          </TableHead>
+                                          <TableHead className="text-right">
+                                            Pagos
+                                          </TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {detail.dividends_by_year.map((d) => (
+                                          <TableRow key={d.year}>
+                                            <TableCell className="font-medium">
+                                              {d.year}
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                              {fmt(d.gross_eur)} €
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums font-medium text-blue-700">
+                                              {fmt(d.net_eur)} €
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums text-muted-foreground">
+                                              {d.count}
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                )}
+
                                 <div>
                                   <h4 className="mb-2 text-sm font-semibold">
                                     Historial ({detail.transactions.length}{" "}
-                                    transacciones)
+                                    operaciones)
                                   </h4>
                                   {detail.transactions.length === 0 ? (
                                     <p className="text-sm text-muted-foreground">
-                                      No hay transacciones registradas
+                                      No hay operaciones registradas
                                     </p>
                                   ) : (
                                     <Table>

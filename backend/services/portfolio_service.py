@@ -343,16 +343,32 @@ def get_position_detail(db: Session, isin: str, user_id: int | None = None) -> d
         account_q = account_q.filter(Account.user_id == user_id)
     account_ids = [a.id for a in account_q.all()]
 
-    txs = (
+    base_filter = [Transaction.account_id.in_(account_ids), Transaction.isin == isin]
+
+    trades = (
         db.query(Transaction)
-        .filter(
-            Transaction.account_id.in_(account_ids),
-            Transaction.isin == isin,
-        )
+        .filter(*base_filter, Transaction.type != TransactionType.DIVIDEND)
         .order_by(Transaction.trade_date.desc())
-        .limit(100)
+        .limit(200)
         .all()
     )
+
+    dividend_txs = (
+        db.query(Transaction)
+        .filter(*base_filter, Transaction.type == TransactionType.DIVIDEND)
+        .all()
+    )
+
+    # Aggregate by year — ING sets all dates to fiscal_year-12-31 so same-year
+    # payments appear identical without grouping
+    div_by_year: dict[int, dict] = {}
+    for tx in dividend_txs:
+        year = tx.trade_date.year
+        if year not in div_by_year:
+            div_by_year[year] = {"year": year, "gross_eur": ZERO, "net_eur": ZERO, "count": 0}
+        div_by_year[year]["gross_eur"] += tx.gross_amount
+        div_by_year[year]["net_eur"] += tx.net_amount_eur
+        div_by_year[year]["count"] += 1
 
     return {
         "isin": isin,
@@ -386,6 +402,15 @@ def get_position_detail(db: Session, isin: str, user_id: int | None = None) -> d
                 "currency": tx.currency,
                 "net_eur": float(tx.net_amount_eur),
             }
-            for tx in txs
+            for tx in trades
+        ],
+        "dividends_by_year": [
+            {
+                "year": d["year"],
+                "gross_eur": float(round(d["gross_eur"], 2)),
+                "net_eur": float(round(d["net_eur"], 2)),
+                "count": d["count"],
+            }
+            for d in sorted(div_by_year.values(), key=lambda x: x["year"], reverse=True)
         ],
     }
