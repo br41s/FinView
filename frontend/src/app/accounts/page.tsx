@@ -114,10 +114,18 @@ function AccountsContent() {
     setShowForm(true);
   }
 
-  async function handleDelete(id: number) {
+  async function handleDelete(acct: AccountItem) {
+    const label = acct.name || `${acct.broker} ${acct.account_id}`;
+    const hasData = acct.transaction_count > 0 || acct.import_count > 0;
+    const confirmed = window.confirm(
+      hasData
+        ? `¿Eliminar "${label}" y sus ${acct.transaction_count} transacciones e importaciones? Esta acción no se puede deshacer.`
+        : `¿Eliminar la cuenta "${label}"?`,
+    );
+    if (!confirmed) return;
     try {
-      await api.accounts.delete(id);
-      await loadAccounts();
+      await api.accounts.delete(acct.id);
+      setAccounts((prev) => prev.filter((a) => a.id !== acct.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
     }
@@ -301,13 +309,9 @@ function AccountsContent() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          disabled={acct.transaction_count > 0}
-                          onClick={() => handleDelete(acct.id)}
-                          title={
-                            acct.transaction_count > 0
-                              ? "No se puede eliminar con transacciones"
-                              : "Eliminar cuenta"
-                          }
+                          onClick={() => handleDelete(acct)}
+                          title="Eliminar cuenta"
+                          className="text-destructive hover:text-destructive"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

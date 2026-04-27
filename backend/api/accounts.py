@@ -7,6 +7,7 @@ from backend.api.auth import CurrentUser
 from backend.database import DbSession
 from backend.models import Account, Broker
 from backend.services.billing_service import check_account_limit
+from backend.services.import_service import delete_account_cascade
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -137,7 +138,7 @@ def update_account(account_id: int, data: AccountUpdate, db: DbSession, user: Cu
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(account_id: int, db: DbSession, user: CurrentUser):
-    """Delete an empty account (no transactions)."""
+    """Delete an account and all its associated data."""
     account = (
         db.query(Account)
         .filter(Account.id == account_id, Account.user_id == user.id)
@@ -146,11 +147,5 @@ def delete_account(account_id: int, db: DbSession, user: CurrentUser):
     if not account:
         raise HTTPException(404, "Account not found")
 
-    if account.transactions:
-        raise HTTPException(
-            409,
-            "Cannot delete account with transactions. Delete imports first.",
-        )
-
-    db.delete(account)
+    delete_account_cascade(db, account_id, user.id)
     db.commit()

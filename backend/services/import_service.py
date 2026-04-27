@@ -191,8 +191,47 @@ def _delete_import_data(db: Session, import_id: int) -> None:
         db.flush()
 
 
+def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
+    """Delete an account and all its data (transactions, imports, holdings, etc.)."""
+    account = (
+        db.query(Account)
+        .filter(Account.id == account_id, Account.user_id == user_id)
+        .first()
+    )
+    if not account:
+        return
+
+    tx_subq = db.query(Transaction.id).filter(Transaction.account_id == account_id).subquery()
+    import_subq = db.query(ImportRecord.id).filter(ImportRecord.account_id == account_id).subquery()
+
+    db.query(CrossBrokerLot).filter(
+        CrossBrokerLot.buy_tx_id.in_(tx_subq) | CrossBrokerLot.sell_tx_id.in_(tx_subq)
+    ).delete(synchronize_session=False)
+    db.query(TaxLot).filter(
+        TaxLot.buy_tx_id.in_(tx_subq) | TaxLot.sell_tx_id.in_(tx_subq)
+    ).delete(synchronize_session=False)
+    db.query(Transaction).filter(Transaction.account_id == account_id).delete(synchronize_session=False)
+
+    db.query(TaxResult).filter(
+        TaxResult.user_id == user_id, TaxResult.broker == account.broker
+    ).delete(synchronize_session=False)
+    db.query(FIFOAdjustment).filter(FIFOAdjustment.user_id == user_id).delete(synchronize_session=False)
+
+    db.query(OptionAssignmentRecord).filter(
+        OptionAssignmentRecord.import_id.in_(import_subq)
+    ).delete(synchronize_session=False)
+    db.query(PortfolioHolding).filter(PortfolioHolding.import_id.in_(import_subq)).delete(
+        synchronize_session=False
+    )
+    db.query(DataIssue).filter(DataIssue.import_id.in_(import_subq)).delete(synchronize_session=False)
+    db.query(ImportRecord).filter(ImportRecord.account_id == account_id).delete(synchronize_session=False)
+
+    db.delete(account)
+    db.flush()
+
+
 def delete_all_imports(db: Session, user_id: int) -> dict:
-    """Delete every import and all associated data for a user, including orphan transactions."""
+    """Delete every import and all associated data for a user, including accounts."""
     if not db.query(Account).filter(Account.user_id == user_id).first():
         return {"deleted_imports": 0}
 
@@ -236,6 +275,7 @@ def delete_all_imports(db: Session, user_id: int) -> dict:
     db.query(ImportRecord).filter(ImportRecord.account_id.in_(account_subq)).delete(
         synchronize_session=False
     )
+    db.query(Account).filter(Account.user_id == user_id).delete(synchronize_session=False)
 
     db.flush()
     return {"deleted_imports": deleted_count}
