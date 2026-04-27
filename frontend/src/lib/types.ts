@@ -18,6 +18,7 @@ export interface DataIssue {
   description: string;
   status: string;
   auto_resolution: string | null;
+  resolution_data: string | null;
 }
 
 export interface ImportResult {

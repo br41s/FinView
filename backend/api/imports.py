@@ -269,7 +269,11 @@ def list_issues(db: DbSession, user: CurrentUser, status: str | None = None, imp
 
 @router.post("/issues/{issue_id}/resolve", response_model=DataIssueOut)
 def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user: CurrentUser):
-    """Resolve a pending data issue."""
+    """Resolve a pending data issue, applying the appropriate data correction."""
+    from datetime import date as date_type
+    from decimal import Decimal
+    from backend.services.issue_resolver import resolve_zero_price, resolve_add_buy, resolve_apply_split
+
     issue = (
         db.query(DataIssue)
         .join(ImportRecord, DataIssue.import_id == ImportRecord.id)
@@ -282,15 +286,30 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user:
     if issue.status not in ("pending", "needs_input"):
         raise HTTPException(status_code=400, detail=f"Issue ya está en estado '{issue.status}'")
 
-    if body.action == "dismiss":
-        issue.status = "dismissed"
-    elif body.action == "resolve":
-        issue.status = "resolved"
-        if body.data:
-            import json
-            issue.resolution_data = json.dumps(body.data)
-    else:
-        raise HTTPException(status_code=400, detail=f"Acción no válida: {body.action}")
+    try:
+        if body.action == "dismiss":
+            issue.status = "dismissed"
+        elif body.action == "set_price":
+            if not body.data or "price" not in body.data:
+                raise HTTPException(400, "Se requiere 'price' en data")
+            resolve_zero_price(db, issue, Decimal(str(body.data["price"])))
+        elif body.action == "add_buy":
+            if not body.data or not all(k in body.data for k in ("qty", "price", "acquisition_date")):
+                raise HTTPException(400, "Se requieren 'qty', 'price' y 'acquisition_date' en data")
+            resolve_add_buy(
+                db, issue,
+                qty=Decimal(str(body.data["qty"])),
+                price=Decimal(str(body.data["price"])),
+                acquisition_date=date_type.fromisoformat(str(body.data["acquisition_date"])),
+            )
+        elif body.action == "apply_split":
+            resolve_apply_split(db, issue)
+        else:
+            raise HTTPException(status_code=400, detail=f"Acción no válida: {body.action}")
+    except HTTPException:
+        raise
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     db.commit()
     return issue

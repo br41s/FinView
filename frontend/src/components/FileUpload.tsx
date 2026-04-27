@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import {
   uploadTRReport,
@@ -9,6 +9,7 @@ import {
   uploadINGReport,
   uploadBBVAReport,
   uploadEToroReport,
+  resolveIssue,
 } from "@/lib/api";
 import type { ImportResult, DataIssue } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -124,13 +125,340 @@ function detectBroker(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// IssueCard — interactive card for a single DataIssue
+// ---------------------------------------------------------------------------
+
+const ACTIONABLE_TYPES = new Set([
+  "zero_price",
+  "missing_buy",
+  "potential_split",
+  "holdings_mismatch",
+]);
+
+function IssueCard({
+  issue,
+  onResolved,
+}: Readonly<{
+  issue: DataIssue;
+  onResolved: (id: number, updated: DataIssue) => void;
+}>) {
+  const [submitting, setSubmitting] = useState(false);
+  const [price, setPrice] = useState("");
+  const [qty, setQty] = useState("");
+  const [buyPrice, setBuyPrice] = useState("");
+  const [buyDate, setBuyDate] = useState("");
+
+  const resData = useMemo(() => {
+    try {
+      return issue.resolution_data ? JSON.parse(issue.resolution_data) : null;
+    } catch {
+      return null;
+    }
+  }, [issue.resolution_data]);
+
+  const isSettled =
+    issue.status === "auto_resolved" ||
+    issue.status === "resolved" ||
+    issue.status === "dismissed";
+  const needsInput = issue.status === "needs_input" && ACTIONABLE_TYPES.has(issue.issue_type);
+
+  let colorClass = "bg-blue-500/10 border border-blue-500/20 text-blue-300";
+  let IssueIcon = Info;
+  if (isSettled) {
+    colorClass = "bg-green-500/10 border border-green-500/20 text-green-300";
+    IssueIcon = CheckCircle2;
+  } else if (issue.severity === "warning" || needsInput) {
+    colorClass =
+      "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300";
+    IssueIcon = AlertTriangle;
+  }
+
+  async function handleAction(
+    action: string,
+    data?: Record<string, unknown>,
+  ) {
+    setSubmitting(true);
+    try {
+      const updated = (await resolveIssue(issue.id, action, data)) as DataIssue;
+      onResolved(issue.id, updated);
+      toast.success(
+        action === "dismiss" ? "Aviso ignorado" : "Corrección aplicada",
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      toast.error("Error al aplicar corrección", { description: msg });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const inputCls =
+    "text-xs bg-background border border-input rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
+  const applyBtnCls =
+    "text-xs bg-yellow-600/20 hover:bg-yellow-600/30 border border-yellow-600/40 rounded px-2 py-1 disabled:opacity-50 transition-colors";
+  const dismissBtnCls =
+    "text-xs text-muted-foreground hover:text-foreground px-2 py-1 transition-colors";
+
+  return (
+    <div className={`text-xs px-3 py-2 rounded ${colorClass}`}>
+      <span className="font-medium flex items-center gap-1 flex-wrap">
+        <IssueIcon className="h-3 w-3 shrink-0" />
+        {issue.issue_type.replaceAll("_", " ")}
+        {issue.isin && (
+          <span className="text-muted-foreground">({issue.isin})</span>
+        )}
+        {issue.status === "dismissed" && (
+          <span className="text-muted-foreground italic ml-1">(ignorado)</span>
+        )}
+        {issue.status === "resolved" && (
+          <span className="text-green-400 italic ml-1">(resuelto)</span>
+        )}
+      </span>
+      <p className="mt-0.5 text-muted-foreground">{issue.description}</p>
+      {issue.auto_resolution && (
+        <p className="mt-0.5 italic text-green-400/70">
+          {issue.auto_resolution}
+        </p>
+      )}
+
+      {/* zero_price: ask for the correct purchase price */}
+      {needsInput && issue.issue_type === "zero_price" && (
+        <div className="mt-2 flex gap-2 items-center flex-wrap">
+          <input
+            type="number"
+            step="0.0001"
+            min="0.0001"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="Precio €/acción"
+            className={`${inputCls} w-32`}
+          />
+          <button
+            type="button"
+            disabled={submitting || !price || Number.parseFloat(price) <= 0}
+            onClick={() =>
+              handleAction("set_price", {
+                price: Number.parseFloat(price),
+              })
+            }
+            className={applyBtnCls}
+          >
+            {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Aplicar precio"}
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => handleAction("dismiss")}
+            className={dismissBtnCls}
+          >
+            Ignorar
+          </button>
+        </div>
+      )}
+
+      {/* missing_buy: register a manual buy (e.g. inherited stocks) */}
+      {needsInput && issue.issue_type === "missing_buy" && (
+        <div className="mt-2 space-y-2">
+          <div className="flex gap-2 flex-wrap items-center">
+            <input
+              type="number"
+              step="0.000001"
+              min="0.000001"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              placeholder="Acciones"
+              className={`${inputCls} w-24`}
+            />
+            <input
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={buyPrice}
+              onChange={(e) => setBuyPrice(e.target.value)}
+              placeholder="Precio €/acción"
+              className={`${inputCls} w-32`}
+            />
+            <input
+              type="date"
+              aria-label="Fecha de adquisición"
+              value={buyDate}
+              onChange={(e) => setBuyDate(e.target.value)}
+              className={`${inputCls}`}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={
+                submitting ||
+                !qty ||
+                !buyPrice ||
+                !buyDate ||
+                Number.parseFloat(qty) <= 0 ||
+                Number.parseFloat(buyPrice) <= 0
+              }
+              onClick={() =>
+                handleAction("add_buy", {
+                  qty: Number.parseFloat(qty),
+                  price: Number.parseFloat(buyPrice),
+                  acquisition_date: buyDate,
+                })
+              }
+              className={applyBtnCls}
+            >
+              {submitting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                "Registrar compra"
+              )}
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleAction("dismiss")}
+              className={dismissBtnCls}
+            >
+              Ignorar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* potential_split: show details from resolution_data + confirm button */}
+      {needsInput && issue.issue_type === "potential_split" && resData && (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-muted-foreground">
+            Ratio{" "}
+            <span className="text-foreground font-medium">{resData.ratio}x</span>{" "}
+            · {resData.ticker} · {resData.split_date}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleAction("apply_split")}
+              className={applyBtnCls}
+            >
+              {submitting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                "Aplicar split"
+              )}
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleAction("dismiss")}
+              className={dismissBtnCls}
+            >
+              Ignorar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* holdings_mismatch: register the gap qty as a manual buy */}
+      {needsInput && issue.issue_type === "holdings_mismatch" && resData && (
+        <div className="mt-2 space-y-2">
+          <p className="text-muted-foreground">
+            Diferencia:{" "}
+            <span className="text-foreground font-medium">
+              {resData.difference}
+            </span>{" "}
+            acciones (esperadas {resData.expected_qty}, calculadas{" "}
+            {resData.calculated_qty})
+          </p>
+          <div className="flex gap-2 flex-wrap items-center">
+            <input
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={buyPrice}
+              onChange={(e) => setBuyPrice(e.target.value)}
+              placeholder="Precio €/acción adquisición"
+              className={`${inputCls} w-44`}
+            />
+            <input
+              type="date"
+              aria-label="Fecha de adquisición"
+              value={buyDate}
+              onChange={(e) => setBuyDate(e.target.value)}
+              className={`${inputCls}`}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={
+                submitting ||
+                !buyPrice ||
+                !buyDate ||
+                Number.parseFloat(buyPrice) <= 0
+              }
+              onClick={() =>
+                handleAction("add_buy", {
+                  qty: Number.parseFloat(resData.difference),
+                  price: Number.parseFloat(buyPrice),
+                  acquisition_date: buyDate,
+                })
+              }
+              className={applyBtnCls}
+            >
+              {submitting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                "Registrar diferencia"
+              )}
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleAction("dismiss")}
+              className={dismissBtnCls}
+            >
+              Ignorar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* needs_input but no interactive form: just a dismiss button */}
+      {issue.status === "needs_input" &&
+        !ACTIONABLE_TYPES.has(issue.issue_type) && (
+          <div className="mt-2">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleAction("dismiss")}
+              className={`${dismissBtnCls} border border-muted rounded`}
+            >
+              Ignorar
+            </button>
+          </div>
+        )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FileUpload
+// ---------------------------------------------------------------------------
+
 export function FileUpload({ onImported }: FileUploadProps) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingBroker, setLoadingBroker] = useState(null as string | null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [resolvedIssues, setResolvedIssues] = useState<Map<number, DataIssue>>(
+    new Map(),
+  );
   const [error, setError] = useState<string | null>(null);
   const brokerInputRefs = useRef({} as Record<string, HTMLInputElement | null>);
+
+  function handleResolved(id: number, updated: DataIssue) {
+    setResolvedIssues((prev) => new Map(prev).set(id, updated));
+  }
 
   const notifyResult = useCallback(
     (res: ImportResult) => {
@@ -185,6 +513,7 @@ export function FileUpload({ onImported }: FileUploadProps) {
       setLoadingBroker(null);
       setError(null);
       setResult(null);
+      setResolvedIssues(new Map());
 
       try {
         let res: ImportResult;
@@ -306,6 +635,7 @@ export function FileUpload({ onImported }: FileUploadProps) {
                     setLoadingBroker(b.key);
                     setError(null);
                     setResult(null);
+                    setResolvedIssues(new Map());
                     try {
                       let res: ImportResult;
                       if (b.key === "bbva") {
@@ -379,46 +709,13 @@ export function FileUpload({ onImported }: FileUploadProps) {
                   {result.issues.length === 1 ? "" : "s"}
                 </p>
                 <div className="space-y-1.5 text-left">
-                  {result.issues.map((issue: DataIssue) => {
-                    const isResolved = issue.status === "auto_resolved";
-                    const isWarning = issue.severity === "warning";
-                    let colorClass =
-                      "bg-blue-500/10 border border-blue-500/20 text-blue-300";
-                    let IssueIcon = Info;
-                    if (isResolved) {
-                      colorClass =
-                        "bg-green-500/10 border border-green-500/20 text-green-300";
-                      IssueIcon = CheckCircle2;
-                    } else if (isWarning) {
-                      colorClass =
-                        "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300";
-                      IssueIcon = AlertTriangle;
-                    }
-                    return (
-                      <div
-                        key={issue.id}
-                        className={`text-xs px-3 py-2 rounded ${colorClass}`}
-                      >
-                        <span className="font-medium flex items-center gap-1">
-                          <IssueIcon className="h-3 w-3" />
-                          {issue.issue_type.replaceAll("_", " ")}
-                        </span>
-                        {issue.isin && (
-                          <span className="text-muted-foreground ml-1">
-                            ({issue.isin})
-                          </span>
-                        )}
-                        <p className="mt-0.5 text-muted-foreground">
-                          {issue.description}
-                        </p>
-                        {issue.auto_resolution && (
-                          <p className="mt-0.5 italic text-green-400/70">
-                            {issue.auto_resolution}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {result.issues.map((issue: DataIssue) => (
+                    <IssueCard
+                      key={issue.id}
+                      issue={resolvedIssues.get(issue.id) ?? issue}
+                      onResolved={handleResolved}
+                    />
+                  ))}
                 </div>
               </div>
             )}

@@ -173,6 +173,21 @@ export async function deleteAllImports() {
   return res.json();
 }
 
+export async function resolveIssue(
+  issueId: number,
+  action: string,
+  data?: Record<string, unknown>,
+) {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/imports/issues/${issueId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ action, data }),
+  });
+  if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+  return res.json();
+}
+
 export const api = {
   dashboard: (year?: number) =>
     fetchJSON(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
