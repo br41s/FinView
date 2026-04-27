@@ -84,7 +84,7 @@ function EmptyState({
 
 const viewTitles: Record<View, string> = {
   graficas: "Dashboard",
-  rendimiento: "Rendimiento de dividendos",
+  rendimiento: "Rendimiento",
   casillas: "Casillas fiscales",
   dividendos: "Dividendos",
   ganancias: "Ganancias de capital",
@@ -335,7 +335,7 @@ export default function Home() {
           {view === "dividendos" &&
             hasData &&
             (dividends.length > 0 ? (
-              <DividendsTable dividends={dividends} />
+              <DividendsTable dividends={dividends} dividendYield={dividendYield} />
             ) : (
               <EmptyState
                 icon={Coins}

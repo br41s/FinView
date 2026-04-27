@@ -8,14 +8,10 @@ type SortKey =
   | "name"
   | "country"
   | "currency"
-  | "total_dividends"
   | "total_invested"
-  | "yield_on_cost"
   | "current_value"
   | "pl"
-  | "pl_pct"
-  | "yield_on_value"
-  | "payment_count";
+  | "pl_pct";
 
 type SortDir = "asc" | "desc";
 
@@ -26,7 +22,7 @@ function num(v: string | number): number {
 export function DividendYieldTable({
   data,
 }: Readonly<{ data: DividendYield[] }>) {
-  const [sortKey, setSortKey] = useState<SortKey>("total_dividends");
+  const [sortKey, setSortKey] = useState<SortKey>("pl");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const enriched = useMemo(
@@ -79,31 +75,16 @@ export function DividendYieldTable({
   }, [enriched, sortKey, sortDir]);
 
   const totals = useMemo(() => {
-    let dividends = 0;
     let invested = 0;
     let value = 0;
     let pl = 0;
-    let payments = 0;
     for (const d of enriched) {
-      dividends += num(d.total_dividends);
       invested += num(d.total_invested);
       value += num(d.current_value);
       pl += d.pl;
-      payments += d.payment_count;
     }
     const plPct = invested > 0 ? (pl / invested) * 100 : 0;
-    const yieldOnCost = invested > 0 ? (dividends / invested) * 100 : 0;
-    const yieldOnValue = value > 0 ? (dividends / value) * 100 : 0;
-    return {
-      dividends,
-      invested,
-      value,
-      pl,
-      plPct,
-      yieldOnCost,
-      yieldOnValue,
-      payments,
-    };
+    return { invested, value, pl, plPct };
   }, [enriched]);
 
   if (data.length === 0)
@@ -145,7 +126,7 @@ export function DividendYieldTable({
   return (
     <div className="bg-card border border-border rounded-xl p-6">
       <h3 className="text-sm font-medium text-muted-foreground mb-4">
-        Rendimiento de dividendos
+        Rendimiento
         <span className="ml-2 text-xs text-muted-foreground/60">
           ({data.length} posiciones)
         </span>
@@ -164,31 +145,21 @@ export function DividendYieldTable({
               >
                 País
               </SortHeader>
-              <SortHeader k="currency" align="left">
+              <SortHeader k="currency" align="left" className="hidden sm:table-cell">
                 Divisa
               </SortHeader>
-              <SortHeader k="total_dividends">Dividendos</SortHeader>
-              <SortHeader k="total_invested" className="hidden sm:table-cell">
+              <SortHeader k="total_invested">
                 Invertido
               </SortHeader>
-              <SortHeader k="yield_on_cost">% s/coste</SortHeader>
               <SortHeader k="current_value">Valor actual</SortHeader>
               <SortHeader k="pl">+/-</SortHeader>
               <SortHeader k="pl_pct" className="hidden sm:table-cell">
                 % +/-
               </SortHeader>
-              <SortHeader k="yield_on_value" className="hidden md:table-cell">
-                % s/valor
-              </SortHeader>
-              <SortHeader k="payment_count" className="hidden md:table-cell">
-                Pagos
-              </SortHeader>
             </tr>
           </thead>
           <tbody>
             {sorted.map((d) => {
-              const yieldCost = num(d.yield_on_cost);
-              const yieldValue = num(d.yield_on_value);
               const isNonEur = d.currency !== "EUR";
               const currencyTooltip = (() => {
                 if (!d.original_price || !isNonEur) return undefined;
@@ -212,7 +183,7 @@ export function DividendYieldTable({
                   <td className="py-2 text-muted-foreground text-sm hidden md:table-cell">
                     {d.country ?? "—"}
                   </td>
-                  <td className="py-2 text-muted-foreground text-sm">
+                  <td className="py-2 text-muted-foreground text-sm hidden sm:table-cell">
                     <span
                       className={isNonEur ? "text-blue-400 font-medium" : ""}
                       title={currencyTooltip}
@@ -220,16 +191,10 @@ export function DividendYieldTable({
                       {d.currency ?? "EUR"}
                     </span>
                   </td>
-                  <td className="py-2 text-right text-green-400">
-                    {formatEur(d.total_dividends)}
-                  </td>
-                  <td className="py-2 text-right hidden sm:table-cell">
+                  <td className="py-2 text-right">
                     {num(d.total_invested) > 0
                       ? formatEur(d.total_invested)
                       : "—"}
-                  </td>
-                  <td className="py-2 text-right">
-                    <YieldBadge value={yieldCost} />
                   </td>
                   <td className="py-2 text-right">
                     {num(d.current_value) > 0
@@ -256,12 +221,6 @@ export function DividendYieldTable({
                       ? `${d.plPct > 0 ? "+" : ""}${d.plPct.toFixed(1)}%`
                       : "—"}
                   </td>
-                  <td className="py-2 text-right hidden md:table-cell">
-                    <YieldBadge value={yieldValue} />
-                  </td>
-                  <td className="py-2 text-right text-muted-foreground hidden md:table-cell">
-                    {d.payment_count}
-                  </td>
                 </tr>
               );
             })}
@@ -271,16 +230,8 @@ export function DividendYieldTable({
               <td className="py-3" colSpan={2}>
                 Total
               </td>
-              <td className="py-3 hidden md:table-cell" />
-              <td className="py-3 text-right text-green-400">
-                {formatEur(totals.dividends)}
-              </td>
-              <td className="py-3 text-right hidden sm:table-cell">
-                {formatEur(totals.invested)}
-              </td>
-              <td className="py-3 text-right">
-                <YieldBadge value={totals.yieldOnCost} />
-              </td>
+              <td className="py-3 hidden sm:table-cell" />
+              <td className="py-3 text-right">{formatEur(totals.invested)}</td>
               <td className="py-3 text-right">{formatEur(totals.value)}</td>
               <td className={`py-3 text-right ${plColor(totals.pl)}`}>
                 {formatEur(totals.pl)}
@@ -290,12 +241,6 @@ export function DividendYieldTable({
               >
                 {totals.plPct > 0 ? "+" : ""}
                 {totals.plPct.toFixed(1)}%
-              </td>
-              <td className="py-3 text-right hidden md:table-cell">
-                <YieldBadge value={totals.yieldOnValue} />
-              </td>
-              <td className="py-3 text-right text-muted-foreground hidden md:table-cell">
-                {totals.payments}
               </td>
             </tr>
           </tfoot>
