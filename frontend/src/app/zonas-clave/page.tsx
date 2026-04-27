@@ -52,6 +52,16 @@ function fmt(n: number | null | undefined, d = 2): string {
   });
 }
 
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/;
+
+function tickerLabel(item: ZcWatchlistItem): string {
+  if (ISIN_RE.test(item.ticker)) {
+    // ISIN stored instead of a real ticker — derive a short display label from name
+    return item.name.trim().split(/\s+/).slice(0, 2).join(" ").substring(0, 14);
+  }
+  return item.ticker;
+}
+
 function macdLabel(signal: string | null) {
   if (signal === "bullish") return "Alcista";
   if (signal === "bearish") return "Bajista";
@@ -268,7 +278,7 @@ export default function ZonasClavePage() {
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
-                          {item.ticker}
+                          {tickerLabel(item)}
                         </p>
                         {a?.trend_bias_bullish_pct != null && (
                           <p className={`text-xs ${isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
@@ -449,7 +459,7 @@ export default function ZonasClavePage() {
                           />
                           <Line
                             dataKey="close"
-                            stroke="hsl(var(--primary))"
+                            stroke="#60a5fa"
                             dot={false}
                             strokeWidth={1.5}
                             isAnimationActive={false}
