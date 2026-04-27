@@ -40,6 +40,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { QuickNav } from "@/components/QuickNav";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -341,14 +342,15 @@ export default function OptionsPage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Options Monitor</h1>
           <p className="text-muted-foreground">
             Análisis de opciones en tiempo real sobre tu cartera
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <QuickNav current="/options" />
           <Button
             variant="outline"
             size="sm"
@@ -376,10 +378,6 @@ export default function OptionsPage() {
                 <Play className="mr-2 h-4 w-4" /> Auto
               </>
             )}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => router.push("/dashboard")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Dashboard
           </Button>
         </div>
       </div>
@@ -442,7 +440,8 @@ export default function OptionsPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="portfolio">
-        <TabsList>
+        <div className="w-full overflow-x-auto">
+        <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="portfolio">
             <BarChart3 className="mr-1 h-4 w-4" /> Cartera
           </TabsTrigger>
@@ -464,6 +463,7 @@ export default function OptionsPage() {
             <Zap className="mr-1 h-4 w-4" /> Smart Money
           </TabsTrigger>
         </TabsList>
+        </div>
 
         {/* ── Portfolio / Positions Tab ── */}
         <TabsContent value="portfolio" className="space-y-4">

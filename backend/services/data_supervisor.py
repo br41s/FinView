@@ -441,34 +441,46 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
 # ---------------------------------------------------------------------------
 
 def _check_split_candidates(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
-    """Detect potential stock splits via yfinance history.
+    """Detect and auto-resolve stock splits using yfinance history.
 
-    Checks active ISINs for splits reported by Yahoo Finance
-    that might not have been applied to our transactions.
+    Strategy:
+    - If the same ticker maps to multiple ISINs → ISIN-change split; data is
+      already separated by ISIN and correct, auto-resolve.
+    - If qty mismatch on a single ISIN matches the split ratio → auto-adjust
+      transaction quantities and mark as auto_resolved.
+    - Otherwise flag as needs_input for manual review.
     """
     from backend.services.prices import _ISIN_TICKER_MAP
 
+    # Build reverse map: ticker → [ISINs]
+    ticker_to_isins: dict[str, list[str]] = {}
+    for isin, ticker in _ISIN_TICKER_MAP.items():
+        ticker_to_isins.setdefault(ticker, []).append(isin)
+
     issues = []
-    # Only check ISINs we have a ticker for
     active_isins = set()
     for row in db.query(PortfolioHolding.isin).distinct().all():
         if row[0] in _ISIN_TICKER_MAP:
             active_isins.add(row[0])
 
+    processed_tickers: set[str] = set()
+
     for isin in sorted(active_isins):
         ticker = _ISIN_TICKER_MAP.get(isin)
-        if not ticker:
+        if not ticker or ticker in processed_tickers:
             continue
+        processed_tickers.add(ticker)
 
         splits = _get_splits_from_yfinance(ticker)
         if not splits:
             continue
 
-        # Check if any split happened AFTER our first buy
+        # First buy across all ISINs for this ticker
+        all_isins_for_ticker = ticker_to_isins.get(ticker, [isin])
         first_buy = (
             db.query(func.min(Transaction.trade_date))
             .filter(
-                Transaction.isin == isin,
+                Transaction.isin.in_(all_isins_for_ticker),
                 Transaction.type == TransactionType.BUY.value,
             )
             .scalar()
@@ -479,12 +491,49 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
         for split_date, ratio in splits:
             if split_date <= first_buy:
                 continue
-            # Skip scrip-dividend ratios (e.g., 1.01x yearly Iberdrola scrip).
-            # Real splits are almost always outside [0.9, 1.1].
             if Decimal("0.9") <= ratio <= Decimal("1.1"):
-                continue
-            # Skip if we've already recorded a synthetic split SELL on that
-            # date (manual adjustment to preserve cost basis across ISIN change).
+                continue  # scrip dividend, not a real split
+
+            # ── Case 1: ISIN-change split (same ticker, multiple ISINs) ──────
+            # Both old and new ISINs are in our map. Data is already split by
+            # ISIN with correct quantities. Just log it as auto_resolved.
+            if len(all_isins_for_ticker) > 1:
+                # Verify transactions exist on both sides
+                old_isins = [i for i in all_isins_for_ticker if i != isin]
+                has_old = any(
+                    db.query(Transaction).filter(
+                        Transaction.isin == i,
+                        Transaction.type == TransactionType.BUY.value,
+                        Transaction.trade_date < split_date,
+                    ).first()
+                    for i in old_isins
+                )
+                if has_old:
+                    issue = DataIssue(
+                        import_id=import_id,
+                        issue_type="potential_split",
+                        severity="info",
+                        isin=isin,
+                        name=_get_name_for_isin(db, isin),
+                        description=(
+                            f"Split de {ticker} (ratio {ratio}, {split_date.isoformat()}) "
+                            f"detectado y gestionado: ISINs separados antes/después del split. "
+                            f"Los datos son correctos."
+                        ),
+                        status="auto_resolved",
+                        auto_resolution=f"Split por cambio de ISIN detectado automáticamente. No requiere acción.",
+                        resolution_data=json.dumps({
+                            "ticker": ticker,
+                            "split_date": split_date.isoformat(),
+                            "ratio": str(ratio),
+                            "isins": all_isins_for_ticker,
+                        }),
+                    )
+                    issues.append(issue)
+                    continue
+
+            # ── Case 2: Qty-only split (same ISIN, quantities need adjustment) ─
+            # Check if existing BUY quantities are pre-split (need × ratio)
             already_handled = (
                 db.query(Transaction)
                 .filter(
@@ -496,28 +545,99 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
             )
             if already_handled:
                 continue
-            issue = DataIssue(
-                import_id=import_id,
-                issue_type="potential_split",
-                severity="info",
-                isin=isin,
-                name=_get_name_for_isin(db, isin),
-                description=(
-                    f"Split detectado para {ticker} ({isin}): ratio {ratio} "
-                    f"el {split_date.isoformat()}. Verificar que las transacciones "
-                    f"y holdings reflejan el split correctamente."
-                ),
-                status="needs_input",
-                resolution_data=json.dumps({
-                    "ticker": ticker,
-                    "split_date": split_date.isoformat(),
-                    "ratio": str(ratio),
-                    "first_buy": first_buy.isoformat(),
-                }),
-            )
-            issues.append(issue)
+
+            pre_split_qty = (
+                db.query(func.coalesce(func.sum(Transaction.quantity), 0))
+                .filter(
+                    Transaction.isin == isin,
+                    Transaction.type == TransactionType.BUY.value,
+                    Transaction.trade_date < split_date,
+                )
+                .scalar()
+            ) or Decimal("0")
+
+            holding_qty = (
+                db.query(func.coalesce(func.sum(PortfolioHolding.quantity), 0))
+                .filter(PortfolioHolding.isin == isin)
+                .scalar()
+            ) or Decimal("0")
+
+            expected_after_split = pre_split_qty * ratio
+            tol = expected_after_split * Decimal("0.05")  # 5% tolerance
+
+            if holding_qty > 0 and abs(holding_qty - expected_after_split) <= tol:
+                # Auto-apply: adjust pre-split BUY/SELL quantities
+                _apply_qty_split(db, isin, split_date, ratio)
+                issue = DataIssue(
+                    import_id=import_id,
+                    issue_type="potential_split",
+                    severity="info",
+                    isin=isin,
+                    name=_get_name_for_isin(db, isin),
+                    description=(
+                        f"Split de {ticker} ({isin}) ratio {ratio} el {split_date.isoformat()} "
+                        f"detectado y aplicado automáticamente. "
+                        f"Transacciones anteriores al split ajustadas ({pre_split_qty} → {expected_after_split} uds)."
+                    ),
+                    status="auto_resolved",
+                    auto_resolution=f"Cantidades ajustadas automáticamente: ×{ratio} antes del {split_date.isoformat()}.",
+                    resolution_data=json.dumps({
+                        "ticker": ticker,
+                        "split_date": split_date.isoformat(),
+                        "ratio": str(ratio),
+                        "pre_split_qty": str(pre_split_qty),
+                        "post_split_qty": str(expected_after_split),
+                    }),
+                )
+                issues.append(issue)
+                logger.info("Auto-applied split for %s (%s): ratio %s on %s", ticker, isin, ratio, split_date)
+            else:
+                # Cannot confirm — ask user
+                issue = DataIssue(
+                    import_id=import_id,
+                    issue_type="potential_split",
+                    severity="warning",
+                    isin=isin,
+                    name=_get_name_for_isin(db, isin),
+                    description=(
+                        f"Split de {ticker} ({isin}): ratio {ratio} el {split_date.isoformat()}. "
+                        f"No se pudo confirmar automáticamente (holdings: {holding_qty}, "
+                        f"esperado post-split: {expected_after_split}). Verificación manual necesaria."
+                    ),
+                    status="needs_input",
+                    resolution_data=json.dumps({
+                        "ticker": ticker,
+                        "split_date": split_date.isoformat(),
+                        "ratio": str(ratio),
+                        "pre_split_qty": str(pre_split_qty),
+                        "holding_qty": str(holding_qty),
+                    }),
+                )
+                issues.append(issue)
 
     return issues
+
+
+def _apply_qty_split(db: Session, isin: str, split_date: date, ratio: Decimal) -> None:
+    """Adjust pre-split BUY/SELL transaction quantities for a qty-only split.
+
+    Cost basis (gross_amount, net_amount_eur) is preserved — only quantity
+    and unit price are adjusted so that qty × ratio and price / ratio.
+    """
+    txs = (
+        db.query(Transaction)
+        .filter(
+            Transaction.isin == isin,
+            Transaction.trade_date < split_date,
+            Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
+        )
+        .all()
+    )
+    for tx in txs:
+        tx.quantity = tx.quantity * ratio
+        if tx.price and tx.price != 0:
+            tx.price = tx.price / ratio
+    db.flush()
 
 
 # ---------------------------------------------------------------------------

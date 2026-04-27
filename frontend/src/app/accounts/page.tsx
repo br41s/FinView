@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Trash2, Pencil, Building2 } from "lucide-react";
+import { Plus, Trash2, Pencil, Building2 } from "lucide-react";
 
 import { api } from "@/lib/api";
 import {
@@ -26,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
+import { QuickNav } from "@/components/QuickNav";
 
 const BROKERS = ["BBVA", "DEGIRO", "ETORO", "IBKR", "ING", "TR"];
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF"];
@@ -41,7 +41,6 @@ interface AccountItem {
 }
 
 function AccountsContent() {
-  const router = useRouter();
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -142,24 +141,21 @@ function AccountsContent() {
   return (
     <div className="space-y-6 p-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Cuentas</h1>
           <p className="text-muted-foreground">
             Gestiona tus cuentas de broker
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <QuickNav current="/portfolio" />
           {!showForm && (
             <Button onClick={() => setShowForm(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Nueva cuenta
             </Button>
           )}
-          <Button variant="outline" onClick={() => router.push("/portfolio")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Cartera
-          </Button>
         </div>
       </div>
 

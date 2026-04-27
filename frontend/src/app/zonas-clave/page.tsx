@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
-  ArrowLeft,
   RefreshCw,
   Target,
   TrendingDown,
@@ -33,6 +32,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QuickNav } from "@/components/QuickNav";
 import {
   Table,
   TableBody,
@@ -195,14 +195,15 @@ export default function ZonasClavePage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Zonas Clave</h1>
           <p className="text-muted-foreground">
             Soportes, resistencias y tendencia algorítmica
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <QuickNav current="/zonas-clave" />
           <Button
             variant="outline"
             size="sm"
@@ -222,10 +223,6 @@ export default function ZonasClavePage() {
             ) : (
               <><Play className="mr-2 h-4 w-4" /> Auto (24h)</>
             )}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => router.push("/portfolio")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Cartera
           </Button>
         </div>
       </div>

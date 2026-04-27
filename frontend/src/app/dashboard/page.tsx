@@ -45,6 +45,7 @@ import { PatrimonioChart } from "@/components/charts/PatrimonioChart";
 import { WithholdingsChart } from "@/components/charts/WithholdingsChart";
 import { GrossDividendsByCountryChart } from "@/components/charts/GrossDividendsByCountryChart";
 import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart";
+import { QuickNav } from "@/components/QuickNav";
 import {
   Upload as UploadIcon,
   TrendingUp,
@@ -232,11 +233,14 @@ export default function Home() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4!" />
           <h1 className="text-sm font-medium">{viewTitles[view]}</h1>
-          {selectedYear && (
-            <span className="text-xs text-muted-foreground ml-auto">
-              Año fiscal {selectedYear}
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {selectedYear && (
+              <span className="text-xs text-muted-foreground">
+                Año fiscal {selectedYear}
+              </span>
+            )}
+            <QuickNav current="/dashboard" />
+          </div>
         </header>
 
         {/* Content */}

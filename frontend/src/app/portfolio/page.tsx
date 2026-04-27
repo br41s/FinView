@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
+import { QuickNav } from "@/components/QuickNav";
 
 interface Position {
   isin: string;
@@ -219,20 +220,17 @@ function PortfolioContent() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Cartera</h1>
           <p className="text-muted-foreground">
             Posiciones abiertas con precios en tiempo real
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push("/accounts")}>
+        <div className="flex items-center gap-3">
+          <QuickNav current="/portfolio" />
+          <Button variant="outline" size="sm" onClick={() => router.push("/accounts")}>
             Cuentas
-          </Button>
-          <Button variant="outline" onClick={() => router.push("/dashboard")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Dashboard
           </Button>
         </div>
       </div>
@@ -500,7 +498,12 @@ function PortfolioContent() {
                                 try {
                                   await api.zonasClav.addTicker(ticker, p.name);
                                   setZcWatchlist((prev) => new Set([...prev, ticker.toUpperCase()]));
-                                  toast.success(`${p.name} añadido a Zonas Clave`);
+                                  toast.success(`${p.name} añadido a Zonas Clave`, {
+                    action: {
+                      label: "Ir a Zonas Clave",
+                      onClick: () => router.push("/zonas-clave"),
+                    },
+                  });
                                 } catch {
                                   toast.error(`No se pudo añadir ${p.ticker ?? p.isin}`);
                                 } finally {
