@@ -293,20 +293,54 @@ def _check_single_availability(ticker: str) -> tuple[str, bool]:
     """Light availability check: does the ticker have any options expirations?"""
     try:
         import yfinance as yf
-        from backend.services.options_scraper import _EUREX_RDF_CACHE, _EUREX_SUFFIXES
+        from backend.services.options_scraper import (
+            _EUREX_RDF_CACHE, _EUREX_SUFFIXES, _ISIN_RE,
+        )
 
-        # Fast path: if Eurex RDF is already loaded, check it first for European tickers
+        rdf_isin = _EUREX_RDF_CACHE.get("isin_to_code", {})
+        rdf_sym = _EUREX_RDF_CACHE.get("sym_to_code", {})
+        rdf_loaded = bool(rdf_sym)
+
+        # ISIN format (e.g. DE000BASF111) — check Eurex ISIN index
+        if _ISIN_RE.match(ticker):
+            if rdf_loaded:
+                return ticker, ticker in rdf_isin
+            # RDF not ready yet — default visible so it isn't permanently hidden
+            return ticker, True
+
+        # European exchange suffix (e.g. BAS.DE, AIR.PA)
         if any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
-            if _EUREX_RDF_CACHE.get("sym_to_code"):
+            if rdf_loaded:
                 sym = ticker.split(".")[0].upper()
-                return ticker, sym in _EUREX_RDF_CACHE["sym_to_code"]
-            # RDF not loaded yet — assume European tickers have options
+                return ticker, sym in rdf_sym
             return ticker, True
 
         t = yf.Ticker(ticker)
         return ticker, bool(t.options)
     except Exception:
         return ticker, False
+
+
+def _invalidate_european_availability_cache() -> None:
+    """Remove stale False entries for ISINs and European tickers after the Eurex RDF loads."""
+    from backend.services.options_scraper import _EUREX_RDF_CACHE, _EUREX_SUFFIXES, _ISIN_RE
+    rdf_isin = _EUREX_RDF_CACHE.get("isin_to_code", {})
+    rdf_sym = _EUREX_RDF_CACHE.get("sym_to_code", {})
+    to_delete = [
+        t for t, (v, _) in list(_availability_cache.items())
+        if not v and (
+            _ISIN_RE.match(t) and t in rdf_isin
+            or any(t.endswith(s.upper()) for s in _EUREX_SUFFIXES)
+            and t.split(".")[0] in rdf_sym
+        )
+    ]
+    for t in to_delete:
+        _availability_cache.pop(t, None)
+    if to_delete:
+        import logging
+        logging.getLogger(__name__).info(
+            "Invalidated %d stale availability entries after Eurex RDF load", len(to_delete)
+        )
 
 
 @router.post("/check-availability")

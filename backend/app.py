@@ -30,7 +30,13 @@ async def lifespan(app: FastAPI):
     # Preload Eurex RDF in background so the first European options request is fast
     import threading
     from backend.services.options_scraper import _load_eurex_rdf
-    threading.Thread(target=_load_eurex_rdf, daemon=True, name="eurex-rdf-preload").start()
+    from backend.api.options import _invalidate_european_availability_cache
+
+    def _preload_eurex():
+        if _load_eurex_rdf():
+            _invalidate_european_availability_cache()
+
+    threading.Thread(target=_preload_eurex, daemon=True, name="eurex-rdf-preload").start()
 
     yield
     shutdown_scheduler()
