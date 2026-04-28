@@ -1,10 +1,13 @@
-"""Options data scraper — Yahoo Finance + MEFF (Spanish exchange)."""
+"""Options data scraper — Yahoo Finance + MEFF (Spanish exchange) + Eurex (European)."""
 
+import io
 import logging
 import math
 import re
 import time
-from datetime import datetime
+import zipfile
+from datetime import date, datetime
+from xml.etree.ElementTree import iterparse
 
 import numpy as np
 import requests
@@ -41,6 +44,19 @@ _ISIN_CACHE: dict[str, str] = {}  # ISIN → resolved ticker symbol
 # 5-minute in-memory cache for options chains: ticker → (data, unix_ts)
 _OPTIONS_CACHE: dict[str, tuple[dict, float]] = {}
 _OPTIONS_TTL = 300.0  # seconds
+
+# Eurex RDF (Reference Data File) daily cache — refreshed once per trading day
+_EUREX_RDF_CACHE: dict = {
+    "date": None,      # str YYYY-MM-DD of last successful load
+    "products": {},    # product_code → {underlying_isin, sym, prev_close, options:[]}
+    "isin_to_code": {},  # underlying ISIN → Eurex product code
+    "sym_to_code": {},   # underlying symbol → Eurex product code (e.g. "BAS" → "BASE")
+}
+_EUREX_RDF_PAGE = "https://www.eurex.com/ex-en/data/trading-files/rdf-files"
+_FIXML_NS = "{http://www.fixprotocol.org/FIXML-5-0-SP2}"
+# Exchange suffixes that Eurex covers (excluding .MC which MEFF handles)
+_EUREX_SUFFIXES = {".DE", ".PA", ".AS", ".L", ".MI", ".SW", ".ZU", ".BR",
+                   ".VI", ".OL", ".ST", ".CO", ".HE", ".LS", ".PR"}
 
 
 # ── Math helpers ─────────────────────────────────────────────────────
@@ -103,6 +119,233 @@ def _resolve_isin(isin: str) -> str | None:
     return None
 
 
+# ── Eurex RDF (European exchange) ────────────────────────────────────
+
+
+def _get_eurex_rdf_url() -> str | None:
+    """Scrape the Eurex RDF files page and return the latest XEUR zip URL."""
+    try:
+        r = requests.get(_EUREX_RDF_PAGE, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        for a in soup.find_all("a"):
+            href = a.get("href", "")
+            if "RDF-File-XEUR" in href and href.endswith(".zip"):
+                return "https://www.eurex.com" + href
+    except Exception:
+        logger.warning("Failed to fetch Eurex RDF page")
+    return None
+
+
+def _parse_eurex_rdf(content: bytes) -> tuple[dict, dict, dict]:
+    """Stream-parse a zipped FIXML RDF file.
+
+    Returns (products, isin_to_code, sym_to_code).
+    Only OSTK (options on single stocks) products are kept.
+    """
+    products: dict = {}
+    isin_to_code: dict = {}
+    sym_to_code: dict = {}
+
+    current_product: str | None = None
+    in_secdef = False
+    secdef_settlement = 0.0
+    secdef_delta = 0.0
+
+    z = zipfile.ZipFile(io.BytesIO(content))
+    filename = z.namelist()[0]
+    ns = _FIXML_NS
+
+    with z.open(filename) as f:
+        for event, elem in iterparse(f, events=("start", "end")):
+            tag = elem.tag[len(ns):] if elem.tag.startswith(ns) else elem.tag
+
+            if event == "start":
+                if tag == "MktDef":
+                    if elem.get("ParentMktSegmID") == "OSTK":
+                        code = elem.get("MktSeg", "")
+                        if code:
+                            current_product = code
+                            products[code] = {
+                                "product_isin": elem.get("Sym", ""),
+                                "ccy": elem.get("Ccy", "EUR"),
+                                "underlying_isin": None,
+                                "sym": None,
+                                "prev_close": None,
+                                "options": [],
+                            }
+                    else:
+                        current_product = None
+
+                elif tag == "SecDef" and current_product:
+                    in_secdef = True
+                    try:
+                        secdef_settlement = float(elem.get("PriSetPx") or 0)
+                    except ValueError:
+                        secdef_settlement = 0.0
+                    try:
+                        secdef_delta = float(elem.get("PxDelta") or 0)
+                    except ValueError:
+                        secdef_delta = 0.0
+
+            elif event == "end":
+                if tag == "Undly" and current_product and current_product in products:
+                    isin = elem.get("ID", "")
+                    sym = elem.get("Sym", "")
+                    prev_close_str = elem.get("PrevClsPx")
+                    products[current_product]["underlying_isin"] = isin
+                    products[current_product]["sym"] = sym
+                    if prev_close_str:
+                        try:
+                            products[current_product]["prev_close"] = float(prev_close_str)
+                        except ValueError:
+                            pass
+                    if isin:
+                        isin_to_code[isin] = current_product
+                    if sym:
+                        sym_to_code[sym] = current_product
+
+                elif tag == "Instrmt" and in_secdef and current_product:
+                    if elem.get("SecTyp") == "OPT":
+                        try:
+                            strike = float(elem.get("StrkPx", "0") or "0")
+                        except ValueError:
+                            strike = 0.0
+                        mat_dt = elem.get("MatDt", "")
+                        put_call = elem.get("PutCall", "")  # "1"=CALL, "0"=PUT
+                        try:
+                            mult = int(elem.get("Mult", "100") or "100")
+                        except ValueError:
+                            mult = 100
+                        products[current_product]["options"].append({
+                            "strike": strike,
+                            "expiration": mat_dt,
+                            "type": "CALL" if put_call == "1" else "PUT",
+                            "lastPrice": secdef_settlement,
+                            "bid": secdef_settlement,
+                            "ask": secdef_settlement,
+                            "volume": 0,
+                            "openInterest": 0,
+                            "impliedVolatility": 0.0,
+                            "daysToExpiry": 0,
+                            "multiplier": mult,
+                            "delta": secdef_delta,
+                        })
+
+                elif tag == "SecDef":
+                    in_secdef = False
+
+                elem.clear()
+
+    return products, isin_to_code, sym_to_code
+
+
+def _load_eurex_rdf() -> bool:
+    """Download and parse the latest Eurex XEUR RDF file. Cached for the trading day."""
+    today = date.today().isoformat()
+    if _EUREX_RDF_CACHE["date"] == today and _EUREX_RDF_CACHE["products"]:
+        return True
+
+    url = _get_eurex_rdf_url()
+    if not url:
+        logger.warning("Could not find Eurex RDF URL")
+        return False
+
+    try:
+        logger.info("Downloading Eurex RDF from %s", url)
+        r = requests.get(url, timeout=90, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200:
+            logger.warning("Eurex RDF download failed: HTTP %s", r.status_code)
+            return False
+
+        products, isin_to_code, sym_to_code = _parse_eurex_rdf(r.content)
+        _EUREX_RDF_CACHE["date"] = today
+        _EUREX_RDF_CACHE["products"] = products
+        _EUREX_RDF_CACHE["isin_to_code"] = isin_to_code
+        _EUREX_RDF_CACHE["sym_to_code"] = sym_to_code
+        logger.info("Eurex RDF loaded: %d OSTK products", len(products))
+        return True
+    except Exception:
+        logger.exception("Eurex RDF parse failed")
+        return False
+
+
+def _fetch_eurex(ticker: str) -> dict | None:
+    """Return options chain for a European ticker using Eurex daily settlement data."""
+    if not _load_eurex_rdf():
+        return None
+
+    # Resolve ticker → Eurex product code
+    # Try stripping the exchange suffix (e.g., "BAS.DE" → "BAS")
+    sym = ticker.split(".")[0].upper()
+    code = _EUREX_RDF_CACHE["sym_to_code"].get(sym)
+    if not code:
+        logger.debug("No Eurex product found for ticker %s (sym=%s)", ticker, sym)
+        return None
+
+    product = _EUREX_RDF_CACHE["products"].get(code)
+    if not product or not product["options"]:
+        return None
+
+    underlying_price = product.get("prev_close") or 0.0
+    if underlying_price <= 0:
+        # Fallback: get current price from yfinance
+        try:
+            info = yf.Ticker(ticker).info or {}
+            underlying_price = float(
+                info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            )
+        except Exception:
+            pass
+
+    today_dt = datetime.now()
+    calls, puts = [], []
+    expirations_seen: set[str] = set()
+
+    for opt in product["options"]:
+        exp_str = opt["expiration"]
+        try:
+            exp_dt = datetime.strptime(exp_str, "%Y-%m-%d")
+            days = max((exp_dt - today_dt).days, 1)
+        except ValueError:
+            days = 1
+
+        expirations_seen.add(exp_str)
+
+        # Calculate IV from settlement price
+        iv = 0.0
+        if underlying_price > 0 and opt["lastPrice"] > 0:
+            iv = _solve_iv(underlying_price, opt["strike"], days / 365.0,
+                           opt["lastPrice"], opt["type"])
+
+        entry = {**opt, "daysToExpiry": days, "impliedVolatility": iv}
+        (calls if opt["type"] == "CALL" else puts).append(entry)
+
+    if not calls and not puts:
+        return None
+
+    total_call_vol = sum(c.get("volume", 0) for c in calls)
+    total_put_vol = sum(p.get("volume", 0) for p in puts)
+    pcr = round(total_put_vol / total_call_vol, 2) if total_call_vol > 0 else 0
+
+    return {
+        "ticker": ticker,
+        "current_price": underlying_price,
+        "timestamp": datetime.now().isoformat(),
+        "stock_data": {},
+        "historical_volatility": None,
+        "expirations_analyzed": sorted(expirations_seen),
+        "calls": calls,
+        "puts": puts,
+        "calls_count": len(calls),
+        "puts_count": len(puts),
+        "put_call_ratio": pcr,
+        "status": "success",
+        "source": "eurex",
+    }
+
+
 # ── Public API ───────────────────────────────────────────────────────
 
 
@@ -128,7 +371,16 @@ def fetch_options(ticker: str) -> dict | None:
         if data:
             _OPTIONS_CACHE[cache_key] = (data, time.time())
             return data
+
     result = _fetch_yahoo(ticker)
+
+    # Yahoo Finance has no European options data — fall back to Eurex RDF
+    yahoo_empty = result is None or (result.get("calls_count", 0) == 0 and result.get("puts_count", 0) == 0)
+    if yahoo_empty and any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
+        eurex_result = _fetch_eurex(ticker)
+        if eurex_result:
+            result = eurex_result
+
     if result:
         _OPTIONS_CACHE[cache_key] = (result, time.time())
     return result

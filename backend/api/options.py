@@ -293,6 +293,16 @@ def _check_single_availability(ticker: str) -> tuple[str, bool]:
     """Light availability check: does the ticker have any options expirations?"""
     try:
         import yfinance as yf
+        from backend.services.options_scraper import _EUREX_RDF_CACHE, _EUREX_SUFFIXES
+
+        # Fast path: if Eurex RDF is already loaded, check it first for European tickers
+        if any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
+            if _EUREX_RDF_CACHE.get("sym_to_code"):
+                sym = ticker.split(".")[0].upper()
+                return ticker, sym in _EUREX_RDF_CACHE["sym_to_code"]
+            # RDF not loaded yet — assume European tickers have options
+            return ticker, True
+
         t = yf.Ticker(ticker)
         return ticker, bool(t.options)
     except Exception:

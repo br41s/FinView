@@ -27,6 +27,11 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Preload Eurex RDF in background so the first European options request is fast
+    import threading
+    from backend.services.options_scraper import _load_eurex_rdf
+    threading.Thread(target=_load_eurex_rdf, daemon=True, name="eurex-rdf-preload").start()
+
     yield
     shutdown_scheduler()
     shutdown_zc_scheduler()
