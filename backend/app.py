@@ -32,6 +32,9 @@ async def lifespan(app: FastAPI):
     from backend.services.options_scraper import _load_eurex_rdf
     from backend.api.options import _invalidate_european_availability_cache
 
+    # Clear any ISIN entries that may have been wrongly cached as False
+    _invalidate_european_availability_cache()
+
     def _preload_eurex():
         if _load_eurex_rdf():
             _invalidate_european_availability_cache()

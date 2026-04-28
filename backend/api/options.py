@@ -297,20 +297,16 @@ def _check_single_availability(ticker: str) -> tuple[str, bool]:
             _EUREX_RDF_CACHE, _EUREX_SUFFIXES, _ISIN_RE,
         )
 
-        rdf_isin = _EUREX_RDF_CACHE.get("isin_to_code", {})
-        rdf_sym = _EUREX_RDF_CACHE.get("sym_to_code", {})
-        rdf_loaded = bool(rdf_sym)
-
-        # ISIN format (e.g. DE000BASF111) — check Eurex ISIN index
+        # ISINs — we can't cheaply determine options availability across all markets
+        # (Spanish ISINs → MEFF, German → Eurex, UK → LSE/Eurex, etc.).
+        # Always include them; users can manually hide positions with no data.
         if _ISIN_RE.match(ticker):
-            if rdf_loaded:
-                return ticker, ticker in rdf_isin
-            # RDF not ready yet — default visible so it isn't permanently hidden
             return ticker, True
 
-        # European exchange suffix (e.g. BAS.DE, AIR.PA)
+        # European exchange suffix (e.g. BAS.DE, AIR.PA) — check Eurex RDF
         if any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
-            if rdf_loaded:
+            rdf_sym = _EUREX_RDF_CACHE.get("sym_to_code", {})
+            if rdf_sym:
                 sym = ticker.split(".")[0].upper()
                 return ticker, sym in rdf_sym
             return ticker, True
@@ -324,14 +320,15 @@ def _check_single_availability(ticker: str) -> tuple[str, bool]:
 def _invalidate_european_availability_cache() -> None:
     """Remove stale False entries for ISINs and European tickers after the Eurex RDF loads."""
     from backend.services.options_scraper import _EUREX_RDF_CACHE, _EUREX_SUFFIXES, _ISIN_RE
-    rdf_isin = _EUREX_RDF_CACHE.get("isin_to_code", {})
     rdf_sym = _EUREX_RDF_CACHE.get("sym_to_code", {})
     to_delete = [
         t for t, (v, _) in list(_availability_cache.items())
         if not v and (
-            _ISIN_RE.match(t) and t in rdf_isin
-            or any(t.endswith(s.upper()) for s in _EUREX_SUFFIXES)
-            and t.split(".")[0] in rdf_sym
+            _ISIN_RE.match(t)  # all ISINs now always return True
+            or (
+                any(t.endswith(s.upper()) for s in _EUREX_SUFFIXES)
+                and t.split(".")[0] in rdf_sym
+            )
         )
     ]
     for t in to_delete:
