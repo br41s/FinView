@@ -211,7 +211,7 @@ export default function ZonasClavePage() {
             disabled={watchlist.length === 0 || analyzing.size > 0}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
-            Actualizar todo
+            Actualizar
           </Button>
           <Button
             variant={schedulerRunning ? "destructive" : "default"}
