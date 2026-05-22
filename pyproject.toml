@@ -20,6 +20,7 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "stripe>=8.0",
     # Options monitor
+    "pandas>=2.0",
     "numpy>=1.26",
     "anthropic>=0.30",
     "apscheduler>=3.10",

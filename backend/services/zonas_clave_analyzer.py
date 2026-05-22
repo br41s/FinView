@@ -9,7 +9,7 @@ Pipeline per ticker:
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -368,7 +368,7 @@ def run_analysis_for_user(user_id: int) -> dict:
 
         row = ZonasClaveAnalysis(
             watchlist_item_id=item.id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             zones=json.dumps(result["zones"]),
             trend_bias_bullish_pct=result["trend_bias_bullish_pct"],
             trend_bias_bearish_pct=result["trend_bias_bearish_pct"],

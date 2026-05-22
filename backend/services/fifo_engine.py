@@ -9,7 +9,7 @@ parallel CrossBrokerLot records and FIFOAdjustment summaries.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -22,7 +22,6 @@ from backend.models import (
     CrossBrokerLot,
     FIFOAdjustment,
     TaxLot,
-    TaxResult,
     Transaction,
     TransactionType,
 )
