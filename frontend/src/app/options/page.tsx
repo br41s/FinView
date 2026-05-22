@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -11,7 +11,9 @@ import {
   Eye,
   EyeOff,
   FlaskConical,
+  MessageSquare,
   Play,
+  Send,
   Square,
   RefreshCw,
   Target,
@@ -469,6 +471,18 @@ export default function OptionsPage() {
   const unreadAlerts = alerts.filter((a) => !a.acknowledged);
   const watchlistTickers = new Set(watchlist.map((w) => w.ticker));
 
+  // Global P/C sentiment — average put_call_ratio_volume across all latest snapshots
+  const globalPC = (() => {
+    const ratios = Array.from(latestByTicker.values())
+      .map((s) => (s.put_call_ratio_volume != null ? Number(s.put_call_ratio_volume) : null))
+      .filter((v): v is number => v !== null && !isNaN(v));
+    if (ratios.length === 0) return null;
+    const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    const label = avg < 0.7 ? "Alcista" : avg > 1.0 ? "Bajista" : "Neutral";
+    const color = avg < 0.7 ? "text-emerald-600" : avg > 1.0 ? "text-red-600" : "text-amber-500";
+    return { avg, label, color, count: ratios.length };
+  })();
+
   // Portfolio tab: split into positions with/without options (hidden excluded entirely)
   const visiblePositions = positions.filter((p) => !hiddenTickers.has((p.ticker || p.isin).toUpperCase()));
   const mainPositions = visiblePositions.filter((p) => !noOptionsTickers.has((p.ticker || p.isin).toUpperCase()));
@@ -526,7 +540,7 @@ export default function OptionsPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Posiciones</CardTitle>
@@ -579,6 +593,29 @@ export default function OptionsPage() {
             </p>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Sentimiento P/C</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {globalPC ? (
+              <>
+                <div className={`text-2xl font-bold ${globalPC.color}`}>
+                  {globalPC.label}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  P/C medio {globalPC.avg.toFixed(2)} · {globalPC.count} tickers
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-muted-foreground">—</div>
+                <p className="text-xs text-muted-foreground">Sin datos aún</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabs */}
@@ -607,6 +644,9 @@ export default function OptionsPage() {
           </TabsTrigger>
           <TabsTrigger value="backtest" onClick={() => { if (!backtestStats) loadBacktest(); }}>
             <FlaskConical className="mr-1 h-4 w-4" /> Backtesting
+          </TabsTrigger>
+          <TabsTrigger value="agent">
+            <MessageSquare className="mr-1 h-4 w-4" /> Agente
           </TabsTrigger>
         </TabsList>
         </div>
@@ -888,6 +928,46 @@ export default function OptionsPage() {
                                           </div>
                                         </div>
                                       </div>
+
+                                      {/* HV vs IV comparison row */}
+                                      {(snap.historical_volatility != null || snap.avg_put_iv != null) && (
+                                        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-muted/50 bg-muted/20 px-3 py-2">
+                                          <span className="text-xs font-semibold text-muted-foreground">Vol:</span>
+                                          <div className="flex items-center gap-1 text-xs">
+                                            <span className="text-muted-foreground">HV</span>
+                                            <span className="font-medium tabular-nums">
+                                              {snap.historical_volatility != null ? `${fmt(snap.historical_volatility, 1)}%` : "—"}
+                                            </span>
+                                          </div>
+                                          <span className="text-muted-foreground">·</span>
+                                          <div className="flex items-center gap-1 text-xs">
+                                            <span className="text-muted-foreground">IV Call</span>
+                                            <span className="font-medium tabular-nums">
+                                              {snap.avg_call_iv != null ? `${fmt(snap.avg_call_iv, 1)}%` : "—"}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-1 text-xs">
+                                            <span className="text-muted-foreground">IV Put</span>
+                                            <span className="font-medium tabular-nums">
+                                              {snap.avg_put_iv != null ? `${fmt(snap.avg_put_iv, 1)}%` : "—"}
+                                            </span>
+                                          </div>
+                                          {snap.historical_volatility != null && snap.avg_call_iv != null && (() => {
+                                            const diff = Number(snap.avg_call_iv) - Number(snap.historical_volatility);
+                                            const label = diff > 5 ? "IV cara" : diff < -5 ? "IV barata" : "IV normal";
+                                            const cls = diff > 5
+                                              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                              : diff < -5
+                                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                                              : "bg-muted text-muted-foreground";
+                                            return (
+                                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+                                                {label} {diff >= 0 ? "+" : ""}{diff.toFixed(1)}pp
+                                              </span>
+                                            );
+                                          })()}
+                                        </div>
+                                      )}
                                     </div>
                                   ) : null}
 
@@ -1546,8 +1626,125 @@ export default function OptionsPage() {
             </>
           )}
         </TabsContent>
+
+        {/* ── Agent Chat Tab ── */}
+        <TabsContent value="agent">
+          <AgentChat />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// ── Agent Chat component ─────────────────────────────────────────────────────
+
+type ChatMsg = { role: "user" | "assistant"; content: string };
+
+function AgentChat() {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  async function sendMessage() {
+    const q = input.trim();
+    if (!q || loading) return;
+    setInput("");
+    setError(null);
+    const nextMessages: ChatMsg[] = [...messages, { role: "user", content: q }];
+    setMessages(nextMessages);
+    setLoading(true);
+    try {
+      const { answer } = await api.options.ask(
+        q,
+        messages.map((m) => ({ role: m.role, content: m.content })),
+      );
+      setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card className="flex flex-col" style={{ height: "65vh" }}>
+      <CardHeader className="border-b pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MessageSquare className="h-4 w-4" />
+          Agente de opciones
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Pregunta sobre tus posiciones, alertas activas o señales de mercado.
+          El contexto se construye con los datos más recientes del agente.
+        </CardDescription>
+      </CardHeader>
+
+      {/* Messages */}
+      <CardContent className="flex-1 overflow-y-auto space-y-3 py-4">
+        {messages.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground py-8">
+            Empieza con una pregunta — p.ej. &ldquo;¿Qué ticker tiene la IV más alta?&rdquo;
+          </p>
+        )}
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={`flex ${
+              m.role === "user" ? "justify-end" : "justify-start"
+            }`}
+          >
+            <div
+              className={`max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                m.role === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-foreground"
+              }`}
+            >
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+              Analizando...
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="flex justify-center">
+            <p className="text-xs text-destructive">{error}</p>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </CardContent>
+
+      {/* Input */}
+      <div className="border-t p-3 flex gap-2">
+        <input
+          className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          placeholder="Escribe tu pregunta..."
+          value={input}
+          disabled={loading}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              sendMessage();
+            }
+          }}
+        />
+        <Button size="sm" disabled={loading || !input.trim()} onClick={sendMessage}>
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
+    </Card>
   );
 }
 
