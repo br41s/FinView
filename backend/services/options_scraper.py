@@ -21,6 +21,7 @@ MAX_EXPIRATIONS = 3  # ~6 weeks of data
 # MEFF (Spanish exchange) — direct HTML scraping, no proxy needed
 _MEFF_BASE = "https://www.meff.es/ing/Financial-Derivatives/Spreadsheet/"
 _MEFF_SLUGS: dict[str, str] = {
+    # IBEX-35 blue chips (original 11)
     "TEF": "TEF_Telefonica",
     "BBVA": "BBVA_BBVA",
     "SAN": "SAN_B__Santander",
@@ -32,6 +33,26 @@ _MEFF_SLUGS: dict[str, str] = {
     "NTGY": "NTGY_Naturgy",
     "AENA": "AENA_AENA",
     "ACX": "ACX_Acerinox",
+    # Extended MEFF coverage (verified May 2026)
+    "AMS": "AMS_Amadeus",
+    "ANA": "ANA_Acciona",
+    "BKT": "BKT_Bankinter",
+    "CABK": "CABK_CaixaBank",
+    "CIE": "CIE_CIE_Automotive",
+    "CLNX": "CLNX_Cellnex",
+    "COL": "COL_Inmocolonial",
+    "ELE": "ELE_Endesa",
+    "ENG": "ENG_Enagas",
+    "GRF": "GRF_Grifols",
+    "IAG": "IAG_IAG",
+    "IDR": "IDR_Indra",
+    "MAP": "MAP_MAPFRE",
+    "MEL": "MEL_Melia",
+    "MRL": "MRL_Merlin",
+    "PHM": "PHM_PharmaMar",
+    "SAB": "SAB_Sabadell",
+    "SLR": "SLR_Solaria",
+    "VIS": "VIS_Viscofan",
 }
 # data-tipo codes: O{C=Call|P=Put}A{YYYYMMDD}
 _TIPO_RE = re.compile(r"^O(C|P)A(\d{8})$")
