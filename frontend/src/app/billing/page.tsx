@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CreditCard, ExternalLink, Sparkles } from "lucide-react";
+import { AlertCircle, CreditCard, ExternalLink, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,14 +50,19 @@ function BillingContent() {
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
+    setError(null);
     api.billing
       .subscription()
       .then((data) => setSub(data as Subscription))
-      .catch(() => {})
+      .catch(() => {
+        setError("No se pudo cargar la información de tu suscripción.");
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [retryKey]);
 
   async function handlePortal() {
     setPortalLoading(true);
@@ -73,6 +78,18 @@ function BillingContent() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingDots text="Cargando facturación" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <Button variant="outline" size="sm" onClick={() => setRetryKey((k) => k + 1)}>
+          Reintentar
+        </Button>
       </div>
     );
   }

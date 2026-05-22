@@ -17,6 +17,7 @@ import {
   TrendingUp,
   TrendingDown,
   Zap,
+  AlertCircle,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -185,9 +186,14 @@ export default function OptionsPage() {
   const [loadingChain, setLoadingChain] = useState<Set<string>>(new Set());
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
+  const [errorPositions, setErrorPositions] = useState<string | null>(null);
+  const [errorOptions, setErrorOptions] = useState<string | null>(null);
+  const [retryPositions, setRetryPositions] = useState(0);
+  const [retryOptions, setRetryOptions] = useState(0);
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
+    setErrorPositions(null);
     api.portfolio
       .positions(true)
       .then(async (pos) => {
@@ -202,9 +208,12 @@ export default function OptionsPage() {
           // ignore — positions remain visible if check fails
         }
       })
-      .catch((e) => console.error("Failed to load positions:", e))
+      .catch((e) => {
+        console.error("Failed to load positions:", e);
+        setErrorPositions("No se pudieron cargar las posiciones de cartera.");
+      })
       .finally(() => setLoadingPositions(false));
-  }, []);
+  }, [retryPositions]);
 
   // Load options chain when a ticker is expanded
   useEffect(() => {
@@ -239,6 +248,7 @@ export default function OptionsPage() {
 
   // Load options data in parallel (independent of positions)
   useEffect(() => {
+    setErrorOptions(null);
     Promise.all([
       api.options.snapshots() as Promise<Snapshot[]>,
       api.options.alerts() as Promise<Alert[]>,
@@ -255,9 +265,12 @@ export default function OptionsPage() {
         setAgentStatus(status);
         setHiddenTickers(new Set(hidden));
       })
-      .catch((e) => console.error("Failed to load options data:", e))
+      .catch((e) => {
+        console.error("Failed to load options data:", e);
+        setErrorOptions("No se pudieron cargar los datos de opciones.");
+      })
       .finally(() => setLoadingOptions(false));
-  }, []);
+  }, [retryOptions]);
 
   async function reloadOptions() {
     const [snaps, alts, unu, wl, status, hidden] = await Promise.all([
@@ -503,6 +516,16 @@ export default function OptionsPage() {
             <div className="flex min-h-[30vh] items-center justify-center">
               <LoadingDots text="Obteniendo precios de mercado" />
             </div>
+          ) : errorPositions ? (
+            <Card>
+              <CardContent className="py-10 text-center space-y-3">
+                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+                <p className="text-sm text-muted-foreground">{errorPositions}</p>
+                <Button variant="outline" size="sm" onClick={() => setRetryPositions((k) => k + 1)}>
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
           ) : positions.length === 0 ? (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground">
@@ -931,6 +954,16 @@ export default function OptionsPage() {
             <div className="flex min-h-[30vh] items-center justify-center">
               <LoadingDots text="Cargando watchlist" />
             </div>
+          ) : errorOptions ? (
+            <Card>
+              <CardContent className="py-10 text-center space-y-3">
+                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+                <p className="text-sm text-muted-foreground">{errorOptions}</p>
+                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <Card>
               <CardHeader>
@@ -1035,6 +1068,16 @@ export default function OptionsPage() {
             <div className="flex min-h-[30vh] items-center justify-center">
               <LoadingDots text="Cargando alertas" />
             </div>
+          ) : errorOptions ? (
+            <Card>
+              <CardContent className="py-10 text-center space-y-3">
+                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+                <p className="text-sm text-muted-foreground">{errorOptions}</p>
+                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <>
               <div className="flex items-center justify-between">
@@ -1124,6 +1167,16 @@ export default function OptionsPage() {
             <div className="flex min-h-[30vh] items-center justify-center">
               <LoadingDots text="Cargando actividad" />
             </div>
+          ) : errorOptions ? (
+            <Card>
+              <CardContent className="py-10 text-center space-y-3">
+                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+                <p className="text-sm text-muted-foreground">{errorOptions}</p>
+                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <>
               <h3 className="text-lg font-semibold">Actividad Inusual</h3>
