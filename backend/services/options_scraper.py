@@ -581,12 +581,19 @@ def _fetch_meff(ticker: str) -> dict | None:
         total_put_vol = sum(p.get("volume", 0) for p in puts)
         pcr = round(total_put_vol / total_call_vol, 2) if total_call_vol > 0 else 0
 
+        # Compute HV via yfinance history on the underlying (MEFF has no HV data)
+        try:
+            hv_history = yf.Ticker(ticker).history(period="60d")
+            meff_hv = _compute_hv(hv_history)
+        except Exception:
+            meff_hv = None
+
         return {
             "ticker": ticker,
             "current_price": float(current_price),
             "timestamp": datetime.now().isoformat(),
             "stock_data": {},
-            "historical_volatility": None,
+            "historical_volatility": meff_hv,
             "expirations_analyzed": [],
             "calls": calls,
             "puts": puts,

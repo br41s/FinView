@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  FileText,
   FlaskConical,
   MessageSquare,
   Play,
@@ -647,6 +648,9 @@ export default function OptionsPage() {
           </TabsTrigger>
           <TabsTrigger value="agent">
             <MessageSquare className="mr-1 h-4 w-4" /> Agente
+          </TabsTrigger>
+          <TabsTrigger value="analysis">
+            <FileText className="mr-1 h-4 w-4" /> Análisis
           </TabsTrigger>
         </TabsList>
         </div>
@@ -1631,6 +1635,11 @@ export default function OptionsPage() {
         <TabsContent value="agent">
           <AgentChat />
         </TabsContent>
+
+        {/* ── Analysis Tab ── */}
+        <TabsContent value="analysis">
+          <AnalysisTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -1745,6 +1754,131 @@ function AgentChat() {
         </Button>
       </div>
     </Card>
+  );
+}
+
+// ── Analysis Tab component ────────────────────────────────────────────────────
+
+type LastAnalysis = {
+  timestamp: string | null;
+  cycle: number | null;
+  tickers_analyzed: number | null;
+  alerts: number | null;
+  unusual: number | null;
+  market_sentiment: string | null;
+  claude_analysis: string | null;
+};
+
+/** Parse a Markdown string with "## N. Title\n..." into [{title, body}] sections. */
+function parseAnalysisSections(text: string): { title: string; body: string }[] {
+  const parts = text.split(/(?=^## \d+\.)/m);
+  return parts
+    .map((part) => {
+      const firstNewline = part.indexOf("\n");
+      if (firstNewline === -1) return null;
+      const title = part.slice(0, firstNewline).replace(/^##\s*/, "").trim();
+      const body = part.slice(firstNewline + 1).trim();
+      return { title, body };
+    })
+    .filter(Boolean) as { title: string; body: string }[];
+}
+
+function AnalysisTab() {
+  const [analysis, setAnalysis] = useState<LastAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.options
+      .lastAnalysis()
+      .then((data) => setAnalysis(data))
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Error cargando análisis")
+      )
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-3 p-4">
+        {new Array(4).fill(null).map((_: null, i: number) => (
+          <Skeleton key={`skel-${i}`} className="h-28 w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="p-6 text-center">
+        <p className="text-sm text-destructive">{error}</p>
+      </Card>
+    );
+  }
+
+  if (!analysis?.claude_analysis) {
+    return (
+      <Card className="p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe.
+        </p>
+      </Card>
+    );
+  }
+
+  const sections = parseAnalysisSections(analysis.claude_analysis);
+  let sentimentColor = "text-muted-foreground";
+  if (analysis.market_sentiment === "alcista") sentimentColor = "text-emerald-600";
+  else if (analysis.market_sentiment === "bajista") sentimentColor = "text-red-500";
+
+  return (
+    <div className="space-y-4">
+      {/* Meta header */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-base">Informe VolatilityEdge</CardTitle>
+              <CardDescription>
+                {analysis.timestamp
+                  ? `Ciclo #${analysis.cycle ?? "—"} · ${new Date(analysis.timestamp).toLocaleString("es-ES")}`
+                  : "Fecha desconocida"}
+              </CardDescription>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <span>
+                <span className="text-muted-foreground">Tickers: </span>
+                <span className="font-medium">{analysis.tickers_analyzed ?? "—"}</span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">Alertas: </span>
+                <span className="font-medium">{analysis.alerts ?? "—"}</span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">Sentimiento: </span>
+                <span className={`font-medium capitalize ${sentimentColor}`}>
+                  {analysis.market_sentiment ?? "—"}
+                </span>
+              </span>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Sections */}
+      {sections.map(({ title, body }) => (
+        <Card key={title}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap text-sm text-foreground/90 leading-relaxed">
+              {body}
+            </p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 

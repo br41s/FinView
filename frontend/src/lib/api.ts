@@ -454,6 +454,16 @@ export const api = {
     unusual: (ticker?: string, days = 7) =>
       fetchJSON(`/options/unusual${qs({ ticker, days })}`),
     agentStatus: () => fetchJSON("/options/agent/status"),
+    lastAnalysis: () =>
+      fetchJSON<{
+        timestamp: string | null;
+        cycle: number | null;
+        tickers_analyzed: number | null;
+        alerts: number | null;
+        unusual: number | null;
+        market_sentiment: string | null;
+        claude_analysis: string | null;
+      }>("/options/agent/last-analysis"),
     runCycle: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/options/agent/run`, {

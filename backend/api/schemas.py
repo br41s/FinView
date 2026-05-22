@@ -330,6 +330,16 @@ class AgentStatusOut(BaseModel):
     total_cycles: int = 0
 
 
+class LastAnalysisOut(BaseModel):
+    timestamp: datetime | None = None
+    cycle: int | None = None
+    tickers_analyzed: int | None = None
+    alerts: int | None = None
+    unusual: int | None = None
+    market_sentiment: str | None = None
+    claude_analysis: str | None = None
+
+
 class BacktestSignalOut(BaseModel):
     id: int
     recorded_at: datetime

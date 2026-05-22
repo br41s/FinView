@@ -17,6 +17,7 @@ from backend.api.schemas import (
     AskOut,
     BacktestSignalOut,
     BacktestStatsOut,
+    LastAnalysisOut,
     OptionsAlertOut,
     OptionsSnapshotOut,
     UnusualActivityOut,
@@ -408,6 +409,29 @@ def agent_status(db: DbSession, user: CurrentUser):
         interval_minutes=settings.options_monitor_interval_minutes,
         last_cycle=last_log.timestamp if last_log else None,
         total_cycles=total or 0,
+    )
+
+
+@router.get("/agent/last-analysis", response_model=LastAnalysisOut)
+def agent_last_analysis(db: DbSession, user: CurrentUser):
+    """Return the claude_analysis text and metadata from the most recent agent cycle."""
+    last_log = (
+        db.query(OptionsAgentLog)
+        .filter(OptionsAgentLog.user_id == user.id)
+        .order_by(OptionsAgentLog.timestamp.desc())
+        .first()
+    )
+    if not last_log:
+        return LastAnalysisOut()
+    data = last_log.result_json or {}
+    return LastAnalysisOut(
+        timestamp=last_log.timestamp,
+        cycle=data.get("cycle"),
+        tickers_analyzed=data.get("tickers_analyzed"),
+        alerts=data.get("alerts"),
+        unusual=data.get("unusual"),
+        market_sentiment=data.get("market_sentiment"),
+        claude_analysis=data.get("claude_analysis"),
     )
 
 
