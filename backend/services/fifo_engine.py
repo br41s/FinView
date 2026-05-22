@@ -265,7 +265,7 @@ def _find_multi_broker_isins(db: Session, fiscal_year: int) -> list[str]:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int | None = None) -> dict:
+def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -> dict:
     """Recalculate cross-broker FIFO for a fiscal year.
 
     1. Delete existing CrossBrokerLots and FIFOAdjustments for the year
@@ -336,7 +336,7 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int | 
                 broker_pl_eur=broker_pl,
                 fifo_pl_eur=fifo_pl,
                 adjustment_eur=adjustment,
-                user_id=user_id or 1,
+                user_id=user_id,
                 note=(
                     f"FIFO cruzado difiere del broker: "
                     f"broker={broker_pl:.2f}€, FIFO={fifo_pl:.2f}€, "
