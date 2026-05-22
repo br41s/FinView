@@ -5,18 +5,22 @@ import {
   Activity,
   BarChart3,
   Bell,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
+  FlaskConical,
   Play,
   Square,
   RefreshCw,
+  Target,
   Trash2,
   TrendingUp,
   TrendingDown,
   Zap,
   AlertCircle,
+  XCircle,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -99,6 +103,37 @@ interface Unusual {
   last_price: string | number | null;
 }
 
+interface BacktestSignal {
+  id: number;
+  recorded_at: string;
+  ticker: string;
+  signal_type: string;
+  direction: string;
+  price_at_signal: string | number;
+  alert_message: string;
+  price_at_1d: string | number | null;
+  price_at_3d: string | number | null;
+  price_at_7d: string | number | null;
+  outcome_1d: string | null;
+  outcome_3d: string | null;
+  outcome_7d: string | null;
+}
+
+interface BacktestHorizonStats {
+  evaluated: number;
+  correct: number;
+  incorrect: number;
+  neutral: number;
+  accuracy_pct: number | null;
+}
+
+interface BacktestStats {
+  total: number;
+  evaluated: number;
+  by_horizon: Record<string, BacktestHorizonStats>;
+  by_signal_type: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
+}
+
 interface ChainContract {
   strike: number;
   expiration: string;
@@ -166,6 +201,41 @@ function sentimentIcon(s: string | null) {
   return <Activity className="h-4 w-4 text-muted-foreground" />;
 }
 
+// ── MEFF Spanish tickers (verified May 2026) ────────────────────────
+
+const MEFF_TICKERS: { ticker: string; name: string }[] = [
+  { ticker: "ACX.MC", name: "Acerinox" },
+  { ticker: "AENA.MC", name: "AENA" },
+  { ticker: "AMS.MC", name: "Amadeus IT" },
+  { ticker: "ANA.MC", name: "Acciona" },
+  { ticker: "BBVA.MC", name: "BBVA" },
+  { ticker: "BKT.MC", name: "Bankinter" },
+  { ticker: "CABK.MC", name: "CaixaBank" },
+  { ticker: "CIE.MC", name: "CIE Automotive" },
+  { ticker: "CLNX.MC", name: "Cellnex" },
+  { ticker: "COL.MC", name: "Inmobiliaria Colonial" },
+  { ticker: "ELE.MC", name: "Endesa" },
+  { ticker: "ENG.MC", name: "Enagás" },
+  { ticker: "FER.MC", name: "Ferrovial" },
+  { ticker: "GRF.MC", name: "Grifols" },
+  { ticker: "IAG.MC", name: "IAG (Iberia)" },
+  { ticker: "IBE.MC", name: "Iberdrola" },
+  { ticker: "IDR.MC", name: "Indra" },
+  { ticker: "ITX.MC", name: "Inditex" },
+  { ticker: "MAP.MC", name: "MAPFRE" },
+  { ticker: "MEL.MC", name: "Meliá Hotels" },
+  { ticker: "MRL.MC", name: "Merlin Properties" },
+  { ticker: "NTGY.MC", name: "Naturgy" },
+  { ticker: "PHM.MC", name: "PharmaMar" },
+  { ticker: "RED.MC", name: "REDEIA" },
+  { ticker: "REP.MC", name: "Repsol" },
+  { ticker: "SAB.MC", name: "Banco Sabadell" },
+  { ticker: "SAN.MC", name: "Banco Santander" },
+  { ticker: "SLR.MC", name: "Solaria" },
+  { ticker: "TEF.MC", name: "Telefónica" },
+  { ticker: "VIS.MC", name: "Viscofan" },
+];
+
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
@@ -184,6 +254,10 @@ export default function OptionsPage() {
   const [loadingChain, setLoadingChain] = useState<Set<string>>(new Set());
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
+  const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
+  const [backtestStats, setBacktestStats] = useState<BacktestStats | null>(null);
+  const [loadingBacktest, setLoadingBacktest] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions, setRetryPositions] = useState(0);
@@ -358,6 +432,32 @@ export default function OptionsPage() {
     setAlerts((prev) => prev.map((a) => ({ ...a, acknowledged: true })));
   }
 
+  async function loadBacktest() {
+    setLoadingBacktest(true);
+    try {
+      const [sigs, stats] = await Promise.all([
+        api.options.backtestSignals({ days: 30 }) as Promise<BacktestSignal[]>,
+        api.options.backtestStats() as Promise<BacktestStats>,
+      ]);
+      setBacktestSignals(sigs);
+      setBacktestStats(stats);
+    } catch (e) {
+      console.error("Failed to load backtest data:", e);
+    } finally {
+      setLoadingBacktest(false);
+    }
+  }
+
+  async function handleEvaluate() {
+    setEvaluating(true);
+    try {
+      await api.options.backtestEvaluate();
+      await loadBacktest();
+    } finally {
+      setEvaluating(false);
+    }
+  }
+
   // Group latest snapshot per ticker
   const latestByTicker = new Map<string, Snapshot>();
   for (const s of snapshots) {
@@ -504,6 +604,9 @@ export default function OptionsPage() {
           </TabsTrigger>
           <TabsTrigger value="unusual">
             <Zap className="mr-1 h-4 w-4" /> Smart Money
+          </TabsTrigger>
+          <TabsTrigger value="backtest" onClick={() => { if (!backtestStats) loadBacktest(); }}>
+            <FlaskConical className="mr-1 h-4 w-4" /> Backtesting
           </TabsTrigger>
         </TabsList>
         </div>
@@ -983,6 +1086,44 @@ export default function OptionsPage() {
                     Añadir
                   </Button>
                 </div>
+
+                {/* ── Spanish stocks quick-add (MEFF) ── */}
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Acciones Españolas — MEFF
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {MEFF_TICKERS.map(({ ticker, name }) => {
+                      const already = watchlistTickers.has(ticker);
+                      return (
+                        <button
+                          key={ticker}
+                          title={name}
+                          disabled={already}
+                          onClick={() =>
+                            api.options.addToWatchlist(ticker, name).then(async () => {
+                              const wl = (await api.options.watchlist()) as WatchlistItem[];
+                              setWatchlist(wl);
+                            })
+                          }
+                          className={[
+                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+                            already
+                              ? "border-transparent bg-primary/10 text-primary cursor-default"
+                              : "border-border bg-background text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary cursor-pointer",
+                          ].join(" ")}
+                        >
+                          {already && <CheckCircle2 className="h-3 w-3" />}
+                          {ticker.replace(".MC", "")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Pasa el cursor para ver el nombre. Los marcados ya están en tu watchlist.
+                  </p>
+                </div>
+
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1248,7 +1389,187 @@ export default function OptionsPage() {
             </>
           )}
         </TabsContent>
+        {/* ── Backtesting Tab ── */}
+        <TabsContent value="backtest" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Backtesting de señales</h3>
+              <p className="text-sm text-muted-foreground">Precisión histórica de las alertas a +1D / +3D / +7D</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={loadBacktest} disabled={loadingBacktest}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loadingBacktest ? "animate-spin" : ""}`} />
+                Actualizar
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleEvaluate} disabled={evaluating}>
+                <Target className={`mr-2 h-4 w-4 ${evaluating ? "animate-spin" : ""}`} />
+                Evaluar pendientes
+              </Button>
+            </div>
+          </div>
+
+          {loadingBacktest ? (
+            <div className="flex min-h-[20vh] items-center justify-center">
+              <LoadingDots text="Cargando backtesting" />
+            </div>
+          ) : !backtestStats ? (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <FlaskConical className="mx-auto mb-3 h-8 w-8 opacity-40" />
+                <p>Abre esta pestaña para cargar los datos de backtesting.</p>
+                <Button className="mt-4" size="sm" onClick={loadBacktest}>Cargar</Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Accuracy stats by horizon */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                {(["1d", "3d", "7d"] as const).map((h) => {
+                  const s = backtestStats.by_horizon[h];
+                  const acc = s?.accuracy_pct;
+                  const color = acc == null ? "text-muted-foreground" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                  return (
+                    <Card key={h}>
+                      <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">Precisión {h.toUpperCase()}</CardTitle>
+                        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className={`text-2xl font-bold ${color}`}>
+                          {acc != null ? `${acc}%` : "—"}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {s?.evaluated ?? 0} evaluadas · {s?.correct ?? 0} correctas
+                        </p>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* Accuracy by signal type */}
+              {Object.keys(backtestStats.by_signal_type).length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Precisión por tipo de señal (7D)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="text-right">Correctas</TableHead>
+                          <TableHead className="text-right">Precisión</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
+                          const acc = v.accuracy_pct;
+                          const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                          return (
+                            <TableRow key={type}>
+                              <TableCell><Badge variant="outline">{type}</Badge></TableCell>
+                              <TableCell className="text-right">{v.total}</TableCell>
+                              <TableCell className="text-right">{v.correct}</TableCell>
+                              <TableCell className={`text-right font-semibold ${color}`}>
+                                {acc != null ? `${acc}%` : "—"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Signals table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Señales recientes (30d)</CardTitle>
+                  <CardDescription>{backtestSignals.length} señales registradas</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Ticker</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Dirección</TableHead>
+                          <TableHead className="text-right">Precio</TableHead>
+                          <TableHead className="text-center">+1D</TableHead>
+                          <TableHead className="text-center">+3D</TableHead>
+                          <TableHead className="text-center">+7D</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {backtestSignals.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                              Sin señales registradas. Ejecuta un ciclo del agente para empezar a acumular datos.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          backtestSignals.map((s) => (
+                            <TableRow key={s.id}>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                              </TableCell>
+                              <TableCell className="font-medium">{s.ticker}</TableCell>
+                              <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
+                              <TableCell>
+                                {s.direction === "BULLISH" ? (
+                                  <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                                    <TrendingUp className="h-3 w-3" /> BULLISH
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
+                                    <TrendingDown className="h-3 w-3" /> BEARISH
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">{fmt(s.price_at_signal)} $</TableCell>
+                              <TableCell className="text-center">{outcomeCell(s.outcome_1d, s.price_at_1d)}</TableCell>
+                              <TableCell className="text-center">{outcomeCell(s.outcome_3d, s.price_at_3d)}</TableCell>
+                              <TableCell className="text-center">{outcomeCell(s.outcome_7d, s.price_at_7d)}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
       </Tabs>
     </div>
   );
+}
+
+function outcomeCell(outcome: string | null, price: string | number | null) {
+  if (outcome === null) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  if (outcome === "CORRECT") {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600">
+        <CheckCircle2 className="h-3 w-3" />
+        {price != null ? fmt(price) : ""}
+      </span>
+    );
+  }
+  if (outcome === "INCORRECT") {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-xs font-medium text-red-600">
+        <XCircle className="h-3 w-3" />
+        {price != null ? fmt(price) : ""}
+      </span>
+    );
+  }
+  return <span className="text-xs text-muted-foreground">{price != null ? fmt(price) : "~"}</span>;
 }

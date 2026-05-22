@@ -13,6 +13,8 @@ from backend.api.auth import CurrentUser
 from backend.api.schemas import (
     AgentCycleResult,
     AgentStatusOut,
+    BacktestSignalOut,
+    BacktestStatsOut,
     OptionsAlertOut,
     OptionsSnapshotOut,
     UnusualActivityOut,
@@ -22,6 +24,7 @@ from backend.api.schemas import (
 from backend.config import settings
 from backend.database import DbSession
 from backend.models import (
+    BacktestSignal,
     OptionsAgentLog,
     OptionsAlert,
     OptionsHiddenPortfolioTicker,
@@ -29,6 +32,7 @@ from backend.models import (
     UnusualActivity,
     WatchlistItem,
 )
+from backend.services.notification_service import send_telegram
 from backend.services.options_agent import run_cycle
 from backend.services.options_scraper import fetch_options
 
@@ -425,3 +429,80 @@ def stop_scheduler(user: CurrentUser):
     stop_user_schedule(user.id)
     _scheduler_running = False
     return {"status": "stopped"}
+
+
+# ── Backtest ─────────────────────────────────────────────────────────
+
+
+@router.get("/backtest", response_model=list[BacktestSignalOut])
+def list_backtest_signals(
+    db: DbSession,
+    user: CurrentUser,
+    ticker: str | None = None,
+    days: int = 30,
+    limit: int = 200,
+):
+    """Return recorded backtest signals with their outcome data."""
+    q = (
+        db.query(BacktestSignal)
+        .filter(
+            BacktestSignal.user_id == user.id,
+            BacktestSignal.recorded_at >= _now() - timedelta(days=days),
+        )
+    )
+    if ticker:
+        q = q.filter(BacktestSignal.ticker == ticker.upper())
+    return q.order_by(BacktestSignal.recorded_at.desc()).limit(limit).all()
+
+
+@router.get("/backtest/stats", response_model=BacktestStatsOut)
+def backtest_stats(
+    db: DbSession,
+    user: CurrentUser,
+    ticker: str | None = None,
+):
+    """Return accuracy statistics for all completed backtest signals."""
+    from backend.services.backtest_service import get_stats
+
+    return get_stats(db, user.id, ticker=ticker)
+
+
+@router.post("/backtest/evaluate", status_code=200)
+def trigger_backtest_evaluation(db: DbSession, user: CurrentUser):
+    """Manually trigger outcome evaluation for pending signals."""
+    from backend.services.backtest_service import evaluate_pending
+
+    updated = evaluate_pending(db, user.id)
+    return {"evaluated": updated}
+
+
+@router.post("/test-telegram", status_code=200)
+def test_telegram(user: CurrentUser):
+    """Send a test message to the configured Telegram bot.
+
+    Returns whether the message was delivered. Requires
+    FINVIEW_TELEGRAM_BOT_TOKEN and FINVIEW_TELEGRAM_CHAT_ID to be set.
+    """
+    configured = bool(settings.telegram_bot_token and settings.telegram_chat_id)
+    if not configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telegram not configured — set FINVIEW_TELEGRAM_BOT_TOKEN and FINVIEW_TELEGRAM_CHAT_ID.",
+        )
+
+    from datetime import datetime, timezone
+
+    text = (
+        "✅ *FinView — test de conexión Telegram*\n"
+        f"Usuario: `{user.email}`\n"
+        f"Hora: `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`\n\n"
+        "La integración funciona correctamente. "
+        "Recibirás aquí las alertas HIGH y los premium spikes."
+    )
+    ok = send_telegram(text)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Telegram delivery failed — check bot token and chat ID.",
+        )
+    return {"sent": True, "chat_id": settings.telegram_chat_id}

@@ -481,6 +481,19 @@ export const api = {
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json();
     },
+    backtestSignals: (params?: { ticker?: string; days?: number }) =>
+      fetchJSON(`/options/backtest${qs(params ?? {})}`),
+    backtestStats: (ticker?: string) =>
+      fetchJSON(`/options/backtest/stats${ticker ? qs({ ticker }) : ""}`),
+    backtestEvaluate: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/backtest/evaluate`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
   },
 
   // Zonas Clave
