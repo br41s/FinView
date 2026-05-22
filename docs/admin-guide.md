@@ -6,7 +6,7 @@
 
 | Componente | Tecnología | URL / Recurso |
 |------------|-----------|---------------|
-| Frontend | Next.js 16 + Vercel | https://fin-view-topaz.vercel.app |
+| Frontend | Next.js 15 + Vercel | https://fin-view-topaz.vercel.app |
 | Backend | Python 3.12 + FastAPI + Cloud Run (europe-west1) | finview-api-748911075551.europe-west1.run.app |
 | Base de datos | Neon Postgres (eu-central-1) | ep-mute-rain-alwkqvfz |
 | CI/CD | Cloud Build (trigger automático en push a main) | Proyecto: finview-brais-2026 |

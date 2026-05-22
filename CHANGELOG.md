@@ -22,6 +22,18 @@ All notable changes to FinView are documented here.
   errors were swallowed silently to the console.
 - **Dashboard loading skeleton** now shows on every year-filter change, not only
   on first mount.
+- **Options monitor — Análisis tab** — new 6th tab in `/options` that renders
+  the last Claude analysis cycle as 7 structured section cards (Resumen
+  Ejecutivo, Smart Money, Señales Greeks, Top Picks, Catalizadores, Contexto
+  MEFF, Gestión de Riesgo) plus a cycle metadata header (timestamp, tickers
+  analyzed, total alerts, sentiment). Powered by `GET /options/agent/last-analysis`.
+- **Historical Volatility for MEFF tickers** — `.MC` tickers now compute HV
+  from 60 days of yfinance price history (`log(Close/Close.shift(1)).std() ×
+  √252 × 100`) since MEFF HTML does not publish HV. Previously HV was `None`
+  for all MEFF tickers.
+- **`GET /options/agent/last-analysis`** — new endpoint returning the most
+  recent agent cycle metadata and the full Claude markdown analysis for the
+  authenticated user.
 
 ### Performance
 - `GET /accounts/` — eliminated 2N lazy-load queries; now 3 queries (was 1 + 2N).

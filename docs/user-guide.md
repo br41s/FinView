@@ -145,18 +145,21 @@ La página **Derivados** permite monitorizar posiciones en opciones financieras.
 
 | Pestaña | Contenido |
 |---------|-----------|
-| **Cartera** | Posiciones de opciones detectadas en tus importaciones de IBKR |
-| **Watchlist** | Tickers añadidos manualmente para seguimiento de opciones |
-| **Alertas** | Señales generadas automáticamente por el agente |
-| **Smart Money** | Actividad inusual (volumen > 3× Open Interest) |
+| **Cartera** | Posiciones de opciones detectadas en tus importaciones de IBKR, con cadena de opciones (top 20 por OI), badge HV vs IV y sentimiento por ticker |
+| **Watchlist** | Tickers añadidos manualmente; barra de estadísticas con P/C ratio global → Alcista / Neutral / Bajista |
+| **Alertas** | Señales generadas por el agente, filtradas por severidad (HIGH / MEDIUM / LOW) |
+| **Backtest** | Precisión de señales pasadas a +1d, +3d y +7d por tipo de señal |
+| **Análisis** | Último análisis Claude del agente, presentado en 7 secciones con metadatos del ciclo |
+| **Agente** | Estado del scheduler, métricas de ciclo y chat con el agente |
 
 ### 7.2 Watchlist
 
 Añade los tickers que quieres vigilar (por ejemplo: `AAPL`, `IBE.MC`, `MSFT`).  
-Los tickers con sufijo `.MC` se consultan en MEFF (bolsa española); el resto en Yahoo Finance.
+Los tickers con sufijo `.MC` se consultan en MEFF (mercado español de derivados); los sufijos europeos (`.DE`, `.PA`, `.AS`, etc.) en Eurex; el resto en Yahoo Finance.
 
 - **Activar/desactivar:** Cada ticker se puede pausar individualmente sin eliminarlo.
 - **Eliminar:** Al eliminar un ticker de la watchlist se borran también sus snapshots, alertas y actividad inusual asociados.
+- **Barra de sentimiento global:** muestra el P/C ratio agregado de todos los tickers activos con etiqueta Alcista / Neutral / Bajista.
 
 ### 7.3 Ciclos de análisis
 
@@ -165,9 +168,10 @@ El agente ejecuta ciclos periódicos (cada 15 minutos por defecto) para cada tic
 1. **Observar:** Descarga la cadena de opciones (calls y puts) del mercado.
 2. **Greeks:** Calcula delta, gamma, theta, vega y rho con Black-Scholes.
 3. **Analizar:** Detecta alertas de IV alta, ratios Put/Call extremos, skew y actividad inusual.
-4. **Almacenar:** Guarda un snapshot con el estado del mercado.
-5. **Notificar:** Si hay alertas de severidad HIGH, envía notificaciones push (ntfy) y email.
-6. **Análisis Claude:** Si hay alertas, ejecuta un análisis narrativo con IA.
+4. **Premium Spike:** Detecta saltos bruscos de prima. Se activa cuando la prima actual ≥ 2,5× la media móvil exponencial y la muestra tiene ≥ 3 ciclos acumulados.
+5. **Almacenar:** Guarda snapshot, alertas y actividad inusual en la base de datos.
+6. **Notificar:** Si hay alertas de severidad HIGH, envía notificaciones push (ntfy), email y Telegram.
+7. **Análisis Claude:** Si hay alertas, ejecuta un análisis narrativo con IA estructurado en 7 secciones (visible en la pestaña Análisis).
 
 Puedes lanzar un ciclo manualmente con el botón **Ejecutar ciclo**.
 
@@ -185,9 +189,26 @@ Las alertas se generan automáticamente cuando:
 
 Puedes marcar alertas como leídas individualmente o todas a la vez.
 
-### 7.5 Snapshots y cadena de opciones
+### 7.5 HV vs IV badge
 
-Cada ciclo guarda un snapshot por ticker con volumen y Open Interest de calls/puts, ratio Put/Call, IV media, volatilidad histórica (30 días), IV Skew y sentimiento (BULLISH / NEUTRAL / BEARISH).
+En la pestaña **Cartera**, cada ticker muestra un badge de comparación entre la volatilidad implícita (IV) y la volatilidad histórica (HV):
+
+- **IV cara** — IV > HV + 5 pp (opciones caras, prima elevada)
+- **IV normal** — dentro del rango
+- **IV barata** — IV < HV − 5 pp (opciones baratas, posible oportunidad)
+
+Para tickers `.MC`, la HV se calcula a partir de 60 días de histórico de Yahoo Finance.
+
+### 7.6 Pestaña Análisis
+
+Muestra el último análisis generado por Claude durante un ciclo del agente. Incluye:
+
+- **Cabecera del ciclo:** timestamp, tickers analizados, total de alertas y sentimiento global.
+- **7 secciones:** Resumen Ejecutivo · Smart Money · Señales Greeks · Top Picks · Catalizadores · Contexto MEFF (solo si hay tickers `.MC`) · Gestión de Riesgo.
+
+### 7.7 Snapshots y cadena de opciones
+
+Cada ciclo guarda un snapshot por ticker con volumen y Open Interest de calls/puts, ratio Put/Call, IV media, volatilidad histórica (HV), IV Skew y sentimiento (BULLISH / NEUTRAL / BEARISH).
 
 ---
 
