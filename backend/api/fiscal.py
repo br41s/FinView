@@ -416,69 +416,57 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
 @router.get("/yearly-comparison", response_model=YearlyComparisonResult)
 def yearly_comparison(db: DbSession, user: CurrentUser):
     """Get fiscal metrics aggregated per year for multi-year comparison."""
-    # Get all distinct fiscal years
-    years = (
-        db.query(TaxResult.fiscal_year)
+    # All TaxResult aggregates per year in one query (was 4 queries × N years)
+    tax_rows = (
+        db.query(
+            TaxResult.fiscal_year,
+            func.coalesce(
+                func.sum(case((TaxResult.casilla == 29, TaxResult.amount_eur), else_=Decimal("0"))),
+                Decimal("0"),
+            ).label("dividends"),
+            func.coalesce(
+                func.sum(case((TaxResult.casilla == 332, TaxResult.amount_eur), else_=Decimal("0"))),
+                Decimal("0"),
+            ).label("gains"),
+            func.coalesce(
+                func.sum(case((TaxResult.casilla == 337, TaxResult.amount_eur), else_=Decimal("0"))),
+                Decimal("0"),
+            ).label("losses"),
+            func.count(func.distinct(TaxResult.broker)).label("broker_count"),
+        )
         .filter(TaxResult.user_id == user.id)
-        .distinct()
+        .group_by(TaxResult.fiscal_year)
         .order_by(TaxResult.fiscal_year)
         .all()
     )
 
-    metrics: list[YearlyMetrics] = []
-    for (year,) in years:
-        def _sum_casilla(c: int) -> Decimal:
-            val = (
-                db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
-                .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == year, TaxResult.casilla == c)
-                .scalar()
-            )
-            return val or Decimal("0")
+    # Withholdings and distinct-ISIN count per year in one query (was 2 queries × N years)
+    tx_rows = (
+        db.query(
+            year_str(Transaction.trade_date).label("yr"),
+            func.coalesce(func.sum(Transaction.withholding_tax), Decimal("0")).label("whg"),
+            func.count(func.distinct(Transaction.isin)).label("pos_count"),
+        )
+        .join(Account, Account.id == Transaction.account_id)
+        .filter(
+            Account.user_id == user.id,
+            Transaction.type == TransactionType.DIVIDEND.value,
+        )
+        .group_by(year_str(Transaction.trade_date))
+        .all()
+    )
+    tx_map = {int(row.yr): (row.whg or Decimal("0"), row.pos_count) for row in tx_rows}
 
-        dividends = _sum_casilla(29)
-        gains = _sum_casilla(332)
-        losses = _sum_casilla(337)
-
-        # Withholdings from transactions
-        whg = (
-            db.query(func.coalesce(func.sum(Transaction.withholding_tax), 0))
-            .join(Account)
-            .filter(
-                Account.user_id == user.id,
-                Transaction.type == TransactionType.DIVIDEND.value,
-                year_str(Transaction.trade_date) == str(year),
-            )
-            .scalar()
-        ) or Decimal("0")
-
-        # Number of distinct brokers with data this year
-        broker_count = (
-            db.query(func.count(func.distinct(TaxResult.broker)))
-            .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == year)
-            .scalar()
-        ) or 0
-
-        # Number of distinct ISINs with dividends this year
-        pos_count = (
-            db.query(func.count(func.distinct(Transaction.isin)))
-            .join(Account)
-            .filter(
-                Account.user_id == user.id,
-                Transaction.type == TransactionType.DIVIDEND.value,
-                year_str(Transaction.trade_date) == str(year),
-            )
-            .scalar()
-        ) or 0
-
-        metrics.append(YearlyMetrics(
-            fiscal_year=year,
-            dividends_gross=dividends,
-            gains=gains,
-            losses=losses,
-            net_capital=gains + losses,
-            withholdings=whg,
-            brokers=broker_count,
-            positions=pos_count,
-        ))
-
-    return YearlyComparisonResult(years=metrics)
+    return YearlyComparisonResult(years=[
+        YearlyMetrics(
+            fiscal_year=row.fiscal_year,
+            dividends_gross=row.dividends,
+            gains=row.gains,
+            losses=row.losses,
+            net_capital=row.gains + row.losses,
+            withholdings=tx_map.get(row.fiscal_year, (Decimal("0"), 0))[0],
+            brokers=row.broker_count,
+            positions=tx_map.get(row.fiscal_year, (Decimal("0"), 0))[1],
+        )
+        for row in tax_rows
+    ])

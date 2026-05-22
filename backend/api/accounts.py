@@ -5,7 +5,9 @@ from pydantic import BaseModel
 
 from backend.api.auth import CurrentUser
 from backend.database import DbSession
-from backend.models import Account, Broker
+from sqlalchemy import func
+
+from backend.models import Account, Broker, ImportRecord, Transaction
 from backend.services.billing_service import check_account_limit
 from backend.services.import_service import delete_account_cascade
 
@@ -46,20 +48,38 @@ class AccountOut(BaseModel):
 @router.get("/", response_model=list[AccountOut])
 def list_accounts(db: DbSession, user: CurrentUser):
     """List all broker accounts for the current user."""
+    tx_counts = (
+        db.query(Transaction.account_id, func.count().label("n"))
+        .filter(Transaction.account_id.in_(
+            db.query(Account.id).filter(Account.user_id == user.id)
+        ))
+        .group_by(Transaction.account_id)
+        .all()
+    )
+    imp_counts = (
+        db.query(ImportRecord.account_id, func.count().label("n"))
+        .filter(ImportRecord.account_id.in_(
+            db.query(Account.id).filter(Account.user_id == user.id)
+        ))
+        .group_by(ImportRecord.account_id)
+        .all()
+    )
+    tx_map = {row.account_id: row.n for row in tx_counts}
+    imp_map = {row.account_id: row.n for row in imp_counts}
+
     accounts = db.query(Account).filter(Account.user_id == user.id).all()
-    result = []
-    for acct in accounts:
-        out = AccountOut(
+    return [
+        AccountOut(
             id=acct.id,
             broker=acct.broker,
             account_id=acct.account_id,
             name=acct.name,
             currency=acct.currency,
-            transaction_count=len(acct.transactions),
-            import_count=len(acct.imports),
+            transaction_count=tx_map.get(acct.id, 0),
+            import_count=imp_map.get(acct.id, 0),
         )
-        result.append(out)
-    return result
+        for acct in accounts
+    ]
 
 
 @router.post("/", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
