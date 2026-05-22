@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
@@ -170,7 +169,6 @@ function sentimentIcon(s: string | null) {
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
-  const router = useRouter();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
