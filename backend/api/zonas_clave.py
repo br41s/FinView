@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import func
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
@@ -143,17 +144,23 @@ def get_analysis(ticker: str, db: DbSession, user: CurrentUser):
 
 @router.get("/analysis", response_model=list[ZonasClaveAnalysisOut])
 def list_analyses(db: DbSession, user: CurrentUser):
-    items = (
-        db.query(ZonasClaveWatchlistItem)
+    item_ids_sq = (
+        db.query(ZonasClaveWatchlistItem.id)
         .filter(ZonasClaveWatchlistItem.user_id == user.id)
+        .subquery()
+    )
+    latest_ids_sq = (
+        db.query(func.max(ZonasClaveAnalysis.id))
+        .filter(ZonasClaveAnalysis.watchlist_item_id.in_(item_ids_sq))
+        .group_by(ZonasClaveAnalysis.watchlist_item_id)
+        .subquery()
+    )
+    rows = (
+        db.query(ZonasClaveAnalysis)
+        .filter(ZonasClaveAnalysis.id.in_(latest_ids_sq))
         .all()
     )
-    results = []
-    for item in items:
-        row = _latest_analysis(db, item.id)
-        if row:
-            results.append(_parse_analysis(row))
-    return results
+    return [_parse_analysis(row) for row in rows]
 
 
 # ── Manual trigger ───────────────────────────────────────────────────
