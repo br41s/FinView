@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Play,
   Square,
+  AlertCircle,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -84,9 +85,12 @@ export default function ZonasClavePage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [schedulerRunning, setSchedulerRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   // Initial load
   useEffect(() => {
+    setError(null);
     Promise.all([
       api.zonasClav.watchlist(),
       api.zonasClav.allAnalyses(),
@@ -105,9 +109,12 @@ export default function ZonasClavePage() {
           setSelectedTicker(wl[0].ticker);
         }
       })
-      .catch((e) => console.error("Failed to load Zonas Clave:", e))
+      .catch((e) => {
+        console.error("Failed to load Zonas Clave:", e);
+        setError("No se pudieron cargar las zonas clave.");
+      })
       .finally(() => setLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleRemove(item: ZcWatchlistItem) {
     await api.zonasClav.removeTicker(item.id);
@@ -234,6 +241,16 @@ export default function ZonasClavePage() {
             <span>Cargando análisis...</span>
           </div>
         </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="py-16 text-center space-y-3">
+            <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <Button variant="outline" size="sm" onClick={() => setRetryKey((k) => k + 1)}>
+              Reintentar
+            </Button>
+          </CardContent>
+        </Card>
       ) : watchlist.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">

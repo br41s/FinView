@@ -26,6 +26,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { AppSidebar, type View } from "@/components/app-sidebar";
@@ -53,7 +54,28 @@ import {
   FileText,
   LineChart,
   CalendarRange,
+  AlertCircle,
 } from "lucide-react";
+
+function ErrorState({
+  message,
+  onRetry,
+}: Readonly<{ message: string; onRetry: () => void }>) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+      <div className="rounded-full bg-destructive/10 p-4">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+      </div>
+      <div>
+        <h3 className="text-lg font-medium mb-1">Error al cargar datos</h3>
+        <p className="text-sm text-muted-foreground max-w-md">{message}</p>
+      </div>
+      <Button variant="outline" onClick={onRetry}>
+        Reintentar
+      </Button>
+    </div>
+  );
+}
 
 function DashboardSkeleton() {
   return (
@@ -100,6 +122,7 @@ export default function Home() {
   const [gains, setGains] = useState<CapitalGain[]>([]);
   const [view, setView] = useState<View>("graficas");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
@@ -125,6 +148,7 @@ export default function Home() {
 
   const loadData = useCallback(async (year?: number | null) => {
     setLoading(true);
+    setError(null);
     const y = year ?? undefined;
 
     // Fire-and-forget: warm price cache in background so portfolio/options load fast
@@ -188,6 +212,7 @@ export default function Home() {
       setYearlyComparison(ycData.years);
     } catch (e) {
       console.error("Error loading data:", e);
+      setError("No se pudieron cargar los datos del dashboard. Comprueba tu conexión e inténtalo de nuevo.");
     } finally {
       setLoading(false);
     }
@@ -265,7 +290,15 @@ export default function Home() {
           )}
 
           {/* Loading state */}
-          {view !== "importar" && loading && !stats && <DashboardSkeleton />}
+          {view !== "importar" && loading && <DashboardSkeleton />}
+
+          {/* Error state */}
+          {view !== "importar" && !loading && error && (
+            <ErrorState
+              message={error}
+              onRetry={() => loadData(selectedYear)}
+            />
+          )}
 
           {/* No data state */}
           {view !== "importar" && !loading && !hasData && (

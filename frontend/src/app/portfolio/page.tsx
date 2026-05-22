@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Target,
   Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -136,6 +137,8 @@ function PortfolioContent() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [pricesLoaded, setPricesLoaded] = useState(false);
   const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
   const [details, setDetails] = useState<Map<string, PositionDetail>>(
@@ -154,8 +157,10 @@ function PortfolioContent() {
 
   useEffect(() => {
     async function load() {
+      setError(null);
+
+      // Phase 1: positions + summary without live prices (must succeed)
       try {
-        // Phase 1: instant — positions + summary without external prices
         const [pos, sum] = await Promise.all([
           api.portfolio.positions(true) as Promise<Position[]>,
           api.portfolio.summary(true) as Promise<Summary>,
@@ -163,8 +168,15 @@ function PortfolioContent() {
         setPositions(pos);
         setSummary(sum);
         setLoading(false);
+      } catch (e) {
+        console.error("Failed to load portfolio:", e);
+        setError("No se pudieron cargar los datos de la cartera. Comprueba tu conexión e inténtalo de nuevo.");
+        setLoading(false);
+        return;
+      }
 
-        // Phase 2: fetch live prices in background
+      // Phase 2: live prices (optional — failure leaves prices as "—")
+      try {
         const [posWithPrices, sumWithPrices] = await Promise.all([
           api.portfolio.positions() as Promise<Position[]>,
           api.portfolio.summary() as Promise<Summary>,
@@ -173,12 +185,12 @@ function PortfolioContent() {
         setSummary(sumWithPrices);
         setPricesLoaded(true);
       } catch (e) {
-        console.error("Failed to load portfolio:", e);
-        setLoading(false);
+        console.error("Failed to load live prices:", e);
+        // non-critical — positions already shown without live prices
       }
     }
     load();
-  }, []);
+  }, [retryKey]);
 
   const handleExpand = useCallback(
     async (isin: string) => {
@@ -208,6 +220,23 @@ function PortfolioContent() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-6">
         <LoadingDots text="Cargando cartera" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center gap-4">
+        <div className="rounded-full bg-destructive/10 p-4">
+          <AlertCircle className="h-8 w-8 text-destructive" />
+        </div>
+        <div>
+          <h3 className="text-lg font-medium mb-1">Error al cargar datos</h3>
+          <p className="text-sm text-muted-foreground max-w-md">{error}</p>
+        </div>
+        <Button variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
+          Reintentar
+        </Button>
       </div>
     );
   }
