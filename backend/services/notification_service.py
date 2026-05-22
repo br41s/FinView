@@ -1,9 +1,12 @@
-"""Notification service — ntfy.sh push + email digest.
+"""Notification service — ntfy.sh push + email digest + Telegram.
 
-Ported from OptionsAI — simplified to ntfy (iPhone push) + email.
-Telegram can be added later.
+Channels:
+- ntfy.sh  → iPhone/Android push (always available if topic configured)
+- Email    → Gmail SMTP digest
+- Telegram → Bot API text messages (premium spikes + HIGH alerts)
 """
 
+import json
 import logging
 import smtplib
 import urllib.parse
@@ -65,6 +68,55 @@ def send_email(subject: str, html_body: str) -> bool:
         return False
 
 
+def send_telegram(text: str) -> bool:
+    """Send a Markdown-formatted message via Telegram Bot API.
+
+    Uses only stdlib urllib — no python-telegram-bot dependency needed.
+    Returns True on success, False if unconfigured or on error.
+    """
+    token = settings.telegram_bot_token
+    chat_id = settings.telegram_chat_id
+    if not token or not chat_id:
+        return False
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = json.dumps({
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+    except Exception:
+        logger.exception("Telegram send failed")
+        return False
+
+
+def notify_spike_telegram(spike_alerts: list[dict]) -> None:
+    """Send premium spike alerts to Telegram.
+
+    Each spike gets its own message to keep them actionable and scannable.
+    Silently skips if Telegram is not configured.
+    """
+    for alert in spike_alerts:
+        ticker = alert["ticker"]
+        msg = alert["message"]
+        # Structured Markdown message
+        text = (
+            f"⚡ *PREMIUM SPIKE DETECTADO*\n"
+            f"*{ticker}*\n"
+            f"`{msg}`"
+        )
+        send_telegram(text)
+
+
 def notify_alerts(alerts: list[dict]) -> None:
     """Send aggregated alert notifications through configured channels."""
     if not alerts:
@@ -86,6 +138,13 @@ def notify_alerts(alerts: list[dict]) -> None:
         send_ntfy(title, body, priority="high", tags="warning")
     else:
         send_ntfy(title, body, priority="default", tags="chart_with_upwards_trend")
+
+    # Telegram — HIGH alerts only (avoid noise)
+    if high:
+        high_lines = "\n".join(
+            f"🔴 *{a['ticker']}* — {a['type']}\n`{a['message']}`" for a in high
+        )
+        send_telegram(f"🚨 *{len(high)} alertas HIGH*\n\n{high_lines}")
 
     # Email digest
     html_rows = "".join(

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     notify_email_password: str = ""
     options_monitor_interval_minutes: int = 15
 
+    # Telegram notifications (optional)
+    telegram_bot_token: str = ""  # from @BotFather
+    telegram_chat_id: str = ""    # personal chat or group ID
+
     # Rate limiting (per-IP, see backend/services/rate_limit.py for IP extraction)
     rate_limit_login: str = "5/minute"
     rate_limit_register: str = "3/minute"

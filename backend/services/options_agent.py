@@ -26,10 +26,12 @@ from backend.models import (
     UnusualActivity,
     WatchlistItem,
 )
+from backend.services.backtest_service import evaluate_pending, record_signal
 from backend.services.greeks_calculator import enrich_options_with_greeks
-from backend.services.notification_service import notify_alerts
+from backend.services.notification_service import notify_alerts, notify_spike_telegram
 from backend.services.options_analyzer import analyze_ticker
 from backend.services.options_scraper import fetch_options
+from backend.services.premium_spike import detect_spikes
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,12 @@ def run_cycle(user_id: int) -> dict:
             all_unusual.extend(unusual)
             all_sentiments.append(summary["market_sentiment"])
 
+            # Premium spike detection (in-memory EMA baseline, no DB needed)
+            spike_alerts = detect_spikes(user_id, ticker, options_data)
+            if spike_alerts:
+                all_alerts.extend(spike_alerts)
+                logger.info("%d premium spike(s) detected for %s", len(spike_alerts), ticker)
+
             # Phase 4: Store snapshot
             snapshot = OptionsSnapshot(
                 user_id=user_id,
@@ -117,6 +125,7 @@ def run_cycle(user_id: int) -> dict:
             db.add(snapshot)
             snapshots_saved += 1
 
+            # Record backtest signals for HIGH/MEDIUM alerts
             for alert in alerts:
                 db.add(OptionsAlert(
                     user_id=user_id,
@@ -125,6 +134,15 @@ def run_cycle(user_id: int) -> dict:
                     message=alert["message"],
                     severity=alert["severity"],
                 ))
+                if alert.get("severity") in ("HIGH", "MEDIUM"):
+                    record_signal(
+                        db,
+                        user_id=user_id,
+                        ticker=alert["ticker"],
+                        alert_type=alert["type"],
+                        message=alert["message"],
+                        current_price=float(summary["current_price"]),
+                    )
 
             for ua in unusual:
                 db.add(UnusualActivity(
@@ -139,6 +157,12 @@ def run_cycle(user_id: int) -> dict:
                     implied_volatility=ua.get("implied_volatility"),
                     last_price=ua.get("last_price"),
                 ))
+
+        # Evaluate pending backtest signals from previous cycles
+        try:
+            evaluate_pending(db, user_id)
+        except Exception:
+            logger.exception("Backtest evaluation failed — non-fatal")
 
         # Phase 5: Optional Claude AI analysis (included in timing)
         claude_analysis = None
@@ -162,11 +186,17 @@ def run_cycle(user_id: int) -> dict:
         db.commit()
 
         # Phase 6: Notify
+        spike_alerts = [a for a in all_alerts if a.get("type") == "PREMIUM_SPIKE"]
         if all_alerts:
             try:
                 notify_alerts(all_alerts)
             except Exception:
                 logger.exception("Notification failed")
+        if spike_alerts:
+            try:
+                notify_spike_telegram(spike_alerts)
+            except Exception:
+                logger.exception("Telegram spike notification failed")
 
         return {
             "status": "ok",
@@ -187,34 +217,102 @@ def run_cycle(user_id: int) -> dict:
         db.close()
 
 
+_CLAUDE_SYSTEM = """\
+Eres VolatilityEdge, un analista cuantitativo senior especializado en opciones financieras. \
+Combinas análisis de Greeks, detección de flujo institucional (Smart Money) y lectura de IV/HV \
+para identificar oportunidades accionables en el mercado de derivados.
+
+REGLAS ESTRICTAS:
+- Responde SIEMPRE en español.
+- Usa el formato de secciones exactamente como se indica (## 1. ... ## 7. ...).
+- Máximo 750 palabras en total.
+- Sé concreto: usa los datos proporcionados, no inventes cifras.
+- La sección ## 6. Contexto MEFF solo aparece si hay tickers terminados en .MC.
+- NUNCA des recomendaciones de compra/venta directas. Usa lenguaje analítico: \
+  "sugiere", "apunta a", "podría indicar", "merece seguimiento".
+- Termina SIEMPRE con ## 7. Gestión de Riesgo.
+"""
+
+_CLAUDE_USER_TEMPLATE = """\
+=== CICLO DE ANÁLISIS DE OPCIONES ===
+Fecha/Hora: {timestamp}
+Watchlist: {tickers}
+Total alertas: {n_alerts} | Severidad HIGH: {n_high} | Actividad inusual: {n_unusual}
+
+=== ALERTAS (ordenadas por severidad) ===
+{alerts_json}
+
+=== ACTIVIDAD INUSUAL ===
+{unusual_json}
+
+---
+Genera el informe estructurado con EXACTAMENTE estas 7 secciones:
+
+## 1. Resumen Ejecutivo
+[Sentimiento global del ciclo: alcista / bajista / neutral / mixto. \
+Una frase por cada mercado con actividad relevante.]
+
+## 2. Smart Money
+[Flujos institucionales detectados. Volumen/OI fuera de lo normal. \
+¿Compra de protección o apuesta direccional? Mínimo 2 observaciones concretas.]
+
+## 3. Señales Greeks
+[IV implícita vs HV histórica: ¿cara o barata? Skew put/call notable. \
+Delta y Gamma de posiciones con mayor actividad. Theta decay relevant si hay posiciones cortas.]
+
+## 4. Top Picks
+[Máximo 3 tickers. Para cada uno: nombre, tesis en 1-2 frases, nivel de riesgo (ALTO/MEDIO/BAJO).]
+
+## 5. Alertas Clave
+[Lista las alertas HIGH primero, luego MEDIUM. Para cada una: ticker — tipo — razonamiento breve.]
+
+## 6. Contexto MEFF
+[Solo si hay tickers .MC. Diferenciales bid/ask, liquidez, ciclos de vencimiento MEFF vs CBOE.]
+
+## 7. Gestión de Riesgo
+[Stop-loss conceptual por tipo de estrategia. Tamaño de posición sugerido según volatilidad. \
+Horizonte temporal óptimo según los vencimientos detectados.]
+"""
+
+
 def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[dict]) -> str | None:
-    """Run Claude AI narrative analysis on cycle results. Returns None on failure."""
+    """Run structured Claude AI analysis on cycle results. Returns None on failure."""
     try:
         client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-        context = (
-            f"=== OPTIONS ANALYSIS CYCLE ===\n"
-            f"Tickers: {', '.join(tickers)}\n"
-            f"Timestamp: {datetime.now().isoformat()}\n\n"
-            f"=== ALERTS ({len(alerts)}) ===\n"
-            f"{json.dumps(alerts, indent=2)}\n\n"
-            f"=== UNUSUAL ACTIVITY ({len(unusual)}) ===\n"
-            f"{json.dumps(unusual, indent=2)}\n\n"
-            f"Analiza estos datos. Enfócate en Greeks, IV vs HV, Smart Money y oportunidades accionables."
+        n_high = sum(1 for a in alerts if a.get("severity") == "HIGH")
+        has_meff = any(t.endswith(".MC") for t in tickers)
+
+        # Sort alerts: HIGH first, then MEDIUM
+        sorted_alerts = sorted(alerts, key=lambda a: (0 if a.get("severity") == "HIGH" else 1))
+
+        # Trim payload to avoid token bloat (keep top 20 alerts, top 10 unusual)
+        alerts_payload = sorted_alerts[:20]
+        unusual_payload = unusual[:10]
+
+        user_content = _CLAUDE_USER_TEMPLATE.format(
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            tickers=", ".join(tickers),
+            n_alerts=len(alerts),
+            n_high=n_high,
+            n_unusual=len(unusual),
+            alerts_json=json.dumps(alerts_payload, indent=2, ensure_ascii=False),
+            unusual_json=json.dumps(unusual_payload, indent=2, ensure_ascii=False),
         )
+
+        # Remove MEFF section instruction when no Spanish tickers present
+        if not has_meff:
+            user_content = user_content.replace(
+                "\n## 6. Contexto MEFF\n"
+                "[Solo si hay tickers .MC. Diferenciales bid/ask, liquidez, ciclos de vencimiento MEFF vs CBOE.]\n",
+                "\n## 6. Contexto MEFF\n[No hay tickers MEFF en este ciclo — sección omitida.]\n",
+            )
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=(
-                "Eres un experto en análisis de opciones financieras. "
-                "Da un resumen conciso con: "
-                "1) Resumen ejecutivo 2) Top picks 3) Greeks insights "
-                "4) Alertas clave 5) Smart money 6) Interpretación global. "
-                "Usa emojis. Máximo 600 palabras. "
-                "NUNCA des consejos de inversión directos."
-            ),
-            messages=[{"role": "user", "content": context}],
+            max_tokens=1500,
+            system=_CLAUDE_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
         )
         return response.content[0].text
     except Exception:
