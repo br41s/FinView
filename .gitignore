@@ -30,3 +30,4 @@ test_api.py
 .gstack/
 .claude/
 **/tsconfig.tsbuildinfo
+.mcp.json

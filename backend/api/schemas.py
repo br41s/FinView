@@ -316,6 +316,45 @@ class AgentStatusOut(BaseModel):
     total_cycles: int = 0
 
 
+class BacktestSignalOut(BaseModel):
+    id: int
+    recorded_at: datetime
+    ticker: str
+    signal_type: str
+    direction: str
+    price_at_signal: Decimal
+    alert_message: str
+    price_at_1d: Decimal | None
+    price_at_3d: Decimal | None
+    price_at_7d: Decimal | None
+    outcome_1d: str | None
+    outcome_3d: str | None
+    outcome_7d: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class BacktestHorizonStats(BaseModel):
+    evaluated: int
+    correct: int
+    incorrect: int
+    neutral: int
+    accuracy_pct: float | None
+
+
+class BacktestSignalTypeStats(BaseModel):
+    correct: int
+    total: int
+    accuracy_pct: float | None
+
+
+class BacktestStatsOut(BaseModel):
+    total: int
+    evaluated: int
+    by_horizon: dict[str, BacktestHorizonStats]
+    by_signal_type: dict[str, BacktestSignalTypeStats]
+
+
 # ── Zonas Clave Schemas ──────────────────────────────────────────────
 
 
