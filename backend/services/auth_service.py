@@ -3,7 +3,8 @@
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -28,7 +29,7 @@ def decode_access_token(token: str) -> dict | None:
     """Decode and validate a JWT. Returns payload dict or None."""
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+    except PyJWTError:
         return None
 
 
