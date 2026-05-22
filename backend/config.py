@@ -1,18 +1,27 @@
-from pydantic_settings import BaseSettings
 from pathlib import Path
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
+
+INSECURE_DEFAULT_SECRET = "change-me-in-production"  # nosec: sentinel, not a real secret
+PRODUCTION_LIKE_ENVS = {"staging", "production", "prod"}
 
 
 class Settings(BaseSettings):
+    # Deployment environment: "local", "dev", "test", "staging", "production".
+    # Production-like environments enforce secret validation at startup.
+    env: str = "local"
+
     database_url: str = f"sqlite:///{Path(__file__).parent.parent / 'finview.db'}"
     data_dir: Path = Path(__file__).parent.parent / "data"
 
     # Auth / JWT
-    secret_key: str = "change-me-in-production"
+    secret_key: str = INSECURE_DEFAULT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 90  # 90 days
 
     # NextAuth shared secret (must match AUTH_SECRET on frontend)
-    auth_secret: str = "change-me-in-production"
+    auth_secret: str = INSECURE_DEFAULT_SECRET
 
     # Stripe
     stripe_secret_key: str = ""
@@ -29,7 +38,31 @@ class Settings(BaseSettings):
     notify_email_password: str = ""
     options_monitor_interval_minutes: int = 15
 
+    # Rate limiting (per-IP, see backend/services/rate_limit.py for IP extraction)
+    rate_limit_login: str = "5/minute"
+    rate_limit_register: str = "3/minute"
+
     model_config = {"env_prefix": "FINVIEW_"}
+
+    @model_validator(mode="after")
+    def _enforce_production_secrets(self) -> "Settings":
+        """Block startup if a production-like env runs with insecure/missing secrets."""
+        if self.env.lower() not in PRODUCTION_LIKE_ENVS:
+            return self
+
+        offenders = []
+        for field in ("secret_key", "auth_secret"):
+            value = getattr(self, field)
+            if not value or value == INSECURE_DEFAULT_SECRET:
+                offenders.append(f"FINVIEW_{field.upper()}")
+
+        if offenders:
+            raise RuntimeError(
+                f"FINVIEW_ENV={self.env!r} requires secure secrets but the following are "
+                f"missing or still set to the insecure default: {', '.join(offenders)}. "
+                "Set them via environment variables before starting the app."
+            )
+        return self
 
 
 settings = Settings()

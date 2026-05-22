@@ -16,6 +16,7 @@ from backend.models import (
     TaxLot,
     Transaction,
     TransactionType,
+    User,
 )
 from backend.services.fifo_engine import recalculate_cross_broker_fifo
 
@@ -28,6 +29,14 @@ def db():
     session = Session()
     yield session
     session.close()
+
+
+@pytest.fixture
+def user_id(db) -> int:
+    user = User(email="test@example.com", name="Test", password_hash="x")
+    db.add(user)
+    db.flush()
+    return user.id
 
 
 # ---------------------------------------------------------------------------
@@ -127,14 +136,14 @@ def _make_broker_lot(db, acct: Account, isin: str, buy_date: date, sell_date: da
 class TestSingleBroker:
     """When all trades are on one broker, no cross-broker lots are created."""
 
-    def test_single_broker_no_lots(self, db):
+    def test_single_broker_no_lots(self, db, user_id):
         acct = _make_account(db, Broker.TR.value)
         _make_buy(db, acct, "US0378331005", date(2023, 3, 1), Decimal("10"), Decimal("150"))
         _make_sell(db, acct, "US0378331005", date(2024, 6, 1), Decimal("10"), Decimal("180"))
         _make_broker_lot(db, acct, "US0378331005", date(2023, 3, 1), date(2024, 6, 1),
                          Decimal("10"), Decimal("1500"), Decimal("1800"))
 
-        result = recalculate_cross_broker_fifo(db, 2024)
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
 
         assert result["lots_created"] == 0
         assert result["adjustments"] == 0
@@ -145,7 +154,7 @@ class TestSingleBroker:
 class TestMultiBrokerSameFIFO:
     """When cross-broker FIFO matches broker reports, adjustment = 0."""
 
-    def test_two_brokers_same_result(self, db):
+    def test_two_brokers_same_result(self, db, user_id):
         """Buy at TR (oldest), sell at TR → FIFO picks TR buy → same as broker."""
         tr_acct = _make_account(db, Broker.TR.value)
         dg_acct = _make_account(db, Broker.DEGIRO.value)
@@ -164,7 +173,7 @@ class TestMultiBrokerSameFIFO:
         _make_broker_lot(db, tr_acct, "US0378331005", date(2023, 1, 15), date(2024, 3, 1),
                          Decimal("10"), Decimal("1000"), Decimal("1500"))
 
-        result = recalculate_cross_broker_fifo(db, 2024)
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
 
         # FIFO should also pick TR buy (oldest) → same result → no adjustment
         assert result["isins_analyzed"] == 1
@@ -180,7 +189,7 @@ class TestMultiBrokerSameFIFO:
 class TestMultiBrokerDifferentFIFO:
     """When cross-broker FIFO differs from broker reports → adjustment created."""
 
-    def test_older_buy_at_different_broker(self, db):
+    def test_older_buy_at_different_broker(self, db, user_id):
         """Buy at DG (cheaper, older), sell at TR → broker says one thing, FIFO says another."""
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
@@ -199,7 +208,7 @@ class TestMultiBrokerDifferentFIFO:
         _make_broker_lot(db, tr_acct, "DE000BASF111", date(2023, 8, 1), date(2024, 5, 15),
                          Decimal("20"), Decimal("1400"), Decimal("1600"))
 
-        result = recalculate_cross_broker_fifo(db, 2024)
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
 
         # FIFO should pick DG buy (older, @50) → cost=1000, proceeds=1600, pl=600
         assert result["lots_created"] == 1
@@ -221,7 +230,7 @@ class TestMultiBrokerDifferentFIFO:
 class TestPartialLotConsumption:
     """FIFO partially consumes a buy lot across multiple sells."""
 
-    def test_partial_consumption(self, db):
+    def test_partial_consumption(self, db, user_id):
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
 
@@ -243,7 +252,7 @@ class TestPartialLotConsumption:
         _make_broker_lot(db, dg_acct, "US0378331005", date(2024, 1, 1), date(2024, 6, 1),
                          Decimal("10"), Decimal("500"), Decimal("900"))
 
-        result = recalculate_cross_broker_fifo(db, 2024)
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
 
         # FIFO: DG buy @50 is oldest → first 10 for TR sell, next 10 for DG sell
         # TR sell: cost=500, proceeds=1000, pl=500 (broker said 200)
@@ -267,7 +276,7 @@ class TestPartialLotConsumption:
 class TestHoldingPeriod:
     """Verify holding period and casilla assignment."""
 
-    def test_less_than_one_year(self, db):
+    def test_less_than_one_year(self, db, user_id):
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
 
@@ -279,12 +288,12 @@ class TestHoldingPeriod:
         _make_broker_lot(db, tr_acct, "US12345", date(2024, 3, 15), date(2024, 6, 15),
                          Decimal("5"), Decimal("550"), Decimal("600"))
 
-        recalculate_cross_broker_fifo(db, 2024)
+        recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         lot = db.query(CrossBrokerLot).first()
         assert lot.holding_period == "<1y"
         assert lot.casilla == 332  # gain
 
-    def test_more_than_one_year(self, db):
+    def test_more_than_one_year(self, db, user_id):
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
 
@@ -295,11 +304,11 @@ class TestHoldingPeriod:
         _make_broker_lot(db, tr_acct, "US12345", date(2023, 6, 1), date(2024, 6, 1),
                          Decimal("5"), Decimal("550"), Decimal("600"))
 
-        recalculate_cross_broker_fifo(db, 2024)
+        recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         lot = db.query(CrossBrokerLot).first()
         assert lot.holding_period == ">=1y"
 
-    def test_loss_goes_to_casilla_337(self, db):
+    def test_loss_goes_to_casilla_337(self, db, user_id):
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
 
@@ -310,7 +319,7 @@ class TestHoldingPeriod:
         _make_broker_lot(db, tr_acct, "US12345", date(2023, 6, 1), date(2024, 6, 1),
                          Decimal("5"), Decimal("550"), Decimal("500"))
 
-        recalculate_cross_broker_fifo(db, 2024)
+        recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         lot = db.query(CrossBrokerLot).first()
         assert lot.casilla == 337  # loss
 
@@ -318,7 +327,7 @@ class TestHoldingPeriod:
 class TestCleanRecalculation:
     """Verify that recalculation clears old data before creating new."""
 
-    def test_recalculate_clears_previous(self, db):
+    def test_recalculate_clears_previous(self, db, user_id):
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
 
@@ -330,24 +339,24 @@ class TestCleanRecalculation:
                          Decimal("10"), Decimal("700"), Decimal("800"))
 
         # First run
-        recalculate_cross_broker_fifo(db, 2024)
+        recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         assert db.query(CrossBrokerLot).count() == 1
 
         # Second run should clean and recreate
-        recalculate_cross_broker_fifo(db, 2024)
+        recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         assert db.query(CrossBrokerLot).count() == 1  # not 2
 
 
 class TestNoSells:
     """Year with no sells should produce nothing."""
 
-    def test_no_sells_no_lots(self, db):
+    def test_no_sells_no_lots(self, db, user_id):
         dg_acct = _make_account(db, Broker.DEGIRO.value)
         tr_acct = _make_account(db, Broker.TR.value)
 
         _make_buy(db, dg_acct, "US12345", date(2023, 1, 1), Decimal("10"), Decimal("50"))
         _make_buy(db, tr_acct, "US12345", date(2023, 6, 1), Decimal("10"), Decimal("60"))
 
-        result = recalculate_cross_broker_fifo(db, 2024)
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         assert result["lots_created"] == 0
         assert result["adjustments"] == 0

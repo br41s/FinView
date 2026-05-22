@@ -2,11 +2,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
+from backend.config import settings
 from backend.database import DbSession
 from backend.models import User
 from backend.services.auth_service import (
@@ -16,6 +17,7 @@ from backend.services.auth_service import (
     get_user_by_email,
     verify_password,
 )
+from backend.services.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -99,8 +101,9 @@ def _user_dict(user: User) -> dict:
     }
 
 
-@router.post("/register", response_model=AuthResponse, responses={400: {"description": "Email already registered or weak password"}})
-def register(body: RegisterRequest, db: DbSession):
+@router.post("/register", response_model=AuthResponse, responses={400: {"description": "Email already registered or weak password"}, 429: {"description": "Too many requests"}})
+@limiter.limit(settings.rate_limit_register)
+def register(request: Request, body: RegisterRequest, db: DbSession):
     if get_user_by_email(db, body.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     if len(body.password) < 8:
@@ -110,8 +113,9 @@ def register(body: RegisterRequest, db: DbSession):
     return {"user": _user_dict(user), "token": token}
 
 
-@router.post("/login", response_model=AuthResponse, responses={401: {"description": "Invalid credentials"}, 403: {"description": "Account disabled"}})
-def login(body: LoginRequest, db: DbSession):
+@router.post("/login", response_model=AuthResponse, responses={401: {"description": "Invalid credentials"}, 403: {"description": "Account disabled"}, 429: {"description": "Too many requests"}})
+@limiter.limit(settings.rate_limit_login)
+def login(request: Request, body: LoginRequest, db: DbSession):
     user = get_user_by_email(db, body.email)
     if not user or not user.password_hash:
         raise HTTPException(status_code=401, detail="Invalid credentials")

@@ -374,7 +374,7 @@ def _store_capital_gains_as_lots(
 
 
 def _store_casillas(
-    db: Session, casillas: list[ParsedCasilla], fiscal_year: int, broker: Broker, user_id: int | None = None
+    db: Session, casillas: list[ParsedCasilla], fiscal_year: int, broker: Broker, user_id: int
 ) -> list[TaxResult]:
     results = []
     for c in casillas:
@@ -386,7 +386,7 @@ def _store_casillas(
             description=c.description,
             amount_eur=c.amount_eur,
             tr_reference_amount=c.amount_eur,
-            user_id=user_id or 1,
+            user_id=user_id,
         )
         db.add(tr)
         results.append(tr)
@@ -664,7 +664,7 @@ def _create_dg_tax_lots(
 
 
 def _compute_broker_casillas(
-    db: Session, broker: Broker, fiscal_year: int, account_id: int, user_id: int | None = None
+    db: Session, broker: Broker, fiscal_year: int, account_id: int, user_id: int
 ) -> list[TaxResult]:
     """Compute Modelo 100 casilla values from Transaction/TaxLot data.
 
@@ -725,7 +725,7 @@ def _compute_broker_casillas(
             casilla=casilla,
             description=desc,
             amount_eur=amount,
-            user_id=user_id or 1,
+            user_id=user_id,
         )
         db.add(tr)
         results.append(tr)

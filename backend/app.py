@@ -4,6 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from backend.api.auth import router as auth_router
 from backend.api.billing import router as billing_router
@@ -19,6 +22,7 @@ from backend.config import settings
 from backend.database import engine
 from backend.models import Base
 from backend.services.options_scheduler import shutdown_scheduler
+from backend.services.rate_limit import limiter
 from backend.services.zonas_clave_scheduler import shutdown_scheduler as shutdown_zc_scheduler
 
 # Create tables on startup
@@ -52,6 +56,10 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

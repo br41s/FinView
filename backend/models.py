@@ -181,7 +181,7 @@ class TaxResult(Base):
     __tablename__ = "tax_results"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, default=1)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
     broker: Mapped[str | None] = mapped_column(Enum(Broker))
     modelo: Mapped[int] = mapped_column(Integer, nullable=False)  # 100 or 714
@@ -235,7 +235,7 @@ class FIFOAdjustment(Base):
     __tablename__ = "fifo_adjustments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, default=1)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
     isin: Mapped[str] = mapped_column(String(12), nullable=False)
     name: Mapped[str] = mapped_column(String(200), default="")
