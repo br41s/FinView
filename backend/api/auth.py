@@ -5,7 +5,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.database import DbSession

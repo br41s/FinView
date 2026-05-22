@@ -9,7 +9,7 @@ Core tables:
 - TaxResult: computed fiscal casillas per year
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum as PyEnum
 
@@ -75,7 +75,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(100), default="")
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Stripe / subscription
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
@@ -98,7 +98,7 @@ class Account(Base):
     account_id: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(100), default="")
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User | None"] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
@@ -261,7 +261,7 @@ class ImportRecord(Base):
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     broker: Mapped[str] = mapped_column(Enum(Broker), nullable=False)
     fiscal_year: Mapped[int | None] = mapped_column(Integer)
-    imported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     record_count: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -330,7 +330,7 @@ class DataIssue(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     import_id: Mapped[int | None] = mapped_column(ForeignKey("import_records.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     issue_type: Mapped[str] = mapped_column(String(50), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)  # info, warning, error
@@ -388,7 +388,7 @@ class WatchlistItem(Base):
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(200), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship()
 
@@ -404,7 +404,7 @@ class OptionsSnapshot(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     current_price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
 
@@ -437,7 +437,7 @@ class OptionsAlert(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     alert_type: Mapped[str] = mapped_column(String(50), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
@@ -456,7 +456,7 @@ class UnusualActivity(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     option_type: Mapped[str] = mapped_column(String(4), nullable=False)  # CALL / PUT
     strike: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
@@ -475,7 +475,7 @@ class OptionsAgentLog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     cycle_number: Mapped[int] = mapped_column(Integer, nullable=False)
     tickers_analyzed: Mapped[int] = mapped_column(Integer, default=0)
     alerts_generated: Mapped[int] = mapped_column(Integer, default=0)
@@ -493,7 +493,7 @@ class OptionsHiddenPortfolioTicker(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (UniqueConstraint("user_id", "ticker"),)
 
@@ -510,7 +510,7 @@ class ZonasClaveWatchlistItem(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(200), default="")
-    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship()
     analyses: Mapped[list["ZonasClaveAnalysis"]] = relationship(
@@ -529,7 +529,7 @@ class ZonasClaveAnalysis(Base):
     watchlist_item_id: Mapped[int] = mapped_column(
         ForeignKey("zonas_clave_watchlist.id"), nullable=False
     )
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     zones: Mapped[str | None] = mapped_column(Text)           # JSON list of zone dicts
     trend_bias_bullish_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
     trend_bias_bearish_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))

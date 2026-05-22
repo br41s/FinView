@@ -87,6 +87,11 @@ FinView/
 
 Base URL: `http://localhost:8000/api`
 
+### Auth
+- `POST /auth/register` — Registro (límite: 3 req/min por IP)
+- `POST /auth/login` — Login (límite: 5 req/min por IP)
+- `GET /auth/me` — Usuario autenticado actual
+
 ### Imports
 - `POST /imports/tr` — Trade Republic PDF o CSV (dispatch por extensión)
 - `POST /imports/degiro` — DEGIRO PDF  
@@ -125,3 +130,5 @@ pytest tests/ backend/tests/ -v
 Ver [docs/deployment.md](docs/deployment.md) para el esquema completo (Vercel + Cloud Run + Neon + Cloud Build), env vars requeridas, y cómo actualizar secretos.
 
 **Flujo:** commit local → push a `main` → Vercel redesplaza frontend automáticamente; Cloud Build redesplaza `finview-api` en Cloud Run cuando el push toca `backend/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`. Neon es la base de datos compartida y no se despliega.
+
+En producción, `FINVIEW_ENV=production` activa la validación de secretos en startup y los endpoints de auth están limitados por IP (ver [docs/deployment.md](docs/deployment.md)).

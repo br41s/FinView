@@ -11,7 +11,6 @@ from sqlalchemy import case, func
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
     AggregatedCasillaOut,
-    CasillaOut,
     CrossBrokerLotOut,
     CrossValidationResult,
     CrossValidationRow,
