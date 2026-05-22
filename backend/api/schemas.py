@@ -298,6 +298,20 @@ class UnusualActivityOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class AskIn(BaseModel):
+    question: str
+    history: list[ChatMessage] = []
+
+
+class AskOut(BaseModel):
+    answer: str
+
+
 class AgentCycleResult(BaseModel):
     status: str
     cycle: int | None = None

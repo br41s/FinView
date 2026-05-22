@@ -494,6 +494,16 @@ export const api = {
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json();
     },
+    ask: async (question: string, history: { role: string; content: string }[] = []) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ question, history }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<{ answer: string }>;
+    },
   },
 
   // Zonas Clave

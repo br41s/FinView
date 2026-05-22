@@ -13,6 +13,8 @@ from backend.api.auth import CurrentUser
 from backend.api.schemas import (
     AgentCycleResult,
     AgentStatusOut,
+    AskIn,
+    AskOut,
     BacktestSignalOut,
     BacktestStatsOut,
     OptionsAlertOut,
@@ -506,3 +508,116 @@ def test_telegram(user: CurrentUser):
             detail="Telegram delivery failed — check bot token and chat ID.",
         )
     return {"sent": True, "chat_id": settings.telegram_chat_id}
+
+
+# ── Agent chat ───────────────────────────────────────────────────────
+
+
+@router.post("/ask", response_model=AskOut)
+def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
+    """Stateless Q&A with the options agent.
+
+    Provides the model with: last agent cycle log + latest snapshots (top 8 by
+    timestamp) + unacknowledged HIGH alerts. History is passed in by the client
+    so the endpoint itself stays stateless.
+    """
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Anthropic SDK not installed.",
+        )
+
+    if not settings.anthropic_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="FINVIEW_ANTHROPIC_API_KEY not configured.",
+        )
+
+    if not body.question.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Empty question.")
+
+    # ── Build context ──────────────────────────────────────────────
+    ctx_parts: list[str] = []
+
+    # Last agent cycle log
+    last_log = (
+        db.query(OptionsAgentLog)
+        .filter(OptionsAgentLog.user_id == user.id)
+        .order_by(OptionsAgentLog.timestamp.desc())
+        .first()
+    )
+    if last_log:
+        log_data = last_log.result_json or {}
+        ctx_parts.append(
+            f"=== Último ciclo del agente ({last_log.timestamp.strftime('%Y-%m-%d %H:%M UTC')}) ===\n"
+            + json.dumps(log_data, ensure_ascii=False, indent=2)[:3000]
+        )
+
+    # Latest snapshots (8 most recent, one per ticker)
+    snapshots = (
+        db.query(OptionsSnapshot)
+        .filter(OptionsSnapshot.user_id == user.id)
+        .order_by(OptionsSnapshot.timestamp.desc())
+        .limit(40)
+        .all()
+    )
+    seen_tickers: set[str] = set()
+    snap_lines: list[str] = []
+    for s in snapshots:
+        if s.ticker in seen_tickers or len(seen_tickers) >= 8:
+            continue
+        seen_tickers.add(s.ticker)
+        snap_lines.append(
+            f"{s.ticker}: precio={s.current_price} "
+            f"P/C={s.put_call_ratio_volume} "
+            f"IV_call={s.avg_call_iv} IV_put={s.avg_put_iv} "
+            f"HV={s.historical_volatility} "
+            f"skew={s.iv_skew} sentiment={s.market_sentiment}"
+        )
+    if snap_lines:
+        ctx_parts.append("=== Snapshots recientes ===\n" + "\n".join(snap_lines))
+
+    # Unacknowledged HIGH alerts
+    high_alerts = (
+        db.query(OptionsAlert)
+        .filter(
+            OptionsAlert.user_id == user.id,
+            OptionsAlert.severity == "HIGH",
+            OptionsAlert.acknowledged.is_(False),
+        )
+        .order_by(OptionsAlert.timestamp.desc())
+        .limit(10)
+        .all()
+    )
+    if high_alerts:
+        alert_lines = [f"[{a.ticker}] {a.alert_type}: {a.message}" for a in high_alerts]
+        ctx_parts.append("=== Alertas HIGH sin confirmar ===\n" + "\n".join(alert_lines))
+
+    system_prompt = (
+        "Eres el agente de análisis de opciones de FinView. "
+        "Respondes preguntas sobre la cartera de opciones del usuario basándote en los datos "
+        "de mercado proporcionados. Eres conciso, preciso y usas terminología financiera correcta. "
+        "Si no tienes datos suficientes para responder, dilo claramente. "
+        "Responde siempre en el mismo idioma que la pregunta del usuario.\n\n"
+        + "\n\n".join(ctx_parts)
+    )
+
+    # ── Build messages ─────────────────────────────────────────────
+    messages = [
+        {"role": m.role, "content": m.content}
+        for m in body.history
+        if m.role in ("user", "assistant")
+    ]
+    messages.append({"role": "user", "content": body.question.strip()})
+
+    client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=1024,
+        system=system_prompt,
+        messages=messages,
+    )
+    answer = response.content[0].text if response.content else "Sin respuesta."
+    return AskOut(answer=answer)
