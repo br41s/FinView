@@ -151,8 +151,9 @@ export default function ZonasClavePage() {
     setAnalyzing(new Set(tickers));
     try {
       await api.zonasClav.triggerAll();
-      // Re-fetch analyses after a short delay to pick up background results
-      setTimeout(async () => {
+      // Poll every 2s up to 10 attempts; break early when all tickers have results
+      for (let i = 0; i < 10; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         const analysisArr = await api.zonasClav.allAnalyses();
         const map: Record<string, ZcAnalysis> = {};
         for (const a of analysisArr) {
@@ -160,10 +161,11 @@ export default function ZonasClavePage() {
           if (item) map[item.ticker] = a;
         }
         setAnalyses(map);
-        setAnalyzing(new Set());
-      }, 3000);
+        if (tickers.every((t) => map[t])) break;
+      }
     } catch (e) {
       console.error("Refresh all failed:", e);
+    } finally {
       setAnalyzing(new Set());
     }
   }

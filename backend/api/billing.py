@@ -99,6 +99,7 @@ async def stripe_webhook(request: Request):
         result = handle_webhook_event(payload, sig_header)
         return result
     except ValueError:
+        logger.warning("Stripe webhook signature validation failed")
         raise HTTPException(status_code=400, detail="Invalid payload")
     except Exception as e:
         logger.exception("Webhook processing error")
