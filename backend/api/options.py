@@ -423,15 +423,14 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
     )
     if not last_log:
         return LastAnalysisOut()
-    data = last_log.result_json or {}
     return LastAnalysisOut(
         timestamp=last_log.timestamp,
-        cycle=data.get("cycle"),
-        tickers_analyzed=data.get("tickers_analyzed"),
-        alerts=data.get("alerts"),
-        unusual=data.get("unusual"),
-        market_sentiment=data.get("market_sentiment"),
-        claude_analysis=data.get("claude_analysis"),
+        cycle=last_log.cycle_number,
+        tickers_analyzed=last_log.tickers_analyzed,
+        alerts=last_log.alerts_generated,
+        unusual=last_log.unusual_activities,
+        market_sentiment=last_log.market_sentiment,
+        claude_analysis=last_log.claude_analysis,
     )
 
 
