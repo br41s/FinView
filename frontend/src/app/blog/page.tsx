@@ -90,12 +90,12 @@ type Post = {
 
 const POSTS: Post[] = [
   {
-    slug: 'estrategia-dgi',
+    slug: 'dgi',
     tag: 'Estrategia',
-    date: '10 abr 2025',
-    readTime: '5 min',
+    date: '26 may 2026',
+    readTime: '8 min',
     title: 'La estrategia DGI: cómo invertir para vivir de dividendos',
-    excerpt: 'Dividend Growth Investing no es comprar las acciones con mayor rentabilidad por dividendo. Es encontrar empresas que llevan décadas aumentando su pago año tras año, y dejar que el tiempo haga el resto.',
+    excerpt: 'Guía definitiva para invertir en dividendos crecientes: fundamentos, selección de acciones, fiscalidad, riesgos y alternativas para alcanzar la independencia financiera.',
     Image: ImgDgi,
   },
   {
