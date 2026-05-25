@@ -1,0 +1,41 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_BASE_URL: https://openrouter.ai/api
+      ANTHROPIC_AUTH_TOKEN: ${{ secrets.OPENROUTER_API_KEY }}
+      ANTHROPIC_API_KEY: ""
+      ANTHROPIC_MODEL: anthropic/claude-3.7-sonnet
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude review
+        uses: anthropics/claude-code-action@beta
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Review this pull request as a pragmatic senior engineer.
+
+            Focus on:
+            - correctness and regressions
+            - security issues
+            - broken edge cases
+            - maintainability
+            - missing tests only when clearly needed
+
+            Keep feedback concise and actionable.
+            Do not invent problems.
+            If the PR looks good, say so clearly.
