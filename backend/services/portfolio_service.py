@@ -47,13 +47,18 @@ def _load_accounts(db: Session, user_id: int | None) -> dict[int, Account]:
 
 
 def _load_snapshots(
-    db: Session, account_ids: list[int]
+    db: Session, account_ids: list[int], isins: set[str] | None = None
 ) -> tuple[dict[PosKey, PortfolioHolding], set[PosKey], dict[int, date]]:
     """Return (latest_snapshots, all_historical_keys, snap_end_date_by_acct).
 
     The latest fiscal-year snapshot is authoritative for quantity held today.
     snap_end_date is Dec 31 of that year — used to partition transactions into
     pre- vs post-snapshot when reconciling.
+
+    When *isins* is given, the returned ``latest``/``historical`` sets are
+    scoped to those ISINs, but ``max_year`` (hence ``end_dates``) is still
+    computed from the account's *full* snapshot history — the authoritative
+    year depends on all holdings, not just the requested one.
     """
     rows = (
         db.query(PortfolioHolding)
@@ -65,15 +70,20 @@ def _load_snapshots(
         .all()
     )
     max_year: dict[int, int] = {}
-    historical: set[PosKey] = set()
     for h in rows:
-        historical.add((h.account_id, h.isin))
         if h.account_id not in max_year or h.fiscal_year > max_year[h.account_id]:
             max_year[h.account_id] = h.fiscal_year
+
+    def _want(isin: str) -> bool:
+        return isins is None or isin in isins
+
+    historical: set[PosKey] = {
+        (h.account_id, h.isin) for h in rows if _want(h.isin)
+    }
     latest: dict[PosKey, PortfolioHolding] = {
         (h.account_id, h.isin): h
         for h in rows
-        if h.fiscal_year == max_year.get(h.account_id) and h.quantity > 0
+        if _want(h.isin) and h.fiscal_year == max_year.get(h.account_id) and h.quantity > 0
     }
     end_dates = {acct_id: date(fy, 12, 31) for acct_id, fy in max_year.items()}
     return latest, historical, end_dates
@@ -99,18 +109,21 @@ def _build_tx_positions(
     account_ids: list[int],
     accounts: dict[int, Account],
     snap_end_by_acct: dict[int, date],
+    isins: set[str] | None = None,
 ) -> tuple[dict[PosKey, Position], dict[PosKey, Decimal]]:
-    """FIFO aggregate of all BUY/SELL transactions, plus qty-at-snap-date."""
-    txs = (
-        db.query(Transaction)
-        .filter(
-            Transaction.account_id.in_(account_ids),
-            Transaction.type.in_([TransactionType.BUY, TransactionType.SELL]),
-            Transaction.isin.isnot(None),
-        )
-        .order_by(Transaction.trade_date.asc(), Transaction.id.asc())
-        .all()
+    """FIFO aggregate of all BUY/SELL transactions, plus qty-at-snap-date.
+
+    Scoped to *isins* when given (per-ISIN aggregation is independent, so this
+    is a safe narrowing of the query).
+    """
+    q = db.query(Transaction).filter(
+        Transaction.account_id.in_(account_ids),
+        Transaction.type.in_([TransactionType.BUY, TransactionType.SELL]),
+        Transaction.isin.isnot(None),
     )
+    if isins is not None:
+        q = q.filter(Transaction.isin.in_(isins))
+    txs = q.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
     positions: dict[PosKey, Position] = {}
     qty_at_snap: dict[PosKey, Decimal] = {}
     for tx in txs:
@@ -258,6 +271,7 @@ def get_open_positions(
     *,
     skip_prices: bool = False,
     aggregate: bool = True,
+    isins: list[str] | None = None,
 ) -> list[Position]:
     """Compute open positions by aggregating BUY - SELL per ISIN per account.
 
@@ -267,15 +281,21 @@ def get_open_positions(
     When *aggregate* is True (default) positions are collapsed by ISIN so the
     same asset held across multiple brokers/accounts shows as a single row.
     Set to False for callers that need the per-account breakdown.
+    When *isins* is given, computation (and the live-price fetch) is scoped to
+    those ISINs only — used by the per-position detail view to avoid
+    recomputing and re-pricing the entire portfolio.
     """
     accounts = _load_accounts(db, user_id)
     if not accounts:
         return []
     account_ids = list(accounts.keys())
 
-    latest_snapshots, historical_keys, snap_end_by_acct = _load_snapshots(db, account_ids)
+    isin_filter = set(isins) if isins is not None else None
+    latest_snapshots, historical_keys, snap_end_by_acct = _load_snapshots(
+        db, account_ids, isin_filter,
+    )
     tx_positions, tx_qty_at_snap = _build_tx_positions(
-        db, account_ids, accounts, snap_end_by_acct,
+        db, account_ids, accounts, snap_end_by_acct, isin_filter,
     )
     positions = _reconcile(
         latest_snapshots, historical_keys, tx_positions, tx_qty_at_snap, accounts,
@@ -322,7 +342,7 @@ def get_portfolio_summary(db: Session, user_id: int | None = None, *, skip_price
 
 def get_position_detail(db: Session, isin: str, user_id: int | None = None) -> dict | None:
     """Detailed info for a single ISIN across all accounts."""
-    positions = get_open_positions(db, user_id, aggregate=False)
+    positions = get_open_positions(db, user_id, aggregate=False, isins=[isin])
     isin_positions = [p for p in positions if p.isin == isin]
 
     if not isin_positions:

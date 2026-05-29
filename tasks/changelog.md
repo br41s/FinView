@@ -3,6 +3,35 @@
 Running log of changes made during the audit-driven remediation work.
 Source: audit report from 2026-05-22 session.
 
+## Perf Batch 2 — Backend query scoping & DB pool (branch: `claude/nervous-clarke-6ba65c`)
+
+**Status:** Implemented, full backend suite green (119 passed, 35 skipped).
+Source: performance audit from 2026-05-29 session.
+
+### Changes — `backend/services/portfolio_service.py` (#5)
+- `get_position_detail` no longer recomputes the entire portfolio (all
+  transactions + snapshots + a live-price fetch for every holding) just to
+  return one ISIN. `get_open_positions` gained an `isins=[...]` scope:
+  `_build_tx_positions` filters transactions by ISIN in SQL, and
+  `_load_snapshots` narrows `latest`/`historical` to the ISIN while still
+  computing `max_year` (the authoritative snapshot year) from the account's
+  full holding history. `_apply_prices` derives ISINs from the positions, so
+  the live-price fetch is automatically scoped to the single ISIN.
+
+### Changes — `backend/database.py` (#8)
+- Postgres/Neon now uses `pool_size=10`, `max_overflow=20`, `pool_recycle=1800`
+  (was the SQLAlchemy default of 5 + 10). `pool_pre_ping=True` is deliberately
+  kept: Neon autosuspends idle computes, so the per-checkout ping turns a dead
+  connection into a transparent reconnect rather than a request error — the
+  right trade for serverless Postgres. SQLite takes no pool args.
+
+### Verification
+- `pytest backend/tests/` — 119 passed, 35 skipped (the skips need real broker
+  files in `files/`, not in the repo). No new failures.
+- `fifo_engine.py` untouched.
+
+---
+
 ## Perf Batch 1 — Dashboard load latency (branch: `claude/nervous-clarke-6ba65c`)
 
 **Status:** Implemented, frontend `tsc --noEmit` clean. Not yet built (`next build`) or visually verified on localhost.

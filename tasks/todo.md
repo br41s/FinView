@@ -25,13 +25,13 @@ Orden por ROI. No tocar `fifo_engine.py`. Tras cambios de backend: `pytest backe
 
 ### 🟠 Alto — ineficiencias backend
 
-- [ ] **#5 — `get_position_detail` recalcula toda la cartera para un solo ISIN.** [portfolio_service.py:325](backend/services/portfolio_service.py) llama `get_open_positions(aggregate=False)` (carga todas las tx + snapshots + precios en vivo de TODO) para luego filtrar a 1 ISIN. Acotar las queries de snapshot/tx a ese ISIN y pedir solo ese precio.
+- [x] **#5 — `get_position_detail` recalcula toda la cartera para un solo ISIN.** ✅ Hecho ([portfolio_service.py](backend/services/portfolio_service.py)): `get_open_positions` acepta `isins=[...]`; `_build_tx_positions` filtra las transacciones por ISIN (SQL) y `_load_snapshots` acota `latest`/`historical` al ISIN pero computa `max_year` desde el histórico completo de la cuenta (la cuestión del año autoritativo depende de todas las posiciones). `_apply_prices` ya deriva los ISINs de las posiciones → solo pide 1 precio. `get_position_detail` pasa `isins=[isin]`. Suite completa: **119 passed, 35 skipped**.
 
 - [x] **#6 — Cache cliente para charts/fiscal.** ✅ Hecho ([api.ts](frontend/src/lib/api.ts)): todas las lecturas que alimentan el dashboard (`charts.*`, `fiscal` dashboard/casillas/summary/cross-broker/fifo/option-assignments/cross-validation/yearly-comparison, `dividends`, `capital-gains`) pasan por `fetchCached` (TTL 5 min, clave path+año). Invalidación con `invalidateCache()` en los 6 uploads + `deleteImport` + `deleteAllImports` + `resolveIssue`. `transactions()`/`imports()` quedan sin cache (lista de archivos siempre fresca). Mitiga además el síntoma de #3 en cliente (yield cacheado tras 1ª carga).
 
 - [ ] **#7 — Filtros por año rompen el índice.** `year_str(Transaction.trade_date) == str(año)` (p.ej. [charts.py:37](backend/api/charts.py)) envuelve la columna en una función → no usa `ix_tx_type_date`/`ix_tx_isin_date`. Cambiar a rango de fechas (`>= AAAA-01-01 AND < (AAAA+1)-01-01`). Aplica a ~8 endpoints de charts + fiscal.
 
-- [ ] **#8 — Tuning de pool para Neon.** [database.py:15](backend/database.py): sin `pool_size`/`max_overflow` (default 5) y `pool_pre_ping=True` añade un `SELECT 1` por checkout. Con ~16 peticiones concurrentes se puede agotar el pool. Definir tamaños y valorar `pool_recycle` en vez de `pre_ping`.
+- [x] **#8 — Tuning de pool para Neon.** ✅ Hecho ([database.py](backend/database.py)): para Postgres/Neon `pool_size=10`, `max_overflow=20`, `pool_recycle=1800`. Se MANTIENE `pool_pre_ping=True` a propósito: Neon autosuspende el compute en reposo, así que el ping convierte una conexión muerta en una reconexión transparente en vez de un error — el round-trip extra compensa por correctness en Postgres serverless. SQLite no recibe args de pool (rama aparte).
 
 ### 🟡 Medio — diferir hasta tener el rendimiento resuelto
 
