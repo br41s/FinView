@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
+import { clearAuthToken, invalidateCache } from "@/lib/api";
+
 import {
   Sidebar,
   SidebarContent,
@@ -312,7 +314,11 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip={session?.user?.email ?? "Cerrar sesión"}
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => {
+                clearAuthToken();
+                invalidateCache();
+                signOut({ callbackUrl: "/login" });
+              }}
             >
               <LogOut />
               <span className="truncate">
