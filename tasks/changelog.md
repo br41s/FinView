@@ -3,6 +3,43 @@
 Running log of changes made during the audit-driven remediation work.
 Source: audit report from 2026-05-22 session.
 
+## Perf Batch 3 — Drop yfinance from request path + index-friendly year filters (branch: `claude/nervous-clarke-6ba65c`)
+
+**Status:** Implemented, full backend suite green (122 passed, 35 skipped).
+Source: performance audit from 2026-05-29 session.
+
+### Changes — `backend/api/charts.py` (#3)
+- `dividend_yield` no longer calls `fetch_and_cache_prices()` (a synchronous
+  `yf.download()`) in the request path — it now reads `get_cached_prices()`
+  only. The cache is populated out-of-band by `POST /portfolio/warm-prices`
+  and the options agent; ISINs still held are exactly the open positions that
+  warming covers, and fully-sold ISINs have `current_value` 0 regardless of
+  price. Uncached ISINs fall back to the historical transaction price already
+  in `price_map`. Removes the blocking call and the warm-prices race.
+
+### Changes — `backend/services/sql_compat.py` + endpoints (#7)
+- New `year_range(column, fiscal_year)` helper: a half-open date range
+  (`>= Jan 1 AND < next Jan 1`) that leaves the column bare so the date index
+  applies, replacing `year_str(column) == str(year)` (the function wrapper
+  forced a full scan).
+- Replaced **13 filter sites**: `charts.py` (7), `fiscal.py` (2),
+  `transactions.py` (3). `group_by(year_str(...))` / `year_month_str`
+  aggregation keys are unchanged — those are grouping, not filtering.
+
+### Tests — `backend/tests/test_year_range.py` (new)
+- 3 regression tests: exact fiscal-year selection, Jan-1/Dec-31 boundary
+  correctness, and equivalence with the legacy `year_str` comparison across
+  three years. Pins filter semantics against the cross-cutting change.
+
+### Verification
+- `pytest backend/tests/` — 122 passed, 35 skipped.
+- `ruff check` on changed files: clean except one *pre-existing* unused
+  `HTTPException` import in `fiscal.py:7` (untouched line; already noted as
+  deferred in Batch 1). No new lint errors introduced.
+- `fifo_engine.py` untouched.
+
+---
+
 ## Perf Batch 2 — Backend query scoping & DB pool (branch: `claude/nervous-clarke-6ba65c`)
 
 **Status:** Implemented, full backend suite green (119 passed, 35 skipped).

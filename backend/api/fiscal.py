@@ -22,7 +22,7 @@ from backend.api.schemas import (
     YearlyMetrics,
 )
 from backend.database import DbSession
-from backend.services.sql_compat import year_str
+from backend.services.sql_compat import year_range, year_str
 from backend.models import (
     Account,
     Broker,
@@ -127,7 +127,7 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
         .filter(
             Account.user_id == user.id,
             Transaction.type == TransactionType.DIVIDEND.value,
-            year_str(Transaction.trade_date) == str(fiscal_year),
+            year_range(Transaction.trade_date, fiscal_year),
         )
         .one()
     )
@@ -184,7 +184,7 @@ def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = 
     fuente.
     """
     def _with_year(q):
-        return q.filter(year_str(Transaction.trade_date) == str(fiscal_year)) if fiscal_year else q
+        return q.filter(year_range(Transaction.trade_date, fiscal_year)) if fiscal_year else q
 
     total_tx = _with_year(
         db.query(func.count(Transaction.id)).join(Account).filter(Account.user_id == user.id)

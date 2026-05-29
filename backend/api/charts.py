@@ -11,7 +11,7 @@ from sqlalchemy import case, func
 from backend.api.auth import CurrentUser
 from backend.database import DbSession
 from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
-from backend.services.sql_compat import year_str, year_month_str
+from backend.services.sql_compat import year_month_str, year_range, year_str
 
 router = APIRouter(prefix="/charts", tags=["charts"])
 
@@ -34,7 +34,7 @@ def dividends_by_country(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_range(Transaction.trade_date, fiscal_year))
 
     rows = q.group_by("country").order_by(func.sum(Transaction.gross_amount).desc()).all()
 
@@ -66,7 +66,7 @@ def dividends_monthly(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_range(Transaction.trade_date, fiscal_year))
 
     rows = q.group_by("month").order_by("month").all()
 
@@ -101,7 +101,7 @@ def top_dividend_payers(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_range(Transaction.trade_date, fiscal_year))
 
     rows = (
         q.group_by(Transaction.isin)
@@ -146,7 +146,7 @@ def capital_gains_breakdown(
     )
 
     if fiscal_year:
-        q = q.filter(year_str(TaxLot.close_date) == str(fiscal_year))
+        q = q.filter(year_range(TaxLot.close_date, fiscal_year))
 
     rows = q.group_by(TaxLot.isin).order_by(func.sum(TaxLot.realized_pl_eur)).all()
 
@@ -392,7 +392,7 @@ def dividend_yield(
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
 
     if fiscal_year:
-        div_q = div_q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
+        div_q = div_q.filter(year_range(Transaction.trade_date, fiscal_year))
 
     div_rows = div_q.group_by(Transaction.isin).all()
 
@@ -413,7 +413,7 @@ def dividend_yield(
     )
     if fiscal_year:
         div_dates_q = div_dates_q.filter(
-            year_str(Transaction.trade_date) == str(fiscal_year)
+            year_range(Transaction.trade_date, fiscal_year)
         )
     div_dates_rows = div_dates_q.all()
 
@@ -472,15 +472,21 @@ def dividend_yield(
     )
     price_map = _first_per_key(latest_prices_q, "isin", "price")
 
-    # Overlay with live Yahoo Finance prices when available
+    # Overlay with cached Yahoo Finance prices when available. Read-only: the
+    # synchronous yfinance fetch must not run in the request path (it blocked
+    # the dashboard for seconds). The price cache is populated out-of-band by
+    # POST /portfolio/warm-prices and the options agent; ISINs still held are
+    # exactly the open positions that warming covers, and fully-sold ISINs have
+    # current_value 0 regardless of price. Uncached ISINs fall back to the
+    # historical transaction price already in price_map.
     try:
-        from backend.services.prices import fetch_and_cache_prices, get_currency_info
+        from backend.services.prices import get_cached_prices, get_currency_info
 
-        yahoo_prices = fetch_and_cache_prices(db, div_isins)
-        price_map.update(yahoo_prices)
+        cached_prices = get_cached_prices(db, div_isins)
+        price_map.update(cached_prices)
         currency_info = get_currency_info(db, div_isins)
     except Exception:
-        logger.debug("Yahoo Finance prices unavailable, using historical prices")
+        logger.debug("Cached prices unavailable, using historical prices")
         currency_info = {}
 
     # Fetch portfolio holdings to supplement ISINs without buy/sell history
@@ -528,7 +534,7 @@ def withholdings_by_country(
     )
 
     if fiscal_year:
-        q = q.filter(year_str(Transaction.trade_date) == str(fiscal_year))
+        q = q.filter(year_range(Transaction.trade_date, fiscal_year))
 
     rows = q.group_by("country").order_by(func.sum(Transaction.withholding_tax).asc()).all()
 
