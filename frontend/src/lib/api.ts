@@ -74,21 +74,74 @@ function qs(params: Record<string, string | number | undefined>): string {
   );
 }
 
-async function authHeaders(): Promise<HeadersInit> {
-  const session = await getSession();
-  if (session?.accessToken) {
-    return { Authorization: `Bearer ${session.accessToken}` };
+// ── Access-token cache ───────────────────────────────────────────────
+// getSession() hits /api/auth/session over the network on every call. The
+// dashboard fires ~16 requests on load, so calling it per-request added ~16
+// extra round-trips on the critical path. The accessToken is a long-lived JWT
+// that only changes on login/logout, so we resolve it once and reuse it until
+// it nears expiry (decoded from the JWT) or a request comes back 401.
+let _cachedToken: string | null = null;
+let _tokenExp = 0; // epoch seconds; 0 = unknown
+let _tokenPromise: Promise<string | null> | null = null;
+
+function _decodeExp(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return typeof payload.exp === "number" ? payload.exp : 0;
+  } catch {
+    return 0;
   }
-  return {};
 }
 
-async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+export function clearAuthToken(): void {
+  _cachedToken = null;
+  _tokenExp = 0;
+  _tokenPromise = null;
+}
+
+async function _resolveToken(): Promise<string | null> {
+  const now = Date.now() / 1000;
+  // Reuse cached token while it has >60s of life (exp unknown ⇒ treat as valid).
+  if (_cachedToken && (_tokenExp === 0 || _tokenExp - now > 60)) {
+    return _cachedToken;
+  }
+  // Dedupe concurrent resolves (16 parallel requests ⇒ a single getSession()).
+  if (_tokenPromise) return _tokenPromise;
+  _tokenPromise = getSession()
+    .then((session) => {
+      const token = session?.accessToken ?? null;
+      _cachedToken = token;
+      _tokenExp = token ? _decodeExp(token) : 0;
+      return token;
+    })
+    .finally(() => {
+      _tokenPromise = null;
+    });
+  return _tokenPromise;
+}
+
+async function authHeaders(): Promise<HeadersInit> {
+  const token = await _resolveToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function fetchJSON<T>(
+  path: string,
+  init?: RequestInit,
+  _retried = false,
+): Promise<T> {
   const headers = await authHeaders();
   const res = await fetch(`${BASE}${path}`, {
     cache: "no-store",
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
   });
+  // A 401 means the cached token is stale (rotated/expired/logged out elsewhere).
+  // Drop it and retry once with a freshly-resolved token.
+  if (res.status === 401 && !_retried) {
+    clearAuthToken();
+    return fetchJSON<T>(path, init, true);
+  }
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
@@ -111,6 +164,7 @@ export async function uploadTRReport(file: File) {
     headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -124,6 +178,7 @@ export async function uploadDGReport(file: File) {
     headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -137,6 +192,7 @@ export async function uploadIBKRReport(file: File) {
     headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -150,6 +206,7 @@ export async function uploadINGReport(file: File) {
     headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -165,6 +222,7 @@ export async function uploadBBVAReport(files: File[]) {
     headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -178,6 +236,7 @@ export async function uploadEToroReport(file: File) {
     headers,
   });
   if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -188,6 +247,7 @@ export async function deleteImport(importId: number) {
     headers,
   });
   if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -198,6 +258,7 @@ export async function deleteAllImports() {
     headers,
   });
   if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
@@ -213,15 +274,16 @@ export async function resolveIssue(
     body: JSON.stringify({ action, data }),
   });
   if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+  invalidateCache();
   return res.json();
 }
 
 export const api = {
   dashboard: (year?: number) =>
-    fetchJSON(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
-  fiscalSummary: (year: number) => fetchJSON(`/fiscal/summary/${year}`),
+    fetchCached(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
+  fiscalSummary: (year: number) => fetchCached(`/fiscal/summary/${year}`),
   casillas: (year?: number) =>
-    fetchJSON(`/fiscal/casillas${qs({ fiscal_year: year })}`),
+    fetchCached(`/fiscal/casillas${qs({ fiscal_year: year })}`),
   exportFiscal: async (year: number, format: "json" | "csv" = "json") => {
     const headers = await authHeaders();
     const res = await fetch(`${BASE}/fiscal/export/${year}?format=${format}`, {
@@ -242,18 +304,18 @@ export const api = {
     return res.json();
   },
   dividends: (year?: number) =>
-    fetchJSON(`/transactions/dividends/summary${qs({ fiscal_year: year })}`),
+    fetchCached(`/transactions/dividends/summary${qs({ fiscal_year: year })}`),
   capitalGains: (year?: number) =>
-    fetchJSON(`/transactions/capital-gains${qs({ fiscal_year: year })}`),
+    fetchCached(`/transactions/capital-gains${qs({ fiscal_year: year })}`),
   crossBrokerLots: (year: number) =>
-    fetchJSON(`/fiscal/cross-broker-lots${qs({ fiscal_year: year })}`),
+    fetchCached(`/fiscal/cross-broker-lots${qs({ fiscal_year: year })}`),
   fifoAdjustments: (year: number) =>
-    fetchJSON(`/fiscal/fifo-adjustments${qs({ fiscal_year: year })}`),
+    fetchCached(`/fiscal/fifo-adjustments${qs({ fiscal_year: year })}`),
   optionAssignments: (year: number) =>
-    fetchJSON(`/fiscal/option-assignments${qs({ fiscal_year: year })}`),
+    fetchCached(`/fiscal/option-assignments${qs({ fiscal_year: year })}`),
   crossValidation: (year: number) =>
-    fetchJSON(`/fiscal/cross-validation/${year}`),
-  yearlyComparison: () => fetchJSON("/fiscal/yearly-comparison"),
+    fetchCached(`/fiscal/cross-validation/${year}`),
+  yearlyComparison: () => fetchCached("/fiscal/yearly-comparison"),
   transactions: (params?: Record<string, string>) => {
     const qstr = params ? "?" + new URLSearchParams(params).toString() : "";
     return fetchJSON(`/transactions/${qstr}`);
@@ -338,26 +400,26 @@ export const api = {
     },
   },
 
-  // Charts
+  // Charts — cached client-side (5 min); invalidated on import/delete.
   charts: {
     dividendsByCountry: (year?: number) =>
-      fetchJSON(`/charts/dividends-by-country${qs({ fiscal_year: year })}`),
+      fetchCached(`/charts/dividends-by-country${qs({ fiscal_year: year })}`),
     dividendsMonthly: (year?: number) =>
-      fetchJSON(`/charts/dividends-monthly${qs({ fiscal_year: year })}`),
+      fetchCached(`/charts/dividends-monthly${qs({ fiscal_year: year })}`),
     topDividendPayers: (year?: number, limit = 10) =>
-      fetchJSON(
+      fetchCached(
         `/charts/top-dividend-payers${qs({ limit, fiscal_year: year })}`,
       ),
     capitalGainsBreakdown: (year?: number) =>
-      fetchJSON(`/charts/capital-gains-breakdown${qs({ fiscal_year: year })}`),
+      fetchCached(`/charts/capital-gains-breakdown${qs({ fiscal_year: year })}`),
     patrimonioComposition: (year?: number) =>
-      fetchJSON(`/charts/patrimonio-composition${qs({ fiscal_year: year })}`),
+      fetchCached(`/charts/patrimonio-composition${qs({ fiscal_year: year })}`),
     dividendYield: (year?: number) =>
-      fetchJSON(`/charts/dividend-yield${qs({ fiscal_year: year })}`),
+      fetchCached(`/charts/dividend-yield${qs({ fiscal_year: year })}`),
     withholdingsByCountry: (year?: number) =>
-      fetchJSON(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
+      fetchCached(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
     dividendsByCompanyYearly: () =>
-      fetchJSON("/charts/dividends-by-company-yearly"),
+      fetchCached("/charts/dividends-by-company-yearly"),
   },
 
   // Options monitor

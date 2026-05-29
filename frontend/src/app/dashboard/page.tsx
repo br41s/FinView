@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import type {
   DashboardStats,
@@ -122,6 +122,9 @@ export default function Home() {
   const [gains, setGains] = useState<CapitalGain[]>([]);
   const [view, setView] = useState<View>("graficas");
   const [loading, setLoading] = useState(true);
+  // Secondary data (slow yfinance yield, yearly comparison, year-only fiscal
+  // tables) streams in after first paint — it must not block the dashboard.
+  const [secondaryLoading, setSecondaryLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
@@ -146,75 +149,108 @@ export default function Home() {
   >([]);
   const [yearlyComparison, setYearlyComparison] = useState<YearlyMetrics[]>([]);
 
+  // Guards against stale responses: a rapid year switch can leave an older
+  // (slow) request in flight; only the latest load is allowed to set state.
+  const loadSeq = useRef(0);
+
   const loadData = useCallback(async (year?: number | null) => {
+    const seq = ++loadSeq.current;
+    const isCurrent = () => seq === loadSeq.current;
+
     setLoading(true);
+    setSecondaryLoading(true);
     setError(null);
     const y = year ?? undefined;
 
     // Fire-and-forget: warm price cache in background so portfolio/options load fast
     api.portfolio.warmPrices();
 
+    // ── Secondary data ────────────────────────────────────────────────
+    // Slow (dividend-yield hits yfinance) or view-specific data. Streamed in
+    // so it never blocks the main dashboard's first paint; a single failure
+    // degrades only its own view instead of breaking the whole page.
+    const set = <T,>(setter: (v: T) => void) => (v: T) => {
+      if (isCurrent()) setter(v);
+    };
+    const secondary: Promise<unknown>[] = [
+      (api.charts.dividendYield(y) as Promise<DividendYield[]>)
+        .then(set(setDividendYield))
+        .catch((e) => console.error("dividend-yield:", e)),
+      (api.yearlyComparison() as Promise<{ years: YearlyMetrics[] }>)
+        .then((d) => set(setYearlyComparison)(d.years))
+        .catch((e) => console.error("yearly-comparison:", e)),
+    ];
+    if (y) {
+      secondary.push(
+        (api.crossBrokerLots(y) as Promise<CrossBrokerLot[]>)
+          .then(set(setCrossBrokerLots))
+          .catch((e) => console.error("cross-broker-lots:", e)),
+        (api.fifoAdjustments(y) as Promise<FIFOAdjustment[]>)
+          .then(set(setFifoAdjustments))
+          .catch((e) => console.error("fifo-adjustments:", e)),
+        (api.optionAssignments(y) as Promise<OptionAssignment[]>)
+          .then(set(setOptionAssignments))
+          .catch((e) => console.error("option-assignments:", e)),
+      );
+    } else {
+      setCrossBrokerLots([]);
+      setFifoAdjustments([]);
+      setOptionAssignments([]);
+    }
+    void Promise.allSettled(secondary).then(() => {
+      if (isCurrent()) setSecondaryLoading(false);
+    });
+
+    // ── Core + dashboard charts ───────────────────────────────────────
+    // All fast SQL aggregations, fired together in a single round-trip group.
+    // This is everything the default (gráficas) view needs, so first paint
+    // waits only on these — not on the slow yfinance call above.
     try {
-      const [dashData, casData, divData, gainsData] = await Promise.all([
+      const [
+        dashData,
+        casData,
+        divData,
+        gainsData,
+        divC,
+        divM,
+        topP,
+        gainsB,
+        patrim,
+        withh,
+        compDiv,
+      ] = await Promise.all([
         api.dashboard(y) as Promise<DashboardStats>,
         api.casillas(y) as Promise<Casilla[]>,
         api.dividends(y) as Promise<DividendSummary[]>,
         api.capitalGains(y) as Promise<CapitalGain[]>,
+        api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
+        api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
+        api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
+        api.charts.capitalGainsBreakdown(y) as Promise<CapitalGainsBreakdown[]>,
+        api.charts.patrimonioComposition(y) as Promise<PatrimonioComposition[]>,
+        api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
+        api.charts.dividendsByCompanyYearly() as Promise<
+          CompanyDividendsYearly[]
+        >,
       ]);
+      if (!isCurrent()) return;
       setStats(dashData);
       setCasillas(casData);
       setDividends(divData);
       setGains(gainsData);
-
-      if (y) {
-        const [cblData, adjData, assignData] = await Promise.all([
-          api.crossBrokerLots(y) as Promise<CrossBrokerLot[]>,
-          api.fifoAdjustments(y) as Promise<FIFOAdjustment[]>,
-          api.optionAssignments(y) as Promise<OptionAssignment[]>,
-        ]);
-        setCrossBrokerLots(cblData);
-        setFifoAdjustments(adjData);
-        setOptionAssignments(assignData);
-      } else {
-        setCrossBrokerLots([]);
-        setFifoAdjustments([]);
-        setOptionAssignments([]);
-      }
-
-      const [divC, divM, topP, gainsB, patrim, divY, withh, compDiv, ycData] =
-        await Promise.all([
-          api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
-          api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
-          api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
-          api.charts.capitalGainsBreakdown(y) as Promise<
-            CapitalGainsBreakdown[]
-          >,
-          api.charts.patrimonioComposition(y) as Promise<
-            PatrimonioComposition[]
-          >,
-          api.charts.dividendYield(y) as Promise<DividendYield[]>,
-          api.charts.withholdingsByCountry(y) as Promise<
-            WithholdingsByCountry[]
-          >,
-          api.charts.dividendsByCompanyYearly() as Promise<
-            CompanyDividendsYearly[]
-          >,
-          api.yearlyComparison() as Promise<{ years: YearlyMetrics[] }>,
-        ]);
       setDivByCountry(divC);
       setDivMonthly(divM);
       setTopPayers(topP);
       setGainsBreakdown(gainsB);
       setPatrimonio(patrim);
-      setDividendYield(divY);
       setWithholdings(withh);
       setCompanyDividends(compDiv);
-      setYearlyComparison(ycData.years);
     } catch (e) {
       console.error("Error loading data:", e);
-      setError("No se pudieron cargar los datos del dashboard. Comprueba tu conexión e inténtalo de nuevo.");
+      if (isCurrent())
+        setError("No se pudieron cargar los datos del dashboard. Comprueba tu conexión e inténtalo de nuevo.");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, []);
 
@@ -341,7 +377,9 @@ export default function Home() {
           {/* Rendimiento */}
           {view === "rendimiento" &&
             hasData &&
-            (dividendYield.length > 0 ? (
+            (secondaryLoading && dividendYield.length === 0 ? (
+              <DashboardSkeleton />
+            ) : dividendYield.length > 0 ? (
               <DividendYieldTable data={dividendYield} />
             ) : (
               <EmptyState
@@ -402,7 +440,9 @@ export default function Home() {
           {/* Comparativa anual */}
           {view === "comparativa" &&
             hasData &&
-            (yearlyComparison.length > 0 ? (
+            (secondaryLoading && yearlyComparison.length === 0 ? (
+              <DashboardSkeleton />
+            ) : yearlyComparison.length > 0 ? (
               <YearlyComparisonView data={yearlyComparison} />
             ) : (
               <EmptyState

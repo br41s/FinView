@@ -6,6 +6,41 @@
 
 ---
 
+## ⚡ Auditoría de rendimiento — 2026-05-29
+
+**Síntoma reportado:** la app va muy lenta, sobre todo la **carga inicial del dashboard** y en general.
+**Diagnóstico:** la lentitud NO está en el motor FIFO (precalculado en import → `TaxResult`/`TaxLot`, se leen como agregaciones simples). Está en: (a) fan-out de peticiones, (b) un `getSession()` por cada petición, (c) llamadas síncronas a yfinance/scraping en el request path, (d) doble salto de red Vercel→Cloud Run.
+
+Orden por ROI. No tocar `fifo_engine.py`. Tras cambios de backend: `pytest backend/tests/ -v` (128 pass). Verificar dashboard antes/después con el Network waterfall.
+
+### 🔴 Crítico — causa principal de la lentitud percibida
+
+- [x] **#1 — Eliminar `getSession()` por petición.** ✅ Hecho ([api.ts](frontend/src/lib/api.ts)): token JWT cacheado a nivel de módulo, dedupe de resolución concurrente (16 peticiones → 1 `getSession()`), refresco al acercarse `exp` (decodificado del JWT) y auto-curado en 401 (retry único). `clearAuthToken()` + `invalidateCache()` en logout ([app-sidebar.tsx](frontend/src/components/app-sidebar.tsx)). *Pendiente verificación: `next build` (no hay node_modules en el worktree) y waterfall sin `/api/auth/session` repetido.* [api.ts:77](frontend/src/lib/api.ts) `authHeaders()` hace `await getSession()` (fetch a `/api/auth/session`) en CADA llamada; el dashboard dispara ~16 → ~16 fetches de sesión extra en el critical path. Resolver el token UNA vez por página (token cacheado a nivel de módulo con refresco por expiración, o `useSession` en el componente y pasar el token). *Verificación: el waterfall debe mostrar 0 llamadas repetidas a `/api/auth/session`.*
+
+- [x] **#2 — Desacoplar el render del dashboard del request más lento.** ✅ Hecho ([dashboard/page.tsx](frontend/src/app/dashboard/page.tsx)): los 3 `Promise.all` secuenciales se fusionan en **un solo grupo paralelo** con los datos rápidos (core fiscal + charts de la vista gráficas) que controla `loading`. El dato lento (`dividendYield` → yfinance) y los secundarios (`yearlyComparison`, tablas fiscales por año) se **streamean** vía `secondaryLoading` sin bloquear el primer pintado; cada fallo degrada solo su vista (antes un único `catch` rompía todo el dashboard). Guard de secuencia (`loadSeq` ref) evita que una respuesta vieja (cambio rápido de año) pise el estado actual. `tsc --noEmit` limpio. *Falta: `next build` y verificación visual en localhost.*
+
+- [ ] **#3 — `dividend_yield` no debe llamar a yfinance en el request path.** [charts.py:479](backend/api/charts.py) llama `fetch_and_cache_prices()` → `yf.download()` síncrono ([prices.py:268](backend/services/prices.py)). El endpoint debe leer SOLO de `PriceCache`; el calentado lo hace `warm-prices`. Esto además elimina la carrera con `warm-prices` (dos hilos golpeando Yahoo y escribiendo `PriceCache` del mismo día). *Considerar unique constraint `(isin, fetched_date)` para upsert seguro.*
+
+- [ ] **#4 — Cloud Run: confirmar `min-instances ≥ 1`** (matar cold starts) y keep-alive HTTP. El doble salto browser→Vercel→Cloud Run multiplica latencia por nº de llamadas; reducir llamadas (#1, #2) es lo que más rinde aquí. *Solo verificación de infra, no requiere código.*
+
+### 🟠 Alto — ineficiencias backend
+
+- [ ] **#5 — `get_position_detail` recalcula toda la cartera para un solo ISIN.** [portfolio_service.py:325](backend/services/portfolio_service.py) llama `get_open_positions(aggregate=False)` (carga todas las tx + snapshots + precios en vivo de TODO) para luego filtrar a 1 ISIN. Acotar las queries de snapshot/tx a ese ISIN y pedir solo ese precio.
+
+- [x] **#6 — Cache cliente para charts/fiscal.** ✅ Hecho ([api.ts](frontend/src/lib/api.ts)): todas las lecturas que alimentan el dashboard (`charts.*`, `fiscal` dashboard/casillas/summary/cross-broker/fifo/option-assignments/cross-validation/yearly-comparison, `dividends`, `capital-gains`) pasan por `fetchCached` (TTL 5 min, clave path+año). Invalidación con `invalidateCache()` en los 6 uploads + `deleteImport` + `deleteAllImports` + `resolveIssue`. `transactions()`/`imports()` quedan sin cache (lista de archivos siempre fresca). Mitiga además el síntoma de #3 en cliente (yield cacheado tras 1ª carga).
+
+- [ ] **#7 — Filtros por año rompen el índice.** `year_str(Transaction.trade_date) == str(año)` (p.ej. [charts.py:37](backend/api/charts.py)) envuelve la columna en una función → no usa `ix_tx_type_date`/`ix_tx_isin_date`. Cambiar a rango de fechas (`>= AAAA-01-01 AND < (AAAA+1)-01-01`). Aplica a ~8 endpoints de charts + fiscal.
+
+- [ ] **#8 — Tuning de pool para Neon.** [database.py:15](backend/database.py): sin `pool_size`/`max_overflow` (default 5) y `pool_pre_ping=True` añade un `SELECT 1` por checkout. Con ~16 peticiones concurrentes se puede agotar el pool. Definir tamaños y valorar `pool_recycle` en vez de `pre_ping`.
+
+### 🟡 Medio — diferir hasta tener el rendimiento resuelto
+
+- [ ] **#9 — Scraping síncrono en options.** `/options/chain/{ticker}` ([options.py:148](backend/api/options.py)) y `/check-availability` ([options.py:350](backend/api/options.py)) raspan en vivo; `check-availability` corre al cargar la página de options sobre todos los tickers. Servir desde snapshot cacheado al cargar; raspar solo bajo demanda (expand).
+- [ ] **#10 — Refactor de archivos gigantes** (no es coste de runtime): `import_service.py` (1279 líneas) y `options/page.tsx` (1906 líneas). Solo DESPUÉS de los fixes de perf y con tests en verde.
+- [ ] **#11 — `Base.metadata.create_all()` en import** ([app.py:29](backend/app.py)) redundante con Alembic; añade latencia en cold start. Quitar en prod.
+
+---
+
 
 
 ## Visión
