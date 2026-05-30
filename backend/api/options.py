@@ -416,18 +416,19 @@ def agent_status(db: DbSession, user: CurrentUser):
 
 @router.get("/agent/last-analysis", response_model=LastAnalysisOut)
 def agent_last_analysis(db: DbSession, user: CurrentUser):
-    """Return the most recent cycle that produced a Claude analysis."""
-    last_log = (
-        db.query(OptionsAgentLog)
-        .filter(
-            OptionsAgentLog.user_id == user.id,
-            OptionsAgentLog.claude_analysis.isnot(None),
-        )
+    """Return metadata from the most recent cycle + claude_analysis from the most recent cycle that has one."""
+    base_q = db.query(OptionsAgentLog).filter(OptionsAgentLog.user_id == user.id)
+
+    last_log = base_q.order_by(OptionsAgentLog.timestamp.desc()).first()
+    if not last_log:
+        return LastAnalysisOut()
+
+    analysis_log = (
+        base_q
+        .filter(OptionsAgentLog.claude_analysis.isnot(None))
         .order_by(OptionsAgentLog.timestamp.desc())
         .first()
     )
-    if not last_log:
-        return LastAnalysisOut()
     return LastAnalysisOut(
         timestamp=last_log.timestamp,
         cycle=last_log.cycle_number,
@@ -435,7 +436,7 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
         alerts=last_log.alerts_generated,
         unusual=last_log.unusual_activities,
         market_sentiment=last_log.market_sentiment,
-        claude_analysis=last_log.claude_analysis,
+        claude_analysis=analysis_log.claude_analysis if analysis_log else None,
     )
 
 

@@ -261,6 +261,7 @@ export default function OptionsPage() {
   const [backtestStats, setBacktestStats] = useState<BacktestStats | null>(null);
   const [loadingBacktest, setLoadingBacktest] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
+  const [analysisCycle, setAnalysisCycle] = useState(0);
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions, setRetryPositions] = useState(0);
@@ -369,6 +370,7 @@ export default function OptionsPage() {
     try {
       await api.options.runCycle();
       await reloadOptions();
+      setAnalysisCycle((c) => c + 1);
     } finally {
       setRunning(false);
     }
@@ -1628,7 +1630,7 @@ export default function OptionsPage() {
 
         {/* ── Analysis Tab ── */}
         <TabsContent value="analysis">
-          <AnalysisTab />
+          <AnalysisTab key={analysisCycle} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1807,11 +1809,19 @@ function AnalysisTab() {
   }
 
   if (!analysis?.claude_analysis) {
+    const hasRun = analysis?.cycle != null;
     return (
-      <Card className="p-6 text-center">
+      <Card className="p-6 text-center space-y-1">
         <p className="text-sm text-muted-foreground">
-          No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe.
+          {hasRun
+            ? `Ciclo #${analysis!.cycle} completado (${analysis!.alerts ?? 0} alertas) — sin análisis IA generado.`
+            : "No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe."}
         </p>
+        {hasRun && (analysis!.alerts ?? 0) === 0 && (
+          <p className="text-xs text-muted-foreground">
+            El análisis IA sólo se genera cuando el ciclo produce alertas. Añade tickers al watchlist.
+          </p>
+        )}
       </Card>
     );
   }
