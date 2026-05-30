@@ -1759,6 +1759,7 @@ type LastAnalysis = {
   unusual: number | null;
   market_sentiment: string | null;
   claude_analysis: string | null;
+  ai_configured: boolean;
 };
 
 /** Parse a Markdown string with "## N. Title\n..." into [{title, body}] sections. */
@@ -1810,16 +1811,27 @@ function AnalysisTab() {
 
   if (!analysis?.claude_analysis) {
     const hasRun = analysis?.cycle != null;
+    const configured = analysis?.ai_configured ?? false;
     return (
-      <Card className="p-6 text-center space-y-1">
-        <p className="text-sm text-muted-foreground">
-          {hasRun
-            ? `Ciclo #${analysis!.cycle} completado (${analysis!.alerts ?? 0} alertas) — sin análisis IA generado.`
-            : "No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe."}
-        </p>
-        {hasRun && (analysis!.alerts ?? 0) === 0 && (
+      <Card className="p-6 text-center space-y-2">
+        {!hasRun && (
+          <p className="text-sm text-muted-foreground">
+            No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe.
+          </p>
+        )}
+        {hasRun && !configured && (
+          <p className="text-sm text-destructive font-medium">
+            API key no configurada. Establece <code className="text-xs bg-muted px-1 rounded">FINVIEW_OPENROUTER_API_KEY</code> en las variables de entorno del servidor.
+          </p>
+        )}
+        {hasRun && configured && (
+          <p className="text-sm text-muted-foreground">
+            Ciclo #{analysis!.cycle} completado ({analysis!.alerts ?? 0} alertas) — el análisis IA falló o no hubo alertas.
+          </p>
+        )}
+        {hasRun && configured && (analysis!.alerts ?? 0) === 0 && (
           <p className="text-xs text-muted-foreground">
-            El análisis IA sólo se genera cuando el ciclo produce alertas. Añade tickers al watchlist.
+            El análisis sólo se genera cuando el ciclo produce alertas. Añade tickers activos al watchlist.
           </p>
         )}
       </Card>
