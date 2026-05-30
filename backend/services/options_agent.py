@@ -9,12 +9,7 @@ import logging
 import time
 from datetime import datetime
 
-try:
-    import anthropic as _anthropic
-    _ANTHROPIC_AVAILABLE = True
-except ImportError:
-    _ANTHROPIC_AVAILABLE = False
-
+import httpx
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -166,7 +161,7 @@ def run_cycle(user_id: int) -> dict:
 
         # Phase 5: Optional Claude AI analysis (included in timing)
         claude_analysis = None
-        if _ANTHROPIC_AVAILABLE and settings.anthropic_api_key and all_alerts:
+        if settings.openrouter_api_key and all_alerts:
             claude_analysis = _run_claude_analysis(tickers, all_alerts, all_unusual)
 
         elapsed = time.time() - start
@@ -276,17 +271,12 @@ Horizonte temporal óptimo según los vencimientos detectados.]
 
 
 def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[dict]) -> str | None:
-    """Run structured Claude AI analysis on cycle results. Returns None on failure."""
+    """Run AI analysis on cycle results via OpenRouter. Returns None on failure."""
     try:
-        client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
         n_high = sum(1 for a in alerts if a.get("severity") == "HIGH")
         has_meff = any(t.endswith(".MC") for t in tickers)
 
-        # Sort alerts: HIGH first, then MEDIUM
         sorted_alerts = sorted(alerts, key=lambda a: (0 if a.get("severity") == "HIGH" else 1))
-
-        # Trim payload to avoid token bloat (keep top 20 alerts, top 10 unusual)
         alerts_payload = sorted_alerts[:20]
         unusual_payload = unusual[:10]
 
@@ -300,7 +290,6 @@ def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[d
             unusual_json=json.dumps(unusual_payload, indent=2, ensure_ascii=False),
         )
 
-        # Remove MEFF section instruction when no Spanish tickers present
         if not has_meff:
             user_content = user_content.replace(
                 "\n## 6. Contexto MEFF\n"
@@ -308,13 +297,21 @@ def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[d
                 "\n## 6. Contexto MEFF\n[No hay tickers MEFF en este ciclo — sección omitida.]\n",
             )
 
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
-            system=_CLAUDE_SYSTEM,
-            messages=[{"role": "user", "content": user_content}],
+        response = httpx.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+            json={
+                "model": settings.openrouter_model,
+                "max_tokens": 1500,
+                "messages": [
+                    {"role": "system", "content": _CLAUDE_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+            timeout=60.0,
         )
-        return response.content[0].text
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
     except Exception:
-        logger.exception("Claude analysis failed")
+        logger.exception("OpenRouter analysis failed")
         return None

@@ -30,8 +30,9 @@ class Settings(BaseSettings):
     stripe_price_unlimited: str = ""  # Stripe Price ID for Unlimited plan
     frontend_url: str = "http://localhost:3000"
 
-    # Options monitor
-    anthropic_api_key: str = ""
+    # Options monitor — AI analysis via OpenRouter (https://openrouter.ai)
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemini-2.0-flash-001"
     ntfy_topic: str = ""
     notify_email_to: str = ""
     notify_email_from: str = ""
