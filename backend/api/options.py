@@ -437,6 +437,7 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
         unusual=last_log.unusual_activities,
         market_sentiment=last_log.market_sentiment,
         claude_analysis=analysis_log.claude_analysis if analysis_log else None,
+        ai_configured=bool(settings.openrouter_api_key),
     )
 
 

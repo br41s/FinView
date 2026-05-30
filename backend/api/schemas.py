@@ -321,6 +321,7 @@ class AgentCycleResult(BaseModel):
     unusual: int | None = None
     execution_time: float | None = None
     claude_analysis: str | None = None
+    ai_error: str | None = None
 
 
 class AgentStatusOut(BaseModel):
@@ -338,6 +339,7 @@ class LastAnalysisOut(BaseModel):
     unusual: int | None = None
     market_sentiment: str | None = None
     claude_analysis: str | None = None
+    ai_configured: bool = False
 
 
 class BacktestSignalOut(BaseModel):

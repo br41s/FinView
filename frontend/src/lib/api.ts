@@ -525,6 +525,7 @@ export const api = {
         unusual: number | null;
         market_sentiment: string | null;
         claude_analysis: string | null;
+        ai_configured: boolean;
       }>("/options/agent/last-analysis"),
     runCycle: async () => {
       const headers = await authHeaders();

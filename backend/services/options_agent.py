@@ -159,10 +159,16 @@ def run_cycle(user_id: int) -> dict:
         except Exception:
             logger.exception("Backtest evaluation failed — non-fatal")
 
-        # Phase 5: Optional Claude AI analysis (included in timing)
+        # Phase 5: Optional AI analysis via OpenRouter
         claude_analysis = None
-        if settings.openrouter_api_key and all_alerts:
-            claude_analysis = _run_claude_analysis(tickers, all_alerts, all_unusual)
+        ai_error: str | None = None
+        if not settings.openrouter_api_key:
+            logger.warning("FINVIEW_OPENROUTER_API_KEY not set — skipping AI analysis")
+            ai_error = "API key not configured (set FINVIEW_OPENROUTER_API_KEY)"
+        elif not all_alerts:
+            logger.info("No alerts this cycle — skipping AI analysis")
+        else:
+            claude_analysis, ai_error = _run_claude_analysis(tickers, all_alerts, all_unusual)
 
         elapsed = time.time() - start
         overall_sentiment = _aggregate_sentiment(all_sentiments)
@@ -203,6 +209,7 @@ def run_cycle(user_id: int) -> dict:
             "market_sentiment": overall_sentiment,
             "execution_time": round(elapsed, 2),
             "claude_analysis": claude_analysis,
+            "ai_error": ai_error,
         }
     except Exception:
         db.rollback()
@@ -270,8 +277,11 @@ Horizonte temporal óptimo según los vencimientos detectados.]
 """
 
 
-def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[dict]) -> str | None:
-    """Run AI analysis on cycle results via OpenRouter. Returns None on failure."""
+def _run_claude_analysis(
+    tickers: list[str], alerts: list[dict], unusual: list[dict]
+) -> tuple[str | None, str | None]:
+    """Run AI analysis via OpenRouter. Returns (text, error_message)."""
+    response = None
     try:
         n_high = sum(1 for a in alerts if a.get("severity") == "HIGH")
         has_meff = any(t.endswith(".MC") for t in tickers)
@@ -311,7 +321,10 @@ def _run_claude_analysis(tickers: list[str], alerts: list[dict], unusual: list[d
             timeout=60.0,
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
-    except Exception:
-        logger.exception("OpenRouter analysis failed")
-        return None
+        text = response.json()["choices"][0]["message"]["content"]
+        return text, None
+    except Exception as exc:
+        body = response.text[:500] if response is not None else "no response"
+        error_msg = f"{type(exc).__name__}: {exc} | response: {body}"
+        logger.error("OpenRouter analysis failed — %s", error_msg)
+        return None, error_msg
