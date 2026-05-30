@@ -693,8 +693,6 @@ export default function OptionsPage() {
                       <TableHead className="w-8" />
                       <TableHead>Ticker</TableHead>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Broker</TableHead>
-                      <TableHead className="text-right">Cantidad</TableHead>
                       <TableHead className="text-right">Precio</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                       <TableHead className="text-right">P&L</TableHead>
@@ -742,14 +740,6 @@ export default function OptionsPage() {
                             </TableCell>
                             <TableCell className="max-w-48 truncate text-muted-foreground">
                               {p.name}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-[10px]">
-                                {p.broker}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {fmt(p.quantity)}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {p.current_price_eur
@@ -822,7 +812,7 @@ export default function OptionsPage() {
                           {isExpanded && (
                             <TableRow key={`${p.isin}-${p.broker}-detail`}>
                               <TableCell
-                                colSpan={9}
+                                colSpan={7}
                                 className="bg-muted/30 p-4"
                               >
                                 <div className="space-y-4">
