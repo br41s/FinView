@@ -22,7 +22,6 @@ dependencies = [
     # Options monitor
     "pandas>=2.0",
     "numpy>=1.26",
-    "anthropic>=0.30",
     "apscheduler>=3.10",
     "beautifulsoup4>=4.12",
     "aiohttp>=3.9",

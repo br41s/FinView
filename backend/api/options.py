@@ -2,6 +2,8 @@
 
 import json
 import time
+
+import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
@@ -547,18 +549,10 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
     timestamp) + unacknowledged HIGH alerts. History is passed in by the client
     so the endpoint itself stays stateless.
     """
-    try:
-        import anthropic as _anthropic
-    except ImportError:
+    if not settings.openrouter_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Anthropic SDK not installed.",
-        )
-
-    if not settings.anthropic_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="FINVIEW_ANTHROPIC_API_KEY not configured.",
+            detail="FINVIEW_OPENROUTER_API_KEY not configured.",
         )
 
     if not body.question.strip():
@@ -638,12 +632,16 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
     ]
     messages.append({"role": "user", "content": body.question.strip()})
 
-    client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=1024,
-        system=system_prompt,
-        messages=messages,
+    response = httpx.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+        json={
+            "model": settings.openrouter_model,
+            "max_tokens": 1024,
+            "messages": [{"role": "system", "content": system_prompt}] + messages,
+        },
+        timeout=60.0,
     )
-    answer = response.content[0].text if response.content else "Sin respuesta."
+    response.raise_for_status()
+    answer = response.json()["choices"][0]["message"]["content"] or "Sin respuesta."
     return AskOut(answer=answer)
