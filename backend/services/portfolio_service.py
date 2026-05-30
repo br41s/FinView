@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from backend.models import Account, PortfolioHolding, Transaction, TransactionType
+from backend.models import Account, PortfolioHolding, PriceCache, Transaction, TransactionType
 from backend.services.prices import fetch_and_cache_prices
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,23 @@ def _reconcile(
     return out
 
 
+def _fill_tickers_from_cache(db: Session, positions: list[Position]) -> None:
+    """Fill ticker from PriceCache.yahoo_ticker for positions missing a ticker."""
+    missing_isins = [p.isin for p in positions if not p.ticker]
+    if not missing_isins:
+        return
+    rows = (
+        db.query(PriceCache.isin, PriceCache.yahoo_ticker)
+        .filter(PriceCache.isin.in_(missing_isins), PriceCache.yahoo_ticker.isnot(None))
+        .distinct(PriceCache.isin)
+        .all()
+    )
+    isin_to_ticker = {r.isin: r.yahoo_ticker for r in rows}
+    for p in positions:
+        if not p.ticker and p.isin in isin_to_ticker:
+            p.ticker = isin_to_ticker[p.isin]
+
+
 def _apply_prices(db: Session, positions: list[Position]) -> None:
     """Fetch live prices and fill market_value, P&L, and weight_pct in place."""
     isins = list({p.isin for p in positions})
@@ -305,6 +322,8 @@ def get_open_positions(
     for pos in open_positions:
         if pos.total_cost_eur is not None and pos.quantity > ZERO:
             pos.avg_cost_eur = pos.total_cost_eur / pos.quantity
+
+    _fill_tickers_from_cache(db, open_positions)
 
     if not skip_prices:
         _apply_prices(db, open_positions)
