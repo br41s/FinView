@@ -241,23 +241,14 @@ export default function ZonasClavePage() {
     if (yearsStored < 4) handleRefresh(selectedTicker);
   }, [scope, selectedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Chart data — filter by selected scope, then filter zones within ±30% of current price
+  // Chart data — filter by selected scope
+  // Y domain is driven by price history only; ReferenceLine clips to domain automatically
   const priceHistory = filterByScope(analysis?.price_history ?? [], scope);
-  const currentPrice = analysis?.current_price ?? 0;
-  const visibleZones = (analysis?.zones ?? []).filter(
-    (z) => currentPrice === 0 || Math.abs(z.level - currentPrice) / currentPrice < 0.3,
-  );
+  const visibleZones = analysis?.zones ?? [];
 
   const allPrices = priceHistory.map((p) => p.close);
-  const allLevels = visibleZones.map((z) => z.level);
-  const yMin =
-    allPrices.length > 0
-      ? Math.min(...allPrices, ...allLevels) * 0.97
-      : undefined;
-  const yMax =
-    allPrices.length > 0
-      ? Math.max(...allPrices, ...allLevels) * 1.03
-      : undefined;
+  const yMin = allPrices.length > 0 ? Math.min(...allPrices) * 0.97 : undefined;
+  const yMax = allPrices.length > 0 ? Math.max(...allPrices) * 1.03 : undefined;
 
   return (
     <div className="space-y-6 p-6">
