@@ -255,6 +255,7 @@ export default function OptionsPage() {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [chainByTicker, setChainByTicker] = useState<Record<string, ChainData>>({});
   const [loadingChain, setLoadingChain] = useState<Set<string>>(new Set());
+  const [selectedExpiryByTicker, setSelectedExpiryByTicker] = useState<Record<string, string>>({});
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
   const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
@@ -304,9 +305,13 @@ export default function OptionsPage() {
 
     setLoadingChain((prev) => new Set(prev).add(expandedTicker));
     fetcher
-      .then((data) =>
-        setChainByTicker((prev) => ({ ...prev, [expandedTicker]: data })),
-      )
+      .then((data) => {
+        setChainByTicker((prev) => ({ ...prev, [expandedTicker]: data }));
+        const expirations = [...new Set([...data.calls, ...data.puts].map((c) => c.expiration))].sort();
+        if (expirations.length > 0) {
+          setSelectedExpiryByTicker((prev) => ({ ...prev, [expandedTicker]: expirations[0] }));
+        }
+      })
       .catch(() =>
         setChainByTicker((prev) => ({
           ...prev,
@@ -977,6 +982,10 @@ export default function OptionsPage() {
                                     if (!chain || (chain.calls.length === 0 && chain.puts.length === 0)) {
                                       return null;
                                     }
+                                    const expirations = [...new Set([...chain.calls, ...chain.puts].map((c) => c.expiration))].sort();
+                                    const selectedExpiry = selectedExpiryByTicker[ticker] ?? expirations[0];
+                                    const filteredCalls = chain.calls.filter((c) => c.expiration === selectedExpiry);
+                                    const filteredPuts = chain.puts.filter((c) => c.expiration === selectedExpiry);
                                     const renderContracts = (contracts: ChainContract[], label: string) => (
                                       <div>
                                         <h5 className="mb-1 text-xs font-semibold text-muted-foreground">
@@ -987,7 +996,6 @@ export default function OptionsPage() {
                                             <thead>
                                               <tr className="border-b text-muted-foreground">
                                                 <th className="py-1 pr-3 text-right">Strike</th>
-                                                <th className="py-1 pr-3 text-right">Vto</th>
                                                 <th className="py-1 pr-3 text-right">IV</th>
                                                 <th className="py-1 pr-3 text-right">Bid</th>
                                                 <th className="py-1 pr-3 text-right">Ask</th>
@@ -999,7 +1007,6 @@ export default function OptionsPage() {
                                               {contracts.slice(0, 20).map((c, i) => (
                                                 <tr key={i} className="border-b border-muted/30">
                                                   <td className="py-1 pr-3 text-right tabular-nums font-medium">{fmt(c.strike)}</td>
-                                                  <td className="py-1 pr-3 text-right text-muted-foreground">{c.expiration}</td>
                                                   <td className="py-1 pr-3 text-right">
                                                     {c.impliedVolatility ? `${(c.impliedVolatility * 100).toFixed(1)}%` : "—"}
                                                   </td>
@@ -1016,10 +1023,27 @@ export default function OptionsPage() {
                                     );
                                     return (
                                       <div>
-                                        <h4 className="mb-2 text-sm font-semibold">Cadena de opciones</h4>
+                                        <div className="mb-2 flex items-center gap-2">
+                                          <h4 className="text-sm font-semibold">Cadena de opciones</h4>
+                                          <div className="flex flex-wrap gap-1">
+                                            {expirations.map((exp) => (
+                                              <button
+                                                key={exp}
+                                                onClick={() => setSelectedExpiryByTicker((prev) => ({ ...prev, [ticker]: exp }))}
+                                                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                                                  exp === selectedExpiry
+                                                    ? "bg-primary text-primary-foreground"
+                                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                                }`}
+                                              >
+                                                {exp}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
                                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                          {renderContracts(chain.calls, "Calls")}
-                                          {renderContracts(chain.puts, "Puts")}
+                                          {renderContracts(filteredCalls, "Calls")}
+                                          {renderContracts(filteredPuts, "Puts")}
                                         </div>
                                       </div>
                                     );
