@@ -106,10 +106,10 @@ RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/beari
 ## Options monitor — architecture
 
 ### Data sources
-- **Yahoo Finance**: global options chains, up to 3 expirations (~6 weeks)
+- **Yahoo Finance**: global options chains; all available expirations exposed via `fetch_expirations()` (instant metadata call). Agent cycle uses first 3 expirations; UI fetches per-expiry on demand.
 - **MEFF**: direct HTML scraping from meff.es, 30 verified `.MC` tickers (Ibex-35 blue chips + extended). HV computed via yfinance 60d history since MEFF doesn't publish it.
 - **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day.
-- Options chain cached 5 min (TTL) per ticker to avoid redundant scrapes.
+- Options chain cached 5 min (TTL) per ticker to avoid redundant scrapes. Per-expiry chains have their own cache keyed by `TICKER:YYYY-MM-DD`.
 
 ### Agent cycle (options_agent.py)
 1. Fetch watchlist tickers for the user
@@ -134,7 +134,7 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
 - UI shows accuracy % per horizon and per signal type in the Backtest tab
 
 ### Frontend — /options (6 tabs)
-- **Cartera**: positions accordion with P&L, call/put chain table (top 20 by OI), IV/HV comparison badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker
+- **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker.
 - **Watchlist**: add/remove tickers; stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color
 - **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW)
 - **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown
