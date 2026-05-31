@@ -39,7 +39,7 @@ from backend.models import (
 )
 from backend.services.notification_service import send_telegram
 from backend.services.options_agent import run_cycle
-from backend.services.options_scraper import fetch_options
+from backend.services.options_scraper import fetch_expirations, fetch_options, fetch_options_for_expiry
 
 # ── Availability cache ───────────────────────────────────────────────
 # ticker → (has_options, timestamp); 24-hour TTL
@@ -147,10 +147,26 @@ def list_snapshots(
     return q.order_by(OptionsSnapshot.timestamp.desc()).limit(limit).all()
 
 
+@router.get("/expirations/{ticker}", responses=_404)
+def get_ticker_expirations(ticker: str, user: CurrentUser):
+    """Return available expiration dates for a ticker (no chain data fetched for Yahoo)."""
+    expirations = fetch_expirations(ticker.upper())
+    if not expirations:
+        raise HTTPException(status_code=404, detail="No expirations found for this ticker")
+    return {"ticker": ticker.upper(), "expirations": expirations}
+
+
 @router.get("/chain/{ticker}", responses=_404)
-def get_ticker_chain(ticker: str, user: CurrentUser):
-    """Fetch live options chain for a ticker without requiring a stored snapshot."""
-    data = fetch_options(ticker.upper())
+def get_ticker_chain(ticker: str, user: CurrentUser, expiration: str | None = None):
+    """Fetch live options chain for a ticker.
+
+    If *expiration* (YYYY-MM-DD) is given, only that single date is fetched.
+    Otherwise returns the first MAX_EXPIRATIONS dates (used by the agent cycle).
+    """
+    if expiration:
+        data = fetch_options_for_expiry(ticker.upper(), expiration)
+    else:
+        data = fetch_options(ticker.upper())
     if not data:
         raise HTTPException(status_code=404, detail="No options data found for this ticker")
     return {
