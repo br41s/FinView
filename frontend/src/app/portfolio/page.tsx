@@ -574,10 +574,10 @@ function PortfolioContent() {
                                   </div>
                                   <div>
                                     <p className="text-xs text-muted-foreground">
-                                      Total invertido
+                                      Valor actual
                                     </p>
                                     <p className="font-medium">
-                                      {p.total_cost_eur != null ? `${fmt(p.total_cost_eur)} €` : "—"}
+                                      {p.market_value_eur != null ? `${fmt(p.market_value_eur)} €` : "—"}
                                     </p>
                                   </div>
                                   <div>
