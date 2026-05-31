@@ -127,7 +127,7 @@ La página **Cartera** muestra tus posiciones abiertas con precios en tiempo rea
 - Valor de mercado total, capital invertido, rentabilidad latente
 
 ### Tabla de posiciones
-Al desplegar una posición verás:
+Al desplegar una posición verás un resumen con: ISIN, **Valor actual** (precio de mercado × cantidad), rentabilidad latente (%), peso en cartera y país. Además:
 - **Desglose por cuenta:** cantidad y coste por broker
 - **Dividendos cobrados:** tabla anual (año, importe bruto, neto, número de pagos). Los pagos del mismo año se consolidan en una sola fila aunque el broker los haya registrado con fecha fiscal.
 - **Historial de operaciones:** compras y ventas, excluyendo dividendos (que aparecen en la sección anterior)
