@@ -66,6 +66,12 @@ _ISIN_CACHE: dict[str, str] = {}  # ISIN → resolved ticker symbol
 _OPTIONS_CACHE: dict[str, tuple[dict, float]] = {}
 _OPTIONS_TTL = 300.0  # seconds
 
+# Per-expiry chain cache: "TICKER:YYYY-MM-DD" → (data, unix_ts)
+_EXPIRY_CACHE: dict[str, tuple[dict, float]] = {}
+
+# Expirations-list cache: ticker → (list[str], unix_ts)
+_EXPIRATIONS_CACHE: dict[str, tuple[list, float]] = {}
+
 # Eurex RDF (Reference Data File) daily cache — refreshed once per trading day
 _EUREX_RDF_CACHE: dict = {
     "date": None,      # str YYYY-MM-DD of last successful load
@@ -407,6 +413,86 @@ def fetch_options(ticker: str) -> dict | None:
     return result
 
 
+def fetch_expirations(ticker: str) -> list[str]:
+    """Return available option expiration dates for a ticker.
+
+    For Yahoo tickers this is a cheap metadata call (no chain data fetched).
+    For MEFF/Eurex the full cached result is used to extract unique dates.
+    """
+    if _ISIN_RE.match(ticker):
+        resolved = _resolve_isin(ticker)
+        if resolved:
+            ticker = resolved
+
+    cache_key = ticker.upper()
+    cached = _EXPIRATIONS_CACHE.get(cache_key)
+    if cached and time.time() - cached[1] < _OPTIONS_TTL:
+        return cached[0]
+
+    expirations: list[str] = []
+    try:
+        if ticker.endswith(".MC") or any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
+            # For MEFF/Eurex: reuse the full fetch (already cached) and extract unique dates
+            data = fetch_options(ticker)
+            if data:
+                seen: set[str] = set()
+                for c in data.get("calls", []) + data.get("puts", []):
+                    if c.get("expiration"):
+                        seen.add(c["expiration"])
+                expirations = sorted(seen)
+        else:
+            yf_ticker = yf.Ticker(ticker)
+            expirations = list(yf_ticker.options or [])
+    except Exception:
+        logger.exception("fetch_expirations failed for %s", ticker)
+
+    _EXPIRATIONS_CACHE[cache_key] = (expirations, time.time())
+    return expirations
+
+
+def fetch_options_for_expiry(ticker: str, expiration: str) -> dict | None:
+    """Fetch chain data for a single expiration date.
+
+    For Yahoo: fetches only that one expiry (fast).
+    For MEFF/Eurex: reuses the full cached fetch and filters to the requested date.
+    """
+    if _ISIN_RE.match(ticker):
+        resolved = _resolve_isin(ticker)
+        if resolved:
+            ticker = resolved
+
+    cache_key = f"{ticker.upper()}:{expiration}"
+    cached = _EXPIRY_CACHE.get(cache_key)
+    if cached and time.time() - cached[1] < _OPTIONS_TTL:
+        return cached[0]
+
+    result: dict | None = None
+    try:
+        if ticker.endswith(".MC") or any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
+            full = fetch_options(ticker)
+            if full:
+                calls = [c for c in full.get("calls", []) if c.get("expiration") == expiration]
+                puts = [p for p in full.get("puts", []) if p.get("expiration") == expiration]
+                result = {**full, "calls": calls, "puts": puts,
+                          "calls_count": len(calls), "puts_count": len(puts)}
+        else:
+            result = _fetch_yahoo(ticker, expiration=expiration)
+            if result is None or (result.get("calls_count", 0) == 0 and result.get("puts_count", 0) == 0):
+                if any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
+                    eurex = _fetch_eurex(ticker)
+                    if eurex:
+                        calls = [c for c in eurex.get("calls", []) if c.get("expiration") == expiration]
+                        puts = [p for p in eurex.get("puts", []) if p.get("expiration") == expiration]
+                        result = {**eurex, "calls": calls, "puts": puts,
+                                  "calls_count": len(calls), "puts_count": len(puts)}
+    except Exception:
+        logger.exception("fetch_options_for_expiry failed for %s / %s", ticker, expiration)
+
+    if result:
+        _EXPIRY_CACHE[cache_key] = (result, time.time())
+    return result
+
+
 # ── Yahoo Finance ────────────────────────────────────────────────────
 
 
@@ -440,8 +526,12 @@ def _build_yahoo_chain(ticker_obj, expirations: list[str]) -> tuple[list[dict], 
     return calls, puts
 
 
-def _fetch_yahoo(ticker: str) -> dict | None:
-    """Fetch options data from Yahoo Finance."""
+def _fetch_yahoo(ticker: str, expiration: str | None = None) -> dict | None:
+    """Fetch options data from Yahoo Finance.
+
+    If *expiration* is given (YYYY-MM-DD), only that single expiry is fetched.
+    Otherwise the first MAX_EXPIRATIONS dates are used (agent-cycle default).
+    """
     try:
         yf_ticker = yf.Ticker(ticker)
         info = yf_ticker.info or {}
@@ -453,7 +543,10 @@ def _fetch_yahoo(ticker: str) -> dict | None:
             return None
 
         hv = _compute_hv(history)
-        expirations = yf_ticker.options[:MAX_EXPIRATIONS] if yf_ticker.options else []
+        if expiration:
+            expirations = [expiration] if expiration in (yf_ticker.options or []) else []
+        else:
+            expirations = yf_ticker.options[:MAX_EXPIRATIONS] if yf_ticker.options else []
         calls, puts = _build_yahoo_chain(yf_ticker, expirations)
 
         total_call_vol = sum(c.get("volume", 0) or 0 for c in calls)

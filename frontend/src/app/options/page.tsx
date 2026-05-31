@@ -253,9 +253,11 @@ export default function OptionsPage() {
   const [running, setRunning] = useState(false);
   const [newTicker, setNewTicker] = useState("");
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
-  const [chainByTicker, setChainByTicker] = useState<Record<string, ChainData>>({});
-  const [loadingChain, setLoadingChain] = useState<Set<string>>(new Set());
-  const [selectedExpiryByTicker, setSelectedExpiryByTicker] = useState<Record<string, string>>({});
+  const [availableExpirationsByTicker, setAvailableExpirationsByTicker] = useState<Record<string, string[]>>({});
+  const [loadingExpirationsByTicker, setLoadingExpirationsByTicker] = useState<Set<string>>(new Set());
+  const [selectedExpiryIndexByTicker, setSelectedExpiryIndexByTicker] = useState<Record<string, number>>({});
+  const [chainByExpiry, setChainByExpiry] = useState<Record<string, ChainData>>({});
+  const [loadingExpiry, setLoadingExpiry] = useState<Set<string>>(new Set());
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
   const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
@@ -292,40 +294,59 @@ export default function OptionsPage() {
       .finally(() => setLoadingPositions(false));
   }, [retryPositions]);
 
-  // Load options chain when a ticker is expanded
+  // Fetch available expiration dates when a ticker is expanded
   useEffect(() => {
     if (!expandedTicker) return;
-    if (chainByTicker[expandedTicker] !== undefined) return;
-    if (loadingChain.has(expandedTicker)) return;
+    if (availableExpirationsByTicker[expandedTicker] !== undefined) return;
+    if (loadingExpirationsByTicker.has(expandedTicker)) return;
 
-    const snap = snapshots.find((s) => s.ticker === expandedTicker);
-    const fetcher = snap
-      ? (api.options.snapshotChain(snap.id) as Promise<ChainData>)
-      : (api.options.tickerChain(expandedTicker) as Promise<ChainData>);
-
-    setLoadingChain((prev) => new Set(prev).add(expandedTicker));
-    fetcher
-      .then((data) => {
-        setChainByTicker((prev) => ({ ...prev, [expandedTicker]: data }));
-        const expirations = [...new Set([...data.calls, ...data.puts].map((c) => c.expiration))].sort();
-        if (expirations.length > 0) {
-          setSelectedExpiryByTicker((prev) => ({ ...prev, [expandedTicker]: expirations[0] }));
-        }
+    setLoadingExpirationsByTicker((prev) => new Set(prev).add(expandedTicker));
+    (api.options.tickerExpirations(expandedTicker) as Promise<{ expirations: string[] }>)
+      .then(({ expirations }) => {
+        setAvailableExpirationsByTicker((prev) => ({ ...prev, [expandedTicker]: expirations }));
+        setSelectedExpiryIndexByTicker((prev) => ({ ...prev, [expandedTicker]: 0 }));
       })
       .catch(() =>
-        setChainByTicker((prev) => ({
-          ...prev,
-          [expandedTicker]: { ticker: expandedTicker, timestamp: "", calls: [], puts: [] },
-        })),
+        setAvailableExpirationsByTicker((prev) => ({ ...prev, [expandedTicker]: [] })),
       )
       .finally(() =>
-        setLoadingChain((prev) => {
+        setLoadingExpirationsByTicker((prev) => {
           const next = new Set(prev);
           next.delete(expandedTicker);
           return next;
         }),
       );
-  }, [expandedTicker, snapshots]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expandedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch chain data when the selected expiry changes
+  useEffect(() => {
+    if (!expandedTicker) return;
+    const expirations = availableExpirationsByTicker[expandedTicker];
+    if (!expirations || expirations.length === 0) return;
+    const idx = selectedExpiryIndexByTicker[expandedTicker] ?? 0;
+    const expiry = expirations[idx];
+    if (!expiry) return;
+    const cacheKey = `${expandedTicker}:${expiry}`;
+    if (chainByExpiry[cacheKey] !== undefined) return;
+    if (loadingExpiry.has(cacheKey)) return;
+
+    setLoadingExpiry((prev) => new Set(prev).add(cacheKey));
+    (api.options.tickerChain(expandedTicker, expiry) as Promise<ChainData>)
+      .then((data) => setChainByExpiry((prev) => ({ ...prev, [cacheKey]: data })))
+      .catch(() =>
+        setChainByExpiry((prev) => ({
+          ...prev,
+          [cacheKey]: { ticker: expandedTicker, timestamp: "", calls: [], puts: [] },
+        })),
+      )
+      .finally(() =>
+        setLoadingExpiry((prev) => {
+          const next = new Set(prev);
+          next.delete(cacheKey);
+          return next;
+        }),
+      );
+  }, [expandedTicker, availableExpirationsByTicker, selectedExpiryIndexByTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load options data in parallel (independent of positions)
   useEffect(() => {
@@ -972,20 +993,28 @@ export default function OptionsPage() {
                                     </div>
                                   ) : null}
 
-                                  {/* Options chain (calls + puts) */}
+                                  {/* Options chain with expiry navigator */}
                                   {(() => {
-                                    const chain = chainByTicker[ticker];
-                                    const isLoadingChain = loadingChain.has(ticker);
-                                    if (isLoadingChain) {
-                                      return <Skeleton className="h-32 w-full" />;
+                                    const isLoadingDates = loadingExpirationsByTicker.has(ticker);
+                                    const expirations = availableExpirationsByTicker[ticker];
+
+                                    if (isLoadingDates) {
+                                      return <Skeleton className="h-8 w-48" />;
                                     }
-                                    if (!chain || (chain.calls.length === 0 && chain.puts.length === 0)) {
-                                      return null;
-                                    }
-                                    const expirations = [...new Set([...chain.calls, ...chain.puts].map((c) => c.expiration))].sort();
-                                    const selectedExpiry = selectedExpiryByTicker[ticker] ?? expirations[0];
-                                    const filteredCalls = chain.calls.filter((c) => c.expiration === selectedExpiry);
-                                    const filteredPuts = chain.puts.filter((c) => c.expiration === selectedExpiry);
+                                    if (!expirations || expirations.length === 0) return null;
+
+                                    const idx = selectedExpiryIndexByTicker[ticker] ?? 0;
+                                    const expiry = expirations[idx];
+                                    const cacheKey = `${ticker}:${expiry}`;
+                                    const chain = chainByExpiry[cacheKey];
+                                    const isLoadingChain = loadingExpiry.has(cacheKey);
+
+                                    const navigate = (delta: number) => {
+                                      const next = idx + delta;
+                                      if (next < 0 || next >= expirations.length) return;
+                                      setSelectedExpiryIndexByTicker((prev) => ({ ...prev, [ticker]: next }));
+                                    };
+
                                     const renderContracts = (contracts: ChainContract[], label: string) => (
                                       <div>
                                         <h5 className="mb-1 text-xs font-semibold text-muted-foreground">
@@ -1021,30 +1050,44 @@ export default function OptionsPage() {
                                         </div>
                                       </div>
                                     );
+
                                     return (
                                       <div>
-                                        <div className="mb-2 flex items-center gap-2">
+                                        <div className="mb-3 flex items-center gap-3">
                                           <h4 className="text-sm font-semibold">Cadena de opciones</h4>
-                                          <div className="flex flex-wrap gap-1">
-                                            {expirations.map((exp) => (
-                                              <button
-                                                key={exp}
-                                                onClick={() => setSelectedExpiryByTicker((prev) => ({ ...prev, [ticker]: exp }))}
-                                                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                                                  exp === selectedExpiry
-                                                    ? "bg-primary text-primary-foreground"
-                                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                                }`}
-                                              >
-                                                {exp}
-                                              </button>
-                                            ))}
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              onClick={() => navigate(-1)}
+                                              disabled={idx === 0}
+                                              className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                                            >
+                                              ‹
+                                            </button>
+                                            <span className="min-w-[88px] text-center text-xs font-medium tabular-nums">
+                                              {expiry}
+                                            </span>
+                                            <button
+                                              onClick={() => navigate(1)}
+                                              disabled={idx === expirations.length - 1}
+                                              className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                                            >
+                                              ›
+                                            </button>
+                                            <span className="ml-1 text-xs text-muted-foreground">
+                                              {idx + 1}/{expirations.length}
+                                            </span>
                                           </div>
                                         </div>
-                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                          {renderContracts(filteredCalls, "Calls")}
-                                          {renderContracts(filteredPuts, "Puts")}
-                                        </div>
+                                        {isLoadingChain ? (
+                                          <Skeleton className="h-32 w-full" />
+                                        ) : !chain || (chain.calls.length === 0 && chain.puts.length === 0) ? (
+                                          <p className="text-xs text-muted-foreground">Sin datos para esta fecha.</p>
+                                        ) : (
+                                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            {renderContracts(chain.calls, "Calls")}
+                                            {renderContracts(chain.puts, "Puts")}
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })()}

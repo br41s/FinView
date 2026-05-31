@@ -457,7 +457,10 @@ export const api = {
     snapshots: (ticker?: string, days = 7) =>
       fetchCached(`/options/snapshots${qs({ ticker, days })}`),
     snapshotChain: (id: number) => fetchJSON(`/options/snapshots/${id}/chain`),
-    tickerChain: (ticker: string) => fetchJSON(`/options/chain/${encodeURIComponent(ticker)}`),
+    tickerChain: (ticker: string, expiration?: string) =>
+      fetchJSON(`/options/chain/${encodeURIComponent(ticker)}${expiration ? `?expiration=${encodeURIComponent(expiration)}` : ""}`),
+    tickerExpirations: (ticker: string) =>
+      fetchJSON(`/options/expirations/${encodeURIComponent(ticker)}`),
     hiddenPortfolioTickers: () =>
       fetchCached<string[]>("/options/portfolio/hidden"),
     hidePortfolioTicker: async (ticker: string) => {
