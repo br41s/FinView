@@ -69,6 +69,37 @@ frontend/
   src/components/               — FileUpload, tables, stat cards
   src/components/charts/        — 8 chart components (Recharts)
   src/lib/                      — API client + TypeScript types
+  src/app/zonas-clave/page.tsx  — Zonas Clave dashboard (scope buttons, auto-poll, chart)
+
+---
+
+## Zonas Clave — architecture
+
+Pure technical analysis engine for support/resistance detection. No AI calls.
+
+### Pipeline per ticker
+`fetch_history (10y daily) → detect_pivots → cluster_pivots → compute_zone_strength → RSI → MACD → MAs → trend_bias → store ZonasClaveAnalysis`
+
+### Key constants (zonas_clave_analyzer.py)
+- `_HISTORY_PERIOD = "10y"` — yfinance download window
+- `_PIVOT_WINDOW = 10` — bars each side for pivot detection
+- `_CLUSTER_THRESHOLD = 0.015` — 1.5% merge radius for zone clustering
+- `_MAX_ZONES = 8` — top zones returned (scored by touches × volume)
+- All bars sent to frontend (no server-side truncation); frontend slices by scope
+
+### Add-ticker flow
+- `POST /zonas-clave/watchlist` → persists item → fires `_analyze_single_in_background(item_id, ticker)` in a background thread (only that ticker, not all)
+- `POST /zonas-clave/analyze-all` → fires `run_analysis_for_user(user_id)` for all tickers
+
+### Frontend — /zonas-clave
+- Left panel: ticker list with trend bias %; clicking selects ticker
+- Right panel: trend card (RSI, MACD, price) + price chart + zones table
+- Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
+- Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
+- Scheduler: APScheduler every 24h; start/stop via UI
+
+### Trend bias weights
+RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/bearish %
 
 ---
 

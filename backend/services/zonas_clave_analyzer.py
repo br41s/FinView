@@ -17,12 +17,11 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-_HISTORY_PERIOD = "5y"
+_HISTORY_PERIOD = "10y"
 _HISTORY_INTERVAL = "1d"
 _PIVOT_WINDOW = 10          # bars each side for pivot detection
 _CLUSTER_THRESHOLD = 0.015  # 1.5% — pivots within this range merge into one zone
 _MAX_ZONES = 8              # top N zones to return
-_CHART_BARS = 252           # 1 year of daily bars sent to the frontend
 
 
 # ── Data fetching ────────────────────────────────────────────────────
@@ -306,8 +305,8 @@ def analyze_ticker(ticker: str) -> dict | None:
         ma = compute_moving_averages(close)
         bias = compute_trend_bias(rsi, macd, ma)
 
-        # Price history for chart (last 252 bars = ~1 year)
-        chart_df = df.tail(_CHART_BARS)
+        # Price history for chart — send all available bars so frontend can slice by scope
+        chart_df = df
         price_history = [
             {
                 "date": str(idx.date()) if hasattr(idx, "date") else str(idx)[:10],

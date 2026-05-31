@@ -43,6 +43,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+// ── Types ────────────────────────────────────────────────────────────
+
+type Scope = "1D" | "1W" | "1M" | "1Y" | "5Y" | "MAX";
+
+const SCOPES: Scope[] = ["1D", "1W", "1M", "1Y", "5Y", "MAX"];
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function fmt(n: number | null | undefined, d = 2): string {
@@ -61,6 +67,19 @@ function tickerLabel(item: ZcWatchlistItem): string {
     return item.name.trim().split(/\s+/).slice(0, 2).join(" ").substring(0, 14);
   }
   return item.ticker;
+}
+
+function filterByScope(history: { date: string; close: number; volume: number }[], scope: Scope) {
+  if (scope === "MAX") return history;
+  const now = new Date();
+  const cutoff = new Date(now);
+  if (scope === "1D") cutoff.setDate(now.getDate() - 1);
+  else if (scope === "1W") cutoff.setDate(now.getDate() - 7);
+  else if (scope === "1M") cutoff.setMonth(now.getMonth() - 1);
+  else if (scope === "1Y") cutoff.setFullYear(now.getFullYear() - 1);
+  else if (scope === "5Y") cutoff.setFullYear(now.getFullYear() - 5);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return history.filter((p) => p.date >= cutoffStr);
 }
 
 function macdLabel(signal: string | null) {
@@ -82,6 +101,7 @@ export default function ZonasClavePage() {
   const [watchlist, setWatchlist] = useState<ZcWatchlistItem[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [scope, setScope] = useState<Scope>("1Y");
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [schedulerRunning, setSchedulerRunning] = useState(false);
@@ -115,6 +135,27 @@ export default function ZonasClavePage() {
       })
       .finally(() => setLoading(false));
   }, [retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-poll every 3s when selected ticker has no analysis (e.g. just added)
+  const hasAnalysis = selectedTicker != null && !!analyses[selectedTicker];
+  useEffect(() => {
+    if (!selectedTicker || hasAnalysis) return;
+    const interval = setInterval(async () => {
+      try {
+        const arr = await api.zonasClav.allAnalyses();
+        for (const a of arr) {
+          const item = watchlist.find((w) => w.id === a.watchlist_item_id);
+          if (item?.ticker === selectedTicker) {
+            setAnalyses((prev) => ({ ...prev, [selectedTicker]: a }));
+            break;
+          }
+        }
+      } catch {
+        // silent — backend may not have the result yet
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedTicker, hasAnalysis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleRemove(item: ZcWatchlistItem) {
     await api.zonasClav.removeTicker(item.id);
@@ -183,8 +224,8 @@ export default function ZonasClavePage() {
   const analysis = selectedTicker ? analyses[selectedTicker] : null;
   const isAnalyzing = selectedTicker ? analyzing.has(selectedTicker) : false;
 
-  // Chart data — filter zones within ±30% of current price
-  const priceHistory = analysis?.price_history ?? [];
+  // Chart data — filter by selected scope, then filter zones within ±30% of current price
+  const priceHistory = filterByScope(analysis?.price_history ?? [], scope);
   const currentPrice = analysis?.current_price ?? 0;
   const visibleZones = (analysis?.zones ?? []).filter(
     (z) => currentPrice === 0 || Math.abs(z.level - currentPrice) / currentPrice < 0.3,
@@ -352,7 +393,7 @@ export default function ZonasClavePage() {
                     <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin opacity-40" />
                     <p className="text-sm">Analizando {selectedTicker}...</p>
                     <p className="text-xs mt-1 opacity-60">
-                      Descargando 5 años de datos y calculando zonas
+                      Descargando 10 años de datos y calculando zonas
                     </p>
                   </div>
                 </CardContent>
@@ -426,9 +467,26 @@ export default function ZonasClavePage() {
                 {/* Price chart with zones */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Gráfico de precio y zonas clave
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-medium">
+                        Gráfico de precio y zonas clave
+                      </CardTitle>
+                      <div className="flex items-center gap-0.5">
+                        {SCOPES.map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => setScope(s)}
+                            className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                              scope === s
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {priceHistory.length === 0 ? (
