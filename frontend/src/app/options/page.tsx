@@ -720,7 +720,6 @@ export default function OptionsPage() {
                     <TableRow>
                       <TableHead className="w-8" />
                       <TableHead>Ticker</TableHead>
-                      <TableHead>Nombre</TableHead>
                       <TableHead className="text-right">Precio</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                       <TableHead className="text-right">P&L</TableHead>
@@ -765,9 +764,6 @@ export default function OptionsPage() {
                                   {tickerAlerts.length}
                                 </Badge>
                               )}
-                            </TableCell>
-                            <TableCell className="max-w-48 truncate text-muted-foreground">
-                              {p.name}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {p.current_price_eur
@@ -840,10 +836,19 @@ export default function OptionsPage() {
                           {isExpanded && (
                             <TableRow key={`${p.isin}-${p.broker}-detail`}>
                               <TableCell
-                                colSpan={7}
+                                colSpan={6}
                                 className="bg-muted/30 p-4"
                               >
                                 <div className="space-y-4">
+                                  {/* Company name + current price */}
+                                  <div className="flex items-baseline justify-between">
+                                    <p className="font-semibold">{p.name}</p>
+                                    {p.current_price_eur != null && (
+                                      <p className="text-sm tabular-nums text-muted-foreground">
+                                        {fmt(p.current_price_eur)} €
+                                      </p>
+                                    )}
+                                  </div>
                                   {/* Position summary */}
                                   <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                                     <div>
