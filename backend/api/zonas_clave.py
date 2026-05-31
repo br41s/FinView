@@ -23,6 +23,33 @@ router = APIRouter(prefix="/zonas-clave", tags=["zonas-clave"])
 _404 = {404: {"description": "Not found"}}
 
 
+def _analyze_single_in_background(item_id: int, ticker: str) -> None:
+    """Analyze one ticker and persist the result. Runs in a background thread."""
+    import json as _json
+    from backend.database import SessionLocal
+    from backend.models import ZonasClaveAnalysis
+    from backend.services.zonas_clave_analyzer import analyze_ticker
+
+    result = analyze_ticker(ticker)
+    if result is None:
+        return
+    row = ZonasClaveAnalysis(
+        watchlist_item_id=item_id,
+        timestamp=datetime.now(timezone.utc),
+        zones=_json.dumps(result["zones"]),
+        trend_bias_bullish_pct=result["trend_bias_bullish_pct"],
+        trend_bias_bearish_pct=result["trend_bias_bearish_pct"],
+        rsi=result["rsi"],
+        macd_signal=result["macd_signal"],
+        macd_histogram=result["macd_histogram"],
+        price_history=_json.dumps(result["price_history"]),
+        current_price=result["current_price"],
+    )
+    with SessionLocal() as db:
+        db.add(row)
+        db.commit()
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -93,11 +120,9 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
     db.commit()
     db.refresh(item)
 
-    # Kick off initial analysis in background so the user sees data quickly
-    from backend.services.zonas_clave_analyzer import run_analysis_for_user
-
+    # Kick off analysis for this ticker only in background
     threading.Thread(
-        target=run_analysis_for_user, args=[user.id], daemon=True
+        target=_analyze_single_in_background, args=[item.id, item.ticker], daemon=True
     ).start()
 
     return item
