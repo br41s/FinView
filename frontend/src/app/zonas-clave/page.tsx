@@ -70,16 +70,22 @@ function tickerLabel(item: ZcWatchlistItem): string {
 }
 
 function filterByScope(history: { date: string; close: number; volume: number }[], scope: Scope) {
+  if (history.length === 0) return history;
   if (scope === "MAX") return history;
-  const now = new Date();
-  const cutoff = new Date(now);
-  if (scope === "1D") cutoff.setDate(now.getDate() - 1);
-  else if (scope === "1W") cutoff.setDate(now.getDate() - 7);
-  else if (scope === "1M") cutoff.setMonth(now.getMonth() - 1);
-  else if (scope === "1Y") cutoff.setFullYear(now.getFullYear() - 1);
-  else if (scope === "5Y") cutoff.setFullYear(now.getFullYear() - 5);
+
+  // Use the last available bar as reference so weekends/holidays always return data
+  const lastDate = new Date(history[history.length - 1].date + "T12:00:00");
+  const cutoff = new Date(lastDate);
+
+  if (scope === "1D") cutoff.setDate(lastDate.getDate() - 5);        // ~1 trading week
+  else if (scope === "1W") cutoff.setDate(lastDate.getDate() - 7);
+  else if (scope === "1M") cutoff.setMonth(lastDate.getMonth() - 1);
+  else if (scope === "1Y") cutoff.setFullYear(lastDate.getFullYear() - 1);
+  else if (scope === "5Y") cutoff.setFullYear(lastDate.getFullYear() - 5);
+
   const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return history.filter((p) => p.date >= cutoffStr);
+  const filtered = history.filter((p) => p.date >= cutoffStr);
+  return filtered.length >= 2 ? filtered : history.slice(-5);
 }
 
 function macdLabel(signal: string | null) {
@@ -223,6 +229,17 @@ export default function ZonasClavePage() {
 
   const analysis = selectedTicker ? analyses[selectedTicker] : null;
   const isAnalyzing = selectedTicker ? analyzing.has(selectedTicker) : false;
+
+  // When 5Y/MAX is selected and stored data covers < 4 years, auto-refresh to get 10y data
+  useEffect(() => {
+    if (!selectedTicker || !analysis || isAnalyzing) return;
+    if (scope !== "5Y" && scope !== "MAX") return;
+    const firstBar = analysis.price_history[0]?.date;
+    if (!firstBar) return;
+    const yearsStored =
+      (Date.now() - new Date(firstBar + "T12:00:00").getTime()) / (365.25 * 24 * 3600 * 1000);
+    if (yearsStored < 4) handleRefresh(selectedTicker);
+  }, [scope, selectedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Chart data — filter by selected scope, then filter zones within ±30% of current price
   const priceHistory = filterByScope(analysis?.price_history ?? [], scope);
