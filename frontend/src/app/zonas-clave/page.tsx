@@ -467,31 +467,30 @@ export default function ZonasClavePage() {
                 {/* Price chart with zones */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">
-                        Gráfico de precio y zonas clave
-                      </CardTitle>
-                      <div className="flex items-center gap-0.5">
-                        {SCOPES.map((s) => (
-                          <button
-                            key={s}
-                            onClick={() => setScope(s)}
-                            className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                              scope === s
-                                ? "bg-primary text-primary-foreground"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <CardTitle className="text-sm font-medium">
+                      Gráfico de precio y zonas clave
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {priceHistory.length === 0 ? (
                       <Skeleton className="h-64 w-full" />
                     ) : (
+                      <div className="relative">
+                        <div className="absolute right-[68px] top-1 z-10 flex items-center gap-0.5">
+                          {SCOPES.map((s) => (
+                            <button
+                              key={s}
+                              onClick={() => setScope(s)}
+                              className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
+                                scope === s
+                                  ? "bg-primary text-primary-foreground"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                              }`}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
                       <ResponsiveContainer width="100%" height={360}>
                         <ComposedChart
                           data={priceHistory}
@@ -555,6 +554,7 @@ export default function ZonasClavePage() {
                           ))}
                         </ComposedChart>
                       </ResponsiveContainer>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
