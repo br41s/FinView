@@ -17,7 +17,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 
 | Layer | Tech |
 |-------|------|
-| Backend | Python 3.12 · FastAPI · SQLAlchemy · Alembic |
+| Backend | Python 3.12 · FastAPI · SQLAlchemy (create_all + ensure_columns, no Alembic) |
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
 | AI | anthropic SDK — claude-haiku-4-5-20251001 (options analysis) |
@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 133 tests (35 skipped — need real PDFs/CSVs in files/) |
+| Tests | pytest · 144 tests (35 skipped — need real PDFs/CSVs in files/) |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -63,7 +63,8 @@ backend/
     backtest_service.py    — record_signal() + evaluate_pending() at +1d/+3d/+7d horizons
     notification_service.py — ntfy.sh push + Gmail SMTP + Telegram Bot API
     exchange_rates.py      — ECB reference-rate service (DB cache + ±7d fallback); official FX fallback for IRPF
-  api/alt_investments.py — Alt-investments CRUD + /summary consolidation (TVPI/DPI/RVPI)
+    cnmv_catalog.py        — CNMV IIC registry → searchable catalog for the alt-investments search bar
+  api/alt_investments.py — Alt-investments CRUD + /summary consolidation (TVPI/DPI/RVPI) + /search
 
 frontend/
   src/app/page.tsx                  — Main investment dashboard (5 tabs)
@@ -163,15 +164,33 @@ plus Hedge Fund / Structured Product / Other). MVP: no AI, no import — pure CR
 - All None when called = 0. `/summary` aggregates portfolio totals + NAV-weighted allocation by type/geo/currency.
 
 ### Endpoints (`/alt-investments/...`)
-`GET /` list · `GET /summary` consolidation · `POST /` create · `PATCH /{id}` update · `DELETE /{id}`
+`GET /` list · `GET /summary` consolidation · `GET /search?q=&type=` CNMV catalog search ·
+`POST /` create · `PATCH /{id}` update · `DELETE /{id}`
+
+### Search — CNMV catalog (`services/cnmv_catalog.py`)
+Search bar finds regulated Spanish funds by name or ISIN and pre-fills the add form
+(identity only — name, type, gestora, ISIN; amounts stay manual).
+- Source: free CNMV "información individual de IIC" monthly registry (FONDREGISTRO XML in a ZIP,
+  no auth). Download flow: fetch the year page → BeautifulSoup the latest `lnkZip` (opaque
+  `verdocumento/ver?e=` token) → unzip → iterparse `Entidad` → one `alt_investment_catalog` row
+  per share-class ISIN (name, gestora, Tipo→AltInvestmentType, isin).
+- `refresh_iic_catalog()` upserts the catalog; runs in a background thread on startup when
+  `catalog_is_stale` (>7 days). Best-effort, never blocks/breaks the page. Never per request.
+- `search_catalog(db, q, type_filter, limit)` is DB-only: ILIKE on name + exact ISIN, prefix
+  matches rank first. `<2`-char queries return `[]`.
+- Coverage: the monthly file is Fondos de Inversión (Tipo=FI) only — ~1,400 funds / ~3,000 ISINs,
+  mapped to `OTHER`. SICAV / real-estate IIC / hedge / PE-VC live in separate CNMV registries (deferred);
+  `_TIPO_MAP` is already wired for FII→REAL_ESTATE, FIL→HEDGE_FUND.
 
 ### Frontend — /alt-investments
 Self-contained page (QuickNav, like /portfolio /zonas-clave — not the AppSidebar dashboard).
-Summary stat cards + allocation bars + positions table + inline add/edit form (native selects).
+Top search bar (debounced 300ms → `/search` → results dropdown → click pre-fills the form) +
+summary stat cards + allocation bars + positions table + inline add/edit form (native selects).
 
 ### Deferred (original OptionsAI roadmap)
 Structured-products barrier/knock-in alerts, private-bank PDF import, AI reporting,
-capital-call/distribution movement sub-table.
+capital-call/distribution movement sub-table. Search: CNMV ECR (PE/VC) + SICAV/RE/hedge registries,
+listed SOCIMIs via Yahoo.
 
 ---
 
@@ -194,8 +213,10 @@ file omits the rate or for manual entries. Ported from OptionsAI.
   Never touch it without understanding cross-broker FIFO matching logic.
 - Importer changes: each importer is isolated — changes in one must not break others.
   Always run pytest backend/tests/ after importer changes.
-- DB migrations: use Alembic. Never modify models.py without a migration.
-  Run alembic upgrade head after pulling changes with model changes.
+- DB schema: there is **no Alembic**. New tables auto-create via
+  `Base.metadata.create_all` on startup. `create_all` does NOT alter existing tables, so
+  adding a column to a table that already exists in prod requires registering it in
+  `database._ADDITIVE_COLUMNS` (applied idempotently by `ensure_columns()` at startup).
 - No breaking changes to API contracts without updating frontend src/lib/ types.
 - options_scraper.py cache TTL (5 min) must not be removed — MEFF rate-limits scraping.
 - Premium spike baselines are in-memory only. Do not try to persist them to DB.
@@ -228,5 +249,5 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 
 Run: pytest backend/tests/ -v
 
-133 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
+144 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
 If a test breaks, fix it before committing — no exceptions.

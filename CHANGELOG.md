@@ -17,6 +17,18 @@ All notable changes to FinView are documented here.
   Cloud Run (unspoofable by client).
 
 ### Added
+- **Alt-investments search (CNMV)** — a search bar at the top of `/alt-investments`
+  finds regulated Spanish investment funds by name or ISIN and pre-fills the add
+  form (name, type, gestora, ISIN). Backed by a new `alt_investment_catalog` table
+  populated from the free CNMV "información individual de IIC" monthly registry
+  (`services/cnmv_catalog.py`): ~3,000 share-class ISINs across ~1,400 funds,
+  refreshed in a background thread on startup when stale (>7 days). Endpoint
+  `GET /alt-investments/search?q=&type=`. Amounts stay manual — the catalog only
+  supplies identity. (SICAVs, real-estate IICs, hedge funds and PE/VC live in
+  separate CNMV registries — deferred to later slices.)
+- **Additive column migration on startup** — `database.ensure_columns()` adds
+  columns to tables that already exist in production (which `create_all` cannot
+  alter), starting with `alt_investments.isin`. Idempotent, dialect-safe.
 - **Alternative investments tracker** — new `/alt-investments` page and
   `/api/alt-investments` endpoints to manually track private-banking positions
   (Private Equity, Venture Capital, Real Estate, Hedge Fund, Structured Product,
