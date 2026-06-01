@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { AppSidebar, type View } from "@/components/app-sidebar";
@@ -170,6 +171,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [filterCountry, setFilterCountry] = useState<string | null>(null);
 
   // Chart data
   const [divByCountry, setDivByCountry] = useState<DividendsByCountry[]>([]);
@@ -317,6 +319,9 @@ export default function Home() {
     }
   }, [showFiscal, view]);
 
+  // Clear country filter when year changes
+  useEffect(() => { setFilterCountry(null); }, [selectedYear]);
+
   const counts = {
     rendimiento: dividendYield.filter(
       (d) => Number.parseFloat(d.yield_on_cost) > 0,
@@ -413,7 +418,36 @@ export default function Home() {
               <div
                 className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}
               >
-                <DividendsByCountryChart data={divByCountry} />
+                <div className="space-y-2">
+                  <DividendsByCountryChart
+                    data={divByCountry}
+                    activeCountry={filterCountry}
+                    onCountryClick={setFilterCountry}
+                  />
+                  {filterCountry && (
+                    <div className="flex items-center gap-2 px-1 text-sm">
+                      <span className="text-muted-foreground">Filtro activo:</span>
+                      <Badge variant="secondary" className="gap-1">
+                        {filterCountry}
+                        <button
+                          onClick={() => setFilterCountry(null)}
+                          className="ml-0.5 opacity-60 hover:opacity-100"
+                          aria-label="Quitar filtro"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setView("dividendos")}
+                      >
+                        Ver dividendos →
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 {showFiscal && <PatrimonioChart data={patrimonio} />}
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -470,7 +504,27 @@ export default function Home() {
           {view === "dividendos" &&
             hasData &&
             (dividends.length > 0 ? (
-              <DividendsTable dividends={dividends} dividendYield={dividendYield} />
+              <>
+                {filterCountry && (
+                  <div className="flex items-center gap-2 mb-4 text-sm">
+                    <span className="text-muted-foreground">País:</span>
+                    <Badge variant="secondary" className="gap-1">
+                      {filterCountry}
+                      <button
+                        onClick={() => setFilterCountry(null)}
+                        className="ml-0.5 opacity-60 hover:opacity-100"
+                        aria-label="Quitar filtro"
+                      >
+                        ×
+                      </button>
+                    </Badge>
+                  </div>
+                )}
+                <DividendsTable
+                  dividends={filterCountry ? dividends.filter((d) => d.country === filterCountry) : dividends}
+                  dividendYield={dividendYield}
+                />
+              </>
             ) : (
               <EmptyState
                 icon={Coins}

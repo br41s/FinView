@@ -3,6 +3,7 @@
 import {
   PieChart,
   Pie,
+  Cell,
   Tooltip,
   ResponsiveContainer,
   Legend,
@@ -15,7 +16,13 @@ const COLORS = [
   "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#6366f1",
 ];
 
-export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCountry[] }>) {
+interface Props {
+  data: DividendsByCountry[];
+  activeCountry?: string | null;
+  onCountryClick?: (country: string | null) => void;
+}
+
+export function DividendsByCountryChart({ data, activeCountry, onCountryClick }: Readonly<Props>) {
   const chartData = data.map((d, i) => ({
     name: d.country,
     value: Number.parseFloat(d.gross),
@@ -26,7 +33,12 @@ export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCo
 
   return (
     <div className="bg-card border border-border rounded-xl p-6">
-      <h3 className="text-sm font-medium text-muted-foreground mb-4">Dividendos por país</h3>
+      <h3 className="text-sm font-medium text-muted-foreground mb-4">
+        Dividendos por país
+        {onCountryClick && (
+          <span className="ml-2 text-xs font-normal opacity-60">— pulsa un sector para filtrar</span>
+        )}
+      </h3>
       <ResponsiveContainer width="100%" height={300}>
         <PieChart>
           <Pie
@@ -37,7 +49,18 @@ export function DividendsByCountryChart({ data }: Readonly<{ data: DividendsByCo
             outerRadius={110}
             paddingAngle={2}
             dataKey="value"
+            cursor={onCountryClick ? "pointer" : undefined}
+            onClick={(entry) => onCountryClick?.(activeCountry === entry.name ? null : entry.name)}
           >
+            {chartData.map((entry) => (
+              <Cell
+                key={entry.name}
+                fill={entry.fill}
+                opacity={activeCountry == null || activeCountry === entry.name ? 1 : 0.3}
+                stroke={activeCountry === entry.name ? "var(--foreground)" : "none"}
+                strokeWidth={activeCountry === entry.name ? 2 : 0}
+              />
+            ))}
           </Pie>
           <Tooltip
             contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
