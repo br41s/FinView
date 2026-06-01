@@ -30,6 +30,7 @@ class AltInvestmentCreate(BaseModel):
     type: str
     status: str = AltInvestmentStatus.ACTIVE.value
     manager: str = ""
+    isin: str | None = None
     vintage_year: int | None = None
     geography: str = ""
     currency: str = "EUR"
@@ -45,6 +46,7 @@ class AltInvestmentUpdate(BaseModel):
     type: str | None = None
     status: str | None = None
     manager: str | None = None
+    isin: str | None = None
     vintage_year: int | None = None
     geography: str | None = None
     currency: str | None = None
@@ -61,6 +63,7 @@ class AltInvestmentOut(BaseModel):
     type: str
     status: str
     manager: str
+    isin: str | None
     vintage_year: int | None
     geography: str
     currency: str
@@ -101,6 +104,14 @@ class AltSummary(BaseModel):
     by_currency: list[AltAllocationSlice]
 
 
+class CatalogSearchResult(BaseModel):
+    name: str
+    type: str
+    manager: str
+    isin: str | None
+    source: str
+
+
 # --------------- helpers ---------------
 
 
@@ -127,6 +138,7 @@ def _to_out(inv: AltInvestment) -> AltInvestmentOut:
         type=inv.type,
         status=inv.status,
         manager=inv.manager,
+        isin=inv.isin,
         vintage_year=inv.vintage_year,
         geography=inv.geography,
         currency=inv.currency,
@@ -213,6 +225,25 @@ def alt_summary(db: DbSession, user: CurrentUser):
     )
 
 
+@router.get("/search", response_model=list[CatalogSearchResult])
+def search_catalog_endpoint(
+    db: DbSession,
+    user: CurrentUser,
+    q: str,
+    type: str | None = None,
+    limit: int = 20,
+):
+    """Search the CNMV catalog of regulated Spanish vehicles to pre-fill the form.
+
+    Matches by name (substring) or exact ISIN; returns [] for queries < 2 chars.
+    """
+    from backend.services.cnmv_catalog import search_catalog
+
+    if type is not None and type not in _TYPES:
+        raise HTTPException(400, f"Invalid type. Must be one of: {sorted(_TYPES)}")
+    return search_catalog(db, q, type_filter=type, limit=min(limit, 50))
+
+
 @router.post("/", response_model=AltInvestmentOut, status_code=status.HTTP_201_CREATED)
 def create_alt_investment(data: AltInvestmentCreate, db: DbSession, user: CurrentUser):
     """Create a new alternative-investment position."""
@@ -223,6 +254,7 @@ def create_alt_investment(data: AltInvestmentCreate, db: DbSession, user: Curren
         type=data.type,
         status=data.status,
         manager=data.manager,
+        isin=data.isin,
         vintage_year=data.vintage_year,
         geography=data.geography,
         currency=data.currency,

@@ -11,11 +11,14 @@ import {
   TrendingUp,
   Wallet,
   PiggyBank,
+  Search,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   api,
+  type AltCatalogResult,
   type AltInvestment,
   type AltInvestmentInput,
   type AltInvestmentType,
@@ -82,6 +85,12 @@ export default function AltInvestmentsPage() {
   const [form, setForm] = useState<AltInvestmentInput>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // Catalog search (CNMV)
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<AltCatalogResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -101,6 +110,45 @@ export default function AltInvestmentsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Debounced catalog search
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.altInvestments.search(q);
+        setResults(res);
+        setSearchOpen(true);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  function openFromCatalog(r: AltCatalogResult) {
+    setEditingId(null);
+    setForm({
+      ...EMPTY_FORM,
+      name: r.name,
+      type: r.type,
+      manager: r.manager,
+      isin: r.isin,
+      currency: "EUR",
+    });
+    setFormOpen(true);
+    setSearchOpen(false);
+    setQuery("");
+    setResults([]);
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -187,6 +235,59 @@ export default function AltInvestmentsPage() {
             <Plus className="mr-2 h-4 w-4" /> Añadir
           </Button>
         </div>
+      </div>
+
+      {/* Catalog search (CNMV) */}
+      <div className="relative">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => results.length > 0 && setSearchOpen(true)}
+            placeholder="Buscar fondo registrado en la CNMV por nombre o ISIN…"
+            className="pl-9"
+            aria-label="Buscar en el catálogo CNMV"
+          />
+          {searching && (
+            <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
+        </div>
+        {searchOpen && query.trim().length >= 2 && (
+          <div className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-md border bg-popover shadow-md">
+            {results.length === 0 && !searching ? (
+              <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                Sin resultados. Puedes añadirlo manualmente con “Añadir”.
+              </div>
+            ) : (
+              results.map((r) => (
+                <button
+                  key={`${r.source}-${r.isin ?? r.name}`}
+                  type="button"
+                  onClick={() => openFromCatalog(r)}
+                  className="flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-accent"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{r.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {r.manager}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge variant="outline" className="text-[10px]">
+                      {TYPE_LABELS[r.type]}
+                    </Badge>
+                    {r.isin && (
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {r.isin}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -300,6 +401,16 @@ export default function AltInvestmentsPage() {
                 value={form.manager ?? ""}
                 onChange={(e) => setField("manager", e.target.value)}
                 placeholder="p. ej. Banca privada X"
+              />
+            </Field>
+            <Field label="ISIN">
+              <Input
+                value={form.isin ?? ""}
+                onChange={(e) =>
+                  setField("isin", e.target.value.toUpperCase().slice(0, 12) || null)
+                }
+                placeholder="ES0000000000"
+                className="font-mono"
               />
             </Field>
             <Field label="Año (vintage)">

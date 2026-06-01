@@ -282,6 +282,13 @@ A partir de las cifras que introduces, FinView calcula automáticamente las mét
 
 Las tarjetas superiores resumen el total de la cartera (comprometido, desembolsado, NAV, TVPI/DPI) y las barras de **asignación por tipo** muestran qué porcentaje de tu NAV está en cada categoría.
 
+### 9.4 Buscar en el catálogo CNMV
+
+En la parte superior de la página hay un **buscador**. Escribe el nombre de un fondo (o su ISIN) y aparecerá un desplegable con los fondos registrados en la **CNMV** que coinciden. Al seleccionar uno, el formulario de alta se rellena automáticamente con su **nombre, tipo, gestora e ISIN** — solo tienes que añadir los importes (comprometido, desembolsado, distribuido, NAV), que son personales y no figuran en el registro público.
+
+- Cubre los **fondos de inversión españoles** registrados en la CNMV (~1.400 fondos). SICAV, IIC inmobiliarias, hedge funds y capital riesgo (private equity / venture capital) aún no están en el buscador — añádelos manualmente con "Añadir".
+- Si no encuentras tu inversión (por ejemplo, un producto de banca privada a medida o un fondo extranjero), usa "Añadir" para introducirla a mano.
+
 ---
 
 ## 10. Preguntas frecuentes

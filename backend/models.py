@@ -657,6 +657,7 @@ class AltInvestment(Base):
         Enum(AltInvestmentStatus), default=AltInvestmentStatus.ACTIVE.value
     )
     manager: Mapped[str] = mapped_column(String(200), default="")  # fund / private bank
+    isin: Mapped[str | None] = mapped_column(String(12))  # set when added from the CNMV catalog
     vintage_year: Mapped[int | None] = mapped_column(Integer)
     geography: Mapped[str] = mapped_column(String(100), default="")
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
@@ -678,3 +679,33 @@ class AltInvestment(Base):
     )
 
     __table_args__ = (Index("ix_alt_user", "user_id"),)
+
+
+class AltInvestmentCatalog(Base):
+    """Searchable index of regulated Spanish vehicles (CNMV).
+
+    Populated by services.cnmv_catalog from the free CNMV IIC registry
+    (one row per share-class ISIN). Read-only reference data used to power
+    the search bar on /alt-investments; selecting a result pre-fills the
+    add form. Refreshed periodically in the background, never per request.
+    """
+
+    __tablename__ = "alt_investment_catalog"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)  # e.g. CNMV_IIC
+    external_id: Mapped[str] = mapped_column(String(20), nullable=False)  # the ISIN
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(Enum(AltInvestmentType), nullable=False)
+    manager: Mapped[str] = mapped_column(String(255), default="")
+    isin: Mapped[str | None] = mapped_column(String(12))
+    vehicle_subtype: Mapped[str] = mapped_column(String(20), default="")  # raw CNMV Tipo
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source", "external_id"),
+        Index("ix_alt_catalog_name", "name"),
+    )

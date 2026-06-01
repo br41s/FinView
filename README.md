@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (133 tests)
+- **Tests:** pytest (144 tests)
 
 ## Brokers soportados
 
@@ -73,7 +73,8 @@ FinView/
 │   │   ├── premium_spike.py   # Detector de spikes de prima vía EMA in-memory
 │   │   ├── backtest_service.py # Motor backtesting: record_signal + evaluate_pending
 │   │   ├── notification_service.py # ntfy.sh + Email SMTP + Telegram Bot
-│   │   └── exchange_rates.py  # Servicio de tipos de cambio ECB (fallback IRPF)
+│   │   ├── exchange_rates.py  # Servicio de tipos de cambio ECB (fallback IRPF)
+│   │   └── cnmv_catalog.py    # Catálogo CNMV de IIC (buscador alt-investments)
 │   └── tests/
 ├── frontend/
 │   └── src/
@@ -161,6 +162,9 @@ Capital comprometido, desembolsado (called), distribuido y NAV actual se guardan
 ### UI — página `/alt-investments`
 Tarjetas de resumen + barras de asignación por tipo + tabla de posiciones con métricas por fila + formulario inline para añadir/editar.
 
+### Buscador (catálogo CNMV)
+Barra de búsqueda en la parte superior: busca fondos registrados en la **CNMV** por nombre o ISIN y, al seleccionar un resultado, pre-rellena el formulario (nombre, tipo, gestora, ISIN; importes siempre manuales). Los datos provienen del registro mensual gratuito "información individual de IIC" de la CNMV (`services/cnmv_catalog.py`) — ~3.000 ISINs de clase sobre ~1.400 fondos — cacheados en la tabla `alt_investment_catalog` y refrescados en segundo plano al arrancar si están obsoletos (>7 días). SICAV, IIC inmobiliarias, hedge funds y capital riesgo (PE/VC) están en registros CNMV separados y quedan para fases posteriores.
+
 ### Tipos de cambio (ECB)
 `services/exchange_rates.py` cachea los tipos de referencia oficiales del BCE en la tabla `exchange_rates` como fallback para conversiones IRPF cuando el archivo del broker no trae el tipo (o para entradas manuales). Sincroniza en segundo plano al arrancar (historia completa el primer boot, luego feed de 90 días). `get_rate()` es solo-DB con fallback ±7 días para fines de semana/festivos.
 
@@ -197,6 +201,7 @@ Base URL: `http://localhost:8000/api`
 ### Inversiones Alternativas (`/alt-investments/...`)
 - `GET /alt-investments/` — Listar posiciones (con TVPI/DPI/RVPI/unfunded por fila)
 - `GET /alt-investments/summary` — Consolidación + asignación por tipo/geografía/divisa
+- `GET /alt-investments/search?q=&type=` — Buscar en el catálogo CNMV (nombre o ISIN)
 - `POST /alt-investments/` — Crear posición
 - `PATCH /alt-investments/{id}` — Actualizar posición
 - `DELETE /alt-investments/{id}` — Eliminar posición
@@ -224,7 +229,7 @@ Base URL: `http://localhost:8000/api`
 pytest tests/ backend/tests/ -v
 ```
 
-133 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
+144 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
 
 ## Despliegue y CI/CD
 
