@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 128 tests (35 skipped — need real PDFs/CSVs in files/) |
+| Tests | pytest · 133 tests (35 skipped — need real PDFs/CSVs in files/) |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -62,14 +62,17 @@ backend/
     premium_spike.py       — In-memory EMA baseline; fires HIGH alert when premium ≥ 2.5× EMA
     backtest_service.py    — record_signal() + evaluate_pending() at +1d/+3d/+7d horizons
     notification_service.py — ntfy.sh push + Gmail SMTP + Telegram Bot API
+    exchange_rates.py      — ECB reference-rate service (DB cache + ±7d fallback); official FX fallback for IRPF
+  api/alt_investments.py — Alt-investments CRUD + /summary consolidation (TVPI/DPI/RVPI)
 
 frontend/
-  src/app/page.tsx              — Main investment dashboard (5 tabs)
-  src/app/options/page.tsx      — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
-  src/components/               — FileUpload, tables, stat cards
-  src/components/charts/        — 8 chart components (Recharts)
-  src/lib/                      — API client + TypeScript types
-  src/app/zonas-clave/page.tsx  — Zonas Clave dashboard (scope buttons, auto-poll, chart)
+  src/app/page.tsx                  — Main investment dashboard (5 tabs)
+  src/app/options/page.tsx          — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
+  src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
+  src/components/                   — FileUpload, tables, stat cards
+  src/components/charts/            — 8 chart components (Recharts)
+  src/lib/                          — API client + TypeScript types
+  src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
 
 ---
 
@@ -143,6 +146,48 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
 
 ---
 
+## Alt-Investments — architecture
+
+Manual tracker for alternative investments held in private banking (PE/VC/Real Estate,
+plus Hedge Fund / Structured Product / Other). MVP: no AI, no import — pure CRUD + metrics.
+
+### Model (`AltInvestment`)
+- One row per position. Cash flows stored as running **aggregates** (not a movement
+  sub-table): `committed_capital`, `called_capital`, `distributed_capital`, `current_nav`.
+- Plus: `type`, `status` (ACTIVE/REALIZED), `manager`, `vintage_year`, `geography`, `currency`, `notes`.
+- New tables auto-create via `Base.metadata.create_all` on startup (no Alembic needed for adds).
+
+### Derived metrics (computed in `api/alt_investments.py`, never stored)
+- **TVPI** = (distributed + NAV) / called · **DPI** = distributed / called · **RVPI** = NAV / called
+- **Unfunded** = committed − called · **Total value** = distributed + NAV
+- All None when called = 0. `/summary` aggregates portfolio totals + NAV-weighted allocation by type/geo/currency.
+
+### Endpoints (`/alt-investments/...`)
+`GET /` list · `GET /summary` consolidation · `POST /` create · `PATCH /{id}` update · `DELETE /{id}`
+
+### Frontend — /alt-investments
+Self-contained page (QuickNav, like /portfolio /zonas-clave — not the AppSidebar dashboard).
+Summary stat cards + allocation bars + positions table + inline add/edit form (native selects).
+
+### Deferred (original OptionsAI roadmap)
+Structured-products barrier/knock-in alerts, private-bank PDF import, AI reporting,
+capital-call/distribution movement sub-table.
+
+---
+
+## Exchange rates — ECB service
+
+`services/exchange_rates.py` — official EUR reference rates as an IRPF fallback when a broker
+file omits the rate or for manual entries. Ported from OptionsAI.
+- `ExchangeRate` table (rate_date, currency, rate, source); unique (rate_date, currency).
+- `sync_rates()` runs in a background thread on startup: full ECB history on first boot,
+  then the 90-day feed; skips if already fresh (≤1 day). Never runs inside a request.
+- `get_rate(currency, on)` is DB-only (no HTTP), with ±7-day fallback for weekends/holidays.
+  `to_eur(amount, currency, on)` = amount / rate. EUR is always 1.
+- Lookup endpoint: `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`.
+
+---
+
 ## Critical rules
 
 - fifo_engine.py is the most sensitive file. Any change must be followed by full test suite.
@@ -183,5 +228,5 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
 
 Run: pytest backend/tests/ -v
 
-128 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
+133 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
 If a test breaks, fix it before committing — no exceptions.

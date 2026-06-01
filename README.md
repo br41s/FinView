@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (128 tests)
+- **Tests:** pytest (133 tests)
 
 ## Brokers soportados
 
@@ -50,8 +50,9 @@ FinView/
 │   ├── api/
 │   │   ├── imports.py      # POST endpoints para cada broker
 │   │   ├── transactions.py # GET dividendos, capital gains, listados
-│   │   ├── fiscal.py       # GET casillas, resumen fiscal, FIFO lots
+│   │   ├── fiscal.py       # GET casillas, resumen fiscal, FIFO lots, fx-rate
 │   │   ├── charts.py       # GET datos para gráficas
+│   │   ├── alt_investments.py # CRUD inversiones alternativas + /summary
 │   │   └── schemas.py      # Pydantic response models
 │   ├── importers/
 │   │   ├── base.py         # Dataclasses compartidos + country_from_isin
@@ -71,15 +72,17 @@ FinView/
 │   │   ├── greeks_calculator.py # Delta, Gamma, Theta, Vega, Rho (Black-Scholes)
 │   │   ├── premium_spike.py   # Detector de spikes de prima vía EMA in-memory
 │   │   ├── backtest_service.py # Motor backtesting: record_signal + evaluate_pending
-│   │   └── notification_service.py # ntfy.sh + Email SMTP + Telegram Bot
+│   │   ├── notification_service.py # ntfy.sh + Email SMTP + Telegram Bot
+│   │   └── exchange_rates.py  # Servicio de tipos de cambio ECB (fallback IRPF)
 │   └── tests/
 ├── frontend/
 │   └── src/
-│       ├── app/page.tsx          # Dashboard principal (5 tabs — inversiones)
-│       ├── app/options/page.tsx  # Monitor opciones (6 tabs)
-│       ├── components/           # FileUpload, tablas, stats cards
-│       ├── components/charts/    # 8 componentes de gráficas
-│       └── lib/                  # API client + tipos TypeScript
+│       ├── app/page.tsx                 # Dashboard principal (5 tabs — inversiones)
+│       ├── app/options/page.tsx         # Monitor opciones (6 tabs)
+│       ├── app/alt-investments/page.tsx # Inversiones alternativas (banca privada)
+│       ├── components/                  # FileUpload, tablas, stats cards
+│       ├── components/charts/           # 8 componentes de gráficas
+│       └── lib/                         # API client + tipos TypeScript
 └── pyproject.toml
 ```
 
@@ -139,6 +142,28 @@ Calcula P/C ratio (volumen) sobre todos los tickers del watchlist; muestra senti
 ### HV vs IV — badge visual
 En el acordeón de cartera: compara `avg_call_iv` con `historical_volatility`; muestra badge "IV cara" (rojo), "IV barata" (verde) o "IV normal" (gris) con threshold ±5 puntos.
 
+## Inversiones Alternativas
+
+Módulo de seguimiento manual de inversiones de banca privada, accesible en `/alt-investments`. MVP sin IA ni importación — CRUD puro + métricas.
+
+### Tipos soportados
+Private Equity, Venture Capital, Real Estate, Hedge Fund, Producto Estructurado, Otro.
+
+### Datos por posición
+Capital comprometido, desembolsado (called), distribuido y NAV actual se guardan como **agregados** (no hay sub-tabla de movimientos). Además: gestora/banco, año vintage, geografía, divisa, estado (Activa/Realizada) y notas.
+
+### Métricas derivadas (calculadas, nunca almacenadas)
+- **TVPI** = (distribuido + NAV) / called
+- **DPI** = distribuido / called · **RVPI** = NAV / called
+- **Unfunded** = comprometido − called · **Valor total** = distribuido + NAV
+- `/summary` agrega los totales de la cartera y la asignación (ponderada por NAV) por tipo, geografía y divisa.
+
+### UI — página `/alt-investments`
+Tarjetas de resumen + barras de asignación por tipo + tabla de posiciones con métricas por fila + formulario inline para añadir/editar.
+
+### Tipos de cambio (ECB)
+`services/exchange_rates.py` cachea los tipos de referencia oficiales del BCE en la tabla `exchange_rates` como fallback para conversiones IRPF cuando el archivo del broker no trae el tipo (o para entradas manuales). Sincroniza en segundo plano al arrancar (historia completa el primer boot, luego feed de 90 días). `get_rate()` es solo-DB con fallback ±7 días para fines de semana/festivos.
+
 ## API
 
 Base URL: `http://localhost:8000/api`
@@ -167,6 +192,14 @@ Base URL: `http://localhost:8000/api`
 - `GET /fiscal/casillas?fiscal_year=2024` — Casillas Modelo 100/714
 - `GET /fiscal/summary/2024` — Resumen fiscal completo
 - `GET /fiscal/cross-broker-lots/2024` — Lotes FIFO cruzados
+- `GET /fiscal/fx-rate?currency=USD&on=2024-01-02` — Tipo de cambio ECB (fallback ±7 días)
+
+### Inversiones Alternativas (`/alt-investments/...`)
+- `GET /alt-investments/` — Listar posiciones (con TVPI/DPI/RVPI/unfunded por fila)
+- `GET /alt-investments/summary` — Consolidación + asignación por tipo/geografía/divisa
+- `POST /alt-investments/` — Crear posición
+- `PATCH /alt-investments/{id}` — Actualizar posición
+- `DELETE /alt-investments/{id}` — Eliminar posición
 
 ### Gráficas
 - `GET /charts/dividends-by-country` · `dividends-monthly` · `top-dividend-payers`
@@ -191,7 +224,7 @@ Base URL: `http://localhost:8000/api`
 pytest tests/ backend/tests/ -v
 ```
 
-128 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
+133 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
 
 ## Despliegue y CI/CD
 

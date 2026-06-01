@@ -119,6 +119,8 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `options_agent_logs` | Log de cada ciclo del agente |
 | `zonas_clave_watchlist` | Tickers en watchlist de Zonas Clave por usuario |
 | `zonas_clave_analyses` | Análisis técnico calculado por ticker (zonas, RSI, MACD, precio) |
+| `alt_investments` | Posiciones de inversiones alternativas (banca privada) por usuario |
+| `exchange_rates` | Tipos de cambio de referencia del BCE (cache, unique por fecha+divisa) |
 
 ### Orden de borrado (FK constraints)
 
@@ -304,14 +306,14 @@ ZcWatchlistItem (DB)
 
 ### QuickNav (`frontend/src/components/QuickNav.tsx`)
 
-Barra de 4 iconos de acceso rápido presente en todas las páginas internas.  
+Barra de 5 iconos de acceso rápido presente en todas las páginas internas.  
 Acepta la prop `current: QuickNavPage` (literal de la ruta activa) para resaltar el icono correspondiente.
 
 ```tsx
 <QuickNav current="/portfolio" />
 ```
 
-Destinos fijos: `/dashboard`, `/portfolio`, `/options`, `/zonas-clave`.  
+Destinos fijos: `/dashboard`, `/portfolio`, `/options`, `/zonas-clave`, `/alt-investments`.  
 Usa `TooltipTrigger` de `@base-ui/react/tooltip` para mostrar el nombre al hover.
 
 ### Portfolio position detail
@@ -414,7 +416,36 @@ En `frontend/src/components/FileUpload.tsx`:
 
 ---
 
-## 12. Troubleshooting
+## 12. Inversiones Alternativas y tipos de cambio
+
+### Inversiones Alternativas (`backend/api/alt_investments.py`)
+
+Tracker manual de posiciones de banca privada (PE/VC/RE, Hedge Fund, Producto Estructurado, Otro). MVP sin IA ni importación.
+
+- **Modelo `AltInvestment`** — una fila por posición, con los flujos como agregados (`committed_capital`, `called_capital`, `distributed_capital`, `current_nav`) más `type`, `status`, `manager`, `vintage_year`, `geography`, `currency`, `notes`. No hay sub-tabla de movimientos.
+- **Métricas derivadas** (calculadas en cada respuesta, nunca almacenadas): TVPI = (distribuido + NAV) / called, DPI = distribuido / called, RVPI = NAV / called, unfunded = comprometido − called. Todas `None` cuando called = 0.
+- Las tablas nuevas se crean con `Base.metadata.create_all` al arrancar (no requieren Alembic para altas).
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/alt-investments/` | Listar posiciones (con métricas por fila) |
+| `GET` | `/alt-investments/summary` | Consolidación + asignación por tipo/geografía/divisa (ponderada por NAV) |
+| `POST` | `/alt-investments/` | Crear posición |
+| `PATCH` | `/alt-investments/{id}` | Actualizar posición |
+| `DELETE` | `/alt-investments/{id}` | Eliminar posición |
+
+### Tipos de cambio ECB (`backend/services/exchange_rates.py`)
+
+Servicio de tipos de referencia oficiales del BCE como fallback IRPF cuando el archivo del broker no trae el tipo (o en entradas manuales). Portado desde OptionsAI.
+
+- Tabla `exchange_rates` (rate_date, currency, rate, source) con unique (rate_date, currency).
+- `sync_rates()` corre en un hilo en segundo plano al arrancar (`backend/app.py` lifespan): historia completa el primer boot, luego feed de 90 días; se omite si los datos están frescos (≤1 día). **Nunca** se ejecuta dentro de una request.
+- `get_rate(currency, on)` es solo-DB (sin HTTP) con fallback ±7 días para fines de semana/festivos. `to_eur(amount, currency, on)` = amount / rate. EUR siempre es 1.
+- Endpoint de consulta: `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`.
+
+---
+
+## 13. Troubleshooting
 
 **Error 500 al borrar importación**  
 Causa más común: FK violation en `cross_broker_lots`. El orden de borrado en `_delete_import_data` debe eliminar CrossBrokerLots antes que Transactions.
