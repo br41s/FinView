@@ -50,7 +50,7 @@ export function DividendsByCountryChart({ data, activeCountry, onCountryClick }:
             paddingAngle={2}
             dataKey="value"
             cursor={onCountryClick ? "pointer" : undefined}
-            onClick={(entry) => onCountryClick?.(activeCountry === entry.name ? null : entry.name)}
+            onClick={(entry) => onCountryClick?.(activeCountry === entry.name ? null : entry.name as string)}
           >
             {chartData.map((entry) => (
               <Cell
