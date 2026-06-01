@@ -508,7 +508,7 @@ export default function Home() {
             ) : yearlyComparison.length > 0 ? (
               <YearlyComparisonView
                 data={yearlyComparison}
-                onYearSelect={(year) => { onYearChange(year); setView("graficas"); }}
+                onYearSelect={(year) => { setSelectedYear(year); setView("graficas"); }}
               />
             ) : (
               <EmptyState
