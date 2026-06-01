@@ -131,9 +131,12 @@ export default function ZonasClavePage() {
         }
         setAnalyses(map);
         setSchedulerRunning(status.running);
-        if (wl.length > 0 && !selectedTicker) {
-          setSelectedTicker(wl[0].ticker);
-        }
+        // N5: auto-select from URL param (?ticker=X), fallback to first item
+        const params = new URLSearchParams(window.location.search);
+        const urlTicker = params.get("ticker")?.toUpperCase();
+        const match = urlTicker ? wl.find((w) => w.ticker.toUpperCase() === urlTicker) : null;
+        const tickerToSelect = match ? match.ticker : (wl[0]?.ticker ?? null);
+        if (!selectedTicker) setSelectedTicker(tickerToSelect);
       })
       .catch((e) => {
         console.error("Failed to load Zonas Clave:", e);
@@ -360,6 +363,18 @@ export default function ZonasClavePage() {
                         {isPending && (
                           <RefreshCw className="h-3 w-3 animate-spin opacity-60" />
                         )}
+                        <button
+                          className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
+                            isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Ver opciones"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/options?ticker=${encodeURIComponent(item.ticker)}`);
+                          }}
+                        >
+                          <Activity className="h-3 w-3" />
+                        </button>
                         <button
                           className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
                             isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"

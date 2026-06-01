@@ -2,6 +2,15 @@
 
 ## UI Deduplication — 2026-06-01
 
+## Navigation & Menu — 2026-06-01
+
+- [ ] **N2 — Import shortcut in QuickNav**: Upload icon → `/dashboard#importar`; dashboard detects hash on mount and switches to importar view.
+- [ ] **N5/N6 — Cross-links ZC ↔ Options**: ZC ticker row → "Ver opciones" (`/options?ticker=X`); Options Cartera row → "Ver en ZC" (`/zonas-clave?ticker=X`). Both pages auto-select the ticker from URL param on load.
+
+---
+
+## UI Deduplication — 2026-06-01
+
 - [x] **D2 — Merge two dividend-by-country charts** (`GrossDividendsByCountryChart.tsx`): bar chart now shows Bruto + Neto grouped bars. Pie chart unchanged.
 - [x] **D7 — Merge Alertas + Smart Money into Monitor tab** (`options/page.tsx`): one `monitor` tab with filter buttons (Alertas / Smart Money). Unread badge on tab trigger.
 - [x] **D6 — Merge Agente + Análisis into IA tab** (`options/page.tsx`): one `ia` tab with inner sub-tabs (Informe | Chat). `analysisCycle` key preserved on AnalysisTab.

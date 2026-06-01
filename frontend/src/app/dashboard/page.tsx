@@ -258,6 +258,14 @@ export default function Home() {
     loadData(selectedYear);
   }, [loadData, selectedYear]);
 
+  // N2: navigate to #importar from QuickNav or external link
+  useEffect(() => {
+    if (window.location.hash === "#importar") {
+      setView("importar");
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
   const showFiscal = selectedYear !== null;
 
   // Reset to non-fiscal view when switching to "Todos los años"
