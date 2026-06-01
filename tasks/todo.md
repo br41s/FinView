@@ -4,6 +4,16 @@
 
 ## Navigation & Menu — 2026-06-01
 
+## Display / UX — 2026-06-01
+
+- [x] **U1 — ZC portfolio suggestions**: fetch portfolio positions in ZC page; show "De tu cartera" chip panel below ticker list for tickers not yet in watchlist.
+- [x] **U4 — Backtest accuracy bar chart**: add horizontal BarChart above the signal-type table in the Backtesting tab.
+- [x] **U9 — Monitor "Mark all" always visible**: show button when monitorFilter === "alerts", disabled (not hidden) when unreadAlerts.length === 0.
+
+---
+
+## Navigation & Menu — 2026-06-01
+
 - [ ] **N2 — Import shortcut in QuickNav**: Upload icon → `/dashboard#importar`; dashboard detects hash on mount and switches to importar view.
 - [ ] **N5/N6 — Cross-links ZC ↔ Options**: ZC ticker row → "Ver opciones" (`/options?ticker=X`); Options Cartera row → "Ver en ZC" (`/zonas-clave?ticker=X`). Both pages auto-select the ticker from URL param on load.
 
