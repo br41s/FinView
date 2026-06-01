@@ -35,7 +35,8 @@ type SortKey = keyof YearlyMetrics;
 
 export function YearlyComparisonView({
   data,
-}: Readonly<{ data: YearlyMetrics[] }>) {
+  onYearSelect,
+}: Readonly<{ data: YearlyMetrics[]; onYearSelect?: (year: number) => void }>) {
   const [sortKey, setSortKey] = useState<SortKey>("fiscal_year");
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -175,7 +176,10 @@ export function YearlyComparisonView({
               <TableBody>
                 {sorted.map((y) => (
                   <TableRow key={y.fiscal_year}>
-                    <TableCell className="font-medium">
+                    <TableCell
+                      className={`font-medium ${onYearSelect ? "cursor-pointer text-primary hover:underline" : ""}`}
+                      onClick={() => onYearSelect?.(y.fiscal_year)}
+                    >
                       {y.fiscal_year}
                     </TableCell>
                     <TableCell className="text-right font-mono text-green-400">

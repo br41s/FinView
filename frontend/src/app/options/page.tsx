@@ -277,6 +277,7 @@ export default function OptionsPage() {
   const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
   const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual">("alerts");
+  const [activeTab, setActiveTab] = useState("portfolio");
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions, setRetryPositions] = useState(0);
@@ -673,7 +674,7 @@ export default function OptionsPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="portfolio">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="w-full overflow-x-auto">
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="portfolio">
@@ -1467,7 +1468,16 @@ export default function OptionsPage() {
                               <TableCell className="text-xs">
                                 {new Date(a.timestamp).toLocaleString("es-ES")}
                               </TableCell>
-                              <TableCell className="font-medium">{a.ticker}</TableCell>
+                              <TableCell
+                                className="font-medium cursor-pointer text-primary hover:underline"
+                                title="Ver en Cartera"
+                                onClick={() => {
+                                  setExpandedTicker(a.ticker);
+                                  setActiveTab("portfolio");
+                                }}
+                              >
+                                {a.ticker}
+                              </TableCell>
                               <TableCell>
                                 <Badge variant="outline">{a.alert_type}</Badge>
                               </TableCell>
