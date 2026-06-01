@@ -20,14 +20,15 @@ from backend.api.options import router as options_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.api.alt_investments import router as alt_investments_router
 from backend.config import settings
-from backend.database import engine
+from backend.database import engine, ensure_columns
 from backend.models import Base
 from backend.services.options_scheduler import shutdown_scheduler
 from backend.services.rate_limit import limiter
 from backend.services.zonas_clave_scheduler import shutdown_scheduler as shutdown_zc_scheduler
 
-# Create tables on startup
+# Create tables on startup, then apply any additive column migrations
 Base.metadata.create_all(bind=engine)
+ensure_columns()
 
 
 @asynccontextmanager
@@ -56,6 +57,21 @@ async def lifespan(app: FastAPI):
             print(f"[ecb-sync] skipped: {exc}")
 
     threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
+
+    # Refresh the CNMV alt-investments catalog if stale (best-effort, never blocks)
+    def _refresh_cnmv_catalog():
+        try:
+            from backend.database import SessionLocal
+            from backend.services.cnmv_catalog import catalog_is_stale, refresh_iic_catalog
+
+            with SessionLocal() as db:
+                stale = catalog_is_stale(db)
+            if stale:
+                refresh_iic_catalog()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            print(f"[cnmv-catalog] skipped: {exc}")
+
+    threading.Thread(target=_refresh_cnmv_catalog, daemon=True, name="cnmv-catalog-refresh").start()
 
     yield
     shutdown_scheduler()

@@ -296,6 +296,7 @@ export interface AltInvestment {
   type: AltInvestmentType;
   status: AltInvestmentStatus;
   manager: string;
+  isin: string | null;
   vintage_year: number | null;
   geography: string;
   currency: string;
@@ -316,6 +317,7 @@ export interface AltInvestmentInput {
   type: AltInvestmentType;
   status?: AltInvestmentStatus;
   manager?: string;
+  isin?: string | null;
   vintage_year?: number | null;
   geography?: string;
   currency?: string;
@@ -330,6 +332,14 @@ export interface AltAllocationSlice {
   label: string;
   value: number;
   pct: number;
+}
+
+export interface AltCatalogResult {
+  name: string;
+  type: AltInvestmentType;
+  manager: string;
+  isin: string | null;
+  source: string;
 }
 
 export interface AltSummary {
@@ -728,6 +738,10 @@ export const api = {
   altInvestments: {
     list: () => fetchJSON<AltInvestment[]>("/alt-investments/"),
     summary: () => fetchJSON<AltSummary>("/alt-investments/summary"),
+    search: (q: string, type?: AltInvestmentType) =>
+      fetchJSON<AltCatalogResult[]>(
+        `/alt-investments/search${qs({ q, type, limit: 20 })}`,
+      ),
     create: async (data: AltInvestmentInput) => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/alt-investments/`, {
