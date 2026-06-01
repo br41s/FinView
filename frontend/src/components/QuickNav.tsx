@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { BarChart3, Briefcase, Activity, Target } from "lucide-react";
+import { BarChart3, Briefcase, Activity, Target, Upload } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", Icon: BarChart3 },
@@ -41,6 +42,16 @@ export function QuickNav({ current }: QuickNavProps) {
           <TooltipContent>{label}</TooltipContent>
         </Tooltip>
       ))}
+      <Separator orientation="vertical" className="mx-1 h-4" />
+      <Tooltip>
+        <TooltipTrigger
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          onClick={() => router.push("/dashboard#importar")}
+        >
+          <Upload className="h-4 w-4" />
+        </TooltipTrigger>
+        <TooltipContent>Importar datos</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
@@ -242,6 +243,7 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
+  const router = useRouter();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -271,6 +273,13 @@ export default function OptionsPage() {
   const [retryPositions, setRetryPositions] = useState(0);
   const [retryOptions, setRetryOptions] = useState(0);
 
+  // N6: auto-expand ticker from URL param (?ticker=X)
+  const initialTickerRef = useRef<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    initialTickerRef.current = params.get("ticker");
+  }, []);
+
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
     setErrorPositions(null);
@@ -281,6 +290,12 @@ export default function OptionsPage() {
         setPositions(loaded);
         if (loaded.length === 0) return;
         const tickers = [...new Set(loaded.map((p) => (p.ticker || p.isin).toUpperCase()))];
+        // Auto-expand ticker from URL param if it exists in positions
+        if (initialTickerRef.current) {
+          const hint = initialTickerRef.current.toUpperCase();
+          initialTickerRef.current = null;
+          if (tickers.includes(hint)) setExpandedTicker(hint);
+        }
         try {
           const { no_options } = await api.options.checkAvailability(tickers);
           setNoOptionsTickers(new Set(no_options));
@@ -835,14 +850,29 @@ export default function OptionsPage() {
                                 className="bg-muted/30 p-4"
                               >
                                 <div className="space-y-4">
-                                  {/* Company name + current price */}
-                                  <div className="flex items-baseline justify-between">
+                                  {/* Company name + actions */}
+                                  <div className="flex items-center justify-between">
                                     <p className="font-semibold">{p.name}</p>
-                                    {p.current_price_eur != null && (
-                                      <p className="text-sm tabular-nums text-muted-foreground">
-                                        {fmt(p.current_price_eur)} €
-                                      </p>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                      {p.current_price_eur != null && (
+                                        <p className="text-sm tabular-nums text-muted-foreground">
+                                          {fmt(p.current_price_eur)} €
+                                        </p>
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+                                        title="Ver en Zonas Clave"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          router.push(`/zonas-clave?ticker=${encodeURIComponent(ticker)}`);
+                                        }}
+                                      >
+                                        <Target className="h-3 w-3" />
+                                        ZC
+                                      </Button>
+                                    </div>
                                   </div>
                                   {/* Position summary */}
                                   <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
