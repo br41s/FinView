@@ -14,6 +14,7 @@ import {
   CreditCard,
   Briefcase,
   Target,
+  Landmark,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -195,6 +196,15 @@ export function AppSidebar({
                 >
                   <Briefcase />
                   <span>Cartera</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Inversiones Alternativas"
+                  onClick={() => (window.location.href = "/alt-investments")}
+                >
+                  <Landmark />
+                  <span>Inversiones Alt.</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

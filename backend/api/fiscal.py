@@ -328,6 +328,21 @@ def export_fiscal_data(
     }
 
 
+@router.get("/fx-rate")
+def fx_rate(user: CurrentUser, currency: str, on: str):
+    """Official ECB reference rate for a currency on a date (YYYY-MM-DD).
+
+    Returns units of `currency` per 1 EUR, with ±7-day fallback for
+    weekends/holidays. 404 if the date/currency isn't cached.
+    """
+    from backend.services.exchange_rates import get_rate
+
+    rate = get_rate(currency.upper(), on)
+    if rate is None:
+        raise HTTPException(404, f"No cached ECB rate for {currency} on {on}")
+    return {"currency": currency.upper(), "date": on, "rate": float(rate), "source": "ECB"}
+
+
 @router.get("/cross-validation/{fiscal_year}", response_model=CrossValidationResult)
 def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
     """Compare FinView-calculated casillas against TR reference values."""

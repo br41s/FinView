@@ -17,6 +17,20 @@ All notable changes to FinView are documented here.
   Cloud Run (unspoofable by client).
 
 ### Added
+- **Alternative investments tracker** — new `/alt-investments` page and
+  `/api/alt-investments` endpoints to manually track private-banking positions
+  (Private Equity, Venture Capital, Real Estate, Hedge Fund, Structured Product,
+  Other). Stores committed/called/distributed/NAV aggregates per position and
+  derives the standard PE metrics — TVPI, DPI, RVPI, unfunded commitment — plus
+  a `/summary` consolidation with NAV-weighted allocation by type, geography and
+  currency. UI has summary cards, allocation bars, a positions table and an
+  inline add/edit form. Migrated as an MVP from the OptionsAI "coming soon" spec.
+- **ECB exchange-rate service** — `services/exchange_rates.py` caches official
+  ECB EUR reference rates in a new `exchange_rates` table as an IRPF fallback for
+  when a broker file omits the rate or for manual entries. Syncs in a background
+  thread on startup (full history first boot, then 90-day feed, skipped if
+  fresh); `get_rate()` is DB-only with ±7-day weekend/holiday fallback. Lookup
+  via `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`. Ported from OptionsAI.
 - **User-visible error states** on all 5 main pages (dashboard, portfolio,
   options, zonas-clave, billing) with inline Retry buttons. Previously all fetch
   errors were swallowed silently to the console.

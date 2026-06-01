@@ -13,7 +13,7 @@ Si no tienes cuenta, pulsa **Regístrate** y crea una con tu email y contraseña
 
 ## 2. Navegación rápida
 
-Todas las páginas tienen un grupo de **4 iconos de acceso rápido** en la esquina superior derecha de la cabecera:
+Todas las páginas tienen un grupo de **5 iconos de acceso rápido** en la esquina superior derecha de la cabecera:
 
 | Icono | Destino |
 |-------|---------|
@@ -21,6 +21,7 @@ Todas las páginas tienen un grupo de **4 iconos de acceso rápido** en la esqui
 | Maletín | Cartera |
 | Actividad | Derivados (Options Monitor) |
 | Diana | Técnico (Zonas Clave) |
+| Banco | Inversiones Alternativas |
 
 El icono de la página actual aparece en color sólido para indicar dónde estás.
 
@@ -240,7 +241,50 @@ Para cada ticker se calcula:
 
 ---
 
-## 9. Preguntas frecuentes
+## 9. Inversiones Alternativas
+
+La página **Inversiones Alternativas** (icono del banco) te permite hacer seguimiento manual de tus inversiones de banca privada que no encajan en los brokers tradicionales: private equity, venture capital, real estate, hedge funds, productos estructurados y otros.
+
+> Es una herramienta de seguimiento manual: no importa archivos ni usa IA. Tú introduces las cifras y FinView calcula las métricas.
+
+### 9.1 Añadir una inversión
+
+Pulsa **Añadir** y rellena el formulario:
+
+| Campo | Descripción |
+|-------|-------------|
+| **Nombre** | Nombre del fondo o producto (obligatorio) |
+| **Tipo** | Private Equity, Venture Capital, Real Estate, Hedge Fund, Producto Estructurado u Otro |
+| **Estado** | Activa o Realizada |
+| **Gestora / Banco** | Quién gestiona la inversión |
+| **Año (vintage)** | Año de constitución/entrada |
+| **Geografía / Divisa** | Exposición geográfica y moneda |
+| **Capital comprometido** | Total comprometido al fondo |
+| **Capital desembolsado (called)** | Lo que ya has aportado |
+| **Distribuido** | Lo que el fondo te ha devuelto |
+| **NAV actual** | Valor liquidativo actual de tu posición |
+
+Puedes editar o eliminar cualquier posición con los iconos de la tabla.
+
+### 9.2 Métricas calculadas
+
+A partir de las cifras que introduces, FinView calcula automáticamente las métricas estándar del private equity:
+
+| Métrica | Significado |
+|---------|-------------|
+| **TVPI** | Valor total / capital desembolsado = (distribuido + NAV) / called |
+| **DPI** | Distribuido / desembolsado — cuánto te han devuelto ya |
+| **RVPI** | NAV / desembolsado — cuánto valor queda por realizar |
+| **Sin desembolsar (unfunded)** | Comprometido − desembolsado |
+| **Valor total** | Distribuido + NAV |
+
+### 9.3 Consolidación
+
+Las tarjetas superiores resumen el total de la cartera (comprometido, desembolsado, NAV, TVPI/DPI) y las barras de **asignación por tipo** muestran qué porcentaje de tu NAV está en cada categoría.
+
+---
+
+## 10. Preguntas frecuentes
 
 **¿Por qué las ganancias calculadas difieren de las del broker?**  
 Cada broker calcula su FIFO internamente. FinView recalcula el FIFO combinando todos los brokers cronológicamente, como exige Hacienda. La diferencia se muestra como "ajuste FIFO".

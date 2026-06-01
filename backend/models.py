@@ -593,3 +593,88 @@ class BacktestSignal(Base):
         Index("ix_bt_user_ticker", "user_id", "ticker"),
         Index("ix_bt_recorded_at", "recorded_at"),
     )
+
+
+# ── Exchange Rates (ECB) ─────────────────────────────────────────────
+
+
+class ExchangeRate(Base):
+    """ECB daily reference rates. rate = units of `currency` per 1 EUR.
+
+    Populated incrementally from the ECB eurofxref feed by
+    services.exchange_rates. Used as an official-rate fallback for IRPF
+    conversions when a broker file omits the rate or for manual entries.
+    """
+
+    __tablename__ = "exchange_rates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), default="ECB")
+
+    __table_args__ = (
+        UniqueConstraint("rate_date", "currency"),
+        Index("ix_fx_ccy_date", "currency", "rate_date"),
+    )
+
+
+# ── Alternative Investments (private banking) ────────────────────────
+
+
+class AltInvestmentType(PyEnum):
+    PRIVATE_EQUITY = "PRIVATE_EQUITY"
+    VENTURE_CAPITAL = "VENTURE_CAPITAL"
+    REAL_ESTATE = "REAL_ESTATE"
+    HEDGE_FUND = "HEDGE_FUND"
+    STRUCTURED_PRODUCT = "STRUCTURED_PRODUCT"
+    OTHER = "OTHER"
+
+
+class AltInvestmentStatus(PyEnum):
+    ACTIVE = "ACTIVE"
+    REALIZED = "REALIZED"
+
+
+class AltInvestment(Base):
+    """A single alternative-investment position held in private banking.
+
+    MVP: manually tracked. Cash flows are stored as running aggregates
+    (committed / called / distributed) plus current NAV — enough to derive
+    the standard PE/VC metrics (TVPI, DPI, RVPI, unfunded) without a
+    movement-level sub-table.
+    """
+
+    __tablename__ = "alt_investments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(Enum(AltInvestmentType), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Enum(AltInvestmentStatus), default=AltInvestmentStatus.ACTIVE.value
+    )
+    manager: Mapped[str] = mapped_column(String(200), default="")  # fund / private bank
+    vintage_year: Mapped[int | None] = mapped_column(Integer)
+    geography: Mapped[str] = mapped_column(String(100), default="")
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+
+    # Cash-flow aggregates (in the position's currency)
+    committed_capital: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    called_capital: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    distributed_capital: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    current_nav: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (Index("ix_alt_user", "user_id"),)
