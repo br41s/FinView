@@ -18,6 +18,7 @@ from backend.api.fiscal import router as fiscal_router
 from backend.api.charts import router as charts_router
 from backend.api.options import router as options_router
 from backend.api.zonas_clave import router as zonas_clave_router
+from backend.api.alt_investments import router as alt_investments_router
 from backend.config import settings
 from backend.database import engine
 from backend.models import Base
@@ -44,6 +45,17 @@ async def lifespan(app: FastAPI):
             _invalidate_european_availability_cache()
 
     threading.Thread(target=_preload_eurex, daemon=True, name="eurex-rdf-preload").start()
+
+    # Sync ECB exchange rates in the background (never blocks requests)
+    def _sync_fx_rates():
+        try:
+            from backend.services.exchange_rates import sync_rates
+
+            sync_rates()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            print(f"[ecb-sync] skipped: {exc}")
+
+    threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
 
     yield
     shutdown_scheduler()
@@ -79,6 +91,7 @@ app.include_router(fiscal_router, prefix="/api")
 app.include_router(charts_router, prefix="/api")
 app.include_router(options_router, prefix="/api")
 app.include_router(zonas_clave_router, prefix="/api")
+app.include_router(alt_investments_router, prefix="/api")
 
 
 @app.get("/api/health")

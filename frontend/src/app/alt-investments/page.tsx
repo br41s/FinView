@@ -1,0 +1,553 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  Building2,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Landmark,
+  TrendingUp,
+  Wallet,
+  PiggyBank,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import {
+  api,
+  type AltInvestment,
+  type AltInvestmentInput,
+  type AltInvestmentType,
+  type AltSummary,
+} from "@/lib/api";
+import { formatEur } from "@/lib/format";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QuickNav } from "@/components/QuickNav";
+
+const TYPE_LABELS: Record<AltInvestmentType, string> = {
+  PRIVATE_EQUITY: "Private Equity",
+  VENTURE_CAPITAL: "Venture Capital",
+  REAL_ESTATE: "Real Estate",
+  HEDGE_FUND: "Hedge Fund",
+  STRUCTURED_PRODUCT: "Producto Estructurado",
+  OTHER: "Otro",
+};
+
+const TYPE_OPTIONS = Object.entries(TYPE_LABELS) as [AltInvestmentType, string][];
+
+const EMPTY_FORM: AltInvestmentInput = {
+  name: "",
+  type: "PRIVATE_EQUITY",
+  status: "ACTIVE",
+  manager: "",
+  vintage_year: null,
+  geography: "",
+  currency: "EUR",
+  committed_capital: 0,
+  called_capital: 0,
+  distributed_capital: 0,
+  current_nav: 0,
+  notes: "",
+};
+
+function fmtMultiple(v: number | null): string {
+  return v === null ? "—" : `${v.toFixed(2)}x`;
+}
+
+export default function AltInvestmentsPage() {
+  const [items, setItems] = useState<AltInvestment[]>([]);
+  const [summary, setSummary] = useState<AltSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<AltInvestmentInput>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [list, sum] = await Promise.all([
+        api.altInvestments.list(),
+        api.altInvestments.summary(),
+      ]);
+      setItems(list);
+      setSummary(sum);
+    } catch (e) {
+      toast.error(`Error al cargar: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormOpen(true);
+  }
+
+  function openEdit(inv: AltInvestment) {
+    setEditingId(inv.id);
+    setForm({
+      name: inv.name,
+      type: inv.type,
+      status: inv.status,
+      manager: inv.manager,
+      vintage_year: inv.vintage_year,
+      geography: inv.geography,
+      currency: inv.currency,
+      committed_capital: inv.committed_capital,
+      called_capital: inv.called_capital,
+      distributed_capital: inv.distributed_capital,
+      current_nav: inv.current_nav,
+      notes: inv.notes,
+    });
+    setFormOpen(true);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) {
+      toast.error("El nombre es obligatorio");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editingId === null) {
+        await api.altInvestments.create(form);
+        toast.success("Inversión añadida");
+      } else {
+        await api.altInvestments.update(editingId, form);
+        toast.success("Inversión actualizada");
+      }
+      setFormOpen(false);
+      await load();
+    } catch (e) {
+      toast.error(`Error al guardar: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(inv: AltInvestment) {
+    if (!confirm(`¿Eliminar "${inv.name}"?`)) return;
+    try {
+      await api.altInvestments.delete(inv.id);
+      toast.success("Inversión eliminada");
+      await load();
+    } catch (e) {
+      toast.error(`Error al eliminar: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  function setField<K extends keyof AltInvestmentInput>(
+    key: K,
+    value: AltInvestmentInput[K],
+  ) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Landmark className="h-6 w-6" />
+            Inversiones Alternativas
+          </h1>
+          <p className="text-muted-foreground">
+            Private equity, venture capital y real estate de banca privada
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <QuickNav current="/alt-investments" />
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" /> Añadir
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28" />
+          ))}
+        </div>
+      ) : summary && summary.count > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={<Wallet className="h-4 w-4" />}
+            label="Comprometido"
+            value={formatEur(summary.total_committed)}
+            sub={`Sin desembolsar: ${formatEur(summary.total_unfunded)}`}
+          />
+          <StatCard
+            icon={<PiggyBank className="h-4 w-4" />}
+            label="Desembolsado (called)"
+            value={formatEur(summary.total_called)}
+            sub={`Distribuido: ${formatEur(summary.total_distributed)}`}
+          />
+          <StatCard
+            icon={<Building2 className="h-4 w-4" />}
+            label="NAV actual"
+            value={formatEur(summary.total_nav)}
+            sub={`Valor total: ${formatEur(summary.total_value)}`}
+          />
+          <StatCard
+            icon={<TrendingUp className="h-4 w-4" />}
+            label="TVPI / DPI"
+            value={`${fmtMultiple(summary.overall_tvpi)} / ${fmtMultiple(summary.overall_dpi)}`}
+            sub={`RVPI: ${fmtMultiple(summary.overall_rvpi)}`}
+          />
+        </div>
+      ) : null}
+
+      {/* Allocation by type */}
+      {!loading && summary && summary.by_type.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Asignación por tipo (NAV)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {summary.by_type.map((slice) => (
+              <div key={slice.label} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span>
+                    {TYPE_LABELS[slice.label as AltInvestmentType] ?? slice.label}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {formatEur(slice.value)} · {slice.pct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${slice.pct}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Inline add/edit form */}
+      {formOpen && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">
+              {editingId === null ? "Nueva inversión" : "Editar inversión"}
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setFormOpen(false)}
+              aria-label="Cerrar"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Nombre *">
+              <Input
+                value={form.name}
+                onChange={(e) => setField("name", e.target.value)}
+                placeholder="p. ej. Fondo Buyout Europe III"
+              />
+            </Field>
+            <Field label="Tipo">
+              <NativeSelect
+                value={form.type}
+                onChange={(v) => setField("type", v as AltInvestmentType)}
+                options={TYPE_OPTIONS}
+              />
+            </Field>
+            <Field label="Estado">
+              <NativeSelect
+                value={form.status ?? "ACTIVE"}
+                onChange={(v) => setField("status", v as "ACTIVE" | "REALIZED")}
+                options={[
+                  ["ACTIVE", "Activa"],
+                  ["REALIZED", "Realizada"],
+                ]}
+              />
+            </Field>
+            <Field label="Gestora / Banco">
+              <Input
+                value={form.manager ?? ""}
+                onChange={(e) => setField("manager", e.target.value)}
+                placeholder="p. ej. Banca privada X"
+              />
+            </Field>
+            <Field label="Año (vintage)">
+              <Input
+                type="number"
+                value={form.vintage_year ?? ""}
+                onChange={(e) =>
+                  setField(
+                    "vintage_year",
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+                placeholder="2023"
+              />
+            </Field>
+            <Field label="Geografía">
+              <Input
+                value={form.geography ?? ""}
+                onChange={(e) => setField("geography", e.target.value)}
+                placeholder="Europa, EE.UU., Global…"
+              />
+            </Field>
+            <Field label="Divisa">
+              <Input
+                value={form.currency ?? "EUR"}
+                onChange={(e) =>
+                  setField("currency", e.target.value.toUpperCase().slice(0, 3))
+                }
+                placeholder="EUR"
+              />
+            </Field>
+            <Field label="Capital comprometido">
+              <NumberInput
+                value={form.committed_capital ?? 0}
+                onChange={(v) => setField("committed_capital", v)}
+              />
+            </Field>
+            <Field label="Capital desembolsado (called)">
+              <NumberInput
+                value={form.called_capital ?? 0}
+                onChange={(v) => setField("called_capital", v)}
+              />
+            </Field>
+            <Field label="Distribuido">
+              <NumberInput
+                value={form.distributed_capital ?? 0}
+                onChange={(v) => setField("distributed_capital", v)}
+              />
+            </Field>
+            <Field label="NAV actual">
+              <NumberInput
+                value={form.current_nav ?? 0}
+                onChange={(v) => setField("current_nav", v)}
+              />
+            </Field>
+            <Field label="Notas">
+              <Input
+                value={form.notes ?? ""}
+                onChange={(e) => setField("notes", e.target.value)}
+                placeholder="Opcional"
+              />
+            </Field>
+            <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? "Guardando…" : "Guardar"}
+              </Button>
+              <Button variant="outline" onClick={() => setFormOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Positions table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Posiciones</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-40" />
+          ) : items.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground">
+              <Landmark className="mx-auto mb-3 h-10 w-10 opacity-40" />
+              <p>No hay inversiones alternativas todavía.</p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={openCreate}>
+                <Plus className="mr-2 h-4 w-4" /> Añadir la primera
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Comprometido</TableHead>
+                    <TableHead className="text-right">Called</TableHead>
+                    <TableHead className="text-right">NAV</TableHead>
+                    <TableHead className="text-right">TVPI</TableHead>
+                    <TableHead className="text-right">DPI</TableHead>
+                    <TableHead className="w-[90px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell>
+                        <div className="font-medium">{inv.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {[inv.manager, inv.vintage_year, inv.geography]
+                            .filter(Boolean)
+                            .join(" · ")}
+                          {inv.status === "REALIZED" && (
+                            <Badge variant="secondary" className="ml-2 text-[10px]">
+                              Realizada
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{TYPE_LABELS[inv.type]}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatEur(inv.committed_capital)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatEur(inv.called_capital)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatEur(inv.current_nav)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {fmtMultiple(inv.tvpi)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {fmtMultiple(inv.dpi)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(inv)}
+                            aria-label="Editar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(inv)}
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {icon}
+          {label}
+        </div>
+        <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
+        {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function NativeSelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: [string, string][];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {options.map(([v, label]) => (
+        <option key={v} value={v}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function NumberInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <Input
+      type="number"
+      step="0.01"
+      value={value}
+      onChange={(e) => onChange(e.target.value ? Number(e.target.value) : 0)}
+    />
+  );
+}
