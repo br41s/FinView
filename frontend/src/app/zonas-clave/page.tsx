@@ -113,6 +113,20 @@ export default function ZonasClavePage() {
   const [schedulerRunning, setSchedulerRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [portfolioSuggestions, setPortfolioSuggestions] = useState<{ ticker: string; name: string }[]>([]);
+
+  // U1: load portfolio tickers for quick-add suggestions (non-blocking)
+  useEffect(() => {
+    api.portfolio
+      .positions(true)
+      .then((pos) => {
+        const p = pos as { ticker: string | null; isin: string; name: string }[];
+        setPortfolioSuggestions(
+          p.filter((x) => x.ticker).map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name })),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   // Initial load
   useEffect(() => {
@@ -404,6 +418,38 @@ export default function ZonasClavePage() {
                   );
                 })}
               </div>
+
+              {/* U1: portfolio quick-add suggestions */}
+              {(() => {
+                const watchlistSet = new Set(watchlist.map((w) => w.ticker.toUpperCase()));
+                const suggestions = portfolioSuggestions.filter((p) => !watchlistSet.has(p.ticker));
+                if (suggestions.length === 0) return null;
+                return (
+                  <div className="mt-3 border-t border-border pt-3 px-1">
+                    <p className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+                      De tu cartera
+                    </p>
+                    <div className="flex flex-wrap gap-1 px-1">
+                      {suggestions.map(({ ticker, name }) => (
+                        <button
+                          key={ticker}
+                          title={name}
+                          onClick={() =>
+                            api.zonasClav.addTicker(ticker, name).then(async () => {
+                              const wl = await api.zonasClav.watchlist();
+                              setWatchlist(wl);
+                              setSelectedTicker(ticker);
+                            })
+                          }
+                          className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-xs font-medium transition-colors hover:bg-primary hover:text-primary-foreground hover:border-primary cursor-pointer"
+                        >
+                          + {ticker}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 

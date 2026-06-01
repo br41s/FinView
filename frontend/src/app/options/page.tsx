@@ -27,6 +27,15 @@ import {
   XCircle,
 } from "lucide-react";
 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 import { api } from "@/lib/api";
 import {
   Card,
@@ -1419,8 +1428,13 @@ export default function OptionsPage() {
                     )}
                   </Button>
                 </div>
-                {monitorFilter === "alerts" && unreadAlerts.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={handleAckAll}>
+                {monitorFilter === "alerts" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAckAll}
+                    disabled={unreadAlerts.length === 0}
+                  >
                     Marcar todas leídas
                   </Button>
                 )}
@@ -1598,12 +1612,36 @@ export default function OptionsPage() {
                 })}
               </div>
 
-              {/* Accuracy by signal type */}
-              {Object.keys(backtestStats.by_signal_type).length > 0 && (
+              {/* Accuracy by signal type — chart + table */}
+              {Object.keys(backtestStats.by_signal_type).length > 0 && (() => {
+                const signalChartData = Object.entries(backtestStats.by_signal_type).map(
+                  ([type, v]) => ({ type, accuracy: v.accuracy_pct ?? 0, total: v.total }),
+                );
+                return (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-sm">Precisión por tipo de señal (7D)</CardTitle>
                   </CardHeader>
+                  <CardContent className="pb-2">
+                    <ResponsiveContainer width="100%" height={Math.max(120, signalChartData.length * 36)}>
+                      <BarChart data={signalChartData} layout="vertical" margin={{ left: 8, right: 32, top: 0, bottom: 0 }}>
+                        <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => `${v}%`} />
+                        <YAxis type="category" dataKey="type" width={150} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                        <ChartTooltip
+                          contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                          formatter={(value, _name, props) => [`${value}% (${props.payload.total} señales)`, "Precisión"]}
+                        />
+                        <Bar dataKey="accuracy" radius={[0, 4, 4, 0]}>
+                          {signalChartData.map((entry, i) => (
+                            <Cell
+                              key={i}
+                              fill={entry.accuracy >= 60 ? "#22c55e" : entry.accuracy >= 45 ? "#f59e0b" : "#ef4444"}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
                   <CardContent className="p-0">
                     <Table>
                       <TableHeader>
@@ -1633,7 +1671,8 @@ export default function OptionsPage() {
                     </Table>
                   </CardContent>
                 </Card>
-              )}
+                );
+              })()}
 
               {/* Signals table */}
               <Card>
