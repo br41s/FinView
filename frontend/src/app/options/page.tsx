@@ -10,11 +10,11 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  FileText,
   FlaskConical,
   MessageSquare,
   Play,
   Send,
+  Sparkles,
   Square,
   RefreshCw,
   Target,
@@ -265,6 +265,7 @@ export default function OptionsPage() {
   const [loadingBacktest, setLoadingBacktest] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
+  const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual">("alerts");
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions, setRetryPositions] = useState(0);
@@ -657,8 +658,8 @@ export default function OptionsPage() {
           <TabsTrigger value="watchlist">
             <Eye className="mr-1 h-4 w-4" /> Watchlist
           </TabsTrigger>
-          <TabsTrigger value="alerts">
-            <Bell className="mr-1 h-4 w-4" /> Alertas
+          <TabsTrigger value="monitor">
+            <Bell className="mr-1 h-4 w-4" /> Monitor
             {unreadAlerts.length > 0 && (
               <Badge
                 variant="destructive"
@@ -668,17 +669,11 @@ export default function OptionsPage() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="unusual">
-            <Zap className="mr-1 h-4 w-4" /> Smart Money
-          </TabsTrigger>
           <TabsTrigger value="backtest" onClick={() => { if (!backtestStats) loadBacktest(); }}>
             <FlaskConical className="mr-1 h-4 w-4" /> Backtesting
           </TabsTrigger>
-          <TabsTrigger value="agent">
-            <MessageSquare className="mr-1 h-4 w-4" /> Agente
-          </TabsTrigger>
-          <TabsTrigger value="analysis">
-            <FileText className="mr-1 h-4 w-4" /> Análisis
+          <TabsTrigger value="ia">
+            <Sparkles className="mr-1 h-4 w-4" /> IA
           </TabsTrigger>
         </TabsList>
         </div>
@@ -1349,11 +1344,11 @@ export default function OptionsPage() {
           )}
         </TabsContent>
 
-        {/* ── Alerts Tab ── */}
-        <TabsContent value="alerts" className="space-y-4">
+        {/* ── Monitor Tab (Alertas + Smart Money) ── */}
+        <TabsContent value="monitor" className="space-y-4">
           {loadingOptions ? (
             <div className="flex min-h-[30vh] items-center justify-center">
-              <LoadingDots text="Cargando alertas" />
+              <LoadingDots text="Cargando monitor" />
             </div>
           ) : errorOptions ? (
             <Card>
@@ -1368,172 +1363,150 @@ export default function OptionsPage() {
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Alertas recientes</h3>
-                {unreadAlerts.length > 0 && (
+                <div className="flex gap-2">
+                  <Button
+                    variant={monitorFilter === "alerts" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMonitorFilter("alerts")}
+                  >
+                    <Bell className="mr-1.5 h-3.5 w-3.5" />
+                    Alertas
+                    {unreadAlerts.length > 0 && (
+                      <Badge variant="destructive" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                        {unreadAlerts.length}
+                      </Badge>
+                    )}
+                  </Button>
+                  <Button
+                    variant={monitorFilter === "unusual" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMonitorFilter("unusual")}
+                  >
+                    <Zap className="mr-1.5 h-3.5 w-3.5" />
+                    Smart Money
+                    {unusual.length > 0 && (
+                      <span className="ml-1.5 text-xs opacity-70">{unusual.length}</span>
+                    )}
+                  </Button>
+                </div>
+                {monitorFilter === "alerts" && unreadAlerts.length > 0 && (
                   <Button variant="outline" size="sm" onClick={handleAckAll}>
                     Marcar todas leídas
                   </Button>
                 )}
               </div>
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Hora</TableHead>
-                        <TableHead>Ticker</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Mensaje</TableHead>
-                        <TableHead>Severidad</TableHead>
-                        <TableHead className="text-right">Acción</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {alerts.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={6}
-                            className="text-center text-muted-foreground"
-                          >
-                            Sin alertas aún
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        alerts.map((a) => (
-                          <TableRow
-                            key={a.id}
-                            className={a.acknowledged ? "opacity-50" : ""}
-                          >
-                            <TableCell className="text-xs">
-                              {new Date(a.timestamp).toLocaleString("es-ES")}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {a.ticker}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{a.alert_type}</Badge>
-                            </TableCell>
-                            <TableCell>{a.message}</TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  severityColor(a.severity) as
-                                    | "destructive"
-                                    | "secondary"
-                                    | "outline"
-                                }
-                              >
-                                {a.severity}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {!a.acknowledged && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleAckAlert(a.id)}
-                                >
-                                  Ack
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </TabsContent>
 
-        {/* ── Smart Money Tab ── */}
-        <TabsContent value="unusual" className="space-y-4">
-          {loadingOptions ? (
-            <div className="flex min-h-[30vh] items-center justify-center">
-              <LoadingDots text="Cargando actividad" />
-            </div>
-          ) : errorOptions ? (
-            <Card>
-              <CardContent className="py-10 text-center space-y-3">
-                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
-                <p className="text-sm text-muted-foreground">{errorOptions}</p>
-                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
-                  Reintentar
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <h3 className="text-lg font-semibold">Actividad Inusual</h3>
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Hora</TableHead>
-                        <TableHead>Ticker</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Strike</TableHead>
-                        <TableHead>Exp</TableHead>
-                        <TableHead>Volumen</TableHead>
-                        <TableHead>OI</TableHead>
-                        <TableHead>Vol/OI</TableHead>
-                        <TableHead>IV</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {unusual.length === 0 ? (
+              {monitorFilter === "alerts" && (
+                <Card>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell
-                            colSpan={9}
-                            className="text-center text-muted-foreground"
-                          >
-                            Sin actividad inusual detectada
-                          </TableCell>
+                          <TableHead>Hora</TableHead>
+                          <TableHead>Ticker</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Mensaje</TableHead>
+                          <TableHead>Severidad</TableHead>
+                          <TableHead className="text-right">Acción</TableHead>
                         </TableRow>
-                      ) : (
-                        unusual.map((u) => (
-                          <TableRow key={u.id}>
-                            <TableCell className="text-xs">
-                              {new Date(u.timestamp).toLocaleString("es-ES")}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {u.ticker}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  u.option_type === "CALL"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                              >
-                                {u.option_type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>${fmt(u.strike)}</TableCell>
-                            <TableCell>{u.expiration}</TableCell>
-                            <TableCell>{u.volume.toLocaleString()}</TableCell>
-                            <TableCell>
-                              {u.open_interest.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="font-medium text-amber-600">
-                              {fmt(u.vol_oi_ratio, 1)}x
-                            </TableCell>
-                            <TableCell>
-                              {u.implied_volatility
-                                ? `${fmt(Number(u.implied_volatility) * 100, 1)}%`
-                                : "—"}
+                      </TableHeader>
+                      <TableBody>
+                        {alerts.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-muted-foreground">
+                              Sin alertas aún
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                        ) : (
+                          alerts.map((a) => (
+                            <TableRow key={a.id} className={a.acknowledged ? "opacity-50" : ""}>
+                              <TableCell className="text-xs">
+                                {new Date(a.timestamp).toLocaleString("es-ES")}
+                              </TableCell>
+                              <TableCell className="font-medium">{a.ticker}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{a.alert_type}</Badge>
+                              </TableCell>
+                              <TableCell>{a.message}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}
+                                >
+                                  {a.severity}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {!a.acknowledged && (
+                                  <Button variant="ghost" size="sm" onClick={() => handleAckAlert(a.id)}>
+                                    Ack
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {monitorFilter === "unusual" && (
+                <Card>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Hora</TableHead>
+                          <TableHead>Ticker</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Strike</TableHead>
+                          <TableHead>Exp</TableHead>
+                          <TableHead>Volumen</TableHead>
+                          <TableHead>OI</TableHead>
+                          <TableHead>Vol/OI</TableHead>
+                          <TableHead>IV</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {unusual.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={9} className="text-center text-muted-foreground">
+                              Sin actividad inusual detectada
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          unusual.map((u) => (
+                            <TableRow key={u.id}>
+                              <TableCell className="text-xs">
+                                {new Date(u.timestamp).toLocaleString("es-ES")}
+                              </TableCell>
+                              <TableCell className="font-medium">{u.ticker}</TableCell>
+                              <TableCell>
+                                <Badge variant={u.option_type === "CALL" ? "default" : "secondary"}>
+                                  {u.option_type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>${fmt(u.strike)}</TableCell>
+                              <TableCell>{u.expiration}</TableCell>
+                              <TableCell>{u.volume.toLocaleString()}</TableCell>
+                              <TableCell>{u.open_interest.toLocaleString()}</TableCell>
+                              <TableCell className="font-medium text-amber-600">
+                                {fmt(u.vol_oi_ratio, 1)}x
+                              </TableCell>
+                              <TableCell>
+                                {u.implied_volatility
+                                  ? `${fmt(Number(u.implied_volatility) * 100, 1)}%`
+                                  : "—"}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </TabsContent>
@@ -1695,14 +1668,24 @@ export default function OptionsPage() {
           )}
         </TabsContent>
 
-        {/* ── Agent Chat Tab ── */}
-        <TabsContent value="agent">
-          <AgentChat />
-        </TabsContent>
-
-        {/* ── Analysis Tab ── */}
-        <TabsContent value="analysis">
-          <AnalysisTab key={analysisCycle} />
+        {/* ── IA Tab (Análisis + Agente) ── */}
+        <TabsContent value="ia">
+          <Tabs defaultValue="informe">
+            <TabsList className="mb-4">
+              <TabsTrigger value="informe">
+                <Sparkles className="mr-1 h-3.5 w-3.5" /> Informe
+              </TabsTrigger>
+              <TabsTrigger value="chat">
+                <MessageSquare className="mr-1 h-3.5 w-3.5" /> Chat
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="informe">
+              <AnalysisTab key={analysisCycle} />
+            </TabsContent>
+            <TabsContent value="chat">
+              <AgentChat />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

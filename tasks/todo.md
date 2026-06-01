@@ -1,5 +1,13 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## UI Deduplication — 2026-06-01
+
+- [x] **D2 — Merge two dividend-by-country charts** (`GrossDividendsByCountryChart.tsx`): bar chart now shows Bruto + Neto grouped bars. Pie chart unchanged.
+- [x] **D7 — Merge Alertas + Smart Money into Monitor tab** (`options/page.tsx`): one `monitor` tab with filter buttons (Alertas / Smart Money). Unread badge on tab trigger.
+- [x] **D6 — Merge Agente + Análisis into IA tab** (`options/page.tsx`): one `ia` tab with inner sub-tabs (Informe | Chat). `analysisCycle` key preserved on AnalysisTab.
+
+---
+
 ## Pendiente de revisión
 
 - [ ] **Animación landing page no reproduce en carga inicial** — La animación SVG (tronco/ramas/flores) solo se ve al pulsar "repetir". Fix intentado: mover keyframes a `globals.css` + `useEffect(() => setReplayCount(c=>c+1), [])` en `FinviewIntro/index.tsx`. Causa probable: race condition SSR/CSS en dev mode. Comprobar en producción; si persiste en dev, inspeccionar Network waterfall de `globals.css` vs primera pintura del SVG.
