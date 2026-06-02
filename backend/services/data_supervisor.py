@@ -13,7 +13,6 @@ Runs after each broker import to detect and fix data inconsistencies:
 import json
 import logging
 import re
-from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -372,16 +371,6 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
         for row in db.query(Transaction.isin)
         .filter(
             Transaction.type == TransactionType.BUY.value,
-            Transaction.isin.isnot(None),
-        )
-        .distinct()
-        .all()
-    )
-    sell_isins = set(
-        row[0]
-        for row in db.query(Transaction.isin)
-        .filter(
-            Transaction.type == TransactionType.SELL.value,
             Transaction.isin.isnot(None),
         )
         .distinct()
