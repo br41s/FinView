@@ -249,9 +249,11 @@ file omits the rate or for manual entries. Ported from OptionsAI.
   → Cloud Build triggers → deploys to Cloud Run europe-west1.
 - Never touch cloudbuild.yaml without knowing what you are doing — it controls prod deploys.
 - Cloud Run runtime flags in cloudbuild.yaml are load-bearing: `--no-cpu-throttling` +
-  `--min-instances=1` + `--cpu-boost` + `--memory=1Gi`. Without `--no-cpu-throttling`,
+  `--cpu-boost` + `--memory=1Gi` (+ `--min-instances=0`). Without `--no-cpu-throttling`,
   CPU is throttled outside requests and the startup background loaders (Eurex RDF ~63s,
-  ECB FX-sync, CNMV catalog) never finish — European options stop loading. Do not remove them.
+  ECB FX-sync, CNMV catalog) never finish — European options stop loading. Do not remove these.
+  `--min-instances=0` scales to zero (cost ~0) but cold starts re-pay the ~63s Eurex preload;
+  bump to 1 (~€45/mo always-on) only if always-instant European data is worth it.
 - Full deploy docs: docs/deployment.md
 
 ---

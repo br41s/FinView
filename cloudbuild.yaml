@@ -25,9 +25,12 @@ steps:
       - --no-cpu-throttling
       # Startup CPU boost shortens cold-start latency.
       - --cpu-boost
-      # One warm instance keeps the parsed Eurex chain cache in memory, so
-      # European options requests don't re-pay the ~63s load on every cold start.
-      - --min-instances=1
+      # Scale to zero when idle to avoid 24/7 cost. The background loaders still
+      # run (CPU is allocated while the instance lives), but each cold start
+      # re-pays the ~63s Eurex preload, so the first European-options request
+      # after idle can be slow. Set to 1 if always-instant European data is worth
+      # one always-on instance (~€45/mo).
+      - --min-instances=0
       # Headroom for parsing the 27.5 MB Eurex RDF (default 512Mi risks OOM).
       - --memory=1Gi
       - --quiet
