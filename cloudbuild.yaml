@@ -20,6 +20,16 @@ steps:
       - --region=europe-west1
       - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/finview-api:$COMMIT_SHA
       - --allow-unauthenticated
+      # CPU always allocated so startup background loaders (Eurex RDF ~63s,
+      # ECB FX sync, CNMV catalog) actually finish instead of being throttled.
+      - --no-cpu-throttling
+      # Startup CPU boost shortens cold-start latency.
+      - --cpu-boost
+      # One warm instance keeps the parsed Eurex chain cache in memory, so
+      # European options requests don't re-pay the ~63s load on every cold start.
+      - --min-instances=1
+      # Headroom for parsing the 27.5 MB Eurex RDF (default 512Mi risks OOM).
+      - --memory=1Gi
       - --quiet
 
 options:
