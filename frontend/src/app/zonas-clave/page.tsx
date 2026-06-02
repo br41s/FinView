@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  ChevronDown,
   RefreshCw,
   Target,
   TrendingDown,
@@ -108,6 +109,7 @@ export default function ZonasClavePage() {
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>("1Y");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [schedulerRunning, setSchedulerRunning] = useState(false);
@@ -280,24 +282,21 @@ export default function ZonasClavePage() {
         <div className="flex items-center gap-3">
           <QuickNav current="/zonas-clave" />
           <Button
-            variant="outline"
-            size="sm"
+            variant="default"
+            size="icon"
             onClick={handleRefreshAll}
             disabled={watchlist.length === 0 || analyzing.size > 0}
+            title="Actualizar todos"
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
-            Actualizar
+            <RefreshCw className={`h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
           </Button>
           <Button
             variant={schedulerRunning ? "destructive" : "default"}
-            size="sm"
+            size="icon"
             onClick={handleToggleScheduler}
+            title={schedulerRunning ? "Parar actualización automática" : "Activar actualización automática (24h)"}
           >
-            {schedulerRunning ? (
-              <><Square className="mr-2 h-4 w-4" /> Parar auto</>
-            ) : (
-              <><Play className="mr-2 h-4 w-4" /> Auto (24h)</>
-            )}
+            {schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
         </div>
       </div>
@@ -338,13 +337,28 @@ export default function ZonasClavePage() {
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
           {/* Left — ticker list */}
-          <Card className="h-fit">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Valores</CardTitle>
-            </CardHeader>
-            <CardContent className="p-2">
-              <div className="space-y-1">
-                {watchlist.map((item) => {
+          <div className="space-y-2">
+            {/* Mobile toggle — hidden on lg+ */}
+            <button
+              className="lg:hidden w-full flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm font-medium shadow-sm ring-1 ring-foreground/10"
+              onClick={() => setSidebarOpen((p) => !p)}
+            >
+              <span>
+                {watchlist.find((w) => w.ticker === selectedTicker)
+                  ? tickerLabel(watchlist.find((w) => w.ticker === selectedTicker)!)
+                  : "Seleccionar valor"}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 transition-transform text-muted-foreground ${sidebarOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            <Card className={`h-fit ${sidebarOpen ? "" : "hidden"} lg:block`}>
+            <CardContent className="p-2 pt-3">
+              {(() => {
+                const analyzedItems = watchlist.filter((w) => analyses[w.ticker]);
+                const unanalyzedItems = watchlist.filter((w) => !analyses[w.ticker]);
+                const renderRow = (item: ZcWatchlistItem) => {
                   const a = analyses[item.ticker];
                   const isSelected = selectedTicker === item.ticker;
                   const isPending = analyzing.has(item.ticker);
@@ -356,7 +370,10 @@ export default function ZonasClavePage() {
                           ? "bg-primary text-primary-foreground"
                           : "hover:bg-muted"
                       }`}
-                      onClick={() => setSelectedTicker(item.ticker)}
+                      onClick={() => {
+                        setSelectedTicker(item.ticker);
+                        setSidebarOpen(false);
+                      }}
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
@@ -416,10 +433,32 @@ export default function ZonasClavePage() {
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                };
 
-              {/* U1: portfolio quick-add suggestions */}
+                return (
+                  <div className="space-y-1">
+                    {analyzedItems.length > 0 && (
+                      <>
+                        <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Analizados
+                        </p>
+                        {analyzedItems.map((item) => renderRow(item))}
+                      </>
+                    )}
+                    {unanalyzedItems.length > 0 && (
+                      <>
+                        {analyzedItems.length > 0 && <div className="my-1 border-t" />}
+                        <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Pendiente
+                        </p>
+                        {unanalyzedItems.map((item) => renderRow(item))}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Portfolio quick-add suggestions */}
               {(() => {
                 const watchlistSet = new Set(watchlist.map((w) => w.ticker.toUpperCase()));
                 const suggestions = portfolioSuggestions.filter((p) => !watchlistSet.has(p.ticker));
@@ -427,7 +466,7 @@ export default function ZonasClavePage() {
                 return (
                   <div className="mt-3 border-t border-border pt-3 px-1">
                     <p className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
-                      De tu cartera
+                      Sin analizar
                     </p>
                     <div className="flex flex-wrap gap-1 px-1">
                       {suggestions.map(({ ticker, name }) => (
@@ -451,7 +490,8 @@ export default function ZonasClavePage() {
                 );
               })()}
             </CardContent>
-          </Card>
+            </Card>
+          </div>
 
           {/* Right — chart + details */}
           <div className="space-y-4">
