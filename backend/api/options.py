@@ -319,7 +319,7 @@ def _check_single_availability(ticker: str) -> tuple[str, bool]:
     try:
         import yfinance as yf
         from backend.services.options_scraper import (
-            _EUREX_RDF_CACHE, _EUREX_SUFFIXES, _ISIN_RE,
+            _EUREX_RDF_CACHE, _EUREX_SUFFIXES, _ISIN_RE, _MEFF_SLUGS,
         )
 
         # ISINs — we can't cheaply determine options availability across all markets
@@ -327,6 +327,11 @@ def _check_single_availability(ticker: str) -> tuple[str, bool]:
         # Always include them; users can manually hide positions with no data.
         if _ISIN_RE.match(ticker):
             return ticker, True
+
+        # Spanish .MC tickers (e.g. TEF.MC) — options live on MEFF, not Yahoo.
+        # Yahoo returns no options for them, so check the MEFF slug catalog.
+        if ticker.endswith(".MC"):
+            return ticker, ticker[:-3] in _MEFF_SLUGS
 
         # European exchange suffix (e.g. BAS.DE, AIR.PA) — check Eurex RDF
         if any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):

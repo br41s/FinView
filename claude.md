@@ -114,6 +114,7 @@ RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/beari
 - **MEFF**: direct HTML scraping from meff.es, 30 verified `.MC` tickers (Ibex-35 blue chips + extended). HV computed via yfinance 60d history since MEFF doesn't publish it.
 - **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day.
 - Options chain cached 5 min (TTL) per ticker to avoid redundant scrapes. Per-expiry chains have their own cache keyed by `TICKER:YYYY-MM-DD`.
+- **Availability check** (`POST /options/check-availability`, cached 24h): routes per source so the UI doesn't flag tickers as "no options" wrongly. ISIN → always visible; `.MC` → visible if base in `_MEFF_SLUGS` (Yahoo has no Spanish options, so never delegate `.MC` to Yahoo); European suffix → check Eurex RDF `sym_to_code`; else Yahoo `t.options`.
 
 ### Agent cycle (options_agent.py)
 1. Fetch watchlist tickers for the user
@@ -247,6 +248,10 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 - Backend: push to main touching backend/**, Dockerfile, pyproject.toml, or cloudbuild.yaml
   → Cloud Build triggers → deploys to Cloud Run europe-west1.
 - Never touch cloudbuild.yaml without knowing what you are doing — it controls prod deploys.
+- Cloud Run runtime flags in cloudbuild.yaml are load-bearing: `--no-cpu-throttling` +
+  `--min-instances=1` + `--cpu-boost` + `--memory=1Gi`. Without `--no-cpu-throttling`,
+  CPU is throttled outside requests and the startup background loaders (Eurex RDF ~63s,
+  ECB FX-sync, CNMV catalog) never finish — European options stop loading. Do not remove them.
 - Full deploy docs: docs/deployment.md
 
 ---
