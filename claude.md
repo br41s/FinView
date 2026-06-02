@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 144 tests (35 skipped — need real PDFs/CSVs in files/) |
+| Tests | pytest · 151 tests (35 skipped — need real PDFs/CSVs in files/) |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -170,17 +170,23 @@ plus Hedge Fund / Structured Product / Other). MVP: no AI, no import — pure CR
 ### Search — CNMV catalog (`services/cnmv_catalog.py`)
 Search bar finds regulated Spanish funds by name or ISIN and pre-fills the add form
 (identity only — name, type, gestora, ISIN; amounts stay manual).
-- Source: free CNMV "información individual de IIC" monthly registry (FONDREGISTRO XML in a ZIP,
-  no auth). Download flow: fetch the year page → BeautifulSoup the latest `lnkZip` (opaque
-  `verdocumento/ver?e=` token) → unzip → iterparse `Entidad` → one `alt_investment_catalog` row
-  per share-class ISIN (name, gestora, Tipo→AltInvestmentType, isin).
+- Source: free CNMV "información individual de IIC" monthly ZIP (no auth). Download flow:
+  fetch the year page → BeautifulSoup the latest `lnkZip` (opaque `verdocumento/ver?e=`
+  token) → `_download_zip_members` reads two XMLs (1 retry on transient drop):
+  **FONDREGISTRO** (identity) → `_parse_registry`, one `alt_investment_catalog` row per
+  share-class ISIN; **FONDMENS** (NAV/fund size) → `_parse_mens`, merged by ISIN.
+- Enrichment: `nav` = class's latest daily VL (`VL_DiaN`); `fund_size` = sum of latest
+  `Patrimonio_DiaN` across the fund's classes; `data_date` from root `FechaDatos`.
 - `refresh_iic_catalog()` upserts the catalog; runs in a background thread on startup when
   `catalog_is_stale` (>7 days). Best-effort, never blocks/breaks the page. Never per request.
-- `search_catalog(db, q, type_filter, limit)` is DB-only: ILIKE on name + exact ISIN, prefix
-  matches rank first. `<2`-char queries return `[]`.
+- `search_catalog(db, q, type_filter, min_fund_size, max_fund_size, sort, limit)` is DB-only:
+  ILIKE on name + exact ISIN, prefix matches rank first. `sort` ∈ {name, fund_size_desc,
+  nav_desc, nav_asc}. **Browse mode**: short/empty `q` still returns rows when a filter or
+  non-default sort is set; otherwise `[]`.
 - Coverage: the monthly file is Fondos de Inversión (Tipo=FI) only — ~1,400 funds / ~3,000 ISINs,
-  mapped to `OTHER`. SICAV / real-estate IIC / hedge / PE-VC live in separate CNMV registries (deferred);
-  `_TIPO_MAP` is already wired for FII→REAL_ESTATE, FIL→HEDGE_FUND.
+  mapped to `OTHER`, all with NAV + fund size. SICAV / real-estate IIC / hedge / PE-VC live in
+  separate CNMV registries (deferred); `_TIPO_MAP` already wired for FII→REAL_ESTATE, FIL→HEDGE_FUND.
+  PE metrics (DPI/TVPI/IRR/vintage/commitment/hurdle) aren't public — manual on positions.
 
 ### Frontend — /alt-investments
 Self-contained page (QuickNav, like /portfolio /zonas-clave — not the AppSidebar dashboard).
@@ -249,5 +255,5 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 
 Run: pytest backend/tests/ -v
 
-144 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
+151 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
 If a test breaks, fix it before committing — no exceptions.

@@ -284,9 +284,11 @@ Las tarjetas superiores resumen el total de la cartera (comprometido, desembolsa
 
 ### 9.4 Buscar en el catálogo CNMV
 
-En la parte superior de la página hay un **buscador**. Escribe el nombre de un fondo (o su ISIN) y aparecerá un desplegable con los fondos registrados en la **CNMV** que coinciden. Al seleccionar uno, el formulario de alta se rellena automáticamente con su **nombre, tipo, gestora e ISIN** — solo tienes que añadir los importes (comprometido, desembolsado, distribuido, NAV), que son personales y no figuran en el registro público.
+En la parte superior de la página hay un **buscador**. Escribe el nombre de un fondo (o su ISIN) y aparecerá un desplegable con los fondos registrados en la **CNMV** que coinciden. Cada resultado muestra su **NAV por participación** y su **patrimonio** (tamaño del fondo). Al seleccionar uno, el formulario de alta se rellena automáticamente con su **nombre, tipo, gestora e ISIN** — solo tienes que añadir los importes (comprometido, desembolsado, distribuido, NAV), que son personales y no figuran en el registro público.
 
-- Cubre los **fondos de inversión españoles** registrados en la CNMV (~1.400 fondos). SICAV, IIC inmobiliarias, hedge funds y capital riesgo (private equity / venture capital) aún no están en el buscador — añádelos manualmente con "Añadir".
+- **Ordenar y filtrar:** junto al buscador puedes ordenar por *mayor patrimonio*, *mayor/menor NAV*, y fijar un *patrimonio mínimo* (en millones de €). Con esos controles puedes **explorar** el catálogo (p. ej. ver los fondos más grandes) sin escribir ningún nombre.
+- Cubre los **fondos de inversión españoles** registrados en la CNMV (~1.400 fondos), todos con NAV y patrimonio. SICAV, IIC inmobiliarias, hedge funds y capital riesgo (private equity / venture capital) aún no están en el buscador — añádelos manualmente con "Añadir".
+- Las métricas de private equity (DPI, TVPI, IRR, vintage, comprometido, hurdle…) no figuran en ninguna fuente pública gratuita: se introducen a mano en la ficha de cada inversión.
 - Si no encuentras tu inversión (por ejemplo, un producto de banca privada a medida o un fondo extranjero), usa "Añadir" para introducirla a mano.
 
 ---

@@ -46,6 +46,9 @@ def get_db() -> Session:
 # `ADD COLUMN <name> VARCHAR(n)` is valid on both SQLite and PostgreSQL.
 _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("alt_investments", "isin", "VARCHAR(12)"),
+    ("alt_investment_catalog", "nav", "NUMERIC(18, 4)"),
+    ("alt_investment_catalog", "fund_size", "NUMERIC(18, 2)"),
+    ("alt_investment_catalog", "data_date", "DATE"),
 ]
 
 

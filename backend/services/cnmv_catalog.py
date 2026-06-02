@@ -22,7 +22,8 @@ from __future__ import annotations
 import io
 import logging
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from xml.etree.ElementTree import iterparse
 
 import requests
@@ -75,18 +76,39 @@ def _latest_zip_url(year: int) -> str | None:
     return zips[-1] if zips else None  # last row = latest month
 
 
-def _download_registry_xml(zip_url: str) -> bytes:
-    """Download the monthly ZIP and return the FONDREGISTRO XML bytes."""
-    resp = requests.get(zip_url, headers=_HEADERS, timeout=120)
-    resp.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        member = next(
-            (n for n in zf.namelist() if n.upper().startswith("FONDREGISTRO") and n.lower().endswith(".xml")),
-            None,
-        )
-        if member is None:
+def _download_zip_members(zip_url: str) -> tuple[bytes, bytes | None]:
+    """Download the monthly ZIP and return (FONDREGISTRO XML, FONDMENS XML | None).
+
+    FONDREGISTRO (identity) is required; FONDMENS (NAV/fund size) is optional —
+    enrichment degrades gracefully if it's absent. Retries once on a transient
+    download error (the CNMV endpoint occasionally drops large connections).
+    """
+    content = b""
+    last_err: Exception | None = None
+    for attempt in range(2):
+        try:
+            resp = requests.get(zip_url, headers=_HEADERS, timeout=120)
+            resp.raise_for_status()
+            content = resp.content
+            break
+        except requests.RequestException as exc:  # incl. ChunkedEncodingError
+            last_err = exc
+            logger.warning("[cnmv-catalog] download attempt %d failed: %s", attempt + 1, exc)
+    if not content:
+        raise last_err or RuntimeError("CNMV download failed")
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        def _member(prefix: str) -> str | None:
+            return next(
+                (n for n in zf.namelist()
+                 if n.upper().startswith(prefix) and n.lower().endswith(".xml")),
+                None,
+            )
+
+        reg = _member("FONDREGISTRO")
+        if reg is None:
             raise ValueError("FONDREGISTRO XML not found in CNMV ZIP")
-        return zf.read(member)
+        mens = _member("FONDMENS")
+        return zf.read(reg), (zf.read(mens) if mens else None)
 
 
 # ── Parse ─────────────────────────────────────────────────────────────────────
@@ -136,6 +158,74 @@ def _parse_registry(xml_bytes: bytes) -> list[dict]:
     return rows
 
 
+def _latest_day(container) -> Decimal | None:
+    """Return the value of the highest-numbered, non-empty ``*_DiaN`` child."""
+    best_n, best_val = -1, None
+    if container is None:
+        return None
+    for child in container:
+        text = (child.text or "").strip()
+        if not text:
+            continue
+        tag = child.tag.split("}")[-1]
+        try:
+            n = int(tag.rsplit("Dia", 1)[-1])
+        except ValueError:
+            continue
+        if n > best_n:
+            try:
+                best_val = Decimal(text)
+                best_n = n
+            except InvalidOperation:
+                continue
+    return best_val
+
+
+def _mens_data_date(fecha: str | None) -> date | None:
+    """FONDMENS FechaDatos is YYYYMM → last day stored as the first of that month."""
+    if not fecha or len(fecha) < 6:
+        return None
+    try:
+        return date(int(fecha[:4]), int(fecha[4:6]), 1)
+    except ValueError:
+        return None
+
+
+def _parse_mens(xml_bytes: bytes) -> dict[str, dict]:
+    """Parse a FONDMENS XML → {isin: {nav, fund_size, data_date}}.
+
+    NAV is the share class's own latest daily VL; fund_size is the sum of the
+    latest patrimonio across all share classes of the same fund (Entidad).
+    Pure function (no DB / network).
+    """
+    out: dict[str, dict] = {}
+    data_date: date | None = None
+    for _ev, el in iterparse(io.BytesIO(xml_bytes), events=("end",)):
+        tag = el.tag.split("}")[-1]
+        if tag == "FechaDatos":  # root-level element, fires before any Entidad
+            if data_date is None:
+                data_date = _mens_data_date(el.text)
+            continue
+        if tag != "Entidad":
+            continue
+        classes = [c for c in el.iter() if c.tag.split("}")[-1] == "Clase"]
+        per_class: list[tuple[str, Decimal | None, Decimal | None]] = []
+        fund_size: Decimal | None = None
+        for clase in classes:
+            isin = (clase.findtext("ISIN") or "").strip()
+            if not isin:
+                continue
+            nav = _latest_day(clase.find("VLDiario"))
+            patr = _latest_day(clase.find("PatrimonioDiario"))
+            per_class.append((isin, nav, patr))
+            if patr is not None:
+                fund_size = (fund_size or Decimal(0)) + patr
+        for isin, nav, _patr in per_class:
+            out[isin] = {"nav": nav, "fund_size": fund_size, "data_date": data_date}
+        el.clear()
+    return out
+
+
 # ── Upsert ────────────────────────────────────────────────────────────────────
 
 
@@ -156,7 +246,8 @@ def _upsert_catalog(rows: list[dict]) -> int:
                 stmt = ins(AltInvestmentCatalog).values(chunk)
                 update_cols = {
                     c: stmt.excluded[c]
-                    for c in ("name", "type", "manager", "isin", "vehicle_subtype", "updated_at")
+                    for c in ("name", "type", "manager", "isin", "vehicle_subtype",
+                              "nav", "fund_size", "data_date", "updated_at")
                 }
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["source", "external_id"], set_=update_cols
@@ -180,9 +271,17 @@ def refresh_iic_catalog() -> int:
         logger.warning("[cnmv-catalog] no downloadable registry found")
         return 0
     logger.info("[cnmv-catalog] downloading registry %s", url[:80])
-    rows = _parse_registry(_download_registry_xml(url))
+    reg_xml, mens_xml = _download_zip_members(url)
+    rows = _parse_registry(reg_xml)
+    enrich = _parse_mens(mens_xml) if mens_xml else {}
+    for r in rows:
+        extra = enrich.get(r["isin"])
+        if extra:
+            r["nav"] = extra["nav"]
+            r["fund_size"] = extra["fund_size"]
+            r["data_date"] = extra["data_date"]
     n = _upsert_catalog(rows)
-    logger.info("[cnmv-catalog] upserted %d catalog rows", n)
+    logger.info("[cnmv-catalog] upserted %d catalog rows (%d enriched)", n, len(enrich))
     return n
 
 
@@ -200,28 +299,56 @@ def catalog_is_stale(db) -> bool:
     return newest < datetime.now(timezone.utc) - timedelta(days=_STALE_DAYS)
 
 
-def search_catalog(db, q: str, type_filter: str | None = None, limit: int = 20) -> list[dict]:
-    """Search the catalog by name (substring) or exact ISIN. Prefix matches rank first."""
-    q = (q or "").strip()
-    if len(q) < 2:
-        return []
-    pattern = f"%{q}%"
-    prefix = f"{q}%"
-    upper_q = q.upper()
+_SORTS = {"name", "fund_size_desc", "nav_desc", "nav_asc"}
 
-    stmt = select(AltInvestmentCatalog).where(
-        AltInvestmentCatalog.source == _SOURCE,
-        or_(
-            AltInvestmentCatalog.name.ilike(pattern),
-            AltInvestmentCatalog.isin == upper_q,
-        ),
+
+def search_catalog(
+    db,
+    q: str,
+    type_filter: str | None = None,
+    min_fund_size: Decimal | float | None = None,
+    max_fund_size: Decimal | float | None = None,
+    sort: str = "name",
+    limit: int = 20,
+) -> list[dict]:
+    """Search/browse the catalog.
+
+    Matches by name (substring) or exact ISIN when ``q`` has ≥2 chars. With a
+    short/empty ``q`` it still browses when a filter or non-default sort is given
+    (e.g. "largest funds"); otherwise returns []. Prefix-of-name ranks first
+    unless an explicit ``sort`` is chosen.
+    """
+    q = (q or "").strip()
+    Model = AltInvestmentCatalog
+    sort = sort if sort in _SORTS else "name"
+    has_filter = (
+        type_filter is not None or min_fund_size is not None or max_fund_size is not None
     )
+    browsing = len(q) < 2
+    if browsing and not has_filter and sort == "name":
+        return []
+
+    stmt = select(Model).where(Model.source == _SOURCE)
+    if not browsing:
+        stmt = stmt.where(or_(Model.name.ilike(f"%{q}%"), Model.isin == q.upper()))
     if type_filter:
-        stmt = stmt.where(AltInvestmentCatalog.type == type_filter)
-    # Prefix-of-name matches first, then the rest, alphabetically.
-    stmt = stmt.order_by(
-        AltInvestmentCatalog.name.ilike(prefix).desc(), AltInvestmentCatalog.name
-    ).limit(limit)
+        stmt = stmt.where(Model.type == type_filter)
+    if min_fund_size is not None:
+        stmt = stmt.where(Model.fund_size >= Decimal(str(min_fund_size)))
+    if max_fund_size is not None:
+        stmt = stmt.where(Model.fund_size <= Decimal(str(max_fund_size)))
+
+    if sort == "fund_size_desc":
+        stmt = stmt.order_by(Model.fund_size.is_(None), Model.fund_size.desc(), Model.name)
+    elif sort == "nav_desc":
+        stmt = stmt.order_by(Model.nav.is_(None), Model.nav.desc(), Model.name)
+    elif sort == "nav_asc":
+        stmt = stmt.order_by(Model.nav.is_(None), Model.nav.asc(), Model.name)
+    elif not browsing:  # default relevance: prefix-of-name first
+        stmt = stmt.order_by(Model.name.ilike(f"{q}%").desc(), Model.name)
+    else:
+        stmt = stmt.order_by(Model.name)
+    stmt = stmt.limit(limit)
 
     return [
         {
@@ -231,6 +358,9 @@ def search_catalog(db, q: str, type_filter: str | None = None, limit: int = 20) 
             "manager": r.manager,
             "isin": r.isin,
             "source": r.source,
+            "nav": float(r.nav) if r.nav is not None else None,
+            "fund_size": float(r.fund_size) if r.fund_size is not None else None,
+            "data_date": r.data_date.isoformat() if r.data_date else None,
         }
         for r in db.execute(stmt).scalars().all()
     ]

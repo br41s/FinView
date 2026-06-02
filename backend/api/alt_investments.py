@@ -110,6 +110,9 @@ class CatalogSearchResult(BaseModel):
     manager: str
     isin: str | None
     source: str
+    nav: float | None = None
+    fund_size: float | None = None
+    data_date: str | None = None
 
 
 # --------------- helpers ---------------
@@ -229,19 +232,28 @@ def alt_summary(db: DbSession, user: CurrentUser):
 def search_catalog_endpoint(
     db: DbSession,
     user: CurrentUser,
-    q: str,
+    q: str = "",
     type: str | None = None,
+    min_fund_size: float | None = None,
+    max_fund_size: float | None = None,
+    sort: str = "name",
     limit: int = 20,
 ):
-    """Search the CNMV catalog of regulated Spanish vehicles to pre-fill the form.
+    """Search/browse the CNMV catalog of regulated Spanish funds to pre-fill the form.
 
-    Matches by name (substring) or exact ISIN; returns [] for queries < 2 chars.
+    Matches by name (substring) or exact ISIN. With a short/empty `q` it still
+    browses when a filter (`type`, `min_fund_size`, `max_fund_size`) or non-default
+    `sort` (`fund_size_desc` | `nav_desc` | `nav_asc`) is given. Results include the
+    fund's latest NAV and fund size (CNMV `FONDMENS`, FI funds only).
     """
     from backend.services.cnmv_catalog import search_catalog
 
     if type is not None and type not in _TYPES:
         raise HTTPException(400, f"Invalid type. Must be one of: {sorted(_TYPES)}")
-    return search_catalog(db, q, type_filter=type, limit=min(limit, 50))
+    return search_catalog(
+        db, q, type_filter=type, min_fund_size=min_fund_size,
+        max_fund_size=max_fund_size, sort=sort, limit=min(limit, 50),
+    )
 
 
 @router.post("/", response_model=AltInvestmentOut, status_code=status.HTTP_201_CREATED)

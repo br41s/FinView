@@ -1,6 +1,6 @@
 """Tests for the CNMV catalog: registry parsing, type mapping, search, migration."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
@@ -38,6 +38,37 @@ SAMPLE_XML = b"""<?xml version="1.0" encoding="utf-8"?>
     <Gestora><DenominacionGestora>GESIURIS ASSET MANAGEMENT</DenominacionGestora></Gestora>
   </Entidad>
 </FondRegistro>"""
+
+# Matching FONDMENS sample (NAV + patrimonio) for the same ISINs.
+MENS_XML = b"""<?xml version="1.0" encoding="utf-8"?>
+<FondMens>
+  <FechaDatos>202601</FechaDatos>
+  <Entidad>
+    <Tipo>FI</Tipo>
+    <Compartimento>
+      <Clase>
+        <ISIN>ES0138841038</ISIN>
+        <VLDiario><VL_Dia1>30.10</VL_Dia1><VL_Dia2>30.65</VL_Dia2></VLDiario>
+        <PatrimonioDiario><Patrimonio_Dia1>1000</Patrimonio_Dia1><Patrimonio_Dia2>2000</Patrimonio_Dia2></PatrimonioDiario>
+      </Clase>
+      <Clase>
+        <ISIN>ES0138841004</ISIN>
+        <VLDiario><VL_Dia1>10.50</VL_Dia1></VLDiario>
+        <PatrimonioDiario><Patrimonio_Dia1>500</Patrimonio_Dia1></PatrimonioDiario>
+      </Clase>
+    </Compartimento>
+  </Entidad>
+  <Entidad>
+    <Tipo>FI</Tipo>
+    <Compartimento>
+      <Clase>
+        <ISIN>ES0156322036</ISIN>
+        <VLDiario><VL_Dia1>24.87</VL_Dia1></VLDiario>
+        <PatrimonioDiario><Patrimonio_Dia1>9000</Patrimonio_Dia1></PatrimonioDiario>
+      </Clase>
+    </Compartimento>
+  </Entidad>
+</FondMens>"""
 
 
 @pytest.fixture
@@ -79,6 +110,46 @@ def test_map_tipo():
     assert cc._map_tipo("???") == AltInvestmentType.OTHER.value
 
 
+# ── FONDMENS enrichment (NAV + fund size) ─────────────────────────────
+
+
+def test_parse_mens_latest_nav_and_summed_fund_size():
+    from decimal import Decimal
+
+    out = cc._parse_mens(MENS_XML)
+    # NAV = the class's own latest non-empty VL_DiaN
+    assert out["ES0138841038"]["nav"] == Decimal("30.65")  # Dia2 beats Dia1
+    assert out["ES0138841004"]["nav"] == Decimal("10.50")
+    # fund_size = sum of latest patrimonio across the fund's classes (2000 + 500)
+    assert out["ES0138841038"]["fund_size"] == Decimal("2500")
+    assert out["ES0138841004"]["fund_size"] == Decimal("2500")  # same fund
+    assert out["ES0156322036"]["fund_size"] == Decimal("9000")  # single-class fund
+    # data_date from the root FechaDatos (YYYYMM → first of month)
+    assert out["ES0138841038"]["data_date"] == date(2026, 1, 1)
+
+
+def test_latest_day_picks_highest_nonempty():
+    from decimal import Decimal
+    from xml.etree.ElementTree import fromstring
+
+    el = fromstring("<VLDiario><VL_Dia1>1.0</VL_Dia1><VL_Dia2>2.0</VL_Dia2><VL_Dia3></VL_Dia3></VLDiario>")
+    assert cc._latest_day(el) == Decimal("2.0")  # Dia3 empty → Dia2 wins
+    assert cc._latest_day(fromstring("<X></X>")) is None
+
+
+def test_refresh_merge_attaches_nav_and_size():
+    """The registry rows get NAV/fund_size attached by ISIN (the refresh merge step)."""
+    rows = cc._parse_registry(SAMPLE_XML)
+    enrich = cc._parse_mens(MENS_XML)
+    for r in rows:
+        e = enrich.get(r["isin"])
+        if e:
+            r.update(nav=e["nav"], fund_size=e["fund_size"], data_date=e["data_date"])
+    by_isin = {r["isin"]: r for r in rows}
+    assert float(by_isin["ES0138841038"]["nav"]) == 30.65
+    assert float(by_isin["ES0138841038"]["fund_size"]) == 2500
+
+
 # ── Search ────────────────────────────────────────────────────────────
 
 
@@ -118,6 +189,39 @@ def test_search_type_filter(db):
     ])
     res = cc.search_catalog(db, "inmo", type_filter="REAL_ESTATE")
     assert [r["isin"] for r in res] == ["R1"]
+
+
+def _seed_sized(db):
+    from decimal import Decimal
+    _seed(db, [
+        {"source": "CNMV_IIC", "external_id": "S", "name": "SMALL FUND", "type": "OTHER", "manager": "X", "isin": "S", "vehicle_subtype": "FI", "nav": Decimal("10"), "fund_size": Decimal("1000000")},
+        {"source": "CNMV_IIC", "external_id": "B", "name": "BIG FUND", "type": "OTHER", "manager": "X", "isin": "B", "vehicle_subtype": "FI", "nav": Decimal("99"), "fund_size": Decimal("5000000000")},
+    ])
+
+
+def test_search_results_include_nav_and_fund_size(db):
+    _seed_sized(db)
+    res = cc.search_catalog(db, "fund")
+    big = next(r for r in res if r["isin"] == "B")
+    assert big["nav"] == 99.0 and big["fund_size"] == 5_000_000_000.0
+
+
+def test_search_sort_fund_size_desc(db):
+    _seed_sized(db)
+    res = cc.search_catalog(db, "fund", sort="fund_size_desc")
+    assert [r["isin"] for r in res] == ["B", "S"]
+
+
+def test_search_browse_with_filter_no_query(db):
+    _seed_sized(db)
+    # empty query but a filter/sort present → browse the biggest
+    res = cc.search_catalog(db, "", min_fund_size=1_000_000_000, sort="fund_size_desc")
+    assert [r["isin"] for r in res] == ["B"]
+
+
+def test_search_browse_blocked_without_filter(db):
+    _seed_sized(db)
+    assert cc.search_catalog(db, "", sort="name") == []
 
 
 # ── Staleness ─────────────────────────────────────────────────────────
