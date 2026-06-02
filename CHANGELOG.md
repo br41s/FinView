@@ -17,6 +17,15 @@ All notable changes to FinView are documented here.
   Cloud Run (unspoofable by client).
 
 ### Added
+- **Catalog search — NAV + fund size + sort/filter** — the `/alt-investments` CNMV
+  search now enriches each fund with its latest **NAV per unit** and **fund size
+  (AUM)** from the CNMV `FONDMENS` monthly file (same ZIP, no extra download). Results
+  show NAV and fund size; you can **sort** by patrimonio/NAV and set a **minimum fund
+  size**, and **browse** (e.g. largest funds) without typing a name. New `/search`
+  params: `sort` (`fund_size_desc`|`nav_desc`|`nav_asc`), `min_fund_size`,
+  `max_fund_size`. NAV/size are the only fields any free Spanish source publishes — PE
+  metrics (DPI/TVPI/IRR/vintage/commitment/hurdle) remain manual on positions. NAV/size
+  columns added to `alt_investment_catalog` via the `ensure_columns()` additive migration.
 - **Alt-investments search (CNMV)** — a search bar at the top of `/alt-investments`
   finds regulated Spanish investment funds by name or ISIN and pre-fills the add
   form (name, type, gestora, ISIN). Backed by a new `alt_investment_catalog` table

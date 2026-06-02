@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (144 tests)
+- **Tests:** pytest (151 tests)
 
 ## Brokers soportados
 
@@ -163,7 +163,9 @@ Capital comprometido, desembolsado (called), distribuido y NAV actual se guardan
 Tarjetas de resumen + barras de asignación por tipo + tabla de posiciones con métricas por fila + formulario inline para añadir/editar.
 
 ### Buscador (catálogo CNMV)
-Barra de búsqueda en la parte superior: busca fondos registrados en la **CNMV** por nombre o ISIN y, al seleccionar un resultado, pre-rellena el formulario (nombre, tipo, gestora, ISIN; importes siempre manuales). Los datos provienen del registro mensual gratuito "información individual de IIC" de la CNMV (`services/cnmv_catalog.py`) — ~3.000 ISINs de clase sobre ~1.400 fondos — cacheados en la tabla `alt_investment_catalog` y refrescados en segundo plano al arrancar si están obsoletos (>7 días). SICAV, IIC inmobiliarias, hedge funds y capital riesgo (PE/VC) están en registros CNMV separados y quedan para fases posteriores.
+Barra de búsqueda en la parte superior: busca fondos registrados en la **CNMV** por nombre o ISIN y, al seleccionar un resultado, pre-rellena el formulario (nombre, tipo, gestora, ISIN; importes siempre manuales). Los datos provienen del registro mensual gratuito "información individual de IIC" de la CNMV (`services/cnmv_catalog.py`) — ~3.000 ISINs de clase sobre ~1.400 fondos — cacheados en la tabla `alt_investment_catalog` y refrescados en segundo plano al arrancar si están obsoletos (>7 días).
+
+Cada fondo se enriquece con su **NAV por participación** y **patrimonio (tamaño del fondo)** del fichero `FONDMENS` (mismo ZIP). Los resultados muestran NAV y patrimonio; se puede **ordenar** por patrimonio/NAV y filtrar por **patrimonio mínimo**, e incluso **explorar** (p. ej. los fondos más grandes) sin escribir un nombre. NAV y patrimonio son los únicos campos que publica una fuente pública gratuita — las métricas de PE (DPI/TVPI/IRR/vintage/commitment/hurdle) son privadas y se introducen a mano. SICAV, IIC inmobiliarias, hedge funds y capital riesgo (PE/VC) están en registros CNMV separados y quedan para fases posteriores.
 
 ### Tipos de cambio (ECB)
 `services/exchange_rates.py` cachea los tipos de referencia oficiales del BCE en la tabla `exchange_rates` como fallback para conversiones IRPF cuando el archivo del broker no trae el tipo (o para entradas manuales). Sincroniza en segundo plano al arrancar (historia completa el primer boot, luego feed de 90 días). `get_rate()` es solo-DB con fallback ±7 días para fines de semana/festivos.
@@ -201,7 +203,7 @@ Base URL: `http://localhost:8000/api`
 ### Inversiones Alternativas (`/alt-investments/...`)
 - `GET /alt-investments/` — Listar posiciones (con TVPI/DPI/RVPI/unfunded por fila)
 - `GET /alt-investments/summary` — Consolidación + asignación por tipo/geografía/divisa
-- `GET /alt-investments/search?q=&type=` — Buscar en el catálogo CNMV (nombre o ISIN)
+- `GET /alt-investments/search?q=&type=&sort=&min_fund_size=` — Buscar/explorar el catálogo CNMV (nombre o ISIN; orden por patrimonio/NAV; incluye NAV y tamaño del fondo)
 - `POST /alt-investments/` — Crear posición
 - `PATCH /alt-investments/{id}` — Actualizar posición
 - `DELETE /alt-investments/{id}` — Eliminar posición
@@ -229,7 +231,7 @@ Base URL: `http://localhost:8000/api`
 pytest tests/ backend/tests/ -v
 ```
 
-144 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
+151 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
 
 ## Despliegue y CI/CD
 
