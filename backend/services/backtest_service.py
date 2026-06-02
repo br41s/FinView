@@ -163,7 +163,6 @@ def evaluate_pending(db: Session, user_id: int) -> int:
             if target_date > now.date():
                 continue  # horizon not reached yet
 
-            price_key = f"{signal.ticker}_{target_date.isoformat()}"
             # Try target date, then next 2 calendar days (weekend/holiday fallback)
             price_later: float | None = None
             for offset in range(3):
