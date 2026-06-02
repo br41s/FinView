@@ -701,6 +701,12 @@ class AltInvestmentCatalog(Base):
     manager: Mapped[str] = mapped_column(String(255), default="")
     isin: Mapped[str | None] = mapped_column(String(12))
     vehicle_subtype: Mapped[str] = mapped_column(String(20), default="")  # raw CNMV Tipo
+
+    # Enrichment from the CNMV FONDMENS monthly file (FI funds only)
+    nav: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))  # latest per-unit NAV (EUR)
+    fund_size: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))  # fund AUM (EUR)
+    data_date: Mapped[date | None] = mapped_column(Date)  # FONDMENS period
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

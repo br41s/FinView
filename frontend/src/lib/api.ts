@@ -340,6 +340,18 @@ export interface AltCatalogResult {
   manager: string;
   isin: string | null;
   source: string;
+  nav: number | null;
+  fund_size: number | null;
+  data_date: string | null;
+}
+
+export type AltCatalogSort = "name" | "fund_size_desc" | "nav_desc" | "nav_asc";
+
+export interface AltCatalogQuery {
+  q?: string;
+  type?: AltInvestmentType;
+  min_fund_size?: number;
+  sort?: AltCatalogSort;
 }
 
 export interface AltSummary {
@@ -738,9 +750,15 @@ export const api = {
   altInvestments: {
     list: () => fetchJSON<AltInvestment[]>("/alt-investments/"),
     summary: () => fetchJSON<AltSummary>("/alt-investments/summary"),
-    search: (q: string, type?: AltInvestmentType) =>
+    search: (params: AltCatalogQuery) =>
       fetchJSON<AltCatalogResult[]>(
-        `/alt-investments/search${qs({ q, type, limit: 20 })}`,
+        `/alt-investments/search${qs({
+          q: params.q,
+          type: params.type,
+          min_fund_size: params.min_fund_size,
+          sort: params.sort,
+          limit: 20,
+        })}`,
       ),
     create: async (data: AltInvestmentInput) => {
       const headers = await authHeaders();

@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
   api,
   type AltCatalogResult,
+  type AltCatalogSort,
   type AltInvestment,
   type AltInvestmentInput,
   type AltInvestmentType,
@@ -76,6 +77,14 @@ function fmtMultiple(v: number | null): string {
   return v === null ? "—" : `${v.toFixed(2)}x`;
 }
 
+function fmtCompactEur(v: number | null): string {
+  if (v === null) return "—";
+  if (v >= 1e9) return `€${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `€${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `€${(v / 1e3).toFixed(0)}k`;
+  return `€${v.toFixed(0)}`;
+}
+
 export default function AltInvestmentsPage() {
   const [items, setItems] = useState<AltInvestment[]>([]);
   const [summary, setSummary] = useState<AltSummary | null>(null);
@@ -90,6 +99,8 @@ export default function AltInvestmentsPage() {
   const [results, setResults] = useState<AltCatalogResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [sort, setSort] = useState<AltCatalogSort>("name");
+  const [minSize, setMinSize] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,10 +122,13 @@ export default function AltInvestmentsPage() {
     load();
   }, [load]);
 
-  // Debounced catalog search
+  // Debounced catalog search / browse. Fires when the query is long enough OR a
+  // filter/sort is active (so you can browse "largest funds" without a name).
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
+    const minNum = minSize ? Number(minSize) * 1_000_000 : undefined; // input is €M
+    const browsing = sort !== "name" || minNum !== undefined;
+    if (q.length < 2 && !browsing) {
       setResults([]);
       setSearching(false);
       return;
@@ -122,7 +136,11 @@ export default function AltInvestmentsPage() {
     setSearching(true);
     const t = setTimeout(async () => {
       try {
-        const res = await api.altInvestments.search(q);
+        const res = await api.altInvestments.search({
+          q,
+          sort,
+          min_fund_size: minNum,
+        });
         setResults(res);
         setSearchOpen(true);
       } catch {
@@ -132,7 +150,7 @@ export default function AltInvestmentsPage() {
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, sort, minSize]);
 
   function openFromCatalog(r: AltCatalogResult) {
     setEditingId(null);
@@ -148,6 +166,8 @@ export default function AltInvestmentsPage() {
     setSearchOpen(false);
     setQuery("");
     setResults([]);
+    setSort("name");
+    setMinSize("");
   }
 
   function openCreate() {
@@ -239,55 +259,83 @@ export default function AltInvestmentsPage() {
 
       {/* Catalog search (CNMV) */}
       <div className="relative">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => results.length > 0 && setSearchOpen(true)}
-            placeholder="Buscar fondo registrado en la CNMV por nombre o ISIN…"
-            className="pl-9"
-            aria-label="Buscar en el catálogo CNMV"
-          />
-          {searching && (
-            <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-          )}
-        </div>
-        {searchOpen && query.trim().length >= 2 && (
-          <div className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-md border bg-popover shadow-md">
-            {results.length === 0 && !searching ? (
-              <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                Sin resultados. Puedes añadirlo manualmente con “Añadir”.
-              </div>
-            ) : (
-              results.map((r) => (
-                <button
-                  key={`${r.source}-${r.isin ?? r.name}`}
-                  type="button"
-                  onClick={() => openFromCatalog(r)}
-                  className="flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-accent"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{r.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {r.manager}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <Badge variant="outline" className="text-[10px]">
-                      {TYPE_LABELS[r.type]}
-                    </Badge>
-                    {r.isin && (
-                      <span className="font-mono text-[10px] text-muted-foreground">
-                        {r.isin}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              ))
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+              placeholder="Buscar fondo CNMV por nombre o ISIN…"
+              className="pl-9"
+              aria-label="Buscar en el catálogo CNMV"
+            />
+            {searching && (
+              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
             )}
           </div>
-        )}
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as AltCatalogSort)}
+            aria-label="Ordenar"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="name">Relevancia</option>
+            <option value="fund_size_desc">Mayor patrimonio</option>
+            <option value="nav_desc">Mayor NAV</option>
+            <option value="nav_asc">Menor NAV</option>
+          </select>
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={minSize}
+            onChange={(e) => setMinSize(e.target.value)}
+            placeholder="Patrim. mín. (€M)"
+            aria-label="Patrimonio mínimo en millones de euros"
+            className="sm:w-40"
+          />
+        </div>
+        {searchOpen &&
+          (query.trim().length >= 2 || sort !== "name" || minSize !== "") && (
+            <div className="absolute z-20 mt-1 max-h-96 w-full overflow-auto rounded-md border bg-popover shadow-md">
+              {results.length === 0 && !searching ? (
+                <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                  Sin resultados. Puedes añadirlo manualmente con “Añadir”.
+                </div>
+              ) : (
+                results.map((r) => (
+                  <button
+                    key={`${r.source}-${r.isin ?? r.name}`}
+                    type="button"
+                    onClick={() => openFromCatalog(r)}
+                    className="flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-accent"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{r.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {r.manager}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0.5">
+                      <Badge variant="outline" className="text-[10px]">
+                        {TYPE_LABELS[r.type]}
+                      </Badge>
+                      <span className="text-[10px] tabular-nums text-muted-foreground">
+                        {r.nav !== null && `NAV ${r.nav.toFixed(2)}`}
+                        {r.nav !== null && r.fund_size !== null && " · "}
+                        {r.fund_size !== null && `Pat. ${fmtCompactEur(r.fund_size)}`}
+                      </span>
+                      {r.isin && (
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {r.isin}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
       </div>
 
       {/* Summary cards */}
