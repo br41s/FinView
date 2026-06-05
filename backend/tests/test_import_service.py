@@ -18,6 +18,7 @@ from backend.services.import_service import (
 _FILES = Path(__file__).resolve().parents[2] / "files"
 TR_DE_PDF = _FILES / "TR-Tax report - Period DE IBAN-2025.pdf"
 TR_ES_PDF = _FILES / "TR-Tax report - Period ES IBAN-2025.pdf"
+TR_CSV = _FILES / "TR-Transaction-export.csv"
 
 
 @pytest.fixture
@@ -277,7 +278,7 @@ class TestMigrationYearCoexistence:
         assert de.source_variant == "tr_de_premigration"
 
     def test_reimport_de_replaces_own_slot(self, db, user_id):
-        from backend.importers.tr import compute_file_hash, parse_tr_tax_report
+        from backend.importers.tr import parse_tr_tax_report
         from backend.services.import_service import import_tr_report
 
         self._import_both(db, user_id)
@@ -288,3 +289,81 @@ class TestMigrationYearCoexistence:
         recs = db.query(ImportRecord).filter(ImportRecord.fiscal_year == 2025).all()
         assert len(recs) == 2
         assert {r.source_variant for r in recs} == {"tr_de_premigration", "es_branch"}
+
+
+@pytest.mark.skipif(
+    not (TR_DE_PDF.exists() and TR_ES_PDF.exists() and TR_CSV.exists()),
+    reason="TR migration PDFs + transaction CSV not available in files/",
+)
+class TestPdfCsvComposition:
+    """The CSV ledger and the PDFs compose into one accurate account: taxes
+    from the PDFs, cost basis from the CSV, with no income double-counting."""
+
+    def _import_all(self, db, user_id):
+        from backend.importers.tr import compute_file_hash as ph, parse_tr_tax_report
+        from backend.importers.tr_csv import compute_file_hash as ch, parse_tr_csv
+        from backend.services.import_service import import_tr_csv_report, import_tr_report
+
+        import_tr_report(db, parse_tr_tax_report(TR_DE_PDF), ph(TR_DE_PDF), "de.pdf", user_id)
+        import_tr_report(db, parse_tr_tax_report(TR_ES_PDF), ph(TR_ES_PDF), "es.pdf", user_id)
+        return import_tr_csv_report(db, parse_tr_csv(TR_CSV), ch(TR_CSV), "tx.csv", user_id)
+
+    def test_single_tr_account(self, db, user_id):
+        from backend.models import Account
+
+        self._import_all(db, user_id)
+        tr_accounts = db.query(Account).filter(Account.broker == Broker.TR).all()
+        assert len(tr_accounts) == 1
+        assert tr_accounts[0].account_id == "TR"
+
+    def test_csv_is_ledger_only(self, db, user_id):
+        """CSV imports buy/sell/spin-off, skips all dividend + interest rows."""
+        from backend.models import Transaction, TransactionType
+
+        res = self._import_all(db, user_id)
+        assert res["counts"]["income_skipped"] > 0
+        # Every CSV-imported transaction is a ledger type, never income.
+        csv_tx = (
+            db.query(Transaction)
+            .filter(Transaction.import_id == res["import_id"])
+            .all()
+        )
+        assert csv_tx  # the ledger landed
+        ledger_types = {
+            TransactionType.BUY, TransactionType.SELL, TransactionType.SPINOFF,
+            TransactionType.BUY.value, TransactionType.SELL.value,
+            TransactionType.SPINOFF.value,
+        }
+        assert all(t.type in ledger_types for t in csv_tx)
+
+    def test_income_not_double_counted(self, db, user_id):
+        """2025 dividend net comes from the PDFs only — the CSV must not add a
+        second copy (which would roughly double it)."""
+        from sqlalchemy import func
+        from backend.models import Transaction, TransactionType
+
+        self._import_all(db, user_id)
+        net = (
+            db.query(func.coalesce(func.sum(Transaction.net_amount_eur), 0))
+            .filter(
+                Transaction.type == TransactionType.DIVIDEND.value,
+                func.substr(Transaction.trade_date, 1, 4) == "2025",
+            )
+            .scalar()
+        )
+        # PDF-only 2025 dividend net; doubling would push it past ~9000.
+        assert Decimal("4000") < net < Decimal("7000")
+
+    def test_positions_have_cost_basis(self, db, user_id):
+        """The CSV ledger supplies cost basis for held positions, including the
+        pre-migration buy of a position carried across the migration."""
+        from backend.services.portfolio_service import get_open_positions
+
+        self._import_all(db, user_id)
+        positions = get_open_positions(db, user_id, skip_prices=True, aggregate=True)
+        assert positions
+        # Unibail (FR0013326246): bought pre-migration, held at year-end.
+        uni = [p for p in positions if p.isin == "FR0013326246"]
+        assert len(uni) == 1
+        assert uni[0].quantity == Decimal("15")
+        assert uni[0].total_cost_eur == Decimal("990")

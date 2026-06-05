@@ -1,5 +1,29 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## TR foundation: CSV ledger + PDF fiscal, no data loss — 2026-06-05
+
+**Goal:** 100% accurate for taxes AND positions, composing TR's documents without
+double-counting. Evidence on real files (DE PDF + ES PDF + full CSV 2024→2026):
+- CSV is the complete buy/sell ledger across the migration; parser already skips
+  MIGRATION/transfer/card noise. With CSV: **59/59 positions get cost basis**
+  (Unibail 15 @ €990). Only 1 genuine missing-buy edge: ES0684262944 (spin-off).
+- BUG: PDF + CSV **double-count dividends/interest** (2025 net €11,214 vs ~€6,592).
+- TR fragments into 3 accounts (`0329750901`/`""`/`TR`); other brokers use one id.
+
+**Ownership model (one source per fact):** PDF = fiscal truth (casillas, gain
+TaxLots, dividends, interest, withholding). CSV = position ledger (BUY/SELL/SPINOFF).
+
+- [x] CSV import = ledger only: skip DIVIDEND + INTEREST (PDF owns income).
+- [x] Unify TR account → fixed `"TR"` id for DE PDF, ES PDF, CSV.
+- [x] Verify on real files: 1 account; 59/59 cost basis; div net €5,374 (not the
+      doubled €11,214); c29 gross €6,591.84 unchanged.
+- [x] Test: CSV+PDF composition (no income double-count, single account, cost basis).
+- [x] Full suite (96 passed) + ruff clean.
+- Follow-up: supervisor clears superseded missing_buy issues; closed-position
+  history may show real+synthetic sells (cosmetic).
+
+---
+
 ## UI Deduplication — 2026-06-01
 
 ## Navigation & Menu — 2026-06-01
