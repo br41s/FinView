@@ -182,6 +182,11 @@ class TaxResult(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Owning import. Lets complementary same-year reports for one broker (e.g. a
+    # TR DE→ES migration year's pre- and post-migration reports) each keep their
+    # own casilla rows; the fiscal layer sums rows per casilla. NULL for rows
+    # written before this column existed.
+    import_id: Mapped[int | None] = mapped_column(ForeignKey("import_records.id"))
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
     broker: Mapped[str | None] = mapped_column(Enum(Broker))
     modelo: Mapped[int] = mapped_column(Integer, nullable=False)  # 100 or 714
@@ -192,9 +197,11 @@ class TaxResult(Base):
     tr_reference_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     validated: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # No UNIQUE(user, year, broker, modelo, casilla): a broker can legitimately
+    # have two reports for one year (migration). Dedup is procedural — an
+    # import's casillas are deleted (by import_id) before it is re-imported.
     __table_args__ = (
         Index("ix_tax_year_modelo", "fiscal_year", "modelo"),
-        UniqueConstraint("user_id", "fiscal_year", "broker", "modelo", "casilla"),
     )
 
 
@@ -264,6 +271,10 @@ class ImportRecord(Base):
     imported_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     record_count: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Distinguishes co-existing reports for the same broker + fiscal year (e.g.
+    # a TR DE→ES migration year has a pre-migration and a post-migration report).
+    # Used as part of the year-replacement key. NULL for legacy/other imports.
+    source_variant: Mapped[str | None] = mapped_column(String(20))
 
     account: Mapped["Account"] = relationship(back_populates="imports")
 

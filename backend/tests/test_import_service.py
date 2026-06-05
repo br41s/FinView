@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,6 +14,10 @@ from backend.services.import_service import (
     _check_year_duplicate,
     _delete_import_data,
 )
+
+_FILES = Path(__file__).resolve().parents[2] / "files"
+TR_DE_PDF = _FILES / "TR-Tax report - Period DE IBAN-2025.pdf"
+TR_ES_PDF = _FILES / "TR-Tax report - Period ES IBAN-2025.pdf"
 
 
 @pytest.fixture
@@ -34,7 +39,7 @@ def user_id(db) -> int:
     return user.id
 
 
-def _make_import(db, user_id, broker="TR", fiscal_year=2024, file_hash="abc123"):
+def _make_import(db, user_id, broker="TR", fiscal_year=2024, file_hash="abc123", source_variant=None):
     """Helper to create a minimal import record with related data."""
     from backend.models import Account, TransactionType
 
@@ -51,6 +56,7 @@ def _make_import(db, user_id, broker="TR", fiscal_year=2024, file_hash="abc123")
         broker=broker,
         fiscal_year=fiscal_year,
         record_count=2,
+        source_variant=source_variant,
     )
     db.add(rec)
     db.flush()
@@ -195,3 +201,90 @@ class TestDeleteImportData:
 
         assert db.query(ImportRecord).count() == 1
         assert db.query(ImportRecord).first().broker == Broker.DEGIRO
+
+
+class TestCheckYearDuplicateVariant:
+    """Variant-aware year key: complementary same-year TR reports coexist."""
+
+    def test_variant_filter_isolates_slot(self, db, user_id):
+        _make_import(
+            db, user_id, broker="TR", fiscal_year=2025,
+            file_hash="h_de", source_variant="tr_de_premigration",
+        )
+        # The post-migration variant is a different slot → no duplicate.
+        assert _check_year_duplicate(db, Broker.TR, 2025, "es_branch") is None
+        # The same variant is found → replaces itself.
+        same = _check_year_duplicate(db, Broker.TR, 2025, "tr_de_premigration")
+        assert same is not None
+
+    def test_no_variant_matches_any(self, db, user_id):
+        """Legacy call (no variant) keeps matching any same-year row."""
+        _make_import(
+            db, user_id, broker="TR", fiscal_year=2025,
+            file_hash="h_de", source_variant="tr_de_premigration",
+        )
+        assert _check_year_duplicate(db, Broker.TR, 2025) is not None
+
+
+@pytest.mark.skipif(
+    not (TR_DE_PDF.exists() and TR_ES_PDF.exists()),
+    reason="TR DE/ES IBAN migration-year PDFs not available in files/",
+)
+class TestMigrationYearCoexistence:
+    """End-to-end: the two FY2025 TR reports (pre/post migration) import
+    side by side and their casillas aggregate instead of overwriting."""
+
+    def _import_both(self, db, user_id):
+        from backend.importers.tr import compute_file_hash, parse_tr_tax_report
+        from backend.services.import_service import import_tr_report
+
+        de = parse_tr_tax_report(TR_DE_PDF)
+        es = parse_tr_tax_report(TR_ES_PDF)
+        r_de = import_tr_report(db, de, compute_file_hash(TR_DE_PDF), "de.pdf", user_id)
+        r_es = import_tr_report(db, es, compute_file_hash(TR_ES_PDF), "es.pdf", user_id)
+        return r_de, r_es
+
+    def test_both_imports_survive(self, db, user_id):
+        self._import_both(db, user_id)
+        recs = db.query(ImportRecord).filter(ImportRecord.fiscal_year == 2025).all()
+        assert len(recs) == 2
+        variants = {r.source_variant for r in recs}
+        assert variants == {"tr_de_premigration", "es_branch"}
+
+    def test_no_replacement_reported(self, db, user_id):
+        r_de, r_es = self._import_both(db, user_id)
+        assert r_de["status"] == "success"
+        assert r_es["status"] == "success"  # did NOT replace the DE report
+
+    def test_casilla_29_aggregates(self, db, user_id):
+        self._import_both(db, user_id)
+        rows = (
+            db.query(TaxResult)
+            .filter(TaxResult.fiscal_year == 2025, TaxResult.casilla == 29)
+            .all()
+        )
+        # DE 4103.886846 + ES 2487.95
+        total = sum(r.amount_eur for r in rows)
+        assert abs(total - Decimal("6591.836846")) < Decimal("0.01")
+
+    def test_pre_migration_has_no_section_vi(self, db, user_id):
+        """DE report contributes fiscal figures only — its raw Section VI
+        buy/sell history is not imported (only the one realized-gain pair)."""
+        from backend.importers.tr import parse_tr_tax_report
+
+        de = parse_tr_tax_report(TR_DE_PDF)
+        assert de.transactions == []
+        assert de.source_variant == "tr_de_premigration"
+
+    def test_reimport_de_replaces_own_slot(self, db, user_id):
+        from backend.importers.tr import compute_file_hash, parse_tr_tax_report
+        from backend.services.import_service import import_tr_report
+
+        self._import_both(db, user_id)
+        # Re-upload the DE report under a new hash (e.g. a corrected file):
+        # it must replace only the DE slot, leaving ES intact → still 2 rows.
+        de = parse_tr_tax_report(TR_DE_PDF)
+        import_tr_report(db, de, "de-v2-hash", "de2.pdf", user_id)
+        recs = db.query(ImportRecord).filter(ImportRecord.fiscal_year == 2025).all()
+        assert len(recs) == 2
+        assert {r.source_variant for r in recs} == {"tr_de_premigration", "es_branch"}

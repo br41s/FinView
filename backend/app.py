@@ -20,15 +20,16 @@ from backend.api.options import router as options_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.api.alt_investments import router as alt_investments_router
 from backend.config import settings
-from backend.database import engine, ensure_columns
+from backend.database import engine, ensure_columns, ensure_constraints
 from backend.models import Base
 from backend.services.options_scheduler import shutdown_scheduler
 from backend.services.rate_limit import limiter
 from backend.services.zonas_clave_scheduler import shutdown_scheduler as shutdown_zc_scheduler
 
-# Create tables on startup, then apply any additive column migrations
+# Create tables on startup, then apply any additive column / constraint migrations
 Base.metadata.create_all(bind=engine)
 ensure_columns()
+ensure_constraints()
 
 
 @asynccontextmanager

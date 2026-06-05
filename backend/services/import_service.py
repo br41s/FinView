@@ -4,6 +4,7 @@ import logging
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.importers.base import (
@@ -104,13 +105,26 @@ def _check_duplicate(db: Session, file_hash: str, broker: Broker) -> ImportRecor
     )
 
 
-def _check_year_duplicate(db: Session, broker: Broker, fiscal_year: int) -> ImportRecord | None:
-    """Check if an import already exists for this broker + fiscal year."""
-    return (
-        db.query(ImportRecord)
-        .filter(ImportRecord.broker == broker.value, ImportRecord.fiscal_year == fiscal_year)
-        .first()
+def _check_year_duplicate(
+    db: Session,
+    broker: Broker,
+    fiscal_year: int,
+    source_variant: str | None = None,
+) -> ImportRecord | None:
+    """Check if an import already exists for this broker + fiscal year.
+
+    When ``source_variant`` is given (TR reports), it is part of the key so
+    that complementary same-year reports — e.g. a DE→ES migration year's
+    pre-migration and post-migration documents — coexist instead of
+    replacing each other; re-uploading the same variant still replaces it.
+    """
+    q = db.query(ImportRecord).filter(
+        ImportRecord.broker == broker.value,
+        ImportRecord.fiscal_year == fiscal_year,
     )
+    if source_variant is not None:
+        q = q.filter(ImportRecord.source_variant == source_variant)
+    return q.first()
 
 
 def _delete_tx_dependents(db: Session, tx_ids: list[int]) -> None:
@@ -146,9 +160,18 @@ def _delete_import_data(db: Session, import_id: int) -> None:
         )
 
     if import_rec.fiscal_year:
+        # Delete this import's own casilla rows. Also sweep legacy rows that
+        # predate import_id (import_id IS NULL) for this broker+year, so a
+        # re-import of a pre-migration single-report year still replaces cleanly.
         db.query(TaxResult).filter(
-            TaxResult.broker == import_rec.broker,
-            TaxResult.fiscal_year == import_rec.fiscal_year,
+            or_(
+                TaxResult.import_id == import_id,
+                and_(
+                    TaxResult.import_id.is_(None),
+                    TaxResult.broker == import_rec.broker,
+                    TaxResult.fiscal_year == import_rec.fiscal_year,
+                ),
+            )
         ).delete(synchronize_session="fetch")
         db.query(CrossBrokerLot).filter(
             CrossBrokerLot.fiscal_year == import_rec.fiscal_year,
@@ -372,11 +395,17 @@ def _store_capital_gains_as_lots(
 
 
 def _store_casillas(
-    db: Session, casillas: list[ParsedCasilla], fiscal_year: int, broker: Broker, user_id: int
+    db: Session,
+    casillas: list[ParsedCasilla],
+    fiscal_year: int,
+    broker: Broker,
+    user_id: int,
+    import_id: int,
 ) -> list[TaxResult]:
     results = []
     for c in casillas:
         tr = TaxResult(
+            import_id=import_id,
             fiscal_year=fiscal_year,
             broker=broker.value,
             modelo=c.modelo,
@@ -405,9 +434,13 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
             "import_id": existing.id,
         }
 
-    # Check if same broker+year already imported → auto-replace
+    # Check if same broker+year+variant already imported → auto-replace.
+    # Keying on the variant lets a migration year's pre- and post-migration
+    # reports coexist while re-uploading either one still replaces itself.
     replaced_id = None
-    year_dup = _check_year_duplicate(db, Broker.TR, report.fiscal_year)
+    year_dup = _check_year_duplicate(
+        db, Broker.TR, report.fiscal_year, report.source_variant
+    )
     if year_dup:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
@@ -421,6 +454,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
         broker=Broker.TR.value,
         fiscal_year=report.fiscal_year,
         record_count=len(report.transactions) + len(report.dividends),
+        source_variant=report.source_variant,
     )
     db.add(import_rec)
     db.flush()
@@ -442,7 +476,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
 
     # Store casillas (Modelo 100 + 714)
     all_casillas = report.casillas_modelo_100 + report.casillas_modelo_714
-    _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR, user_id=user_id)
+    _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
@@ -662,7 +696,7 @@ def _create_dg_tax_lots(
 
 
 def _compute_broker_casillas(
-    db: Session, broker: Broker, fiscal_year: int, account_id: int, user_id: int
+    db: Session, broker: Broker, fiscal_year: int, account_id: int, user_id: int, import_id: int
 ) -> list[TaxResult]:
     """Compute Modelo 100 casilla values from Transaction/TaxLot data.
 
@@ -717,6 +751,7 @@ def _compute_broker_casillas(
     results = []
     for modelo, casilla, desc, amount in casilla_data:
         tr = TaxResult(
+            import_id=import_id,
             fiscal_year=fiscal_year,
             broker=broker.value,
             modelo=modelo,
@@ -779,7 +814,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     )
 
     # Compute and store casillas from transaction/lot data
-    casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id)
+    casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
@@ -874,7 +909,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
         hold_count += 1
 
     # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id, user_id=user_id)
+    casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
@@ -981,7 +1016,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
         hold_count += 1
 
     # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id, user_id=user_id)
+    casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
@@ -1058,7 +1093,7 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
     )
     tx_count += len(lots) * 2
 
-    casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id)
+    casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
     fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
@@ -1235,7 +1270,7 @@ def import_ibkr_report(
 
     # Compute casillas from the stored data
     casillas = _compute_broker_casillas(
-        db, Broker.IBKR, report.fiscal_year, account.id, user_id=user_id
+        db, Broker.IBKR, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id
     )
 
     # Recalculate cross-broker FIFO
