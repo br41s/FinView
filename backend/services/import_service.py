@@ -473,11 +473,11 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
         _store_transaction(db, div, account.id, import_rec.id)
         div_count += 1
 
-    # Store all transactions (buys/sells/etc from Section VI)
+    # The PDF is fiscal-only: its raw transaction list (legacy Section VI) is
+    # NOT stored. The transaction CSV is the single position ledger, so importing
+    # Section VI too would double-count every trade the CSV already carries
+    # (and leave phantom open lots for positions sold after the report's period).
     tx_count = 0
-    for tx in report.transactions:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        tx_count += 1
 
     # Store capital gains as FIFO lots
     lots = _store_capital_gains_as_lots(db, report.capital_gains, account.id, import_rec.id)

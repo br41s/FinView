@@ -19,6 +19,7 @@ _FILES = Path(__file__).resolve().parents[2] / "files"
 TR_DE_PDF = _FILES / "TR-Tax report - Period DE IBAN-2025.pdf"
 TR_ES_PDF = _FILES / "TR-Tax report - Period ES IBAN-2025.pdf"
 TR_CSV = _FILES / "TR-Transaction-export.csv"
+TR_2024_PDF = _FILES / "TR-Tax Report 2024.pdf"
 
 
 @pytest.fixture
@@ -367,3 +368,42 @@ class TestPdfCsvComposition:
         assert len(uni) == 1
         assert uni[0].quantity == Decimal("15")
         assert uni[0].total_cost_eur == Decimal("990")
+
+
+@pytest.mark.skipif(
+    not (TR_2024_PDF.exists() and TR_CSV.exists()),
+    reason="TR 2024 full-year PDF + transaction CSV not available in files/",
+)
+class TestLegacyPdfNoLedgerDoubleCount:
+    """The legacy full-year PDF is fiscal-only: its Section VI list is NOT
+    stored, so it never double-counts the CSV ledger — while still
+    contributing its year's casillas."""
+
+    def _import(self, db, user_id):
+        from backend.importers.tr import compute_file_hash as ph, parse_tr_tax_report
+        from backend.importers.tr_csv import compute_file_hash as ch, parse_tr_csv
+        from backend.services.import_service import import_tr_csv_report, import_tr_report
+
+        import_tr_report(db, parse_tr_tax_report(TR_2024_PDF), ph(TR_2024_PDF), "2024.pdf", user_id)
+        import_tr_csv_report(db, parse_tr_csv(TR_CSV), ch(TR_CSV), "tx.csv", user_id)
+
+    def test_no_doubled_quantity(self, db, user_id):
+        from backend.services.portfolio_service import get_open_positions
+
+        self._import(db, user_id)
+        positions = get_open_positions(db, user_id, skip_prices=True, aggregate=True)
+        # Acerinox doubled to 400.5 when Section VI was stored on top of the CSV.
+        ace = [p for p in positions if p.isin == "ES0132105018"]
+        if ace:  # held position → must reflect the CSV ledger qty, not 2×
+            assert ace[0].quantity == Decimal("200.272907")
+
+    def test_2024_casillas_still_present(self, db, user_id):
+        from backend.models import TaxResult
+
+        self._import(db, user_id)
+        c = {
+            r.casilla: r.amount_eur
+            for r in db.query(TaxResult).filter(TaxResult.fiscal_year == 2024).all()
+        }
+        assert c.get(29) == Decimal("5301.020528")  # dividends
+        assert c.get(337) == Decimal("-2155.109352")  # losses
