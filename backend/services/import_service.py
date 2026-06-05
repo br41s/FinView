@@ -40,6 +40,11 @@ from backend.services.sql_compat import year_str
 
 logger = logging.getLogger(__name__)
 
+# All TR documents (DE pre-migration PDF, ES post-migration PDF, transaction CSV)
+# map to one account. TR's client number changes on the DE→ES IBAN migration and
+# the ES report carries none, so it can't be the account key.
+TR_ACCOUNT_ID = "TR"
+
 
 def _run_supervisor(db: Session, import_id: int) -> list[dict]:
     """Run data supervisor checks and return serialized issues."""
@@ -445,7 +450,10 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
 
-    account = _get_or_create_account(db, Broker.TR, report.client_id, user_id)
+    # One TR account (like every other broker). The client number changes on a
+    # DE→ES migration and the ES report carries none, so keying on it would
+    # fragment one broker into several accounts and break position reconciliation.
+    account = _get_or_create_account(db, Broker.TR, TR_ACCOUNT_ID, user_id)
 
     import_rec = ImportRecord(
         account_id=account.id,
@@ -511,14 +519,20 @@ def import_tr_csv_report(
     filename: str,
     user_id: int | None = None,
 ) -> dict:
-    """Import a TR Transaction export CSV.
+    """Import a TR Transaction export CSV as the position ledger.
 
-    Unlike `import_tr_report`, this path:
+    Ownership split (one source of truth per fact): the PDF Tax Report owns the
+    fiscal/income figures, the CSV owns the transaction ledger. So this path:
+    - imports ONLY buy/sell/spin-off rows (the cost-basis ledger that the PDFs
+      don't carry — the post-migration ES report has no transaction list, and
+      the pre-migration report's Section VI is dropped);
+    - does NOT import dividends or interest — those come from the PDF, which has
+      the authoritative casilla/withholding figures. Importing them here would
+      double-count income against the PDF;
     - does NOT auto-replace prior-year imports (CSV spans multiple years);
-    - dedups transactions against what's already in the DB for the TR account
-      by (account_id, trade_date, isin, type, quantity);
-    - skips holdings / capital_gains / casillas entirely (CSV doesn't carry
-      them — the TR PDF remains source of truth for year-end fiscal figures).
+    - dedups against what's already in the DB for the TR account by
+      (account_id, trade_date, isin, type, quantity);
+    - skips holdings / capital_gains / casillas entirely.
     """
     existing = _check_duplicate(db, file_hash, Broker.TR)
     if existing:
@@ -528,7 +542,7 @@ def import_tr_csv_report(
             "import_id": existing.id,
         }
 
-    account = _get_or_create_account(db, Broker.TR, report.client_id, user_id)
+    account = _get_or_create_account(db, Broker.TR, TR_ACCOUNT_ID, user_id)
 
     import_rec = ImportRecord(
         account_id=account.id,
@@ -570,13 +584,14 @@ def import_tr_csv_report(
             added += 1
         return added, skipped
 
-    div_count, div_skipped = _dedup_insert(report.dividends)
-    tx_count, tx_skipped = _dedup_insert(report.transactions)
+    # Ledger only: keep buy/sell/spin-off, drop income (PDF owns dividends &
+    # interest). Dividends never enter; interest rides inside `transactions`.
+    _LEDGER_TYPES = {TxType.BUY, TxType.SELL, TxType.SPINOFF}
+    ledger = [t for t in report.transactions if t.tx_type in _LEDGER_TYPES]
+    tx_count, tx_skipped = _dedup_insert(ledger)
 
-    # Cross-broker FIFO for every year the CSV touched.
-    years = {d.trade_date.year for d in report.transactions} | {
-        d.trade_date.year for d in report.dividends
-    }
+    # Cross-broker FIFO for every year the ledger touched.
+    years = {t.trade_date.year for t in ledger}
     fifo_lots_created = 0
     for yr in sorted(years):
         fifo_lots_created += recalculate_cross_broker_fifo(
@@ -592,10 +607,10 @@ def import_tr_csv_report(
         "import_id": import_rec.id,
         "fiscal_year": report.fiscal_year,
         "counts": {
-            "dividends": div_count,
             "transactions": tx_count,
-            "dividends_skipped": div_skipped,
             "transactions_skipped": tx_skipped,
+            "income_skipped": len(report.dividends)
+            + sum(1 for t in report.transactions if t.tx_type not in _LEDGER_TYPES),
             "fifo_cross_broker": fifo_lots_created,
         },
         "issues": issues,
