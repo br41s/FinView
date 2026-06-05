@@ -302,9 +302,10 @@ _DIV_RE = re.compile(
     r"(\d+)"                               # casilla
 )
 
-# Interest line (same structure)
+# Interest line (same structure). "Saveback" is a cash-account reward that TR
+# reports as casilla 27 income (note 3.6 of the report), with the same columns.
 _INT_RE = re.compile(
-    r"Pago de intereses\s+(\d{2}\.\d{2}\.\d{4})\s+"
+    r"(?:Pago de intereses|Saveback)\s+(\d{2}\.\d{2}\.\d{4})\s+"
     r"([A-Z]{3})\s+"
     r"(-?\d{1,3}(?:\.\d{3})*,\d+)\s+"     # quantity
     r"(-?\d{1,3}(?:\.\d{3})*,\d+)\s+"     # unit price
@@ -367,13 +368,21 @@ def _parse_section_i(pages_text: list[str]) -> list[ParsedTransaction]:
                 current_country = stripped
                 continue
 
+            # Cash-account interest/Saveback rows carry no ISIN; without this
+            # they would inherit the previous security's name. Use an empty
+            # ISIN and a generic name instead.
+            if stripped == "Cuenta de efectivo":
+                current_isin = ""
+                current_name = "Cuenta de efectivo"
+                continue
+
             isin_match = ISIN_RE.search(line)
             if isin_match:
                 current_isin = isin_match.group(1)
                 current_name = isin_match.group(2).strip()
                 continue
 
-            if not current_isin:
+            if current_isin is None:
                 continue
 
             tx = _match_div_line(line, current_isin, current_name, current_country)
@@ -478,9 +487,15 @@ _MODELO100_RE = re.compile(
 )
 
 
+# The Modelo 100 section is "VIII" in the full-year report but "VII" in the
+# pre-migration partial report (the patrimonio section that normally precedes
+# it is absent), so match on the title rather than a fixed Roman numeral.
+_MODELO100_TITLE_RE = re.compile(r"\b(?:VII|VIII)\.\s+Modelo 100\b")
+
+
 def _parse_section_viii(pages_text: list[str]) -> list[ParsedCasilla]:
-    """Parse Section VIII: Modelo 100 casillas."""
-    pages = _pages_for_section(pages_text, "VIII")
+    """Parse the Modelo 100 casillas section (numbered VII or VIII)."""
+    pages = [t for t in pages_text if _MODELO100_TITLE_RE.search(t)]
     results = []
 
     # Known casillas and their descriptions for matching
@@ -661,8 +676,21 @@ def parse_tr_tax_report(pdf_path: str | Path) -> TRTaxReport:
 
     with pdfplumber.open(pdf_path) as pdf:
         pages_text = _extract_pages_text(pdf)
+        cover = pdf.pages[0].extract_text() or "" if pdf.pages else ""
 
     client_id, period_start, period_end = _extract_header(pages_text)
+
+    # The pre-migration report (issued when the account moved DE→ES IBAN) is the
+    # legacy layout but covers only part of the year and ends with a custody
+    # transfer of every position to the new ES account. Its Section VI is only
+    # historical context for FIFO, and the transferred-out positions are owned
+    # by the post-migration ES report — so we keep its fiscal figures only and
+    # drop Section VI to avoid phantom open lots.
+    pre_migration = (
+        "migró a un IBAN español" in cover or "Pre-migración" in cover
+    )
+    source_variant = "tr_de_premigration" if pre_migration else "legacy"
+    transactions = [] if pre_migration else _parse_section_vi(pages_text)
 
     return TRTaxReport(
         client_id=client_id,
@@ -672,11 +700,12 @@ def parse_tr_tax_report(pdf_path: str | Path) -> TRTaxReport:
         fiscal_year=period_end.year,
         dividends=_parse_section_i(pages_text),
         capital_gains=_parse_section_iii(pages_text),
-        transactions=_parse_section_vi(pages_text),
+        transactions=transactions,
         withholdings=_parse_section_v(pages_text),
         holdings=_parse_section_vii(pages_text),
         casillas_modelo_100=_parse_section_viii(pages_text),
         casillas_modelo_714=_parse_section_ix(pages_text),
+        source_variant=source_variant,
     )
 
 

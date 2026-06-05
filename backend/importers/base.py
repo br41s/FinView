@@ -220,6 +220,13 @@ class TRTaxReport:
     holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
     casillas_modelo_100: list[ParsedCasilla] = field(default_factory=list)
     casillas_modelo_714: list[ParsedCasilla] = field(default_factory=list)
+    # Which TR report layout produced this. Distinguishes the up-to-three
+    # documents that can exist for one fiscal year so they coexist instead of
+    # replacing each other on import:
+    #   "legacy"            — pre-2025 full-year Roman-numeral report
+    #   "tr_de_premigration"— partial-year report before DE→ES IBAN migration
+    #   "es_branch"         — 2025+ Sucursal España report
+    source_variant: str = "legacy"
 
 
 @dataclass

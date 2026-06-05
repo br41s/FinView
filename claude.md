@@ -50,7 +50,7 @@ backend/
   app.py              — FastAPI entry point
   models.py           — ORM models
   api/                — Endpoints: imports, transactions, fiscal, charts, options
-  importers/          — One file per broker: tr.py, dg.py, ibkr.py, ing.py, bbva.py, etoro.py
+  importers/          — One file per broker: tr.py (+ tr_v2.py, tr_csv.py), dg.py, ibkr.py, ing.py, bbva.py, etoro.py
   services/
     fifo_engine.py         — Cross-broker FIFO engine — most critical, touch carefully
     import_service.py      — Import logic + deduplication
@@ -214,6 +214,32 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 
 ---
 
+## Trade Republic importer — formats & migration year
+
+`parse_tr_tax_report()` (tr.py) dispatches by report layout:
+- **`legacy`** — pre-2025 full-year Roman-numeral report (Modelo 100 = Section VIII,
+  Modelo 714 = IX, Section VI transaction history imported).
+- **`tr_de_premigration`** — partial-year report issued when the account moved
+  DE→ES IBAN (cover says "migró a un IBAN español"). Same legacy layout but
+  Modelo 100 shifts to **Section VII** (no patrimonio/714), Saveback rows count as
+  casilla 27, and Section VI is **dropped** (fiscal figures only — its positions
+  were transferred to the ES account, which owns the year-end holdings).
+- **`es_branch`** — 2025+ Sucursal España report (tr_v2.py, `is_spanish_branch_format`).
+
+A migration year has **two** TR reports (pre + post). They must coexist, not
+replace each other:
+- `TRTaxReport.source_variant` is persisted on `ImportRecord.source_variant` and is
+  part of the year-replace key (`_check_year_duplicate(broker, year, variant)`), so
+  re-uploading either file replaces only its own slot.
+- `tax_results` rows are owned by `import_id` (no UNIQUE on broker+casilla — a
+  broker can have two reports/year); `fiscal.py` sums rows per casilla and sums TR
+  reference amounts. Deletion is scoped by `import_id` (legacy NULL rows swept by
+  broker+year). Upload each PDF separately — both persist and combine.
+- tr_csv.py imports the TR transaction-export CSV (multi-year ledger, dedups by
+  date/isin/type/qty, never year-replaces).
+
+---
+
 ## Critical rules
 
 - fifo_engine.py is the most sensitive file. Any change must be followed by full test suite.
@@ -224,6 +250,9 @@ file omits the rate or for manual entries. Ported from OptionsAI.
   `Base.metadata.create_all` on startup. `create_all` does NOT alter existing tables, so
   adding a column to a table that already exists in prod requires registering it in
   `database._ADDITIVE_COLUMNS` (applied idempotently by `ensure_columns()` at startup).
+  Dropping an obsolete UNIQUE constraint in prod (Postgres only) goes in
+  `database._DROP_UNIQUE_CONSTRAINTS` (applied by `ensure_constraints()`); SQLite tables
+  are rebuilt from the model and never carry it.
 - No breaking changes to API contracts without updating frontend src/lib/ types.
 - options_scraper.py cache TTL (5 min) must not be removed — MEFF rate-limits scraping.
 - Premium spike baselines are in-memory only. Do not try to persist them to DB.

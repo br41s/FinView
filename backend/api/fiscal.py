@@ -77,15 +77,19 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         ]
         adj_val = fifo_adj_by_casilla.get(casilla)
 
-        # TR validation: find TR broker's reference amount for this casilla
+        # TR validation: sum TR broker reference amounts for this casilla. A
+        # migration year has two TR reports (pre/post), so the combined
+        # cross-broker total must be compared against their summed reference.
+        tr_refs = [
+            i.tr_reference_amount
+            for i in items
+            if i.broker == Broker.TR and i.tr_reference_amount is not None
+        ]
         tr_ref = None
         validation = None
-        for i in items:
-            if i.broker == Broker.TR and i.tr_reference_amount is not None:
-                tr_ref = i.tr_reference_amount
-                # Compare aggregated total against TR reference
-                validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
-                break
+        if tr_refs:
+            tr_ref = sum(tr_refs)
+            validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
 
         result.append(AggregatedCasillaOut(
             modelo=modelo,
