@@ -366,3 +366,108 @@
   font-size: 15px;
   text-decoration: none;
 }
+
+/* ── Mobile ── */
+@media (max-width: 767px) {
+  .hero {
+    padding: 48px 20px 40px;
+  }
+
+  .wrap {
+    padding: 0 20px;
+  }
+
+  .lead {
+    font-size: 16px;
+  }
+
+  .chartWrap {
+    padding: 0 20px 56px;
+  }
+
+  .chart {
+    padding: 24px 20px;
+  }
+
+  .chartTitle {
+    font-size: 26px;
+  }
+
+  .chartMeta {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .featuresBg {
+    padding: 56px 0;
+  }
+
+  .featuresGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .featureCard {
+    padding: 24px;
+  }
+
+  .steps {
+    padding: 56px 20px;
+  }
+
+  .stepsHeader {
+    margin-bottom: 40px;
+  }
+
+  .stepsSubtitle {
+    font-size: 15px;
+  }
+
+  .stepsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stepBorder {
+    border-right: none;
+    border-bottom: 1px solid var(--fv-ink-10);
+  }
+
+  .stepItem {
+    padding: 32px 0;
+  }
+
+  .stepNum {
+    font-size: 48px;
+  }
+
+  .stepTitle {
+    font-size: 18px;
+  }
+
+  .brokersBg {
+    padding: 48px 0;
+  }
+
+  .brokersInner {
+    padding: 0 20px;
+  }
+
+  .brokerList {
+    gap: 28px;
+  }
+
+  .ctaSection {
+    padding: 56px 20px;
+  }
+
+  .ctaLinks {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 959px) {
+  .featuresGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
