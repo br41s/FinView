@@ -99,12 +99,12 @@ const POSTS: Post[] = [
     Image: ImgDgi,
   },
   {
-    slug: 'declarar-dividendos-espana',
+    slug: 'declarar-dividendos-espana-guia-completa',
     tag: 'Fiscal',
-    date: '2 abr 2025',
-    readTime: '7 min',
-    title: 'Cómo declarar los dividendos en España: guía 2025',
-    excerpt: 'Cada dividendo que cobras tiene implicaciones fiscales en España. Te explicamos qué casillas del Modelo 100 debes rellenar, cómo funciona la doble imposición y qué retenciones puedes deducir.',
+    date: '7 jun 2026',
+    readTime: '12 min',
+    title: 'Cómo declarar los dividendos en España: guía completa',
+    excerpt: 'Guía definitiva para declarar dividendos en España: casillas del Modelo 100, doble imposición internacional, retenciones por país, errores frecuentes, ejemplos prácticos y todo lo que necesitas para la Renta.',
     Image: ImgIrpf,
   },
   {
