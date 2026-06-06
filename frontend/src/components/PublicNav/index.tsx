@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import styles from './index.module.css';
 
@@ -13,6 +14,22 @@ function LogoMark() {
   );
 }
 
+function MenuIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path d="M3 6h16M3 11h16M3 16h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path d="M5 5l12 12M17 5L5 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 const NAV_LINKS = [
   { label: 'Panel', href: '/dashboard' },
   { label: 'Funcionalidades', href: '/features' },
@@ -22,6 +39,7 @@ const NAV_LINKS = [
 
 export function PublicNav() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   return (
     <header className={styles.header}>
@@ -31,6 +49,7 @@ export function PublicNav() {
           finview
         </a>
 
+        {/* Desktop links */}
         <div className={styles.links}>
           {NAV_LINKS.map(({ label, href }) => (
             <a
@@ -47,7 +66,35 @@ export function PublicNav() {
           <a href="/login" className={styles.signIn}>acceder</a>
           <a href="/dashboard" className={styles.cta}>Ir a tu panel</a>
         </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className={styles.hamburger}
+          onClick={() => setOpen(o => !o)}
+          aria-label={open ? 'Cerrar menú' : 'Abrir menú'}
+          aria-expanded={open}
+        >
+          {open ? <CloseIcon /> : <MenuIcon />}
+        </button>
       </nav>
+
+      {/* Mobile dropdown */}
+      {open && (
+        <div className={styles.mobileMenu} onClick={() => setOpen(false)}>
+          {NAV_LINKS.map(({ label, href }) => (
+            <a
+              key={href}
+              href={href}
+              className={`${styles.mobileLink} ${pathname === href ? styles.mobileLinkActive : ''}`}
+            >
+              {label}
+            </a>
+          ))}
+          <div className={styles.mobileDivider} />
+          <a href="/login" className={styles.mobileSignIn}>acceder</a>
+          <a href="/dashboard" className={styles.mobileCta}>Ir a tu panel →</a>
+        </div>
+      )}
     </header>
   );
 }

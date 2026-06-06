@@ -9,8 +9,14 @@
 .hero {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 80px 32px 64px;
+  padding: 40px 20px 40px;
   text-align: center;
+}
+
+@media (min-width: 640px) {
+  .hero {
+    padding: 80px 32px 64px;
+  }
 }
 
 .eyebrow {
@@ -61,13 +67,31 @@
 .postsSection {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px 96px;
+  padding: 0 20px 64px;
+}
+
+@media (min-width: 640px) {
+  .postsSection {
+    padding: 0 32px 96px;
+  }
 }
 
 .postsGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 24px;
+}
+
+@media (min-width: 640px) {
+  .postsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 960px) {
+  .postsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .postCard {
@@ -171,20 +195,41 @@
 /* ── Social feeds ── */
 .socialBg {
   background: var(--fv-ink-05);
-  padding: 80px 0;
+  padding: 48px 0;
+}
+
+@media (min-width: 640px) {
+  .socialBg {
+    padding: 80px 0;
+  }
 }
 
 .socialInner {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 20px;
+}
+
+@media (min-width: 640px) {
+  .socialInner {
+    padding: 0 32px;
+  }
 }
 
 .socialHeader {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 16px;
   margin-bottom: 40px;
+}
+
+@media (min-width: 640px) {
+  .socialHeader {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0;
+  }
 }
 
 .socialTitle {
@@ -218,8 +263,20 @@
 
 .socialGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 20px;
+}
+
+@media (min-width: 640px) {
+  .socialGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 960px) {
+  .socialGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .tweet {
@@ -312,8 +369,14 @@
 .ctaSection {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 80px 32px;
+  padding: 48px 20px;
   text-align: center;
+}
+
+@media (min-width: 640px) {
+  .ctaSection {
+    padding: 80px 32px;
+  }
 }
 
 .ctaTitle {
@@ -333,9 +396,16 @@
 
 .ctaButtons {
   display: flex;
+  flex-direction: column;
   gap: 16px;
   justify-content: center;
   align-items: center;
+}
+
+@media (min-width: 480px) {
+  .ctaButtons {
+    flex-direction: row;
+  }
 }
 
 .ctaPrimary {
