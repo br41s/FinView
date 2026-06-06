@@ -1637,7 +1637,7 @@ export default function OptionsPage() {
                     <ResponsiveContainer width="100%" height={Math.max(120, signalChartData.length * 36)}>
                       <BarChart data={signalChartData} layout="vertical" margin={{ left: 8, right: 32, top: 0, bottom: 0 }}>
                         <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => `${v}%`} />
-                        <YAxis type="category" dataKey="type" width={150} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                        <YAxis type="category" dataKey="type" width={120} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
                         <ChartTooltip
                           contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                           formatter={(value, _name, props) => [`${value}% (${props.payload.total} señales)`, "Precisión"]}
@@ -1654,32 +1654,34 @@ export default function OptionsPage() {
                     </ResponsiveContainer>
                   </CardContent>
                   <CardContent className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead className="text-right">Correctas</TableHead>
-                          <TableHead className="text-right">Precisión</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
-                          const acc = v.accuracy_pct;
-                          const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                          return (
-                            <TableRow key={type}>
-                              <TableCell><Badge variant="outline">{type}</Badge></TableCell>
-                              <TableCell className="text-right">{v.total}</TableCell>
-                              <TableCell className="text-right">{v.correct}</TableCell>
-                              <TableCell className={`text-right font-semibold ${color}`}>
-                                {acc != null ? `${acc}%` : "—"}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Tipo</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right">Correctas</TableHead>
+                            <TableHead className="text-right">Precisión</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
+                            const acc = v.accuracy_pct;
+                            const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                            return (
+                              <TableRow key={type}>
+                                <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{type}</Badge></TableCell>
+                                <TableCell className="text-right">{v.total}</TableCell>
+                                <TableCell className="text-right">{v.correct}</TableCell>
+                                <TableCell className={`text-right font-semibold ${color}`}>
+                                  {acc != null ? `${acc}%` : "—"}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </CardContent>
                 </Card>
                 );
@@ -1692,56 +1694,98 @@ export default function OptionsPage() {
                   <CardDescription>{backtestSignals.length} señales registradas</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Ticker</TableHead>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead>Dirección</TableHead>
-                          <TableHead className="text-right">Precio</TableHead>
-                          <TableHead className="text-center">+1D</TableHead>
-                          <TableHead className="text-center">+3D</TableHead>
-                          <TableHead className="text-center">+7D</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {backtestSignals.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                              Sin señales registradas. Ejecuta un ciclo del agente para empezar a acumular datos.
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          backtestSignals.map((s) => (
-                            <TableRow key={s.id}>
-                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                  {backtestSignals.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">
+                      Sin señales registradas. Ejecuta un ciclo del agente para empezar a acumular datos.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Mobile: vertical cards */}
+                      <div className="flex flex-col divide-y sm:hidden">
+                        {backtestSignals.map((s) => (
+                          <div key={s.id} className="flex flex-col gap-2 px-4 py-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">{s.ticker}</span>
+                              <span className="text-xs text-muted-foreground">
                                 {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                              </TableCell>
-                              <TableCell className="font-medium">{s.ticker}</TableCell>
-                              <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
-                              <TableCell>
-                                {s.direction === "BULLISH" ? (
-                                  <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-                                    <TrendingUp className="h-3 w-3" /> BULLISH
-                                  </span>
-                                ) : (
-                                  <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
-                                    <TrendingDown className="h-3 w-3" /> BEARISH
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">{fmt(s.price_at_signal)} $</TableCell>
-                              <TableCell className="text-center">{outcomeCell(s.outcome_1d, s.price_at_1d)}</TableCell>
-                              <TableCell className="text-center">{outcomeCell(s.outcome_3d, s.price_at_3d)}</TableCell>
-                              <TableCell className="text-center">{outcomeCell(s.outcome_7d, s.price_at_7d)}</TableCell>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge>
+                              {s.direction === "BULLISH" ? (
+                                <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                                  <TrendingUp className="h-3 w-3" /> BULLISH
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
+                                  <TrendingDown className="h-3 w-3" /> BEARISH
+                                </span>
+                              )}
+                              <span className="ml-auto tabular-nums text-xs">{fmt(s.price_at_signal)} $</span>
+                            </div>
+                            <div className="flex gap-4">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">+1D</span>
+                                {outcomeCell(s.outcome_1d, s.price_at_1d)}
+                              </div>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">+3D</span>
+                                {outcomeCell(s.outcome_3d, s.price_at_3d)}
+                              </div>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">+7D</span>
+                                {outcomeCell(s.outcome_7d, s.price_at_7d)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Desktop: table */}
+                      <div className="hidden overflow-x-auto sm:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Fecha</TableHead>
+                              <TableHead>Ticker</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Dirección</TableHead>
+                              <TableHead className="text-right">Precio</TableHead>
+                              <TableHead className="text-center">+1D</TableHead>
+                              <TableHead className="text-center">+3D</TableHead>
+                              <TableHead className="text-center">+7D</TableHead>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
+                          </TableHeader>
+                          <TableBody>
+                            {backtestSignals.map((s) => (
+                              <TableRow key={s.id}>
+                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                                </TableCell>
+                                <TableCell className="font-medium">{s.ticker}</TableCell>
+                                <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
+                                <TableCell>
+                                  {s.direction === "BULLISH" ? (
+                                    <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                                      <TrendingUp className="h-3 w-3" /> BULLISH
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
+                                      <TrendingDown className="h-3 w-3" /> BEARISH
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">{fmt(s.price_at_signal)} $</TableCell>
+                                <TableCell className="text-center">{outcomeCell(s.outcome_1d, s.price_at_1d)}</TableCell>
+                                <TableCell className="text-center">{outcomeCell(s.outcome_3d, s.price_at_3d)}</TableCell>
+                                <TableCell className="text-center">{outcomeCell(s.outcome_7d, s.price_at_7d)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </>
