@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import createMDX from '@next/mdx';
-import remarkGfm from 'remark-gfm';
 
 const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
 
@@ -28,7 +27,7 @@ const nextConfig: NextConfig = {
 
 const withMDX = createMDX({
   options: {
-    remarkPlugins: [remarkGfm],
+    remarkPlugins: [['remark-gfm']],
   },
 });
 export default withMDX(nextConfig);
