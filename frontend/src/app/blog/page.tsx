@@ -110,10 +110,10 @@ const POSTS: Post[] = [
   {
     slug: 'yield-on-cost',
     tag: 'Métricas',
-    date: '15 mar 2025',
-    readTime: '4 min',
+    date: '15 jun 2026',
+    readTime: '12 min',
     title: 'Yield on cost: la métrica que los grandes inversores de dividendos miden',
-    excerpt: 'El yield on price te dice lo que cobras hoy. El yield on cost te dice lo que cobras respecto a lo que pagaste. Con el tiempo, esta diferencia se convierte en la historia real de tu inversión.',
+    excerpt: 'Guía completa sobre el Yield on Cost (YOC): qué es, cómo se calcula, ejemplos reales con Coca-Cola, Realty Income, Apple y Johnson & Johnson, comparativa con otras métricas, errores fiscales en España y cómo usarlo para evaluar tu cartera de dividendos.',
     Image: ImgYoc,
   },
 ];
