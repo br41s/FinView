@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { Casilla, DividendsByCountry } from "@/lib/types";
 import { formatEur } from "@/lib/format";
 
@@ -138,18 +139,37 @@ function CountryAnalysis({
   );
 }
 
+function brokerAmount(c: Casilla, broker: string): string | undefined {
+  return c.brokers?.find((b) => b.broker === broker)?.amount_eur;
+}
+
 function CasillasSection({
   casillas,
+  selectedBroker,
 }: {
   readonly casillas: readonly Casilla[];
+  readonly selectedBroker: string | null;
 }) {
   if (casillas.length === 0)
     return (
       <p className="text-muted-foreground text-sm">Sin casillas calculadas</p>
     );
 
-  const m100 = casillas.filter((c) => c.modelo === 100);
-  const m714 = casillas.filter((c) => c.modelo === 714);
+  // When a broker is selected, keep only casillas that broker reports.
+  const visible = (list: readonly Casilla[]) =>
+    selectedBroker
+      ? list.filter((c) => brokerAmount(c, selectedBroker) !== undefined)
+      : list;
+
+  const m100 = visible(casillas.filter((c) => c.modelo === 100));
+  const m714 = visible(casillas.filter((c) => c.modelo === 714));
+
+  if (m100.length === 0 && m714.length === 0)
+    return (
+      <p className="text-muted-foreground text-sm">
+        Sin casillas para {selectedBroker} en este año.
+      </p>
+    );
 
   return (
     <div className="space-y-6">
@@ -174,7 +194,17 @@ function CasillasSection({
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((c) => (
+                    {items.map((c) => {
+                      // When filtering by broker, show that broker's own
+                      // contribution and hide cross-broker context (multi-broker
+                      // breakdown, FIFO adjustment). The TR validation badge only
+                      // applies to the aggregate or the TR-filtered view.
+                      const amount = selectedBroker
+                        ? (brokerAmount(c, selectedBroker) ?? c.amount_eur)
+                        : c.amount_eur;
+                      const showCrossBroker = !selectedBroker;
+                      const showBadge = !selectedBroker || selectedBroker === "TR";
+                      return (
                       <tr
                         key={`${c.modelo}-${c.casilla}`}
                         className="border-b border-border/50"
@@ -182,7 +212,7 @@ function CasillasSection({
                         <td className="py-2 font-mono">{c.casilla}</td>
                         <td className="py-2 text-foreground">
                           {c.description}
-                          {c.brokers && c.brokers.length > 1 && (
+                          {showCrossBroker && c.brokers && c.brokers.length > 1 && (
                             <span className="block text-xs text-muted-foreground mt-0.5">
                               {c.brokers
                                 .map(
@@ -192,7 +222,8 @@ function CasillasSection({
                                 .join(" · ")}
                             </span>
                           )}
-                          {c.fifo_adjustment_eur &&
+                          {showCrossBroker &&
+                            c.fifo_adjustment_eur &&
                             Number(c.fifo_adjustment_eur) !== 0 && (
                               <span className="block text-xs text-amber-400 mt-1">
                                 ⚠ Ajuste FIFO cruzado:{" "}
@@ -203,8 +234,9 @@ function CasillasSection({
                             )}
                         </td>
                         <td className="py-2 text-right font-mono">
-                          {formatEur(c.amount_eur)}
-                          {c.fifo_adjustment_eur &&
+                          {formatEur(amount)}
+                          {showCrossBroker &&
+                            c.fifo_adjustment_eur &&
                             Number(c.fifo_adjustment_eur) !== 0 && (
                               <span className="block text-xs text-amber-400 mt-1 font-mono">
                                 ⚠ Ajustado:{" "}
@@ -216,7 +248,7 @@ function CasillasSection({
                             )}
                         </td>
                         <td className="py-2 text-center">
-                          {c.validation_status === "match" && (
+                          {showBadge && c.validation_status === "match" && (
                             <span
                               title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
                               className="text-green-400 cursor-help"
@@ -224,7 +256,7 @@ function CasillasSection({
                               ✅
                             </span>
                           )}
-                          {c.validation_status === "mismatch" && (
+                          {showBadge && c.validation_status === "mismatch" && (
                             <span
                               title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
                               className="text-amber-400 cursor-help"
@@ -234,7 +266,8 @@ function CasillasSection({
                           )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -289,6 +322,15 @@ export function CasillasTable({
   readonly dividendsByCountry: readonly DividendsByCountry[];
   readonly fiscalYear?: number | null;
 }) {
+  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
+
+  // Brokers present in this year's casillas — source for the review filter.
+  const availableBrokers = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of casillas) for (const b of c.brokers ?? []) set.add(b.broker);
+    return Array.from(set).sort();
+  }, [casillas]);
+
   const handleExport = async (format: "json" | "csv") => {
     if (!fiscalYear) return;
     try {
@@ -315,7 +357,43 @@ export function CasillasTable({
   return (
     <div className="space-y-8">
       <CountryAnalysis dividendsByCountry={dividendsByCountry} />
-      <CasillasSection casillas={casillas} />
+      {availableBrokers.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            Revisar por broker:
+          </span>
+          <button
+            onClick={() => setSelectedBroker(null)}
+            className={`px-3 py-1 text-xs rounded-lg border transition-colors ${
+              selectedBroker === null
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-muted hover:bg-muted/80 border-border"
+            }`}
+          >
+            Todos
+          </button>
+          {availableBrokers.map((b) => (
+            <button
+              key={b}
+              onClick={() => setSelectedBroker(b)}
+              className={`px-3 py-1 text-xs rounded-lg border transition-colors ${
+                selectedBroker === b
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted hover:bg-muted/80 border-border"
+              }`}
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+      )}
+      {selectedBroker && (
+        <p className="-mt-4 text-xs text-muted-foreground">
+          Mostrando solo la aportación de <strong>{selectedBroker}</strong> a
+          cada casilla — compara estos importes con el informe fiscal de {selectedBroker}.
+        </p>
+      )}
+      <CasillasSection casillas={casillas} selectedBroker={selectedBroker} />
       {fiscalYear && (
         <div className="flex gap-2">
           <button
