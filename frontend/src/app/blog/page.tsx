@@ -76,6 +76,26 @@ function ImgYoc() {
   );
 }
 
+function ImgPlusvalias() {
+  return (
+    <div className={styles.postImgPlusvalias}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <rect x="20" y="80" width="22" height="25" rx="2" fill="rgba(154,107,31,0.25)"/>
+        <rect x="50" y="60" width="22" height="45" rx="2" fill="rgba(154,107,31,0.35)"/>
+        <rect x="80" y="70" width="22" height="35" rx="2" fill="rgba(154,107,31,0.2)"/>
+        <rect x="110" y="35" width="22" height="70" rx="2" fill="var(--fv-ochre)"/>
+        <rect x="140" y="50" width="22" height="55" rx="2" fill="rgba(154,107,31,0.3)"/>
+        <line x1="10" y1="108" x2="175" y2="108" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="4 3"/>
+        <polyline
+          points="30,85 60,55 90,65 120,30 150,45"
+          stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+        <circle cx="120" cy="30" r="3" fill="var(--fv-ochre)"/>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -89,6 +109,15 @@ type Post = {
 };
 
 const POSTS: Post[] = [
+  {
+    slug: 'plusvalias-espana-irpf-guia',
+    tag: 'Fiscal',
+    date: '18 jun 2026',
+    readTime: '14 min',
+    title: 'Cómo tributan las plusvalías en España: guía completa IRPF',
+    excerpt: 'Guía definitiva sobre la fiscalidad de las plusvalías en España: tributación de ganancias patrimoniales por venta de acciones, compensación de pérdidas, regla de los dos meses, FIFO, plazos de arrastre y ejemplos prácticos para la Renta.',
+    Image: ImgPlusvalias,
+  },
   {
     slug: 'dgi',
     tag: 'Estrategia',
