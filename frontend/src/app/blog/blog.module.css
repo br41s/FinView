@@ -143,6 +143,15 @@
   justify-content: center;
 }
 
+.postImgCompensarPerdidas {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, rgba(31,27,22,0.03) 0%, rgba(154,107,31,0.12) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .postBody {
   padding: 24px 28px 28px;
   flex: 1;
