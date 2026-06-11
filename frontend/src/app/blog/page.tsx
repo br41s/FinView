@@ -96,6 +96,36 @@ function ImgPlusvalias() {
   );
 }
 
+function ImgScripDividend() {
+  return (
+    <div className={styles.postImgScripDividend}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SCRIP DIVIDEND — 3 OPCIONES</text>
+        <rect x="15" y="30" width="45" height="50" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="37" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">A</text>
+        <text x="37" y="60" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Acciones</text>
+        <text x="37" y="72" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Difiere</text>
+        <rect x="77" y="30" width="45" height="50" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="99" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">B</text>
+        <text x="99" y="60" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Venta</text>
+        <text x="99" y="72" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Plusvalía</text>
+        <rect x="140" y="30" width="45" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="162" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">C</text>
+        <text x="162" y="60" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Efectivo</text>
+        <text x="162" y="72" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Dividendo</text>
+        <circle cx="100" cy="25" r="3" fill="var(--fv-ochre)"/>
+        <line x1="100" y1="28" x2="37" y2="30" stroke="var(--fv-ink-20)" strokeWidth="0.8"/>
+        <line x1="100" y1="28" x2="99" y2="30" stroke="var(--fv-ink-20)" strokeWidth="0.8"/>
+        <line x1="100" y1="28" x2="162" y2="30" stroke="var(--fv-ochre)" strokeWidth="0.8"/>
+        <text x="37" y="95" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">—</text>
+        <text x="99" y="95" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">0341-0354</text>
+        <text x="162" y="95" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">0029</text>
+        <text x="100" y="112" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Casillas IRPF</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -109,6 +139,15 @@ type Post = {
 };
 
 const POSTS: Post[] = [
+  {
+    slug: 'scrip-dividend-fiscalidad-espana',
+    tag: 'Fiscal',
+    date: '22 jun 2026',
+    readTime: '14 min',
+    title: 'Scrip dividend: cómo tributa el dividendo flexible en España (y qué opción te conviene)',
+    excerpt: 'Guía completa sobre la fiscalidad del scrip dividend en España: las 3 opciones (acciones liberadas, venta de derechos, cobro en efectivo), qué casillas usar en la Renta, ejemplo práctico con Iberdrola 2026, y errores frecuentes que cometen los inversores del Ibex.',
+    Image: ImgScripDividend,
+  },
   {
     slug: 'plusvalias-espana-irpf-guia',
     tag: 'Fiscal',
