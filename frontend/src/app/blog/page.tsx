@@ -96,6 +96,37 @@ function ImgPlusvalias() {
   );
 }
 
+function ImgTramosBaseAhorro() {
+  const tramos = [
+    { label: '≤ 6.000 €', pct: '19%', w: 38 },
+    { label: '≤ 50.000 €', pct: '21%', w: 68 },
+    { label: '≤ 200.000 €', pct: '23%', w: 80 },
+    { label: '≤ 300.000 €', pct: '27%', w: 92 },
+    { label: '> 300.000 €', pct: '30%', w: 100 },
+  ];
+  return (
+    <div className={styles.postImgTramos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">TRAMOS BASE DEL AHORRO 2025</text>
+        {tramos.map((t, i) => {
+          const x = 10 + i * 37;
+          const h = 12 + i * 10;
+          const y = 100 - h;
+          return (
+            <g key={t.pct}>
+              <rect x={x} y={y} width="30" height={h} rx="2"
+                fill={i === 4 ? 'var(--fv-ochre)' : 'rgba(154,107,31,' + (0.15 + i * 0.08) + ')'} />
+              <text x={x + 15} y={y - 4} fontSize="8" fill={i === 4 ? 'var(--fv-ochre)' : 'var(--fv-ink-60)'} fontFamily="system-ui" textAnchor="middle" fontWeight="600">{t.pct}</text>
+            </g>
+          );
+        })}
+        <line x1="8" y1="100" x2="192" y2="100" stroke="var(--fv-ink-20)" strokeWidth="1"/>
+        <text x="100" y="116" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Base liquidable del ahorro (€)</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -109,6 +140,16 @@ type Post = {
 };
 
 const POSTS: Post[] = [
+  {
+    slug: 'tramos-base-ahorro-irpf',
+    tag: 'Fiscal',
+    date: '20 jun 2026',
+    readTime: '13 min',
+    title: 'Tramos de la base del ahorro IRPF 2025: cómo tributan tus dividendos, plusvalías e intereses',
+    excerpt: 'Guía completa sobre los tramos de la base del ahorro del IRPF: tabla de tipos 2025 (19%, 21%, 23%, 27%, 30%), cómo se apilan dividendos y plusvalías en la misma base, compensación cruzada entre bloques con tope del 25% y ejemplos con números.',
+    Image: ImgTramosBaseAhorro,
+  },
+
   {
     slug: 'plusvalias-espana-irpf-guia',
     tag: 'Fiscal',
