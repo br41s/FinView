@@ -76,6 +76,33 @@ function ImgYoc() {
   );
 }
 
+function ImgCompensarPerdidas() {
+  return (
+    <div className={styles.postImgCompensarPerdidas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">COMPENSACIÓN BASE DEL AHORRO</text>
+        <rect x="15" y="30" width="75" height="70" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="52" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Bloque A</text>
+        <text x="52" y="58" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Ventas</text>
+        <text x="52" y="72" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−2.000 €</text>
+        <text x="52" y="86" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">saldo negativo</text>
+        <rect x="110" y="30" width="75" height="70" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="147" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Bloque B</text>
+        <text x="147" y="58" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Dividendos</text>
+        <text x="147" y="72" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">+2.500 €</text>
+        <text x="147" y="86" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">25% tope = 625 €</text>
+        <line x1="90" y1="65" x2="110" y2="65" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="3 2" markerEnd="url(#arrow)"/>
+        <defs>
+          <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+        <text x="100" y="110" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Resultado: tributas por 1.875 €</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgPlusvalias() {
   return (
     <div className={styles.postImgPlusvalias}>
@@ -109,6 +136,15 @@ type Post = {
 };
 
 const POSTS: Post[] = [
+  {
+    slug: 'compensar-perdidas-ganancias-irpf',
+    tag: 'Fiscal',
+    date: '23 jun 2026',
+    readTime: '15 min',
+    title: 'Compensar pérdidas con ganancias en el IRPF: guía completa',
+    excerpt: 'Guía práctica para compensar pérdidas con ganancias en la base del ahorro: los dos bloques (patrimonial y capital mobiliario), la regla del 25%, la regla de los 2 meses que congela pérdidas, el arrastre de 4 años y ejemplos numéricos paso a paso.',
+    Image: ImgCompensarPerdidas,
+  },
   {
     slug: 'plusvalias-espana-irpf-guia',
     tag: 'Fiscal',
