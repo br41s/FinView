@@ -1,0 +1,164 @@
+export const metadata = {
+  title: "Dividendos extranjeros en el IRPF: cómo recuperar la doble imposición — FinView",
+  description: "Guía práctica para declarar dividendos extranjeros en España: casilla 0029 y 0588, formulario W-8BEN, retenciones por país, exceso reclamable y ejemplos con IBKR, DeGiro y eToro.",
+};
+
+# Dividendos extranjeros en el IRPF: cómo recuperar lo que te retienen en el extranjero
+
+> Cobras 100 € en dividendos de Apple. Tu broker en EE.UU. se queda 30 € de retención. En España tributas por los 100 € brutos. Resultado: has pagado impuestos dos veces por el mismo ingreso. Hay un mecanismo para recuperarlo — y la mayoría de inversores no lo usa bien.
+
+---
+
+## 1. Por qué pagas dos veces
+
+Cuando cobras un dividendo de una empresa extranjera, intervienen dos administraciones fiscales:
+
+1. **El país de origen** retiene un porcentaje sobre el dividendo bruto antes de pagártelo.
+2. **España** te hace tributar por el importe bruto completo en la base del ahorro del IRPF.
+
+Ejemplo concreto: compras acciones de Johnson & Johnson a través de IBKR. La empresa paga un dividendo de 100 €. EE.UU. retiene el 30% (30 €) por defecto. Tú recibes 70 € netos. En tu declaración del IRPF español, Hacienda te hace tributar por los 100 € brutos al tipo que te corresponda (19%-28%).
+
+Sin mecanismo de corrección, esos 100 € habrían pagado impuestos en EE.UU. *y* en España. De ahí el nombre: doble imposición internacional.
+
+---
+
+## 2. La solución: deducción por doble imposición (art. 80 LIRPF)
+
+El artículo 80 de la Ley del IRPF permite deducir de la cuota íntegra el impuesto pagado en el extranjero. En la práctica, se aplica en la **casilla 0588** de Renta WEB.
+
+Pero hay un límite: solo puedes deducir el **menor** de estos dos importes:
+
+- El impuesto realmente satisfecho en el extranjero.
+- El resultado de aplicar el tipo medio efectivo del IRPF español a esa renta extranjera.
+
+En la práctica, para dividendos el límite suele ser el tipo del convenio de doble imposición con cada país, que en la mayoría de casos es del **15%**.
+
+### Dónde va cada cosa en Renta WEB
+
+| Casilla | Qué va | Ejemplo (dividendo J&J de 100 €) |
+|---------|--------|-----------------------------------|
+| 0029 | Dividendo bruto | 100 € |
+| 0588 | Retención en origen (con tope del 15%) | 15 € |
+| Base del ahorro | Bruto menos retención española | 100 € al 19% = 19 € |
+| Cuota a pagar | Menos deducción por doble imposición | 19 € − 15 € = 4 € neto |
+
+---
+
+## 3. El formulario W-8BEN: tu mejor amigo para dividendos de EE.UU.
+
+Aquí está el error que más dinero cuesta a los inversores españoles.
+
+Por defecto, EE.UU. retiene el **30%** sobre dividendos pagados a extranjeros. Pero el convenio de doble imposición entre España y EE.UU. limita esa retención al **15%**. Para beneficiarte de ese tipo reducido, tienes que acreditar tu residencia fiscal en España.
+
+**Cómo se hace:** rellenas el formulario W-8BEN (o W-8BEN-E) a través de tu broker. Es un trámite que se hace una vez y suele durar 3 años.
+
+| Situación | Retención en EE.UU. | Recuperable en España (casilla 0588) | Exceso perdido |
+|-----------|---------------------|---------------------------------------|----------------|
+| Sin W-8BEN | 30% | 15% | 15% (reclamable al IRS, complejo) |
+| Con W-8BEN | 15% | 15% | 0% |
+
+**15 € perdidos por cada 100 € de dividendo.** En una cartera de 50.000 € en acciones estadounidenses con un yield del 2%, eso son 1.000 € en dividendos al año → 150 € que nunca recuperas si no tienes el W-8BEN.
+
+La mayoría de brokers (IBKR, DeGiro, eToro) permiten rellenarlo online en la sección de configuración fiscal. Tardas 5 minutos.
+
+---
+
+## 4. Retenciones por país: la tabla que necesitas
+
+No todos los países retienen lo mismo. Y no todo lo que retienen es recuperable en España. Esta tabla resume los casos más habituales para inversores en dividendos:
+
+| País | Retención estándar | Tipo por convenio (CDI) | Recuperable en España | Exceso a reclamar al fisco extranjero |
+|------|-------------------|------------------------|----------------------|---------------------------------------|
+| EE.UU. (con W-8BEN) | 30% | 15% | 15% | — |
+| Alemania | 26,375% | 15% | 15% | 11,375% (formulario DBA-Spanien) |
+| Francia | 28% | 15% | 15% | 13% (formularios 5000-SD + 5001-SD) |
+| Suiza | 35% | 15% | 15% | 20% (formulario 90) |
+| Italia | 26% | 15% | 15% | 11% |
+| Portugal | 28% | 15% | 15% | 13% (formulario 22-RFI) |
+| Países Bajos | 15% | 15% | 15% | — |
+| Reino Unido | 0% | — | 0% | — |
+| Irlanda | 25% | 15% | 15% | 10% |
+
+Fuentes: Agencia Tributaria (manual IRPF 2025, apartado 8.7.3.1), convenios de doble imposición publicados en el BOE.
+
+### El problema del exceso
+
+Cuando un país retiene más del 15% (como Alemania, Francia o Suiza), la parte que excede el 15% **no es deducible en España**. Hacienda española solo te devuelve hasta el límite del convenio.
+
+Para recuperar ese exceso, tienes que reclamar directamente a la administración fiscal del país de origen. Son trámites burocráticos que pueden tardar meses o años. Muchos inversores no lo hacen por el trabajo que implica, pero en carteras grandes puede suponer cientos de euros anuales.
+
+---
+
+## 5. Ejemplo completo paso a paso
+
+**Situación:** María tiene cuenta en IBKR con acciones de Coca-Cola (EE.UL.) y Siemens (Alemania). En 2025 cobra:
+
+- 200 € brutos en dividendos de Coca-Cola. Retención en EE.UU.: 30 € (15%, tiene W-8BEN).
+- 150 € brutos en dividendos de Siemens. Retención en Alemania: 39,56 € (26,375%).
+
+**Paso 1 — Casilla 0029 (rendimientos del capital mobiliario):**
+
+María declara el bruto: 200 € + 150 € = **350 €**.
+
+**Paso 2 — Cálculo del impuesto en España:**
+
+350 € tributan en la base del ahorro. Al ser menos de 6.000 €, el tipo es del 19%: **66,50 €**.
+
+**Paso 3 — Casilla 0588 (deducción por doble imposición):**
+
+- Coca-Cola: 15 € (retención W-8BEN, coincide con el tope del convenio).
+- Siemens: 22,50 € (15% de 150 €, el tope del convenio. El exceso de 17,06 € no es deducible en España).
+
+Total deducible: **37,50 €**.
+
+**Paso 4 — Resultado:**
+
+66,50 € (cuota íntegra) − 37,50 € (deducción doble imposición) = **29 € netos a pagar**.
+
+María ha recuperado 37,50 € de los 69,56 € totales retenidos. Los 17,06 € de exceso alemán podría reclamarlos al BZSt (fisco alemán) presentando el formulario DBA-Spanien/Kapitalerträge.
+
+---
+
+## 6. Errores frecuentes que te cuestan dinero
+
+**No tener el W-8BEN activo.** Si inviertes en acciones de EE.UU. y no has rellenado este formulario, pierdes el 15% de cada dividendo de forma definitiva. En una cartera de 30.000 € con yield del 2%, son 90 € al año.
+
+**Declarar el neto en vez del bruto.** Los dividendos extranjeros se declaran por su importe íntegro (bruto) en la casilla 0029. Si declaras solo lo que has recibido neto después de la retención, estás pagando menos impuestos de lo que deberías — y la AEAT puede requerirte una complementaria.
+
+**Olvidar la casilla 0588.** Si no incluyes la deducción por doble imposición, pagas impuestos dos veces sin necesidad. Renta WEB no la calcula automáticamente: tienes que introducirla tú.
+
+**No guardar documentación.** Necesitas acreditar el importe bruto del dividendo y la retención practicada. Guarda los certificados fiscales anuales de tu broker (IBKR los genera en febrero, DeGiro en el extracto anual). Si la AEAT te lo pide y no lo tienes, pierdes la deducción.
+
+**Confundir dividendos con plusvalías.** La deducción por doble imposición internacional (casilla 0588) solo aplica a rendimientos obtenidos y gravados en el extranjero. Las plusvalías por venta de acciones extranjeras tributan de forma distinta y no llevan retención en origen en la mayoría de países.
+
+---
+
+## 7. ¿Y si uso un broker español?
+
+Si compras acciones extranjeras a través de un broker español (como MyInvestor, Renta 4 o Selfbank), el broker suele gestionar automáticamente la retención según el convenio y te paga el neto con el tipo reducido ya aplicado. En ese caso, el proceso en Renta WEB es más sencillo porque el broker te proporciona los datos fiscales correctos en el informe anual.
+
+Pero si usas un broker extranjero (IBKR, DeGiro, eToro, Trade Republic), la responsabilidad de aplicar el tipo reducido del convenio recae sobre ti. Y la de declarar correctamente, también.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Tengo que declarar dividendos extranjeros si no superan los 1.600 €?
+
+Sí. Los dividendos extranjeros tributan por renta mundial. Si eres residente fiscal en España, debes declarar todos los dividendos que recibas, independientemente del importe. El umbral de 1.600 € de obligación de declarar tiene excepciones y no exime de tributar por estas rentas.
+
+### ¿Qué pasa si cobro dividendos de un país sin convenio con España?
+
+Si no existe convenio de doble imposición, no podrás aplicar la deducción por doble imposición internacional. Tributarás en España por el bruto completo sin deducir la retención en origen. Por eso conviene verificar que el país de la empresa tenga convenio firmado con España (la lista está en la web de la AEAT).
+
+### ¿Puedo compensar pérdidas en bolsa con dividendos extranjeros?
+
+Sí, pero con límites. Las pérdidas patrimoniales (bloque A) pueden compensarse con los rendimientos del capital mobiliario (bloque B, donde van los dividendos) hasta el 25% del saldo positivo del bloque B. Es la misma regla que aplica a dividendos nacionales. Puedes ver los detalles en nuestra guía sobre [compensar pérdidas con ganancias en el IRPF](/blog/compensar-perdidas-ganancias-irpf).
+
+### ¿Cuánto tarda la AEAT en devolver la doble imposición?
+
+Si has rellenado correctamente la casilla 0588, la devolución se incluye en el resultado de la declaración. Si te sale a devolver, el plazo habitual es de 1 a 6 meses desde la presentación, igual que cualquier otra devolución del IRPF.
+
+### ¿Necesito el certificado de residencia fiscal para algo?
+
+Sí. Para que tu broker aplique el tipo reducido del convenio (por ejemplo, el 15% en vez del 30% en EE.UU.), necesitas acreditar tu residencia fiscal. El W-8BEN ya incluye esta acreditación. Algunos brokers europeos piden además el certificado de residencia fiscal emitido por la AEAT, que puedes obtener en la sede electrónica.
