@@ -272,7 +272,47 @@ function ImgReinvertirDividendos() {
   );
 }
 
+
+function ImgSocimi() {
+  return (
+    <div className={styles.postImgSocimi}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SOCIMI — FISCALIDAD IRPF</text>
+        <rect x="18" y="40" width="36" height="60" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="36" y="56" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">SOCIMI</text>
+        <text x="36" y="70" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">0% IS</text>
+        <text x="36" y="82" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">sociedad</text>
+        <line x1="54" y1="70" x2="74" y2="70" stroke="var(--fv-ochre)" strokeWidth="1.5" markerEnd="url(#socimiArrow)"/>
+        <rect x="78" y="40" width="52" height="60" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="104" y="56" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Inversor</text>
+        <text x="104" y="70" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">19%</text>
+        <text x="104" y="82" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retenci&#243;n</text>
+        <text x="104" y="92" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">dividendo</text>
+        <line x1="130" y1="70" x2="150" y2="70" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        <rect x="154" y="40" width="30" height="60" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="169" y="56" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
+        <text x="169" y="70" fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">19-28%</text>
+        <text x="169" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">base</text>
+        <text x="169" y="92" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">ahorro</text>
+        <defs>
+          <marker id="socimiArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  );
+}
 const POSTS: Post[] = [
+  {
+    slug: 'socimi-dividendos-irpf-espana',
+    tag: 'Fiscal',
+    date: '16 jun 2026',
+    readTime: '15 min',
+    title: 'SOCIMIs en España: guía completa de fiscalidad en el IRPF para el inversor de dividendos',
+    excerpt: 'Cómo tributan los dividendos de SOCIMIs en el IRPF: retención del 19%, gravamen especial del 19% para socios relevantes, régimen al 0% en Impuesto sobre Sociedades, comparativa fiscal con acciones y errores frecuentes al declarar.',
+    Image: ImgSocimi,
+  },
   {
     slug: 'reinvertir-dividendos-vs-cobrar-efectivo',
     tag: 'Estrategia',
