@@ -176,6 +176,35 @@ function ImgModelo720() {
   );
 }
 
+function ImgSocimi() {
+  return (
+    <div className={styles.postImgSocimi}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SOCIMI — RÉGIMEN FISCAL</text>
+        {/* Building A - SOCIMI 0% */}
+        <rect x="20" y="35" width="45" height="60" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="42" y="52" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">SOCIMI</text>
+        <text x="42" y="65" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0%</text>
+        <text x="42" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Sociedades</text>
+        {/* Arrow */}
+        <line x1="65" y1="65" x2="80" y2="65" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Investor box */}
+        <rect x="80" y="45" width="50" height="50" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="105" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Inversor</text>
+        <text x="105" y="76" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">19-30%</text>
+        <text x="105" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Base ahorro</text>
+        {/* Building B - Normal 25% */}
+        <rect x="140" y="35" width="45" height="60" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="162" y="52" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Normal</text>
+        <text x="162" y="65" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">25%</text>
+        <text x="162" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Sociedades</text>
+        {/* Bottom annotation */}
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Más dividendo bruto → mismo IRPF que otra acción</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -243,6 +272,15 @@ function ImgDividendosExtranjeros() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'socimis-dividendos-irpf-espana',
+    tag: 'Fiscal',
+    date: '17 jun 2026',
+    readTime: '15 min',
+    title: 'SOCIMIs en España: guía completa de fiscalidad para el inversor en dividendos',
+    excerpt: 'Todo sobre las SOCIMIs: qué son, requisitos, el régimen al 0% en Sociedades, cómo tributan los dividendos en tu IRPF, las principales SOCIMIs del mercado, errores frecuentes y cómo encajan en una cartera DGI.',
+    Image: ImgSocimi,
+  },
   {
     slug: 'dividendos-extranjeros-doble-imposicion-irpf',
     tag: 'Fiscal',
