@@ -44,7 +44,7 @@ export function FilterBar({
   };
 
   return (
-    <div className="pointer-events-auto absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center gap-3 rounded-lg border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5]/90 px-3 py-2 shadow-[0_4px_16px_rgba(31,27,22,0.08)] backdrop-blur">
+    <div className="pointer-events-auto relative z-10 m-2 flex flex-wrap items-center gap-3 rounded-lg border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5]/90 px-3 py-2 shadow-[0_4px_16px_rgba(31,27,22,0.08)] backdrop-blur lg:absolute lg:inset-x-4 lg:top-4 lg:m-0">
       <div className="flex flex-wrap gap-1">
         {CATEGORIES.map((c) => {
           const on = categories.includes(c);
