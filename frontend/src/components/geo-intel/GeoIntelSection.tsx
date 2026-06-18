@@ -116,7 +116,7 @@ export function GeoIntelSection() {
 
       <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
         <div className="relative h-[55vh] p-4 lg:h-auto lg:min-h-0 lg:flex-1 lg:p-6">
-          <div className="relative h-full w-full overflow-hidden rounded-xl border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] shadow-[0_4px_16px_rgba(31,27,22,0.08)]">
+          <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] shadow-[0_4px_16px_rgba(31,27,22,0.08)] lg:block">
             <FilterBar
               categories={categories}
               onCategoriesChange={setCategories}
@@ -125,21 +125,23 @@ export function GeoIntelSection() {
               activeOnly={activeOnly}
               onActiveOnlyChange={setActiveOnly}
             />
-            {phase === "loading" ? (
-              <MapLoading />
-            ) : phase === "error" ? (
-              <MapError onRetry={retry} />
-            ) : filtered.length === 0 ? (
-              <MapEmpty />
-            ) : (
-              <GeoMap
-                signals={filtered}
-                selectedId={selected?.id ?? null}
-                hoveredId={hoveredId}
-                onHoverSignal={setHoveredId}
-                onSelectSignal={(s) => setSelected(s)}
-              />
-            )}
+            <div className="relative min-h-0 flex-1 lg:contents">
+              {phase === "loading" ? (
+                <MapLoading />
+              ) : phase === "error" ? (
+                <MapError onRetry={retry} />
+              ) : filtered.length === 0 ? (
+                <MapEmpty />
+              ) : (
+                <GeoMap
+                  signals={filtered}
+                  selectedId={selected?.id ?? null}
+                  hoveredId={hoveredId}
+                  onHoverSignal={setHoveredId}
+                  onSelectSignal={(s) => setSelected(s)}
+                />
+              )}
+            </div>
           </div>
         </div>
         <SignalPanel
