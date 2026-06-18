@@ -47,6 +47,12 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_preload_eurex, daemon=True, name="eurex-rdf-preload").start()
 
+    # Start the global AIS collector (no-op without AISSTREAM_KEY) so maritime
+    # chokepoint data warms up before the first geo cycle.
+    from backend.services.geo.ais_collector import start as start_ais_collector
+
+    start_ais_collector()
+
     yield
     shutdown_scheduler()
     shutdown_zc_scheduler()

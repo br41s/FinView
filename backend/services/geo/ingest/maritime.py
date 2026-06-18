@@ -46,7 +46,18 @@ async def _fetch_names() -> dict[int, dict]:
 
 
 async def fetch_vessels() -> list[VesselSnapshot]:
-    """Return AIS vessel snapshots (Digitraffic / Nordic-Baltic only — see module docstring)."""
+    """Return AIS vessel snapshots.
+
+    Prefers the global aisstream.io collector (covers the rule chokepoints); falls
+    back to Digitraffic (Nordic/Baltic only) when the collector isn't running yet.
+    """
+    # Lazy import avoids an ingest-package import cycle at module load.
+    from backend.services.geo import ais_collector
+
+    ais_collector.start()
+    if ais_collector.is_connected() and ais_collector.vessel_count() > 0:
+        return ais_collector.get_vessels()
+
     cached = _loc_cache.get(_LOC_TTL)
     if cached is not None:
         return cached

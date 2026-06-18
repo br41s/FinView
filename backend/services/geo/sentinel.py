@@ -15,6 +15,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
 from .ingest.types import (
     AcledEvent,
     FireHotspot,
@@ -613,12 +614,109 @@ def analyze_acled_events(acled_events: list[AcledEvent]) -> list[GeoEvent]:
     return out
 
 
-# ── Specialist: AIS maritime (DEFERRED) ──────────────────────────────
-def analyze_vessels(vessels: list[VesselSnapshot]) -> list[GeoEvent]:
-    """Maritime chokepoint analysis — DEFERRED (see ingest/maritime.py).
+# ── Specialist: AIS maritime chokepoint traffic ──────────────────────
+_AIS_MAX_HISTORY = 10
+# Objective rolling baselines: chokepoint id → list of {tankers,cargo,anchored,total}.
+_ais_history: dict[str, list[dict]] = {}
 
-    Needs a global AIS feed + cross-cycle vessel-count history; current data is
-    Nordic-only and matches no rule chokepoint. Returns [] until the WS collector
-    lands. The strait regions are covered meanwhile by conflict/GDELT/ACLED rules.
+
+def _count_in_chokepoint(vessels: list[VesselSnapshot], cp) -> dict:
+    tankers = cargo = anchored = total = 0
+    for v in vessels:
+        if cp.lat_min <= v.latitude <= cp.lat_max and cp.lon_min <= v.longitude <= cp.lon_max:
+            total += 1
+            if is_tanker(v.ship_type):
+                tankers += 1
+            if is_cargo(v.ship_type):
+                cargo += 1
+            if v.nav_status == 1 or v.sog < 0.5:
+                anchored += 1
+    return {"tankers": tankers, "cargo": cargo, "anchored": anchored, "total": total}
+
+
+def _rolling_avg(history: list[dict]) -> dict:
+    n = len(history)
+    if n == 0:
+        return {"tankers": 0, "cargo": 0, "anchored": 0, "total": 0}
+    return {k: round(sum(h[k] for h in history) / n) for k in ("tankers", "cargo", "anchored", "total")}
+
+
+def analyze_vessels(vessels: list[VesselSnapshot]) -> list[GeoEvent]:
+    """Detect chokepoint disruption / rerouting / congestion from live AIS traffic.
+
+    Port of WorldHawk's analyzeVesselTraffic. Emits stable per-chokepoint event ids
+    every cycle while a condition holds; the advisor handles per-user dedup.
     """
-    return []
+    if not vessels:
+        return []
+    now = _now_ms()
+    out: list[GeoEvent] = []
+
+    for cp in CHOKEPOINTS:
+        current = _count_in_chokepoint(vessels, cp)
+        hist = _ais_history.setdefault(cp.id, [])
+        hist.append(current)
+        if len(hist) > _AIS_MAX_HISTORY:
+            hist.pop(0)
+
+        if len(hist) >= 2:
+            baseline = _rolling_avg(hist[:-1])
+        else:
+            baseline = {
+                "tankers": cp.normal_tankers, "cargo": cp.normal_cargo,
+                "anchored": 0, "total": cp.normal_tankers + cp.normal_cargo,
+            }
+
+        clat = (cp.lat_min + cp.lat_max) / 2
+        clon = (cp.lon_min + cp.lon_max) / 2
+
+        def _ev(eid: str, etype: str, title: str, extra: dict) -> GeoEvent:
+            return GeoEvent(
+                id=eid, type=etype, title=title, latitude=clat, longitude=clon,
+                region=cp.region, source="ais", timestamp=now, raw_data=extra,
+            )
+
+        # Tanker traffic drop.
+        if baseline["tankers"] > 3 and current["tankers"] > 0:
+            drop = (baseline["tankers"] - current["tankers"]) / baseline["tankers"]
+            if drop >= cp.drop_threshold:
+                out.append(_ev(
+                    f"ais-tanker-drop-{cp.id}", "maritime_disruption",
+                    f"Tanker Traffic Drop at {cp.name}",
+                    {"chokepoint": cp.id, "currentTankers": current["tankers"],
+                     "baselineTankers": baseline["tankers"], "dropPercent": round(drop * 100)},
+                ))
+
+        # Cargo traffic drop.
+        if baseline["cargo"] > 5 and current["cargo"] > 0:
+            drop = (baseline["cargo"] - current["cargo"]) / baseline["cargo"]
+            if drop >= cp.drop_threshold:
+                out.append(_ev(
+                    f"ais-cargo-drop-{cp.id}", "maritime_disruption",
+                    f"Cargo Traffic Drop at {cp.name}",
+                    {"chokepoint": cp.id, "currentCargo": current["cargo"],
+                     "baselineCargo": baseline["cargo"], "dropPercent": round(drop * 100)},
+                ))
+
+        # Rerouting spike (Cape of Good Hope).
+        if cp.id == "cape-good-hope" and baseline["tankers"] > 0:
+            spike = (current["tankers"] - baseline["tankers"]) / max(baseline["tankers"], 1)
+            if spike >= cp.spike_threshold:
+                out.append(_ev(
+                    f"ais-reroute-{cp.id}", "maritime_rerouting",
+                    "Tanker Rerouting via Cape of Good Hope",
+                    {"currentTankers": current["tankers"], "baselineTankers": baseline["tankers"],
+                     "spikePercent": round(spike * 100)},
+                ))
+
+        # Congestion (anchored vessel spike).
+        normal_anchored = max(baseline["anchored"], 2)
+        if current["anchored"] > normal_anchored * 2 and current["anchored"] >= 5:
+            out.append(_ev(
+                f"ais-congestion-{cp.id}", "maritime_congestion",
+                f"Port Congestion at {cp.name}",
+                {"anchoredVessels": current["anchored"], "baselineAnchored": baseline["anchored"],
+                 "totalVessels": current["total"]},
+            ))
+
+    return out
