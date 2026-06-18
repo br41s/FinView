@@ -17,6 +17,7 @@ export function GeoIntelSection() {
   // initial render), which also gates time/coordinate values that drift across
   // SSR/CSR and would otherwise cause hydration mismatches.
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
+  const [running, setRunning] = useState(false);
 
   const load = useCallback(() => {
     setPhase("loading");
@@ -46,6 +47,35 @@ export function GeoIntelSection() {
 
   const retry = load;
 
+  const runCycle = useCallback(async () => {
+    setRunning(true);
+    try {
+      await api.geo.run();
+    } catch {
+      setRunning(false);
+      return;
+    }
+    // The cycle runs in the background (~1 min); poll until signals land.
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries += 1;
+      try {
+        const data = await api.geo.signals("all");
+        setSignals(data);
+        setPhase("ready");
+        if (data.length > 0 || tries >= 8) {
+          clearInterval(poll);
+          setRunning(false);
+        }
+      } catch {
+        if (tries >= 8) {
+          clearInterval(poll);
+          setRunning(false);
+        }
+      }
+    }, 12000);
+  }, []);
+
   return (
     <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
       <header className="flex items-end justify-between border-b border-[rgba(31,27,22,0.14)] px-8 py-5">
@@ -67,10 +97,20 @@ export function GeoIntelSection() {
             Geopolitical & natural events, plotted as financial signals.
           </p>
         </div>
-        <div className="flex items-center gap-6 font-mono text-[11px] text-[rgba(31,27,22,0.6)]">
-          <Stat label="Active" value={String(active)} />
-          <Stat label="Tracked" value={String(filtered.length)} />
-          <Stat label="Regions" value="7" />
+        <div className="flex items-center gap-5">
+          <button
+            type="button"
+            onClick={runCycle}
+            disabled={running}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#9A6B1F] px-3 font-mono text-[11px] text-[#9A6B1F] transition-colors hover:bg-[rgba(154,107,31,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {running ? "Running…" : "Run cycle"}
+          </button>
+          <div className="flex items-center gap-6 font-mono text-[11px] text-[rgba(31,27,22,0.6)]">
+            <Stat label="Active" value={String(active)} />
+            <Stat label="Tracked" value={String(filtered.length)} />
+            <Stat label="Regions" value="7" />
+          </div>
         </div>
       </header>
 
