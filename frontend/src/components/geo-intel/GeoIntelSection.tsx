@@ -78,13 +78,13 @@ export function GeoIntelSection() {
 
   return (
     <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
-      <header className="flex items-end justify-between border-b border-[rgba(31,27,22,0.14)] px-8 py-5">
+      <header className="flex flex-col gap-3 border-b border-[rgba(31,27,22,0.14)] px-4 py-4 lg:flex-row lg:items-end lg:justify-between lg:px-8 lg:py-5">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.6)]">
             Dashboard · Section
           </p>
           <h1
-            className="mt-1 text-3xl leading-none text-[#1F1B16]"
+            className="mt-1 text-2xl leading-none text-[#1F1B16] lg:text-3xl"
             style={{
               fontFamily: "var(--fv-font-fraunces), ui-serif, Georgia, serif",
               fontWeight: 500,
@@ -97,7 +97,7 @@ export function GeoIntelSection() {
             Geopolitical & natural events, plotted as financial signals.
           </p>
         </div>
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center gap-3 lg:gap-5">
           <button
             type="button"
             onClick={runCycle}
@@ -106,7 +106,7 @@ export function GeoIntelSection() {
           >
             {running ? "Running…" : "Run cycle"}
           </button>
-          <div className="flex items-center gap-6 font-mono text-[11px] text-[rgba(31,27,22,0.6)]">
+          <div className="flex items-center gap-4 font-mono text-[11px] text-[rgba(31,27,22,0.6)] lg:gap-6">
             <Stat label="Active" value={String(active)} />
             <Stat label="Tracked" value={String(filtered.length)} />
             <Stat label="Regions" value="7" />
@@ -114,8 +114,8 @@ export function GeoIntelSection() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative min-h-0 flex-1 p-6">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
+        <div className="relative h-[55vh] p-4 lg:h-auto lg:min-h-0 lg:flex-1 lg:p-6">
           <div className="relative h-full w-full overflow-hidden rounded-xl border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] shadow-[0_4px_16px_rgba(31,27,22,0.08)]">
             <FilterBar
               categories={categories}

@@ -30,7 +30,7 @@ type Props = {
 
 export function SignalPanel({ signals, selected, hoveredId, onHover, onSelect, loading }: Props) {
   return (
-    <aside className="hidden h-full w-[380px] shrink-0 flex-col border-l border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] lg:flex">
+    <aside className="flex max-h-[60vh] w-full shrink-0 flex-col border-t border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] lg:h-full lg:max-h-none lg:w-[380px] lg:border-l lg:border-t-0">
       {selected ? (
         <DetailView signal={selected} onBack={() => onSelect(null)} />
       ) : (
