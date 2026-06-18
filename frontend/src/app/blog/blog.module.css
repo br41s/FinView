@@ -520,6 +520,7 @@
   height: 200px;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(135deg, rgba(154,107,31,0.08) 0%, rgba(154,107,31,0.2) 100%);
+  background: linear-gradient(135deg, rgba(31,27,22,0.03) 0%, rgba(154,107,31,0.14) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -529,6 +530,10 @@
   height: 200px;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(135deg, rgba(154,107,31,0.08) 0%, rgba(154,107,31,0.18) 100%);
+.postImgReinvertirDividendos {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, rgba(154,107,31,0.06) 0%, rgba(154,107,31,0.16) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -538,6 +543,10 @@
   height: 200px;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(135deg, var(--fv-ochre-ghost) 0%, rgba(154,107,31,0.15) 100%);
+.postImgPlanesPensiones {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, rgba(31,27,22,0.03) 0%, rgba(154,107,31,0.14) 100%);
   display: flex;
   align-items: center;
   justify-content: center;

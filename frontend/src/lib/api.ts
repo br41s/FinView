@@ -1,6 +1,16 @@
 import { getSession } from "next-auth/react";
 
+import type { GeoSignal } from "@/lib/geo";
+
 const BASE = "/api";
+
+export interface GeoSchedulerStatus {
+  running: boolean;
+  interval_minutes: number;
+  total_signals: number;
+  active_signals: number;
+  last_signal_at: string | null;
+}
 
 // ── Zonas Clave types ────────────────────────────────────────────────
 
@@ -741,6 +751,32 @@ export const api = {
         method: "POST",
         headers,
       });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+  },
+
+  // Geo-Intel
+  geo: {
+    signals: (status: "active" | "resolved" | "all" = "active") =>
+      fetchJSON<GeoSignal[]>(`/geo/signals?status=${status}`),
+    run: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/geo/run`, { method: "POST", headers });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    schedulerStatus: () =>
+      fetchJSON<GeoSchedulerStatus>("/geo/scheduler/status"),
+    startScheduler: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/geo/scheduler/start`, { method: "POST", headers });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json();
+    },
+    stopScheduler: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/geo/scheduler/stop`, { method: "POST", headers });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json();
     },

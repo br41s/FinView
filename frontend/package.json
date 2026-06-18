@@ -21,6 +21,7 @@
     "@types/mdx": "^2.0.13",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "d3-geo": "^3.1.1",
     "lucide-react": "^1.8.0",
     "next": "^16.2.1",
     "next-auth": "5.0.0-beta.31",
@@ -28,6 +29,7 @@
     "postcss": "^8.5.8",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-simple-maps": "^3.0.0",
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
     "shadcn": "^4.2.0",
@@ -39,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
+    "@types/react-simple-maps": "^3.0.6",
     "typescript": "^6.0.2"
   }
 }

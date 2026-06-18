@@ -426,3 +426,40 @@ class ZonasClaveSchedulerStatus(BaseModel):
     running: bool
     last_run: datetime | None = None
     total_items: int = 0
+
+
+# ── Geo-Intel ────────────────────────────────────────────────────────
+
+
+class GeoSignalOut(BaseModel):
+    """Matches the frontend GeoSignal contract (camelCase, lowercase enums)."""
+
+    id: str
+    headline: str
+    category: str  # coarse display category (earthquake|cyclone|fire|…)
+    eventType: str  # fine matcher category
+    lat: float
+    lng: float
+    location: str
+    importance: int  # 0-100
+    confidence: float  # 0-1
+    riskScore: float  # 0-10
+    direction: str  # bullish|bearish|neutral
+    tickers: list[str]
+    timestamp: datetime
+    status: str  # active|resolved
+
+
+class GeoSchedulerStatus(BaseModel):
+    running: bool
+    interval_minutes: int
+    total_signals: int = 0
+    active_signals: int = 0
+    last_signal_at: datetime | None = None
+
+
+class GeoRunResult(BaseModel):
+    status: str
+    events: int | None = None
+    new_signals: int | None = None
+    notified: int | None = None
