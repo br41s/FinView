@@ -30,9 +30,9 @@ class Settings(BaseSettings):
     stripe_price_unlimited: str = ""  # Stripe Price ID for Unlimited plan
     frontend_url: str = "http://localhost:3000"
 
-    # Options monitor — AI analysis via OpenRouter (https://openrouter.ai)
+    # LLM — single OpenRouter model for all FinView use cases (options + geo-intel).
     openrouter_api_key: str = ""
-    openrouter_model: str = "google/gemini-2.0-flash-001"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
     ntfy_topic: str = ""
     notify_email_to: str = ""
     notify_email_from: str = ""
@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # Telegram notifications (optional)
     telegram_bot_token: str = ""  # from @BotFather
     telegram_chat_id: str = ""    # personal chat or group ID
+
+    # Geo-Intel (WorldHawk) ingest source keys — all optional; a missing key
+    # degrades that single source to empty rather than failing the cycle.
+    firms_map_key: str = ""        # NASA FIRMS (wildfires)
+    windy_api_key: str = ""        # Windy point-forecast (meteo)
+    opensky_username: str = ""     # OpenSky Network (flights) — optional auth
+    opensky_password: str = ""
+    acled_email: str = ""          # ACLED (armed conflict) — needs email + key
+    acled_key: str = ""
+    aisstream_key: str = ""        # aisstream.io global AIS (maritime WS, deferred)
+    geo_monitor_interval_minutes: int = 15
 
     # Rate limiting (per-IP, see backend/services/rate_limit.py for IP extraction)
     rate_limit_login: str = "5/minute"

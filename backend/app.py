@@ -17,10 +17,12 @@ from backend.api.portfolio import router as portfolio_router
 from backend.api.fiscal import router as fiscal_router
 from backend.api.charts import router as charts_router
 from backend.api.options import router as options_router
+from backend.api.geo import router as geo_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.config import settings
 from backend.database import engine
 from backend.models import Base
+from backend.services.geo.scheduler import shutdown_scheduler as shutdown_geo_scheduler
 from backend.services.options_scheduler import shutdown_scheduler
 from backend.services.rate_limit import limiter
 from backend.services.zonas_clave_scheduler import shutdown_scheduler as shutdown_zc_scheduler
@@ -48,6 +50,7 @@ async def lifespan(app: FastAPI):
     yield
     shutdown_scheduler()
     shutdown_zc_scheduler()
+    shutdown_geo_scheduler()
 
 
 app = FastAPI(
@@ -79,6 +82,7 @@ app.include_router(fiscal_router, prefix="/api")
 app.include_router(charts_router, prefix="/api")
 app.include_router(options_router, prefix="/api")
 app.include_router(zonas_clave_router, prefix="/api")
+app.include_router(geo_router, prefix="/api")
 
 
 @app.get("/api/health")
