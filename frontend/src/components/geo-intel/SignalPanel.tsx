@@ -68,7 +68,7 @@ function ListView({
         </p>
         <h2
           className="mt-0.5 text-lg text-[#1F1B16]"
-          style={{ fontFamily: "Fraunces, serif", fontWeight: 500 }}
+          style={{ fontFamily: "var(--fv-font-fraunces), serif", fontWeight: 500 }}
         >
           Live feed
         </h2>
@@ -121,7 +121,7 @@ function ListView({
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span
                     className="text-[12px] tabular-nums text-[#1F1B16]"
-                    style={{ fontFamily: "JetBrains Mono, monospace" }}
+                    style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                   >
                     {s.importance}
                   </span>
@@ -144,7 +144,7 @@ function DirChip({ dir }: { dir: GeoSignal["direction"] }) {
     <span
       className="rounded-sm px-1.5 py-[1px] text-[9px] tracking-wider"
       style={{
-        fontFamily: "JetBrains Mono, monospace",
+        fontFamily: "var(--fv-font-jetbrains), monospace",
         color,
         backgroundColor: color + "1A",
       }}
@@ -171,7 +171,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
         <h2
           className="text-[22px] leading-snug text-[#1F1B16]"
-          style={{ fontFamily: "Fraunces, serif", fontWeight: 500, letterSpacing: "-0.01em" }}
+          style={{ fontFamily: "var(--fv-font-fraunces), serif", fontWeight: 500, letterSpacing: "-0.01em" }}
         >
           {signal.headline}
         </h2>
@@ -203,7 +203,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                   key={t}
                   className="rounded-full px-2.5 py-1 text-[11px]"
                   style={{
-                    fontFamily: "JetBrains Mono, monospace",
+                    fontFamily: "var(--fv-font-jetbrains), monospace",
                     color: "#9A6B1F",
                     backgroundColor: "rgba(154,107,31,0.10)",
                   }}
@@ -229,7 +229,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                   />
                   <span
                     className="text-[10px] text-[rgba(31,27,22,0.6)]"
-                    style={{ fontFamily: "JetBrains Mono, monospace" }}
+                    style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                   >
                     {c}
                   </span>
@@ -245,7 +245,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
       <div className="border-t border-[rgba(31,27,22,0.14)] px-5 py-3">
         <p
           className="text-[10px] text-[rgba(31,27,22,0.5)]"
-          style={{ fontFamily: "JetBrains Mono, monospace" }}
+          style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
         >
           {new Date(signal.timestamp).toUTCString()} · {signal.status.toUpperCase()}
         </p>
@@ -270,7 +270,7 @@ function Stat({
       </p>
       <p
         className="mt-1 text-[18px] tabular-nums"
-        style={{ fontFamily: "JetBrains Mono, monospace", color: valueColor }}
+        style={{ fontFamily: "var(--fv-font-jetbrains), monospace", color: valueColor }}
       >
         {value}
       </p>

@@ -181,7 +181,7 @@ export function GeoMap({
                       y={13}
                       fontSize={7}
                       fill="#1F1B16"
-                      style={{ fontFamily: "Geist, system-ui, sans-serif", fontWeight: 600 }}
+                      style={{ fontFamily: "var(--font-sans), system-ui, sans-serif", fontWeight: 600 }}
                     >
                       {s.headline}
                     </text>
@@ -190,7 +190,7 @@ export function GeoMap({
                       y={25}
                       fontSize={6}
                       fill="rgba(31,27,22,0.6)"
-                      style={{ fontFamily: "JetBrains Mono, monospace" }}
+                      style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                     >
                       {s.location} · risk {s.riskScore.toFixed(1)}
                     </text>

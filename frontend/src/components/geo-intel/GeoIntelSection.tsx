@@ -56,7 +56,7 @@ export function GeoIntelSection() {
           <h1
             className="mt-1 text-3xl leading-none text-[#1F1B16]"
             style={{
-              fontFamily: "Fraunces, ui-serif, Georgia, serif",
+              fontFamily: "var(--fv-font-fraunces), ui-serif, Georgia, serif",
               fontWeight: 500,
               letterSpacing: "-0.01em",
             }}
