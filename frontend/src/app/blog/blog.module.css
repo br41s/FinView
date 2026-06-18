@@ -530,6 +530,11 @@
   height: 200px;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(135deg, rgba(154,107,31,0.08) 0%, rgba(154,107,31,0.18) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .postImgReinvertirDividendos {
   height: 200px;
   border-radius: 12px 12px 0 0;
@@ -543,6 +548,11 @@
   height: 200px;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(135deg, var(--fv-ochre-ghost) 0%, rgba(154,107,31,0.15) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .postImgPlanesPensiones {
   height: 200px;
   border-radius: 12px 12px 0 0;
