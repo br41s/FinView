@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { BarChart3, Briefcase, Activity, Target } from "lucide-react";
+import { BarChart3, Briefcase, Activity, Target, Globe } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/portfolio", label: "Cartera", Icon: Briefcase },
   { href: "/options", label: "Derivados", Icon: Activity },
   { href: "/zonas-clave", label: "Técnico", Icon: Target },
+  { href: "/geo-intel", label: "Geo-Intel", Icon: Globe },
 ] as const;
 
 export type QuickNavPage = (typeof NAV_ITEMS)[number]["href"];
