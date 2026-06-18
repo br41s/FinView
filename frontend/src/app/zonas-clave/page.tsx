@@ -274,7 +274,10 @@ export default function ZonasClavePage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Zonas Clave</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Target className="h-6 w-6" />
+            Zonas Clave
+          </h1>
           <p className="text-muted-foreground">
             Soportes, resistencias y tendencia algorítmica
           </p>
