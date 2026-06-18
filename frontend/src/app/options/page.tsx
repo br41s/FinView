@@ -1,20 +1,21 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
   Bell,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
-  FileText,
   FlaskConical,
   MessageSquare,
-  Play,
   Send,
+  Sparkles,
   Square,
   RefreshCw,
   Target,
@@ -26,6 +27,15 @@ import {
   XCircle,
 } from "lucide-react";
 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 import { api } from "@/lib/api";
 import {
   Card,
@@ -242,6 +252,7 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
+  const router = useRouter();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -265,10 +276,19 @@ export default function OptionsPage() {
   const [loadingBacktest, setLoadingBacktest] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
+  const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual">("alerts");
+  const [activeTab, setActiveTab] = useState("portfolio");
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions, setRetryPositions] = useState(0);
   const [retryOptions, setRetryOptions] = useState(0);
+
+  // N6: auto-expand ticker from URL param (?ticker=X)
+  const initialTickerRef = useRef<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    initialTickerRef.current = params.get("ticker");
+  }, []);
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
@@ -280,6 +300,12 @@ export default function OptionsPage() {
         setPositions(loaded);
         if (loaded.length === 0) return;
         const tickers = [...new Set(loaded.map((p) => (p.ticker || p.isin).toUpperCase()))];
+        // Auto-expand ticker from URL param if it exists in positions
+        if (initialTickerRef.current) {
+          const hint = initialTickerRef.current.toUpperCase();
+          initialTickerRef.current = null;
+          if (tickers.includes(hint)) setExpandedTicker(hint);
+        }
         try {
           const { no_options } = await api.options.checkAvailability(tickers);
           setNoOptionsTickers(new Set(no_options));
@@ -537,105 +563,92 @@ export default function OptionsPage() {
         </div>
         <div className="flex items-center gap-3">
           <QuickNav current="/options" />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRunCycle}
-            disabled={running}
-          >
-            {running ? (
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            Run Cycle
+          <Button variant="outline" size="sm" onClick={handleRunCycle} disabled={running} title="Run Cycle">
+            <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
           </Button>
           <Button
             variant={agentStatus?.running ? "destructive" : "default"}
             size="sm"
             onClick={handleToggleAgent}
+            title={agentStatus?.running ? "Stop Auto" : "Auto"}
           >
-            {agentStatus?.running ? (
-              <>
-                <Square className="mr-2 h-4 w-4" /> Stop
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" /> Auto
-              </>
-            )}
+            {agentStatus?.running ? <Square className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
           </Button>
         </div>
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
+            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Posiciones</span> en cartera · {watchlist.length} en watchlist</p>
+            <span className="ml-3 shrink-0 text-base font-bold">{positions.length}</span>
+          </div>
+          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
             <CardTitle className="text-sm font-medium">Posiciones</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="hidden sm:block">
             <div className="text-2xl font-bold">{positions.length}</div>
-            <p className="text-xs text-muted-foreground">
-              en cartera · {watchlist.length} en watchlist
-            </p>
+            <p className="text-xs text-muted-foreground">en cartera · {watchlist.length} en watchlist</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
+            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Ciclos</span>{" "}{agentStatus?.last_cycle ? `último ${new Date(agentStatus.last_cycle).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}` : "sin ciclos aún"}</p>
+            <span className="ml-3 shrink-0 text-base font-bold">{agentStatus?.total_cycles ?? 0}</span>
+          </div>
+          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
             <CardTitle className="text-sm font-medium">Ciclos</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {agentStatus?.total_cycles ?? 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {agentStatus?.last_cycle
-                ? `Último: ${new Date(agentStatus.last_cycle).toLocaleString("es-ES")}`
-                : "Sin ciclos aún"}
-            </p>
+          <CardContent className="hidden sm:block">
+            <div className="text-2xl font-bold">{agentStatus?.total_cycles ?? 0}</div>
+            <p className="text-xs text-muted-foreground">{agentStatus?.last_cycle ? `Último: ${new Date(agentStatus.last_cycle).toLocaleString("es-ES")}` : "Sin ciclos aún"}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
+            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Alertas</span> {alerts.length} total (7d)</p>
+            <span className="ml-3 shrink-0 text-base font-bold">{unreadAlerts.length}</span>
+          </div>
+          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
             <CardTitle className="text-sm font-medium">Alertas</CardTitle>
             <Bell className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="hidden sm:block">
             <div className="text-2xl font-bold">{unreadAlerts.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {alerts.length} total (7d)
-            </p>
+            <p className="text-xs text-muted-foreground">{alerts.length} total (7d)</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
+            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Smart Money</span> actividad inusual (7d)</p>
+            <span className="ml-3 shrink-0 text-base font-bold">{unusual.length}</span>
+          </div>
+          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
             <CardTitle className="text-sm font-medium">Smart Money</CardTitle>
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="hidden sm:block">
             <div className="text-2xl font-bold">{unusual.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Actividad inusual (7d)
-            </p>
+            <p className="text-xs text-muted-foreground">Actividad inusual (7d)</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
+            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Sentimiento</span> P/C {globalPC ? `${globalPC.avg.toFixed(2)} · ${globalPC.count} tickers` : "—"}</p>
+            <span className={`ml-3 shrink-0 text-base font-bold ${globalPC?.color ?? "text-muted-foreground"}`}>{globalPC?.label ?? "—"}</span>
+          </div>
+          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
             <CardTitle className="text-sm font-medium">Sentimiento P/C</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="hidden sm:block">
             {globalPC ? (
               <>
-                <div className={`text-2xl font-bold ${globalPC.color}`}>
-                  {globalPC.label}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  P/C medio {globalPC.avg.toFixed(2)} · {globalPC.count} tickers
-                </p>
+                <div className={`text-2xl font-bold ${globalPC.color}`}>{globalPC.label}</div>
+                <p className="text-xs text-muted-foreground">P/C medio {globalPC.avg.toFixed(2)} · {globalPC.count} tickers</p>
               </>
             ) : (
               <>
@@ -648,37 +661,33 @@ export default function OptionsPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="portfolio">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="w-full overflow-x-auto">
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="portfolio">
-            <BarChart3 className="mr-1 h-4 w-4" /> Cartera
+            <BarChart3 className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Cartera</span>
           </TabsTrigger>
           <TabsTrigger value="watchlist">
-            <Eye className="mr-1 h-4 w-4" /> Watchlist
+            <Eye className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Watchlist</span>
           </TabsTrigger>
-          <TabsTrigger value="alerts">
-            <Bell className="mr-1 h-4 w-4" /> Alertas
+          <TabsTrigger value="monitor">
+            <Bell className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Monitor</span>
             {unreadAlerts.length > 0 && (
-              <Badge
-                variant="destructive"
-                className="ml-1 px-1.5 py-0.5 text-xs"
-              >
+              <Badge variant="destructive" className="ml-1 px-1.5 py-0.5 text-xs">
                 {unreadAlerts.length}
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="unusual">
-            <Zap className="mr-1 h-4 w-4" /> Smart Money
-          </TabsTrigger>
           <TabsTrigger value="backtest" onClick={() => { if (!backtestStats) loadBacktest(); }}>
-            <FlaskConical className="mr-1 h-4 w-4" /> Backtesting
+            <FlaskConical className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Backtesting</span>
           </TabsTrigger>
-          <TabsTrigger value="agent">
-            <MessageSquare className="mr-1 h-4 w-4" /> Agente
-          </TabsTrigger>
-          <TabsTrigger value="analysis">
-            <FileText className="mr-1 h-4 w-4" /> Análisis
+          <TabsTrigger value="ia">
+            <Sparkles className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">IA</span>
           </TabsTrigger>
         </TabsList>
         </div>
@@ -840,14 +849,29 @@ export default function OptionsPage() {
                                 className="bg-muted/30 p-4"
                               >
                                 <div className="space-y-4">
-                                  {/* Company name + current price */}
-                                  <div className="flex items-baseline justify-between">
+                                  {/* Company name + actions */}
+                                  <div className="flex items-center justify-between">
                                     <p className="font-semibold">{p.name}</p>
-                                    {p.current_price_eur != null && (
-                                      <p className="text-sm tabular-nums text-muted-foreground">
-                                        {fmt(p.current_price_eur)} €
-                                      </p>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                      {p.current_price_eur != null && (
+                                        <p className="text-sm tabular-nums text-muted-foreground">
+                                          {fmt(p.current_price_eur)} €
+                                        </p>
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+                                        title="Ver en Zonas Clave"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          router.push(`/zonas-clave?ticker=${encodeURIComponent(ticker)}`);
+                                        }}
+                                      >
+                                        <Target className="h-3 w-3" />
+                                        ZC
+                                      </Button>
+                                    </div>
                                   </div>
                                   {/* Position summary */}
                                   <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -1349,11 +1373,11 @@ export default function OptionsPage() {
           )}
         </TabsContent>
 
-        {/* ── Alerts Tab ── */}
-        <TabsContent value="alerts" className="space-y-4">
+        {/* ── Monitor Tab (Alertas + Smart Money) ── */}
+        <TabsContent value="monitor" className="space-y-4">
           {loadingOptions ? (
             <div className="flex min-h-[30vh] items-center justify-center">
-              <LoadingDots text="Cargando alertas" />
+              <LoadingDots text="Cargando monitor" />
             </div>
           ) : errorOptions ? (
             <Card>
@@ -1367,179 +1391,182 @@ export default function OptionsPage() {
             </Card>
           ) : (
             <>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Alertas recientes</h3>
-                {unreadAlerts.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={handleAckAll}>
-                    Marcar todas leídas
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex gap-2">
+                  <Button
+                    variant={monitorFilter === "alerts" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMonitorFilter("alerts")}
+                  >
+                    <Bell className="mr-1.5 h-3.5 w-3.5" />
+                    Alertas
+                    {unreadAlerts.length > 0 && (
+                      <Badge variant="destructive" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                        {unreadAlerts.length}
+                      </Badge>
+                    )}
+                  </Button>
+                  <Button
+                    variant={monitorFilter === "unusual" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMonitorFilter("unusual")}
+                  >
+                    <Zap className="mr-1.5 h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Smart Money</span>
+                    <span className="sm:hidden">Smart $</span>
+                    {unusual.length > 0 && (
+                      <span className="ml-1.5 text-xs opacity-70">{unusual.length}</span>
+                    )}
+                  </Button>
+                </div>
+                {monitorFilter === "alerts" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAckAll}
+                    disabled={unreadAlerts.length === 0}
+                  >
+                    <span className="hidden sm:inline">Marcar todas leídas</span>
+                    <span className="sm:hidden">Leídas</span>
                   </Button>
                 )}
               </div>
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Hora</TableHead>
-                        <TableHead>Ticker</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Mensaje</TableHead>
-                        <TableHead>Severidad</TableHead>
-                        <TableHead className="text-right">Acción</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {alerts.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={6}
-                            className="text-center text-muted-foreground"
-                          >
-                            Sin alertas aún
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        alerts.map((a) => (
-                          <TableRow
-                            key={a.id}
-                            className={a.acknowledged ? "opacity-50" : ""}
-                          >
-                            <TableCell className="text-xs">
-                              {new Date(a.timestamp).toLocaleString("es-ES")}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {a.ticker}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{a.alert_type}</Badge>
-                            </TableCell>
-                            <TableCell>{a.message}</TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  severityColor(a.severity) as
-                                    | "destructive"
-                                    | "secondary"
-                                    | "outline"
-                                }
-                              >
-                                {a.severity}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {!a.acknowledged && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleAckAlert(a.id)}
-                                >
-                                  Ack
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </TabsContent>
 
-        {/* ── Smart Money Tab ── */}
-        <TabsContent value="unusual" className="space-y-4">
-          {loadingOptions ? (
-            <div className="flex min-h-[30vh] items-center justify-center">
-              <LoadingDots text="Cargando actividad" />
-            </div>
-          ) : errorOptions ? (
-            <Card>
-              <CardContent className="py-10 text-center space-y-3">
-                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
-                <p className="text-sm text-muted-foreground">{errorOptions}</p>
-                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
-                  Reintentar
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <h3 className="text-lg font-semibold">Actividad Inusual</h3>
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Hora</TableHead>
-                        <TableHead>Ticker</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Strike</TableHead>
-                        <TableHead>Exp</TableHead>
-                        <TableHead>Volumen</TableHead>
-                        <TableHead>OI</TableHead>
-                        <TableHead>Vol/OI</TableHead>
-                        <TableHead>IV</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {unusual.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={9}
-                            className="text-center text-muted-foreground"
-                          >
-                            Sin actividad inusual detectada
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        unusual.map((u) => (
-                          <TableRow key={u.id}>
-                            <TableCell className="text-xs">
-                              {new Date(u.timestamp).toLocaleString("es-ES")}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {u.ticker}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  u.option_type === "CALL"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                              >
-                                {u.option_type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>${fmt(u.strike)}</TableCell>
-                            <TableCell>{u.expiration}</TableCell>
-                            <TableCell>{u.volume.toLocaleString()}</TableCell>
-                            <TableCell>
-                              {u.open_interest.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="font-medium text-amber-600">
-                              {fmt(u.vol_oi_ratio, 1)}x
-                            </TableCell>
-                            <TableCell>
-                              {u.implied_volatility
-                                ? `${fmt(Number(u.implied_volatility) * 100, 1)}%`
-                                : "—"}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+              {monitorFilter === "alerts" && (
+                <Card>
+                  <CardContent className="p-0">
+                    {alerts.length === 0 ? (
+                      <p className="p-4 text-center text-sm text-muted-foreground">Sin alertas aún</p>
+                    ) : (
+                      <>
+                        {/* Mobile */}
+                        <div className="divide-y sm:hidden">
+                          {alerts.map((a) => (
+                            <div key={a.id} className={`flex flex-col gap-1 p-3 ${a.acknowledged ? "opacity-50" : ""}`}>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className="font-medium cursor-pointer text-primary hover:underline"
+                                  onClick={() => { setExpandedTicker(a.ticker); setActiveTab("portfolio"); }}
+                                >
+                                  {a.ticker}
+                                </span>
+                                <Badge variant="outline" className="text-xs">{a.alert_type}</Badge>
+                                <Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"} className="text-xs">{a.severity}</Badge>
+                                <span className="ml-auto text-xs text-muted-foreground">
+                                  {new Date(a.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                              <p className="text-sm text-muted-foreground">{a.message}</p>
+                              {!a.acknowledged && (
+                                <Button variant="ghost" size="sm" className="self-end h-7 text-xs" onClick={() => handleAckAlert(a.id)}>Ack</Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {/* Desktop */}
+                        <Table className="hidden sm:table">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Hora</TableHead>
+                              <TableHead>Ticker</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Mensaje</TableHead>
+                              <TableHead>Severidad</TableHead>
+                              <TableHead className="text-right">Acción</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {alerts.map((a) => (
+                              <TableRow key={a.id} className={a.acknowledged ? "opacity-50" : ""}>
+                                <TableCell className="text-xs">{new Date(a.timestamp).toLocaleString("es-ES")}</TableCell>
+                                <TableCell className="font-medium cursor-pointer text-primary hover:underline" title="Ver en Cartera" onClick={() => { setExpandedTicker(a.ticker); setActiveTab("portfolio"); }}>{a.ticker}</TableCell>
+                                <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
+                                <TableCell>{a.message}</TableCell>
+                                <TableCell><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge></TableCell>
+                                <TableCell className="text-right">
+                                  {!a.acknowledged && <Button variant="ghost" size="sm" onClick={() => handleAckAlert(a.id)}>Ack</Button>}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {monitorFilter === "unusual" && (
+                <Card>
+                  <CardContent className="p-0">
+                    {unusual.length === 0 ? (
+                      <p className="p-4 text-center text-sm text-muted-foreground">Sin actividad inusual detectada</p>
+                    ) : (
+                      <>
+                        {/* Mobile */}
+                        <div className="divide-y sm:hidden">
+                          {unusual.map((u) => (
+                            <div key={u.id} className="flex flex-col gap-1 p-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{u.ticker}</span>
+                                <Badge variant={u.option_type === "CALL" ? "default" : "secondary"} className="text-xs">{u.option_type}</Badge>
+                                <span className="text-sm">${fmt(u.strike)}</span>
+                                <span className="text-xs text-muted-foreground">{u.expiration}</span>
+                                <span className="ml-auto text-xs text-muted-foreground">
+                                  {new Date(u.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                <span>Vol <strong className="text-foreground">{u.volume.toLocaleString()}</strong></span>
+                                <span>OI <strong className="text-foreground">{u.open_interest.toLocaleString()}</strong></span>
+                                <span>Vol/OI <strong className="text-amber-600">{fmt(u.vol_oi_ratio, 1)}x</strong></span>
+                                <span>IV <strong className="text-foreground">{u.implied_volatility ? `${fmt(Number(u.implied_volatility) * 100, 1)}%` : "—"}</strong></span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Desktop */}
+                        <Table className="hidden sm:table">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Hora</TableHead>
+                              <TableHead>Ticker</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Strike</TableHead>
+                              <TableHead>Exp</TableHead>
+                              <TableHead>Volumen</TableHead>
+                              <TableHead>OI</TableHead>
+                              <TableHead>Vol/OI</TableHead>
+                              <TableHead>IV</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {unusual.map((u) => (
+                              <TableRow key={u.id}>
+                                <TableCell className="text-xs">{new Date(u.timestamp).toLocaleString("es-ES")}</TableCell>
+                                <TableCell className="font-medium">{u.ticker}</TableCell>
+                                <TableCell><Badge variant={u.option_type === "CALL" ? "default" : "secondary"}>{u.option_type}</Badge></TableCell>
+                                <TableCell>${fmt(u.strike)}</TableCell>
+                                <TableCell>{u.expiration}</TableCell>
+                                <TableCell>{u.volume.toLocaleString()}</TableCell>
+                                <TableCell>{u.open_interest.toLocaleString()}</TableCell>
+                                <TableCell className="font-medium text-amber-600">{fmt(u.vol_oi_ratio, 1)}x</TableCell>
+                                <TableCell>{u.implied_volatility ? `${fmt(Number(u.implied_volatility) * 100, 1)}%` : "—"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </TabsContent>
         {/* ── Backtesting Tab ── */}
         <TabsContent value="backtest" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold">Backtesting de señales</h3>
               <p className="text-sm text-muted-foreground">Precisión histórica de las alertas a +1D / +3D / +7D</p>
@@ -1551,7 +1578,8 @@ export default function OptionsPage() {
               </Button>
               <Button variant="outline" size="sm" onClick={handleEvaluate} disabled={evaluating}>
                 <Target className={`mr-2 h-4 w-4 ${evaluating ? "animate-spin" : ""}`} />
-                Evaluar pendientes
+                <span className="sm:hidden">Evaluar</span>
+                <span className="hidden sm:inline">Evaluar pendientes</span>
               </Button>
             </div>
           </div>
@@ -1595,42 +1623,69 @@ export default function OptionsPage() {
                 })}
               </div>
 
-              {/* Accuracy by signal type */}
-              {Object.keys(backtestStats.by_signal_type).length > 0 && (
+              {/* Accuracy by signal type — chart + table */}
+              {Object.keys(backtestStats.by_signal_type).length > 0 && (() => {
+                const signalChartData = Object.entries(backtestStats.by_signal_type).map(
+                  ([type, v]) => ({ type, accuracy: v.accuracy_pct ?? 0, total: v.total }),
+                );
+                return (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-sm">Precisión por tipo de señal (7D)</CardTitle>
                   </CardHeader>
+                  <CardContent className="pb-2">
+                    <ResponsiveContainer width="100%" height={Math.max(120, signalChartData.length * 36)}>
+                      <BarChart data={signalChartData} layout="vertical" margin={{ left: 8, right: 32, top: 0, bottom: 0 }}>
+                        <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => `${v}%`} />
+                        <YAxis type="category" dataKey="type" width={120} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                        <ChartTooltip
+                          contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                          formatter={(value, _name, props) => [`${value}% (${props.payload.total} señales)`, "Precisión"]}
+                        />
+                        <Bar dataKey="accuracy" radius={[0, 4, 4, 0]}>
+                          {signalChartData.map((entry, i) => (
+                            <Cell
+                              key={i}
+                              fill={entry.accuracy >= 60 ? "#22c55e" : entry.accuracy >= 45 ? "#f59e0b" : "#ef4444"}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
                   <CardContent className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead className="text-right">Correctas</TableHead>
-                          <TableHead className="text-right">Precisión</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
-                          const acc = v.accuracy_pct;
-                          const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                          return (
-                            <TableRow key={type}>
-                              <TableCell><Badge variant="outline">{type}</Badge></TableCell>
-                              <TableCell className="text-right">{v.total}</TableCell>
-                              <TableCell className="text-right">{v.correct}</TableCell>
-                              <TableCell className={`text-right font-semibold ${color}`}>
-                                {acc != null ? `${acc}%` : "—"}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Tipo</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right">Correctas</TableHead>
+                            <TableHead className="text-right">Precisión</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
+                            const acc = v.accuracy_pct;
+                            const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                            return (
+                              <TableRow key={type}>
+                                <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{type}</Badge></TableCell>
+                                <TableCell className="text-right">{v.total}</TableCell>
+                                <TableCell className="text-right">{v.correct}</TableCell>
+                                <TableCell className={`text-right font-semibold ${color}`}>
+                                  {acc != null ? `${acc}%` : "—"}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </CardContent>
                 </Card>
-              )}
+                );
+              })()}
 
               {/* Signals table */}
               <Card>
@@ -1639,70 +1694,122 @@ export default function OptionsPage() {
                   <CardDescription>{backtestSignals.length} señales registradas</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Ticker</TableHead>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead>Dirección</TableHead>
-                          <TableHead className="text-right">Precio</TableHead>
-                          <TableHead className="text-center">+1D</TableHead>
-                          <TableHead className="text-center">+3D</TableHead>
-                          <TableHead className="text-center">+7D</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {backtestSignals.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                              Sin señales registradas. Ejecuta un ciclo del agente para empezar a acumular datos.
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          backtestSignals.map((s) => (
-                            <TableRow key={s.id}>
-                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                  {backtestSignals.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">
+                      Sin señales registradas. Ejecuta un ciclo del agente para empezar a acumular datos.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Mobile: vertical cards */}
+                      <div className="flex flex-col divide-y sm:hidden">
+                        {backtestSignals.map((s) => (
+                          <div key={s.id} className="flex flex-col gap-2 px-4 py-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">{s.ticker}</span>
+                              <span className="text-xs text-muted-foreground">
                                 {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                              </TableCell>
-                              <TableCell className="font-medium">{s.ticker}</TableCell>
-                              <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
-                              <TableCell>
-                                {s.direction === "BULLISH" ? (
-                                  <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-                                    <TrendingUp className="h-3 w-3" /> BULLISH
-                                  </span>
-                                ) : (
-                                  <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
-                                    <TrendingDown className="h-3 w-3" /> BEARISH
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">{fmt(s.price_at_signal)} $</TableCell>
-                              <TableCell className="text-center">{outcomeCell(s.outcome_1d, s.price_at_1d)}</TableCell>
-                              <TableCell className="text-center">{outcomeCell(s.outcome_3d, s.price_at_3d)}</TableCell>
-                              <TableCell className="text-center">{outcomeCell(s.outcome_7d, s.price_at_7d)}</TableCell>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge>
+                              {s.direction === "BULLISH" ? (
+                                <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                                  <TrendingUp className="h-3 w-3" /> BULLISH
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
+                                  <TrendingDown className="h-3 w-3" /> BEARISH
+                                </span>
+                              )}
+                              <span className="ml-auto tabular-nums text-xs">{fmt(s.price_at_signal)} $</span>
+                            </div>
+                            <div className="flex gap-4">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">+1D</span>
+                                {outcomeCell(s.outcome_1d, s.price_at_1d)}
+                              </div>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">+3D</span>
+                                {outcomeCell(s.outcome_3d, s.price_at_3d)}
+                              </div>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">+7D</span>
+                                {outcomeCell(s.outcome_7d, s.price_at_7d)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Desktop: table */}
+                      <div className="hidden overflow-x-auto sm:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Fecha</TableHead>
+                              <TableHead>Ticker</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Dirección</TableHead>
+                              <TableHead className="text-right">Precio</TableHead>
+                              <TableHead className="text-center">+1D</TableHead>
+                              <TableHead className="text-center">+3D</TableHead>
+                              <TableHead className="text-center">+7D</TableHead>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
+                          </TableHeader>
+                          <TableBody>
+                            {backtestSignals.map((s) => (
+                              <TableRow key={s.id}>
+                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                                </TableCell>
+                                <TableCell className="font-medium">{s.ticker}</TableCell>
+                                <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
+                                <TableCell>
+                                  {s.direction === "BULLISH" ? (
+                                    <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                                      <TrendingUp className="h-3 w-3" /> BULLISH
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
+                                      <TrendingDown className="h-3 w-3" /> BEARISH
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">{fmt(s.price_at_signal)} $</TableCell>
+                                <TableCell className="text-center">{outcomeCell(s.outcome_1d, s.price_at_1d)}</TableCell>
+                                <TableCell className="text-center">{outcomeCell(s.outcome_3d, s.price_at_3d)}</TableCell>
+                                <TableCell className="text-center">{outcomeCell(s.outcome_7d, s.price_at_7d)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </>
           )}
         </TabsContent>
 
-        {/* ── Agent Chat Tab ── */}
-        <TabsContent value="agent">
-          <AgentChat />
-        </TabsContent>
-
-        {/* ── Analysis Tab ── */}
-        <TabsContent value="analysis">
-          <AnalysisTab key={analysisCycle} />
+        {/* ── IA Tab (Análisis + Agente) ── */}
+        <TabsContent value="ia">
+          <Tabs defaultValue="informe">
+            <TabsList className="mb-4">
+              <TabsTrigger value="informe">
+                <Sparkles className="mr-1 h-3.5 w-3.5" /> Informe
+              </TabsTrigger>
+              <TabsTrigger value="chat">
+                <MessageSquare className="mr-1 h-3.5 w-3.5" /> Chat
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="informe">
+              <AnalysisTab key={analysisCycle} />
+            </TabsContent>
+            <TabsContent value="chat">
+              <AgentChat />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

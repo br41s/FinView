@@ -77,15 +77,19 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         ]
         adj_val = fifo_adj_by_casilla.get(casilla)
 
-        # TR validation: find TR broker's reference amount for this casilla
+        # TR validation: sum TR broker reference amounts for this casilla. A
+        # migration year has two TR reports (pre/post), so the combined
+        # cross-broker total must be compared against their summed reference.
+        tr_refs = [
+            i.tr_reference_amount
+            for i in items
+            if i.broker == Broker.TR and i.tr_reference_amount is not None
+        ]
         tr_ref = None
         validation = None
-        for i in items:
-            if i.broker == Broker.TR and i.tr_reference_amount is not None:
-                tr_ref = i.tr_reference_amount
-                # Compare aggregated total against TR reference
-                validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
-                break
+        if tr_refs:
+            tr_ref = sum(tr_refs)
+            validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
 
         result.append(AggregatedCasillaOut(
             modelo=modelo,
@@ -326,6 +330,21 @@ def export_fiscal_data(
         "fiscal_year": fiscal_year,
         "casillas": [c.model_dump() for c in casillas],
     }
+
+
+@router.get("/fx-rate")
+def fx_rate(user: CurrentUser, currency: str, on: str):
+    """Official ECB reference rate for a currency on a date (YYYY-MM-DD).
+
+    Returns units of `currency` per 1 EUR, with ±7-day fallback for
+    weekends/holidays. 404 if the date/currency isn't cached.
+    """
+    from backend.services.exchange_rates import get_rate
+
+    rate = get_rate(currency.upper(), on)
+    if rate is None:
+        raise HTTPException(404, f"No cached ECB rate for {currency} on {on}")
+    return {"currency": currency.upper(), "date": on, "rate": float(rate), "source": "ECB"}
 
 
 @router.get("/cross-validation/{fiscal_year}", response_model=CrossValidationResult)

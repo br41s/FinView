@@ -366,3 +366,67 @@
   text-decoration: none;
   display: inline-block;
 }
+
+/* ── Mobile ── */
+@media (max-width: 767px) {
+  .hero {
+    padding: 48px 20px 40px;
+  }
+
+  .lead {
+    font-size: 16px;
+  }
+
+  .alertWrap {
+    padding: 0 20px;
+  }
+
+  .plansSection {
+    padding: 0 20px 64px;
+  }
+
+  .plansGrid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  /* PRO card appears last in HTML but should feel prominent — add top margin
+     so the "Más Popular" badge has room and doesn't clip against previous card */
+  .planCardHighlight {
+    margin-top: 8px;
+  }
+
+  .planCard {
+    padding: 32px 24px;
+  }
+
+  .planCardHighlight {
+    padding: 32px 24px;
+  }
+
+  /* No point fixing min-height when cards are full width */
+  .planDesc,
+  .planDescHighlight {
+    min-height: unset;
+  }
+
+  .faqBg {
+    padding: 48px 0;
+  }
+
+  .faqInner {
+    padding: 0 20px;
+  }
+
+  .faqAnswer {
+    padding-right: 0;
+  }
+
+  .footerCta {
+    padding: 56px 20px;
+  }
+
+  .footerCtaText {
+    font-size: 15px;
+  }
+}

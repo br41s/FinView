@@ -76,6 +76,106 @@ function ImgYoc() {
   );
 }
 
+function ImgCompensarPerdidas() {
+  return (
+    <div className={styles.postImgCompensarPerdidas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">COMPENSACIÓN BASE DEL AHORRO</text>
+        <rect x="15" y="30" width="75" height="70" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="52" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Bloque A</text>
+        <text x="52" y="58" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Ventas</text>
+        <text x="52" y="72" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−2.000 €</text>
+        <text x="52" y="86" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">saldo negativo</text>
+        <rect x="110" y="30" width="75" height="70" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="147" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Bloque B</text>
+        <text x="147" y="58" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Dividendos</text>
+        <text x="147" y="72" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">+2.500 €</text>
+        <text x="147" y="86" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">25% tope = 625 €</text>
+        <line x1="90" y1="65" x2="110" y2="65" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="3 2" markerEnd="url(#arrow)"/>
+        <defs>
+          <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+        <text x="100" y="110" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Resultado: tributas por 1.875 €</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgScripDividend() {
+  return (
+    <div className={styles.postImgScripDividend}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SCRIP DIVIDEND — 3 OPCIONES</text>
+        {/* Option A: acciones */}
+        <rect x="12" y="28" width="50" height="72" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="44" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">A</text>
+        <text x="37" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Acciones</text>
+        <text x="37" y="70" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">nuevas</text>
+        <text x="37" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">diferido</text>
+        {/* Option B: venta mercado */}
+        <rect x="75" y="28" width="50" height="72" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="100" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">B</text>
+        <text x="100" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Vender</text>
+        <text x="100" y="70" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">derechos</text>
+        <text x="100" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">gan. patrim.</text>
+        {/* Option C: cobro efectivo */}
+        <rect x="138" y="28" width="50" height="72" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="163" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">C</text>
+        <text x="163" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Efectivo</text>
+        <text x="163" y="70" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">dividendo</text>
+        <text x="163" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">casilla 29</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgPlusvalias() {
+  return (
+    <div className={styles.postImgPlusvalias}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <rect x="20" y="80" width="22" height="25" rx="2" fill="rgba(154,107,31,0.25)"/>
+        <rect x="50" y="60" width="22" height="45" rx="2" fill="rgba(154,107,31,0.35)"/>
+        <rect x="80" y="70" width="22" height="35" rx="2" fill="rgba(154,107,31,0.2)"/>
+        <rect x="110" y="35" width="22" height="70" rx="2" fill="var(--fv-ochre)"/>
+        <rect x="140" y="50" width="22" height="55" rx="2" fill="rgba(154,107,31,0.3)"/>
+        <line x1="10" y1="108" x2="175" y2="108" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="4 3"/>
+        <polyline
+          points="30,85 60,55 90,65 120,30 150,45"
+          stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+        <circle cx="120" cy="30" r="3" fill="var(--fv-ochre)"/>
+      </svg>
+    </div>
+  );
+}
+
+function ImgModelo720() {
+  return (
+    <div className={styles.postImgModelo720}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">MODELO 720 — 3 BLOQUES</text>
+        <rect x="12" y="28" width="50" height="72" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="44" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">A</text>
+        <text x="37" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Cuentas</text>
+        <text x="37" y="70" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">50K€</text>
+        <text x="37" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">bancos</text>
+        <rect x="75" y="28" width="50" height="72" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="100" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">B</text>
+        <text x="100" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Valores</text>
+        <text x="100" y="70" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">50K€</text>
+        <text x="100" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">ETFs</text>
+        <rect x="138" y="28" width="50" height="72" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="163" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">C</text>
+        <text x="163" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Inmuebles</text>
+        <text x="163" y="70" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">50K€</text>
+        <text x="163" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">extranjero</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -88,7 +188,228 @@ type Post = {
   Image: () => React.ReactElement;
 };
 
+function ImgFondosVsEtf() {
+  return (
+    <div className={styles.postImgFondosVsEtf}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">FONDO vs ETF — TRASPASO</text>
+        {/* Fund box */}
+        <rect x="15" y="30" width="70" height="70" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="50" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Fondo</text>
+        <text x="50" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Traspaso</text>
+        <text x="50" y="76" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0 €</text>
+        <text x="50" y="88" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">sin tributar</text>
+        {/* Arrow */}
+        <line x1="85" y1="65" x2="105" y2="65" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* ETF box */}
+        <rect x="115" y="30" width="70" height="70" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="150" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ETF</text>
+        <text x="150" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Venta</text>
+        <text x="150" y="76" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">21%</text>
+        <text x="150" y="88" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">tributa plusvalía</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgDividendosExtranjeros() {
+  return (
+    <div className={styles.postImgDividendosExtranjeros}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DIVIDENDO BRUTO vs NETO</text>
+        {/* Gross dividend bar */}
+        <rect x="20" y="40" width="36" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="38" y="58" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Bruto</text>
+        <text x="38" y="72" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">100€</text>
+        {/* Retention arrow */}
+        <line x1="56" y1="65" x2="72" y2="65" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        <text x="64" y="60" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">30%</text>
+        {/* US tax */}
+        <rect x="72" y="50" width="36" height="40" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="90" y="66" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">EE.UU.</text>
+        <text x="90" y="80" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">−30€</text>
+        {/* Arrow to Spain */}
+        <line x1="108" y1="65" x2="124" y2="65" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        {/* Spain tax */}
+        <rect x="124" y="40" width="36" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="142" y="58" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">España</text>
+        <text x="142" y="72" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">100€</text>
+        <text x="142" y="82" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">base ahorro</text>
+        {/* Bottom annotation */}
+        <text x="100" y="108" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Sin W-8BEN: pagas 30€ + 19€ = 49€ por 100€ de dividendo</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgReinvertirDividendos() {
+  return (
+    <div className={styles.postImgReinvertirDividendos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">REINVERTIR vs COBRAR</text>
+        {/* Money in */}
+        <rect x="10" y="30" width="50" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="35" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Cobrar</text>
+        <text x="35" y="62" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">2.000€</text>
+        <text x="35" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">−19% IRPF</text>
+        <text x="35" y="86" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1.620€</text>
+        {/* Arrow */}
+        <line x1="60" y1="60" x2="80" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Reinvest box */}
+        <rect x="80" y="30" width="50" height="60" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="105" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Fondo</text>
+        <text x="105" y="62" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">2.000€</text>
+        <text x="105" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">acumulación</text>
+        <text x="105" y="86" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">diferido</text>
+        {/* Result */}
+        <rect x="140" y="30" width="50" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="165" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">20 años</text>
+        <text x="165" y="62" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">+38%</text>
+        <text x="165" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">vs cobrar</text>
+        <text x="165" y="86" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">diferimiento</text>
+      </svg>
+    </div>
+  );
+}
+
+
+function ImgPlanesPensiones() {
+  return (
+    <div className={styles.postImgPlanesPensiones}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">PLAN DE PENSIONES — FLUJO FISCAL</text>
+        {/* Contribution box */}
+        <rect x="10" y="30" width="50" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="35" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Aportas</text>
+        <text x="35" y="62" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">1.500€</text>
+        <text x="35" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">reducción</text>
+        {/* Arrow */}
+        <line x1="60" y1="60" x2="80" y2="60" stroke="var(--fv-ochre)" strokeWidth="1.5" markerEnd="url(#ppArrow)"/>
+        {/* Growth box */}
+        <rect x="80" y="30" width="50" height="60" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="105" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Crece</text>
+        <text x="105" y="62" fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">25 años</text>
+        <text x="105" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">diferido</text>
+        {/* Arrow to rescue */}
+        <line x1="130" y1="60" x2="150" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Rescue box */}
+        <rect x="150" y="30" width="40" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="170" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Rescate</text>
+        <text x="170" y="62" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">70K€</text>
+        <text x="170" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">trabajo</text>
+        <defs>
+          <marker id="ppArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
+function ImgSocimi() {
+  return (
+    <div className={styles.postImgSocimi}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SOCIMI — FISCALIDAD IRPF</text>
+        <rect x="18" y="40" width="36" height="60" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="36" y="56" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">SOCIMI</text>
+        <text x="36" y="70" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">0% IS</text>
+        <text x="36" y="82" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">sociedad</text>
+        <line x1="54" y1="70" x2="74" y2="70" stroke="var(--fv-ochre)" strokeWidth="1.5" markerEnd="url(#socimiArrow)"/>
+        <rect x="78" y="40" width="52" height="60" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="104" y="56" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Inversor</text>
+        <text x="104" y="70" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">19%</text>
+        <text x="104" y="82" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retenci&#243;n</text>
+        <text x="104" y="92" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">dividendo</text>
+        <line x1="130" y1="70" x2="150" y2="70" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        <rect x="154" y="40" width="30" height="60" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="169" y="56" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
+        <text x="169" y="70" fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">19-28%</text>
+        <text x="169" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">base</text>
+        <text x="169" y="92" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">ahorro</text>
+        <defs>
+          <marker id="socimiArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  );
+}
 const POSTS: Post[] = [
+  {
+    slug: 'planes-pensiones-irpf',
+    tag: 'Fiscal',
+    date: '17 jun 2026',
+    readTime: '18 min',
+    title: 'Planes de pensiones en el IRPF: guía completa 2026 — límites, fiscalidad al rescate y ejemplos',
+    excerpt: 'Todo sobre los planes de pensiones en el IRPF: límites de aportación (1.500 €, autónomos, planes de empleo, cónyuge), fiscalidad al rescate como rendimiento del trabajo, PPA vs plan vs fondo de inversión y errores que te cuestan dinero.',
+    Image: ImgPlanesPensiones,
+  },
+  {
+    slug: 'socimi-dividendos-irpf-espana',
+    tag: 'Fiscal',
+    date: '16 jun 2026',
+    readTime: '15 min',
+    title: 'SOCIMIs en España: guía completa de fiscalidad en el IRPF para el inversor de dividendos',
+    excerpt: 'Cómo tributan los dividendos de SOCIMIs en el IRPF: retención del 19%, gravamen especial del 19% para socios relevantes, régimen al 0% en Impuesto sobre Sociedades, comparativa fiscal con acciones y errores frecuentes al declarar.',
+    Image: ImgSocimi,
+  },
+  {
+    slug: 'reinvertir-dividendos-vs-cobrar-efectivo',
+    tag: 'Estrategia',
+    date: '15 jun 2026',
+    readTime: '14 min',
+    title: 'Reinvertir dividendos o cobrarlos en efectivo: qué es fiscalmente mejor en España',
+    excerpt: 'Análisis con números reales sobre si conviene reinvertir dividendos (DRIP), usar fondos de acumulación o cobrar en efectivo. Fiscalidad IRPF, interés compuesto, ejemplos con 50.000€ y cuál elegir según tu situación.',
+    Image: ImgReinvertirDividendos,
+  },
+  {
+    slug: 'dividendos-extranjeros-doble-imposicion-irpf',
+    tag: 'Fiscal',
+    date: '15 jun 2026',
+    readTime: '16 min',
+    title: 'Dividendos extranjeros en el IRPF: cómo recuperar la doble imposición',
+    excerpt: 'Guía práctica para declarar dividendos de acciones extranjeras en España: casilla 0029 y 0588, formulario W-8BEN, retenciones por país, exceso reclamable y ejemplos con IBKR, DeGiro y eToro.',
+    Image: ImgDividendosExtranjeros,
+  },
+  {
+    slug: 'fondos-vs-etf-dividendos-espana',
+    tag: 'Fiscal',
+    date: '14 jun 2026',
+    readTime: '15 min',
+    title: 'Fondos de inversión vs ETFs de dividendos: la diferencia fiscal que te está costando dinero',
+    excerpt: 'La diferencia fiscal entre fondos y ETFs de dividendos en España puede suponer miles de euros a lo largo de los años. Traspasos, tributación, ejemplos reales y cuál elegir según tu estrategia.',
+    Image: ImgFondosVsEtf,
+  },
+  {
+    slug: 'scrip-dividend-irpf-espana',
+    tag: 'Fiscal',
+    date: '13 jul 2026',
+    readTime: '14 min',
+    title: 'Scrip dividend en España: qué es, cómo funciona y fiscalidad en el IRPF',
+    excerpt: 'Guía completa sobre el scrip dividend o dividendo flexible: las 3 opciones del accionista (acciones nuevas, vender derechos o cobro en efectivo), tratamiento fiscal distinto para cada una, ejemplos con Telefónica y Repsol, y errores que te pueden costar dinero.',
+    Image: ImgScripDividend,
+  },
+  {
+    slug: 'modelo-720-bienes-extranjero',
+    tag: 'Fiscal',
+    date: '7 jul 2026',
+    readTime: '16 min',
+    title: 'Modelo 720: guía completa para declarar bienes en el extranjero',
+    excerpt: 'Todo sobre el Modelo 720: quién está obligado, los tres bloques (cuentas, valores e inmuebles), umbrales de 50.000 €, plazos, sanciones tras la sentencia del TJUE y cómo declarar tus posiciones en brokers extranjeros como IBKR, DeGiro o eToro.',
+    Image: ImgModelo720,
+  },
+  {
+    slug: 'plusvalias-espana-irpf-guia',
+    tag: 'Fiscal',
+    date: '18 jun 2026',
+    readTime: '14 min',
+    title: 'Cómo tributan las plusvalías en España: guía completa IRPF',
+    excerpt: 'Guía definitiva sobre la fiscalidad de las plusvalías en España: tributación de ganancias patrimoniales por venta de acciones, compensación de pérdidas, regla de los dos meses, FIFO, plazos de arrastre y ejemplos prácticos para la Renta.',
+    Image: ImgPlusvalias,
+  },
   {
     slug: 'dgi',
     tag: 'Estrategia',
@@ -99,21 +420,21 @@ const POSTS: Post[] = [
     Image: ImgDgi,
   },
   {
-    slug: 'declarar-dividendos-espana',
+    slug: 'declarar-dividendos-espana-guia-completa',
     tag: 'Fiscal',
-    date: '2 abr 2025',
-    readTime: '7 min',
-    title: 'Cómo declarar los dividendos en España: guía 2025',
-    excerpt: 'Cada dividendo que cobras tiene implicaciones fiscales en España. Te explicamos qué casillas del Modelo 100 debes rellenar, cómo funciona la doble imposición y qué retenciones puedes deducir.',
+    date: '7 jun 2026',
+    readTime: '12 min',
+    title: 'Cómo declarar los dividendos en España: guía completa',
+    excerpt: 'Guía definitiva para declarar dividendos en España: casillas del Modelo 100, doble imposición internacional, retenciones por país, errores frecuentes, ejemplos prácticos y todo lo que necesitas para la Renta.',
     Image: ImgIrpf,
   },
   {
     slug: 'yield-on-cost',
     tag: 'Métricas',
-    date: '15 mar 2025',
-    readTime: '4 min',
+    date: '15 jun 2026',
+    readTime: '12 min',
     title: 'Yield on cost: la métrica que los grandes inversores de dividendos miden',
-    excerpt: 'El yield on price te dice lo que cobras hoy. El yield on cost te dice lo que cobras respecto a lo que pagaste. Con el tiempo, esta diferencia se convierte en la historia real de tu inversión.',
+    excerpt: 'Guía completa sobre el Yield on Cost (YOC): qué es, cómo se calcula, ejemplos reales con Coca-Cola, Realty Income, Apple y Johnson & Johnson, comparativa con otras métricas, errores fiscales en España y cómo usarlo para evaluar tu cartera de dividendos.',
     Image: ImgYoc,
   },
 ];

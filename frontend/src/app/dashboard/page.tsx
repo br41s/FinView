@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { AppSidebar, type View } from "@/components/app-sidebar";
@@ -55,7 +56,15 @@ import {
   LineChart,
   CalendarRange,
   AlertCircle,
+  Info,
 } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { formatEur } from "@/lib/format";
 
 function ErrorState({
   message,
@@ -105,6 +114,40 @@ function EmptyState({
   );
 }
 
+// C3: compact IRPF summary card — shown above Casillas and Ganancias views
+const IRPF_BOXES = [
+  { n: 27,  label: "Intereses",        cls: "text-blue-500"    },
+  { n: 29,  label: "Dividendos",       cls: "text-green-500"   },
+  { n: 332, label: "Ganancias capital", cls: "text-emerald-500" },
+  { n: 337, label: "Pérdidas capital",  cls: "text-red-500"     },
+] as const;
+
+function IrpfSummary({ casillas }: Readonly<{ casillas: Casilla[] }>) {
+  if (casillas.length === 0) return null;
+  const get = (n: number) => casillas.find((c) => c.casilla === n);
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
+      {IRPF_BOXES.map(({ n, label, cls }) => {
+        const c = get(n);
+        return (
+          <Card key={n}>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <CardTitle className="text-xs text-muted-foreground">
+                Casilla {n} · {label}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <p className={`text-base font-bold tabular-nums ${cls}`}>
+                {c ? formatEur(c.amount_eur) : "—"}
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
 const viewTitles: Record<View, string> = {
   graficas: "Dashboard",
   rendimiento: "Rendimiento",
@@ -128,6 +171,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [filterCountry, setFilterCountry] = useState<string | null>(null);
 
   // Chart data
   const [divByCountry, setDivByCountry] = useState<DividendsByCountry[]>([]);
@@ -258,6 +302,14 @@ export default function Home() {
     loadData(selectedYear);
   }, [loadData, selectedYear]);
 
+  // N2: navigate to #importar from QuickNav or external link
+  useEffect(() => {
+    if (window.location.hash === "#importar") {
+      setView("importar");
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
   const showFiscal = selectedYear !== null;
 
   // Reset to non-fiscal view when switching to "Todos los años"
@@ -266,6 +318,9 @@ export default function Home() {
       setView("graficas");
     }
   }, [showFiscal, view]);
+
+  // Clear country filter when year changes
+  useEffect(() => { setFilterCountry(null); }, [selectedYear]);
 
   const counts = {
     rendimiento: dividendYield.filter(
@@ -348,6 +403,13 @@ export default function Home() {
           {/* Dashboard (charts + stats) */}
           {view === "graficas" && hasData && (
             <div className="space-y-6">
+              {/* C4: fiscal year context label */}
+              {showFiscal && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Info className="h-3.5 w-3.5 shrink-0" />
+                  Datos del año fiscal {selectedYear}
+                </div>
+              )}
               <StatsCards
                 stats={stats}
                 withholdings={withholdings}
@@ -356,7 +418,36 @@ export default function Home() {
               <div
                 className={`grid grid-cols-1 ${showFiscal ? "lg:grid-cols-2" : ""} gap-6`}
               >
-                <DividendsByCountryChart data={divByCountry} />
+                <div className="space-y-2">
+                  <DividendsByCountryChart
+                    data={divByCountry}
+                    activeCountry={filterCountry}
+                    onCountryClick={setFilterCountry}
+                  />
+                  {filterCountry && (
+                    <div className="flex items-center gap-2 px-1 text-sm">
+                      <span className="text-muted-foreground">Filtro activo:</span>
+                      <Badge variant="secondary" className="gap-1">
+                        {filterCountry}
+                        <button
+                          onClick={() => setFilterCountry(null)}
+                          className="ml-0.5 opacity-60 hover:opacity-100"
+                          aria-label="Quitar filtro"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setView("dividendos")}
+                      >
+                        Ver dividendos →
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 {showFiscal && <PatrimonioChart data={patrimonio} />}
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -393,11 +484,14 @@ export default function Home() {
           {view === "casillas" &&
             hasData &&
             (casillas.length > 0 ? (
-              <CasillasTable
-                casillas={casillas}
-                dividendsByCountry={divByCountry}
-                fiscalYear={selectedYear}
-              />
+              <>
+                <IrpfSummary casillas={casillas} />
+                <CasillasTable
+                  casillas={casillas}
+                  dividendsByCountry={divByCountry}
+                  fiscalYear={selectedYear}
+                />
+              </>
             ) : (
               <EmptyState
                 icon={FileText}
@@ -410,7 +504,27 @@ export default function Home() {
           {view === "dividendos" &&
             hasData &&
             (dividends.length > 0 ? (
-              <DividendsTable dividends={dividends} dividendYield={dividendYield} />
+              <>
+                {filterCountry && (
+                  <div className="flex items-center gap-2 mb-4 text-sm">
+                    <span className="text-muted-foreground">País:</span>
+                    <Badge variant="secondary" className="gap-1">
+                      {filterCountry}
+                      <button
+                        onClick={() => setFilterCountry(null)}
+                        className="ml-0.5 opacity-60 hover:opacity-100"
+                        aria-label="Quitar filtro"
+                      >
+                        ×
+                      </button>
+                    </Badge>
+                  </div>
+                )}
+                <DividendsTable
+                  dividends={filterCountry ? dividends.filter((d) => d.country === filterCountry) : dividends}
+                  dividendYield={dividendYield}
+                />
+              </>
             ) : (
               <EmptyState
                 icon={Coins}
@@ -423,12 +537,15 @@ export default function Home() {
           {view === "ganancias" &&
             hasData &&
             (gains.length > 0 ? (
-              <CapitalGainsTable
-                gains={gains}
-                crossBrokerLots={crossBrokerLots}
-                fifoAdjustments={fifoAdjustments}
-                optionAssignments={optionAssignments}
-              />
+              <>
+                <IrpfSummary casillas={casillas} />
+                <CapitalGainsTable
+                  gains={gains}
+                  crossBrokerLots={crossBrokerLots}
+                  fifoAdjustments={fifoAdjustments}
+                  optionAssignments={optionAssignments}
+                />
+              </>
             ) : (
               <EmptyState
                 icon={LineChart}
@@ -443,7 +560,10 @@ export default function Home() {
             (secondaryLoading && yearlyComparison.length === 0 ? (
               <DashboardSkeleton />
             ) : yearlyComparison.length > 0 ? (
-              <YearlyComparisonView data={yearlyComparison} />
+              <YearlyComparisonView
+                data={yearlyComparison}
+                onYearSelect={(year) => { setSelectedYear(year); setView("graficas"); }}
+              />
             ) : (
               <EmptyState
                 icon={CalendarRange}

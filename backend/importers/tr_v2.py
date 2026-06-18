@@ -797,6 +797,7 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
         holdings=holdings,
         casillas_modelo_100=casillas_m100,
         casillas_modelo_714=casillas_m714,
+        source_variant="es_branch",
     )
 
 

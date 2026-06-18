@@ -17,6 +17,41 @@ All notable changes to FinView are documented here.
   Cloud Run (unspoofable by client).
 
 ### Added
+- **Catalog search — NAV + fund size + sort/filter** — the `/alt-investments` CNMV
+  search now enriches each fund with its latest **NAV per unit** and **fund size
+  (AUM)** from the CNMV `FONDMENS` monthly file (same ZIP, no extra download). Results
+  show NAV and fund size; you can **sort** by patrimonio/NAV and set a **minimum fund
+  size**, and **browse** (e.g. largest funds) without typing a name. New `/search`
+  params: `sort` (`fund_size_desc`|`nav_desc`|`nav_asc`), `min_fund_size`,
+  `max_fund_size`. NAV/size are the only fields any free Spanish source publishes — PE
+  metrics (DPI/TVPI/IRR/vintage/commitment/hurdle) remain manual on positions. NAV/size
+  columns added to `alt_investment_catalog` via the `ensure_columns()` additive migration.
+- **Alt-investments search (CNMV)** — a search bar at the top of `/alt-investments`
+  finds regulated Spanish investment funds by name or ISIN and pre-fills the add
+  form (name, type, gestora, ISIN). Backed by a new `alt_investment_catalog` table
+  populated from the free CNMV "información individual de IIC" monthly registry
+  (`services/cnmv_catalog.py`): ~3,000 share-class ISINs across ~1,400 funds,
+  refreshed in a background thread on startup when stale (>7 days). Endpoint
+  `GET /alt-investments/search?q=&type=`. Amounts stay manual — the catalog only
+  supplies identity. (SICAVs, real-estate IICs, hedge funds and PE/VC live in
+  separate CNMV registries — deferred to later slices.)
+- **Additive column migration on startup** — `database.ensure_columns()` adds
+  columns to tables that already exist in production (which `create_all` cannot
+  alter), starting with `alt_investments.isin`. Idempotent, dialect-safe.
+- **Alternative investments tracker** — new `/alt-investments` page and
+  `/api/alt-investments` endpoints to manually track private-banking positions
+  (Private Equity, Venture Capital, Real Estate, Hedge Fund, Structured Product,
+  Other). Stores committed/called/distributed/NAV aggregates per position and
+  derives the standard PE metrics — TVPI, DPI, RVPI, unfunded commitment — plus
+  a `/summary` consolidation with NAV-weighted allocation by type, geography and
+  currency. UI has summary cards, allocation bars, a positions table and an
+  inline add/edit form. Migrated as an MVP from the OptionsAI "coming soon" spec.
+- **ECB exchange-rate service** — `services/exchange_rates.py` caches official
+  ECB EUR reference rates in a new `exchange_rates` table as an IRPF fallback for
+  when a broker file omits the rate or for manual entries. Syncs in a background
+  thread on startup (full history first boot, then 90-day feed, skipped if
+  fresh); `get_rate()` is DB-only with ±7-day weekend/holiday fallback. Lookup
+  via `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`. Ported from OptionsAI.
 - **User-visible error states** on all 5 main pages (dashboard, portfolio,
   options, zonas-clave, billing) with inline Retry buttons. Previously all fetch
   errors were swallowed silently to the console.

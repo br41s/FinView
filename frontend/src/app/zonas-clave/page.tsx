@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  ChevronDown,
   RefreshCw,
   Target,
   TrendingDown,
@@ -108,11 +109,26 @@ export default function ZonasClavePage() {
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>("1Y");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [schedulerRunning, setSchedulerRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [portfolioSuggestions, setPortfolioSuggestions] = useState<{ ticker: string; name: string }[]>([]);
+
+  // U1: load portfolio tickers for quick-add suggestions (non-blocking)
+  useEffect(() => {
+    api.portfolio
+      .positions(true)
+      .then((pos) => {
+        const p = pos as { ticker: string | null; isin: string; name: string }[];
+        setPortfolioSuggestions(
+          p.filter((x) => x.ticker).map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name })),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   // Initial load
   useEffect(() => {
@@ -131,9 +147,12 @@ export default function ZonasClavePage() {
         }
         setAnalyses(map);
         setSchedulerRunning(status.running);
-        if (wl.length > 0 && !selectedTicker) {
-          setSelectedTicker(wl[0].ticker);
-        }
+        // N5: auto-select from URL param (?ticker=X), fallback to first item
+        const params = new URLSearchParams(window.location.search);
+        const urlTicker = params.get("ticker")?.toUpperCase();
+        const match = urlTicker ? wl.find((w) => w.ticker.toUpperCase() === urlTicker) : null;
+        const tickerToSelect = match ? match.ticker : (wl[0]?.ticker ?? null);
+        if (!selectedTicker) setSelectedTicker(tickerToSelect);
       })
       .catch((e) => {
         console.error("Failed to load Zonas Clave:", e);
@@ -263,24 +282,21 @@ export default function ZonasClavePage() {
         <div className="flex items-center gap-3">
           <QuickNav current="/zonas-clave" />
           <Button
-            variant="outline"
-            size="sm"
+            variant="default"
+            size="icon"
             onClick={handleRefreshAll}
             disabled={watchlist.length === 0 || analyzing.size > 0}
+            title="Actualizar todos"
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
-            Actualizar
+            <RefreshCw className={`h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
           </Button>
           <Button
             variant={schedulerRunning ? "destructive" : "default"}
-            size="sm"
+            size="icon"
             onClick={handleToggleScheduler}
+            title={schedulerRunning ? "Parar actualización automática" : "Activar actualización automática (24h)"}
           >
-            {schedulerRunning ? (
-              <><Square className="mr-2 h-4 w-4" /> Parar auto</>
-            ) : (
-              <><Play className="mr-2 h-4 w-4" /> Auto (24h)</>
-            )}
+            {schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
         </div>
       </div>
@@ -321,13 +337,28 @@ export default function ZonasClavePage() {
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
           {/* Left — ticker list */}
-          <Card className="h-fit">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Valores</CardTitle>
-            </CardHeader>
-            <CardContent className="p-2">
-              <div className="space-y-1">
-                {watchlist.map((item) => {
+          <div className="space-y-2">
+            {/* Mobile toggle — hidden on lg+ */}
+            <button
+              className="lg:hidden w-full flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm font-medium shadow-sm ring-1 ring-foreground/10"
+              onClick={() => setSidebarOpen((p) => !p)}
+            >
+              <span>
+                {watchlist.find((w) => w.ticker === selectedTicker)
+                  ? tickerLabel(watchlist.find((w) => w.ticker === selectedTicker)!)
+                  : "Seleccionar valor"}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 transition-transform text-muted-foreground ${sidebarOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            <Card className={`h-fit ${sidebarOpen ? "" : "hidden"} lg:block`}>
+            <CardContent className="p-2 pt-3">
+              {(() => {
+                const analyzedItems = watchlist.filter((w) => analyses[w.ticker]);
+                const unanalyzedItems = watchlist.filter((w) => !analyses[w.ticker]);
+                const renderRow = (item: ZcWatchlistItem) => {
                   const a = analyses[item.ticker];
                   const isSelected = selectedTicker === item.ticker;
                   const isPending = analyzing.has(item.ticker);
@@ -339,7 +370,10 @@ export default function ZonasClavePage() {
                           ? "bg-primary text-primary-foreground"
                           : "hover:bg-muted"
                       }`}
-                      onClick={() => setSelectedTicker(item.ticker)}
+                      onClick={() => {
+                        setSelectedTicker(item.ticker);
+                        setSidebarOpen(false);
+                      }}
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
@@ -360,6 +394,18 @@ export default function ZonasClavePage() {
                         {isPending && (
                           <RefreshCw className="h-3 w-3 animate-spin opacity-60" />
                         )}
+                        <button
+                          className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
+                            isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Ver opciones"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/options?ticker=${encodeURIComponent(item.ticker)}`);
+                          }}
+                        >
+                          <Activity className="h-3 w-3" />
+                        </button>
                         <button
                           className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
                             isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
@@ -387,10 +433,65 @@ export default function ZonasClavePage() {
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                };
+
+                return (
+                  <div className="space-y-1">
+                    {analyzedItems.length > 0 && (
+                      <>
+                        <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Analizados
+                        </p>
+                        {analyzedItems.map((item) => renderRow(item))}
+                      </>
+                    )}
+                    {unanalyzedItems.length > 0 && (
+                      <>
+                        {analyzedItems.length > 0 && <div className="my-1 border-t" />}
+                        <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Pendiente
+                        </p>
+                        {unanalyzedItems.map((item) => renderRow(item))}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Portfolio quick-add suggestions */}
+              {(() => {
+                const watchlistSet = new Set(watchlist.map((w) => w.ticker.toUpperCase()));
+                const suggestions = portfolioSuggestions.filter((p) => !watchlistSet.has(p.ticker));
+                if (suggestions.length === 0) return null;
+                return (
+                  <div className="mt-3 border-t border-border pt-3 px-1">
+                    <p className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+                      Sin analizar
+                    </p>
+                    <div className="flex flex-wrap gap-1 px-1">
+                      {suggestions.map(({ ticker, name }) => (
+                        <button
+                          key={ticker}
+                          title={name}
+                          onClick={() =>
+                            api.zonasClav.addTicker(ticker, name).then(async () => {
+                              const wl = await api.zonasClav.watchlist();
+                              setWatchlist(wl);
+                              setSelectedTicker(ticker);
+                            })
+                          }
+                          className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-xs font-medium transition-colors hover:bg-primary hover:text-primary-foreground hover:border-primary cursor-pointer"
+                        >
+                          + {ticker}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
-          </Card>
+            </Card>
+          </div>
 
           {/* Right — chart + details */}
           <div className="space-y-4">

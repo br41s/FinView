@@ -124,7 +124,6 @@ def notify_alerts(alerts: list[dict]) -> None:
 
     # Build summary
     high = [a for a in alerts if a.get("severity") == "HIGH"]
-    medium = [a for a in alerts if a.get("severity") == "MEDIUM"]
 
     title = f"⚡ {len(alerts)} Options Alerts"
     lines = []

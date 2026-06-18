@@ -288,6 +288,98 @@ export async function resolveIssue(
   return res.json();
 }
 
+// ── Alternative Investments types ────────────────────────────────────
+
+export type AltInvestmentType =
+  | "PRIVATE_EQUITY"
+  | "VENTURE_CAPITAL"
+  | "REAL_ESTATE"
+  | "HEDGE_FUND"
+  | "STRUCTURED_PRODUCT"
+  | "OTHER";
+
+export type AltInvestmentStatus = "ACTIVE" | "REALIZED";
+
+export interface AltInvestment {
+  id: number;
+  name: string;
+  type: AltInvestmentType;
+  status: AltInvestmentStatus;
+  manager: string;
+  isin: string | null;
+  vintage_year: number | null;
+  geography: string;
+  currency: string;
+  committed_capital: number;
+  called_capital: number;
+  distributed_capital: number;
+  current_nav: number;
+  notes: string;
+  unfunded: number;
+  total_value: number;
+  tvpi: number | null;
+  dpi: number | null;
+  rvpi: number | null;
+}
+
+export interface AltInvestmentInput {
+  name: string;
+  type: AltInvestmentType;
+  status?: AltInvestmentStatus;
+  manager?: string;
+  isin?: string | null;
+  vintage_year?: number | null;
+  geography?: string;
+  currency?: string;
+  committed_capital?: number;
+  called_capital?: number;
+  distributed_capital?: number;
+  current_nav?: number;
+  notes?: string;
+}
+
+export interface AltAllocationSlice {
+  label: string;
+  value: number;
+  pct: number;
+}
+
+export interface AltCatalogResult {
+  name: string;
+  type: AltInvestmentType;
+  manager: string;
+  isin: string | null;
+  source: string;
+  nav: number | null;
+  fund_size: number | null;
+  data_date: string | null;
+}
+
+export type AltCatalogSort = "name" | "fund_size_desc" | "nav_desc" | "nav_asc";
+
+export interface AltCatalogQuery {
+  q?: string;
+  type?: AltInvestmentType;
+  min_fund_size?: number;
+  sort?: AltCatalogSort;
+}
+
+export interface AltSummary {
+  count: number;
+  total_committed: number;
+  total_called: number;
+  total_distributed: number;
+  total_nav: number;
+  total_unfunded: number;
+  total_value: number;
+  overall_tvpi: number | null;
+  overall_dpi: number | null;
+  overall_rvpi: number | null;
+  by_type: AltAllocationSlice[];
+  by_geography: AltAllocationSlice[];
+  by_currency: AltAllocationSlice[];
+}
+
 export const api = {
   dashboard: (year?: number) =>
     fetchCached(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
@@ -687,6 +779,50 @@ export const api = {
       const res = await fetch(`${BASE}/geo/scheduler/stop`, { method: "POST", headers });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json();
+    },
+  },
+
+  // Alternative investments (private banking)
+  altInvestments: {
+    list: () => fetchJSON<AltInvestment[]>("/alt-investments/"),
+    summary: () => fetchJSON<AltSummary>("/alt-investments/summary"),
+    search: (params: AltCatalogQuery) =>
+      fetchJSON<AltCatalogResult[]>(
+        `/alt-investments/search${qs({
+          q: params.q,
+          type: params.type,
+          min_fund_size: params.min_fund_size,
+          sort: params.sort,
+          limit: 20,
+        })}`,
+      ),
+    create: async (data: AltInvestmentInput) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/alt-investments/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<AltInvestment>;
+    },
+    update: async (id: number, data: Partial<AltInvestmentInput>) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/alt-investments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<AltInvestment>;
+    },
+    delete: async (id: number) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/alt-investments/${id}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
     },
   },
 };

@@ -119,6 +119,9 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `options_agent_logs` | Log de cada ciclo del agente |
 | `zonas_clave_watchlist` | Tickers en watchlist de Zonas Clave por usuario |
 | `zonas_clave_analyses` | Análisis técnico calculado por ticker (zonas, RSI, MACD, precio) |
+| `alt_investments` | Posiciones de inversiones alternativas (banca privada) por usuario |
+| `alt_investment_catalog` | Catálogo CNMV de IIC (1 fila por ISIN de clase) para el buscador |
+| `exchange_rates` | Tipos de cambio de referencia del BCE (cache, unique por fecha+divisa) |
 
 ### Orden de borrado (FK constraints)
 
@@ -304,14 +307,14 @@ ZcWatchlistItem (DB)
 
 ### QuickNav (`frontend/src/components/QuickNav.tsx`)
 
-Barra de 4 iconos de acceso rápido presente en todas las páginas internas.  
+Barra de 5 iconos de acceso rápido presente en todas las páginas internas.  
 Acepta la prop `current: QuickNavPage` (literal de la ruta activa) para resaltar el icono correspondiente.
 
 ```tsx
 <QuickNav current="/portfolio" />
 ```
 
-Destinos fijos: `/dashboard`, `/portfolio`, `/options`, `/zonas-clave`.  
+Destinos fijos: `/dashboard`, `/portfolio`, `/options`, `/zonas-clave`, `/alt-investments`.  
 Usa `TooltipTrigger` de `@base-ui/react/tooltip` para mostrar el nombre al hover.
 
 ### Portfolio position detail
@@ -414,7 +417,49 @@ En `frontend/src/components/FileUpload.tsx`:
 
 ---
 
-## 12. Troubleshooting
+## 12. Inversiones Alternativas y tipos de cambio
+
+### Inversiones Alternativas (`backend/api/alt_investments.py`)
+
+Tracker manual de posiciones de banca privada (PE/VC/RE, Hedge Fund, Producto Estructurado, Otro). MVP sin IA ni importación.
+
+- **Modelo `AltInvestment`** — una fila por posición, con los flujos como agregados (`committed_capital`, `called_capital`, `distributed_capital`, `current_nav`) más `type`, `status`, `manager`, `vintage_year`, `geography`, `currency`, `notes`. No hay sub-tabla de movimientos.
+- **Métricas derivadas** (calculadas en cada respuesta, nunca almacenadas): TVPI = (distribuido + NAV) / called, DPI = distribuido / called, RVPI = NAV / called, unfunded = comprometido − called. Todas `None` cuando called = 0.
+- Las tablas nuevas se crean con `Base.metadata.create_all` al arrancar (no requieren Alembic para altas).
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/alt-investments/` | Listar posiciones (con métricas por fila) |
+| `GET` | `/alt-investments/summary` | Consolidación + asignación por tipo/geografía/divisa (ponderada por NAV) |
+| `GET` | `/alt-investments/search` | Buscar/explorar el catálogo CNMV (`q`, `type`, `sort`, `min_fund_size`, `max_fund_size`, `limit`); incluye NAV y tamaño del fondo |
+| `POST` | `/alt-investments/` | Crear posición |
+| `PATCH` | `/alt-investments/{id}` | Actualizar posición |
+| `DELETE` | `/alt-investments/{id}` | Eliminar posición |
+
+> Columnas añadidas a tablas ya desplegadas (`alt_investments.isin`; `alt_investment_catalog.nav`, `fund_size`, `data_date`): como `create_all` no altera tablas existentes y no hay Alembic, se registran en `database._ADDITIVE_COLUMNS` y `ensure_columns()` (llamado tras `create_all` en `app.py`) las añade de forma idempotente al arrancar. Cualquier columna nueva sobre una tabla ya desplegada debe seguir este patrón.
+
+### Buscador — catálogo CNMV (`backend/services/cnmv_catalog.py`)
+
+Da de alta fondos españoles regulados buscando por nombre o ISIN y pre-rellena el formulario (solo identidad: nombre, tipo, gestora, ISIN; importes manuales).
+
+- **Fuente**: registro mensual gratuito "información individual de IIC" de la CNMV (XML dentro de ZIP, sin auth). Flujo: página del año → BeautifulSoup del último enlace `lnkZip` (token opaco `verdocumento/ver?e=`) → `_download_zip_members` lee dos XML (1 reintento ante caída transitoria): **FONDREGISTRO** (identidad) → `_parse_registry`, una fila en `alt_investment_catalog` por ISIN de clase; **FONDMENS** (NAV/patrimonio) → `_parse_mens`, fusionado por ISIN.
+- **Enriquecimiento**: `nav` = último VL diario (`VL_DiaN`) de la clase; `fund_size` = suma del último `Patrimonio_DiaN` de todas las clases del fondo; `data_date` del `FechaDatos` raíz. Columnas añadidas vía `_ADDITIVE_COLUMNS` / `ensure_columns()` (la tabla ya existe en prod).
+- `refresh_iic_catalog()` hace upsert del catálogo; corre en un hilo en segundo plano al arrancar cuando `catalog_is_stale` (>7 días). Best-effort, nunca bloquea ni rompe la página, nunca por request.
+- `search_catalog(db, q, type_filter, min_fund_size, max_fund_size, sort, limit)` es solo-DB: ILIKE sobre nombre + ISIN exacto, prefijos primero. `sort` ∈ {name, fund_size_desc, nav_desc, nav_asc}. **Modo explorar**: con `q` corto/vacío devuelve filas si hay filtro o `sort` no por defecto; si no, `[]`.
+- **Cobertura**: el fichero mensual es solo Fondos de Inversión (Tipo=FI) — ~1.400 fondos / ~3.000 ISINs, mapeados a `OTHER`, todos con NAV + patrimonio. SICAV / IIC inmobiliaria / hedge / capital riesgo están en registros CNMV separados (diferido); `_TIPO_MAP` ya contempla FII→REAL_ESTATE, FIL→HEDGE_FUND. Las métricas de PE (DPI/TVPI/IRR/vintage/hurdle) no son públicas — manuales en la posición.
+
+### Tipos de cambio ECB (`backend/services/exchange_rates.py`)
+
+Servicio de tipos de referencia oficiales del BCE como fallback IRPF cuando el archivo del broker no trae el tipo (o en entradas manuales). Portado desde OptionsAI.
+
+- Tabla `exchange_rates` (rate_date, currency, rate, source) con unique (rate_date, currency).
+- `sync_rates()` corre en un hilo en segundo plano al arrancar (`backend/app.py` lifespan): historia completa el primer boot, luego feed de 90 días; se omite si los datos están frescos (≤1 día). **Nunca** se ejecuta dentro de una request.
+- `get_rate(currency, on)` es solo-DB (sin HTTP) con fallback ±7 días para fines de semana/festivos. `to_eur(amount, currency, on)` = amount / rate. EUR siempre es 1.
+- Endpoint de consulta: `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`.
+
+---
+
+## 13. Troubleshooting
 
 **Error 500 al borrar importación**  
 Causa más común: FK violation en `cross_broker_lots`. El orden de borrado en `_delete_import_data` debe eliminar CrossBrokerLots antes que Transactions.
