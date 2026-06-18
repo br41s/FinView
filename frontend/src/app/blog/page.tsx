@@ -176,6 +176,94 @@ function ImgModelo720() {
   );
 }
 
+function ImgTasaTobin() {
+  return (
+    <div className={styles.postImgTasaTobin}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">TASA TOBIN — 0,2% SOBRE COMPRA</text>
+        {/* Purchase box */}
+        <rect x="15" y="30" width="70" height="70" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="50" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Compra</text>
+        <text x="50" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Santander</text>
+        <text x="50" y="76" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">50.000€</text>
+        <text x="50" y="88" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">acción española</text>
+        {/* Arrow with tax */}
+        <line x1="85" y1="65" x2="105" y2="65" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="95" y="58" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0,2%</text>
+        {/* Tax box */}
+        <rect x="110" y="40" width="50" height="50" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="135" y="58" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Hacienda</text>
+        <text x="135" y="72" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">100€</text>
+        <text x="135" y="82" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">por comprar</text>
+        {/* Bottom annotation */}
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">ETF exento → 0€ · Acción española grande → 100€</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgTramo30() {
+  return (
+    <div className={styles.postImgTramo30}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">BASE DEL AHORRO 2025 — NUEVO TRAMO</text>
+        {/* Bar 1 */}
+        <rect x="15" y="70" width="28" height="30" rx="3" fill="rgba(154,107,31,0.2)"/>
+        <text x="29" y="66" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">19%</text>
+        <text x="29" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">6K</text>
+        {/* Bar 2 */}
+        <rect x="48" y="55" width="28" height="45" rx="3" fill="rgba(154,107,31,0.25)"/>
+        <text x="62" y="51" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">21%</text>
+        <text x="62" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">50K</text>
+        {/* Bar 3 */}
+        <rect x="81" y="40" width="28" height="60" rx="3" fill="rgba(154,107,31,0.3)"/>
+        <text x="95" y="36" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">23%</text>
+        <text x="95" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">200K</text>
+        {/* Bar 4 */}
+        <rect x="114" y="30" width="28" height="70" rx="3" fill="rgba(154,107,31,0.35)"/>
+        <text x="128" y="26" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">27%</text>
+        <text x="128" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">300K</text>
+        {/* Bar 5 - new 30% */}
+        <rect x="147" y="22" width="38" height="78" rx="3" fill="var(--fv-ochre)"/>
+        <text x="166" y="18" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="bold">30%</text>
+        <text x="166" y="42" fontSize="5" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">nuevo</text>
+        <text x="166" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">&gt;300K</text>
+        {/* Arrow pointing to new bar */}
+        <line x1="166" y1="100" x2="166" y2="108" stroke="var(--fv-ochre)" strokeWidth="1"/>
+      </svg>
+    </div>
+  );
+}
+
+function ImgSocimi() {
+  return (
+    <div className={styles.postImgSocimi}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SOCIMI — RÉGIMEN FISCAL</text>
+        {/* Building A - SOCIMI 0% */}
+        <rect x="20" y="35" width="45" height="60" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="42" y="52" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">SOCIMI</text>
+        <text x="42" y="65" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0%</text>
+        <text x="42" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Sociedades</text>
+        {/* Arrow */}
+        <line x1="65" y1="65" x2="80" y2="65" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Investor box */}
+        <rect x="80" y="45" width="50" height="50" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="105" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Inversor</text>
+        <text x="105" y="76" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">19-30%</text>
+        <text x="105" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Base ahorro</text>
+        {/* Building B - Normal 25% */}
+        <rect x="140" y="35" width="45" height="60" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="162" y="52" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Normal</text>
+        <text x="162" y="65" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">25%</text>
+        <text x="162" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Sociedades</text>
+        {/* Bottom annotation */}
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Más dividendo bruto → mismo IRPF que otra acción</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -338,6 +426,33 @@ function ImgSocimi() {
   );
 }
 const POSTS: Post[] = [
+  {
+    slug: 'tramo-30-base-ahorro-irpf',
+    tag: 'Fiscal',
+    date: '18 jun 2026',
+    readTime: '15 min',
+    title: 'El nuevo tramo del 30% en la base del ahorro: cómo te afecta en la Renta 2026',
+    excerpt: 'La Ley 7/2024 subió el último tramo del ahorro del 28% al 30% para rentas superiores a 300.000 €. Guía completa con ejemplos, estrategias de planificación y cómo minimizar el impacto en tu declaración.',
+    Image: ImgTramo30,
+  },
+  {
+    slug: 'tasa-tobin-espana-2026',
+    tag: 'Fiscal',
+    date: '18 jun 2026',
+    readTime: '14 min',
+    title: 'Tasa Tobin en España 2026: el impuesto del 0,2% que pagas al comprar Santander, Iberdrola o Telefónica',
+    excerpt: 'Guía completa del Impuesto sobre Transacciones Financieras: lista de empresas afectadas en 2026, cuánto pagas en cada compra, qué está exento, diferencias con otros impuestos y cómo afecta a tu estrategia de dividendos.',
+    Image: ImgTasaTobin,
+  },
+  {
+    slug: 'socimis-dividendos-irpf-espana',
+    tag: 'Fiscal',
+    date: '17 jun 2026',
+    readTime: '15 min',
+    title: 'SOCIMIs en España: guía completa de fiscalidad para el inversor en dividendos',
+    excerpt: 'Todo sobre las SOCIMIs: qué son, requisitos, el régimen al 0% en Sociedades, cómo tributan los dividendos en tu IRPF, las principales SOCIMIs del mercado, errores frecuentes y cómo encajan en una cartera DGI.',
+    Image: ImgSocimi,
+  },
   {
     slug: 'planes-pensiones-irpf',
     tag: 'Fiscal',
