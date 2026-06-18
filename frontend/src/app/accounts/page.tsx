@@ -143,7 +143,10 @@ function AccountsContent() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Cuentas</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Building2 className="h-6 w-6" />
+            Cuentas
+          </h1>
           <p className="text-muted-foreground">
             Gestiona tus cuentas de broker
           </p>

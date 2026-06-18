@@ -556,7 +556,10 @@ export default function OptionsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Options Monitor</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Activity className="h-6 w-6" />
+            Options Monitor
+          </h1>
           <p className="text-muted-foreground">
             Análisis de opciones en tiempo real sobre tu cartera
           </p>

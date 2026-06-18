@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Globe } from "lucide-react";
 import { GeoMap } from "./GeoMap";
 import { SignalPanel } from "./SignalPanel";
 import { FilterBar, CATEGORIES, type DirectionFilter } from "./FilterBar";
 import { MapLoading, MapEmpty, MapError } from "./MapStates";
 import { type GeoSignal } from "@/lib/geo";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { QuickNav } from "@/components/QuickNav";
 
 export function GeoIntelSection() {
   const [signals, setSignals] = useState<GeoSignal[]>([]);
@@ -78,35 +81,22 @@ export function GeoIntelSection() {
 
   return (
     <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
-      <header className="flex flex-col gap-3 border-b border-[rgba(31,27,22,0.14)] px-4 py-4 lg:flex-row lg:items-end lg:justify-between lg:px-8 lg:py-5">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 lg:px-8 lg:py-5">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.6)]">
-            Dashboard · Section
-          </p>
-          <h1
-            className="mt-1 text-2xl leading-none text-[#1F1B16] lg:text-3xl"
-            style={{
-              fontFamily: "var(--fv-font-fraunces), ui-serif, Georgia, serif",
-              fontWeight: 500,
-              letterSpacing: "-0.01em",
-            }}
-          >
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Globe className="h-6 w-6" />
             Geo-Intel
           </h1>
-          <p className="mt-1 text-[13px] text-[rgba(31,27,22,0.6)]">
+          <p className="text-muted-foreground">
             Geopolitical & natural events, plotted as financial signals.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 lg:gap-5">
-          <button
-            type="button"
-            onClick={runCycle}
-            disabled={running}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#9A6B1F] px-3 font-mono text-[11px] text-[#9A6B1F] transition-colors hover:bg-[rgba(154,107,31,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
+        <div className="flex flex-wrap items-center gap-3">
+          <QuickNav current="/geo-intel" />
+          <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
             {running ? "Running…" : "Run cycle"}
-          </button>
-          <div className="flex items-center gap-4 font-mono text-[11px] text-[rgba(31,27,22,0.6)] lg:gap-6">
+          </Button>
+          <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground lg:gap-6">
             <Stat label="Active" value={String(active)} />
             <Stat label="Tracked" value={String(filtered.length)} />
             <Stat label="Regions" value="7" />
@@ -160,10 +150,10 @@ export function GeoIntelSection() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col items-end">
-      <span className="text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+      <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </span>
-      <span className="text-[15px] text-[#1F1B16]">{value}</span>
+      <span className="text-[15px] text-foreground">{value}</span>
     </div>
   );
 }
