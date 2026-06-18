@@ -301,6 +301,17 @@ def _fetch_yahoo_prices(tickers: list[str]) -> dict[str, float]:
     return result
 
 
+def fetch_ticker_prices(tickers: list[str]) -> dict[str, float]:
+    """Public: latest price per ticker symbol (geo-intel quote enrichment).
+
+    Returns dict[ticker, price]; symbols absent from the result are unresolvable
+    (e.g. some futures / foreign listings) and should be flagged, not dropped.
+    """
+    if not tickers:
+        return {}
+    return _fetch_yahoo_prices(list(dict.fromkeys(tickers)))
+
+
 def get_currency_info(db: Session, isins: list[str]) -> dict[str, dict]:
     """Get currency info for ISINs from today's cache.
 
