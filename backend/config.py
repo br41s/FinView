@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # NextAuth shared secret (must match AUTH_SECRET on frontend)
     auth_secret: str = INSECURE_DEFAULT_SECRET
 
+    # Cloudflare Turnstile (bot protection on login). When empty, verification
+    # is skipped so local dev / unconfigured deploys keep working. Set
+    # FINVIEW_TURNSTILE_SECRET in prod; the frontend uses NEXT_PUBLIC_TURNSTILE_SITE_KEY.
+    turnstile_secret: str = ""
+
     # Stripe
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""

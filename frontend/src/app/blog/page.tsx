@@ -422,6 +422,29 @@ function ImgPrimaEmision() {
         {/* Bottom annotation */}
         <text x="100" y="105" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">No tributa → reduce valor de adquisición</text>
         <text x="100" y="114" fontSize="5" fill="var(--fv-ink-20)" fontFamily="system-ui" textAnchor="middle">Exceso sobre coste → tributa como RCM</text>
+function ImgCalendarioDividendos() {
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const dividends = [85, 120, 95, 110, 130, 280, 90, 45, 45, 140, 100, 40];
+  const maxDiv = Math.max(...dividends);
+  return (
+    <div className={styles.postImgCalendarioDividendos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">INGRESOS POR DIVIDENDOS — MES A MES</text>
+        {months.map((m, i) => {
+          const x = 14 + i * 15.5;
+          const h = Math.round((dividends[i] / maxDiv) * 65);
+          const y = 100 - h;
+          const isPeak = dividends[i] >= 200;
+          return (
+            <g key={m}>
+              <rect x={x} y={y} width="11" height={h} rx="2" fill={isPeak ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'}/>
+              <text x={x + 5.5} y={112} fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">{m}</text>
+            </g>
+          );
+        })}
+        <line x1="10" y1="100" x2="195" y2="100" stroke="var(--fv-ink-20)" strokeWidth="1"/>
+        <text x="100" y="55" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">280€</text>
+        <text x="100" y="62" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">junio</text>
       </svg>
     </div>
   );
@@ -436,6 +459,13 @@ const POSTS: Post[] = [
     title: 'Prima de emisión y reducción de capital en el IRPF: qué tributa y qué no cuando la empresa devuelve tu dinero',
     excerpt: 'La prima de emisión y la reducción de capital no tributan como dividendo en la mayoría de casos. Guía práctica con ejemplos, la DGT V0215-26 de febrero 2026 y cómo afecta a tu cartera de dividendos.',
     Image: ImgPrimaEmision,
+    slug: 'calendario-dividendos-irpf',
+    tag: 'Estrategia',
+    date: '20 jun 2026',
+    readTime: '14 min',
+    title: 'Calendario de dividendos: cómo planificar tus ingresos mes a mes',
+    excerpt: 'Guía completa sobre el calendario de dividendos: fecha ex-dividendo, fecha de pago, cómo planificar ingresos mensuales con cartera mixta España-EE.UU. y errores frecuentes al cobrar.',
+    Image: ImgCalendarioDividendos,
   },
   {
     slug: 'tramo-30-base-ahorro-irpf',

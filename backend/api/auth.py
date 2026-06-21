@@ -16,7 +16,8 @@ from backend.services.auth_service import (
     get_user_by_email,
     verify_password,
 )
-from backend.services.rate_limit import limiter
+from backend.services.rate_limit import client_ip, limiter
+from backend.services.turnstile import verify_turnstile
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,6 +35,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    turnstile_token: str | None = None
 
 
 class AuthResponse(BaseModel):
@@ -115,6 +117,8 @@ def register(request: Request, body: RegisterRequest, db: DbSession):
 @router.post("/login", response_model=AuthResponse, responses={401: {"description": "Invalid credentials"}, 403: {"description": "Account disabled"}, 429: {"description": "Too many requests"}})
 @limiter.limit(settings.rate_limit_login)
 def login(request: Request, body: LoginRequest, db: DbSession):
+    if not verify_turnstile(body.turnstile_token, client_ip(request)):
+        raise HTTPException(status_code=403, detail="Captcha verification failed")
     user = get_user_by_email(db, body.email)
     if not user or not user.password_hash:
         raise HTTPException(status_code=401, detail="Invalid credentials")

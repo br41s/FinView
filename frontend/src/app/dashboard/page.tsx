@@ -57,6 +57,8 @@ import {
   CalendarRange,
   AlertCircle,
   Info,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   Card,
@@ -192,6 +194,20 @@ export default function Home() {
     OptionAssignment[]
   >([]);
   const [yearlyComparison, setYearlyComparison] = useState<YearlyMetrics[]>([]);
+
+  // Privacy mode: blurs sensitive monetary values. Persisted in localStorage so
+  // the choice survives reloads. Starts hidden=false to avoid a flash of blur.
+  const [privacy, setPrivacy] = useState(false);
+  useEffect(() => {
+    setPrivacy(localStorage.getItem("fv-privacy") === "1");
+  }, []);
+  const togglePrivacy = useCallback(() => {
+    setPrivacy((prev) => {
+      const next = !prev;
+      localStorage.setItem("fv-privacy", next ? "1" : "0");
+      return next;
+    });
+  }, []);
 
   // Guards against stale responses: a rapid year switch can leave an older
   // (slow) request in flight; only the latest load is allowed to set state.
@@ -355,12 +371,29 @@ export default function Home() {
                 Año fiscal {selectedYear}
               </span>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={togglePrivacy}
+              aria-pressed={privacy}
+              title={privacy ? "Mostrar importes" : "Ocultar importes"}
+              aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
+            >
+              {privacy ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </Button>
             <QuickNav current="/dashboard" />
           </div>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-auto p-3 sm:p-6">
+        <main
+          className="flex-1 overflow-auto p-3 sm:p-6"
+          data-privacy={privacy ? "true" : "false"}
+        >
           {/* Import view */}
           {view === "importar" && (
             <div className="max-w-3xl mx-auto space-y-6">
