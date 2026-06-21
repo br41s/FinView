@@ -562,6 +562,10 @@
   justify-content: center;
 }
 
+.postImgPrimaEmision {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, rgba(154,107,31,0.06) 0%, rgba(154,107,31,0.18) 100%);
 .postImgCalendarioDividendos {
   height: 200px;
   border-radius: 12px 12px 0 0;
