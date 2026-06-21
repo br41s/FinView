@@ -243,3 +243,13 @@
   }
 }
 
+/* Privacy mode: when an ancestor is marked, blur sensitive monetary values.
+   Toggle by setting data-privacy="true" on a wrapper and tagging the values
+   to hide with class .fv-sensitive (extensible to tables/charts later). */
+[data-privacy="true"] .fv-sensitive {
+  filter: blur(7px);
+  transition: filter 0.15s ease;
+  user-select: none;
+  cursor: default;
+}
+
