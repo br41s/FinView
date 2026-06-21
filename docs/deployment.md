@@ -44,6 +44,7 @@ Configuradas via `gcloud run services update --set-env-vars`:
 | `FINVIEW_ENV` | Modo de entorno | **Debe ser `production`** en producción para que el validador de secretos se active en startup. Default: `local` (sin validación). |
 | `FINVIEW_RATE_LIMIT_LOGIN` | Límite de intentos de login por IP | Opcional. Default: `5/minute`. |
 | `FINVIEW_RATE_LIMIT_REGISTER` | Límite de intentos de registro por IP | Opcional. Default: `3/minute`. |
+| `FINVIEW_TURNSTILE_SECRET` | Secret key de Cloudflare Turnstile (protección anti-bot en login) | Opcional. **Si está vacío, la verificación se omite** (dev/sin configurar). Empareja con `NEXT_PUBLIC_TURNSTILE_SITE_KEY` del frontend. Obtén el par de claves en Cloudflare → Turnstile. |
 
 Otras opcionales (Stripe, Anthropic, notificaciones) declaradas en [backend/config.py](../backend/config.py). `gcloud run deploy` preserva las env vars existentes si no se pasa `--set-env-vars` ni `--clear-env-vars`.
 
@@ -56,6 +57,7 @@ Configuradas en Vercel → Project Settings → Environment Variables:
 | `AUTH_SECRET` | Secreto de NextAuth | Mismo que `FINVIEW_AUTH_SECRET` en Cloud Run |
 | `AUTH_TRUST_HOST` | `true` | Necesario para NextAuth en entornos tras proxy |
 | `NEXTAUTH_URL` | `https://fin-view-topaz.vercel.app` | URL canónica |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Site key de Cloudflare Turnstile | Opcional. **Si está vacío, el widget no se renderiza** y el login funciona sin captcha. Empareja con `FINVIEW_TURNSTILE_SECRET` del backend. Es público (se expone al navegador). Build-time: requiere redeploy tras cambiarla. |
 
 **Importante:** `BACKEND_URL` se lee en [frontend/next.config.ts](../frontend/next.config.ts) **en build-time**. Tras cambiarla, **redeploy manual en Vercel** (o nuevo push) es obligatorio.
 

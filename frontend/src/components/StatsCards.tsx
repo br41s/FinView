@@ -23,10 +23,12 @@ function StatCard({
   label,
   value,
   className,
+  sensitive = true,
 }: {
   readonly label: string;
   readonly value: string;
   readonly className?: string;
+  readonly sensitive?: boolean;
 }) {
   return (
     <Card>
@@ -34,7 +36,11 @@ function StatCard({
         <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
           {label}
         </p>
-        <p className={`text-xl font-semibold ${className ?? ""}`}>{value}</p>
+        <p
+          className={`text-xl font-semibold ${sensitive ? "fv-sensitive" : ""} ${className ?? ""}`}
+        >
+          {value}
+        </p>
       </CardContent>
     </Card>
   );
@@ -70,7 +76,7 @@ function ForeignWithholdingsCard({
         <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
           Retenciones en origen
         </p>
-        <p className="text-xl font-semibold text-amber-400">
+        <p className="text-xl font-semibold text-amber-400 fv-sensitive">
           {formatEur(total)}
         </p>
         {foreign.length > 0 && (
@@ -141,6 +147,7 @@ export function StatsCards({
         <StatCard
           label="Transacciones"
           value={stats.total_transactions.toString()}
+          sensitive={false}
         />
         <StatCard
           label="Dividendos brutos"

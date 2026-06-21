@@ -10,6 +10,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        turnstileToken: { label: "Turnstile", type: "text" },
       },
       async authorize(credentials) {
         const res = await fetch(`${backendUrl}/api/auth/login`, {
@@ -18,6 +19,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           body: JSON.stringify({
             email: credentials?.email,
             password: credentials?.password,
+            turnstile_token: credentials?.turnstileToken,
           }),
         });
 
