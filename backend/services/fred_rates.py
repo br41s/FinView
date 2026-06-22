@@ -69,8 +69,14 @@ def currency_for_ticker(ticker: str | None) -> str:
 # ── FRED feed helpers ───────────────────────────────────────────────────────
 
 
-def _fetch_observations(series_id: str, start: str | None) -> list[tuple[str, float]]:
-    """Fetch (date_str, rate_decimal) observations for a series from FRED.
+def _fetch_observations(
+    series_id: str, start: str | None, scale: float = 0.01
+) -> list[tuple[str, float]]:
+    """Fetch (date_str, value) observations for a series from FRED.
+
+    `scale` multiplies the raw FRED value: rates come as percent so the
+    default 0.01 stores a decimal (5.30 → 0.0530); macro index levels
+    (VIX, stress) pass scale=1.0 to store the raw reading.
 
     Returns [] when no API key is configured or no usable rows come back.
     """
@@ -93,7 +99,7 @@ def _fetch_observations(series_id: str, start: str | None) -> list[tuple[str, fl
         if value in (".", "", None):  # FRED uses "." for missing observations
             continue
         try:
-            rows.append((obs["date"], float(value) / 100.0))
+            rows.append((obs["date"], float(value) * scale))
         except (ValueError, KeyError):
             continue
     return rows
@@ -162,15 +168,13 @@ def sync_rates() -> int:
     return total
 
 
-def get_rate(currency: str, on: date | str | None = None) -> Decimal | None:
-    """Latest risk-free rate for `currency` on/before `on`. DB-only, no HTTP.
+def latest_value(series_id: str, on: date | str | None = None) -> Decimal | None:
+    """Latest stored value for a FRED series on/before `on`. DB-only, no HTTP.
 
-    Returns the annualized decimal, or None when the currency has no tracked
-    series or no observation within the look-back window.
+    Returns the most recent observation within the look-back window, or None
+    when the series isn't cached for that period. Shared by the risk-free
+    rate lookup and the macro-context reader.
     """
-    series_id = _SERIES.get(currency.upper())
-    if not series_id:
-        return None
     target = date.today() if on is None else (on if isinstance(on, date) else date.fromisoformat(on))
     floor = target - timedelta(days=_LOOKBACK_DAYS)
     with SessionLocal() as db:
@@ -184,6 +188,18 @@ def get_rate(currency: str, on: date | str | None = None) -> Decimal | None:
             .order_by(FredRate.rate_date.desc())
             .limit(1)
         ).scalar_one_or_none()
+
+
+def get_rate(currency: str, on: date | str | None = None) -> Decimal | None:
+    """Latest risk-free rate for `currency` on/before `on`. DB-only, no HTTP.
+
+    Returns the annualized decimal, or None when the currency has no tracked
+    series or no observation within the look-back window.
+    """
+    series_id = _SERIES.get(currency.upper())
+    if not series_id:
+        return None
+    return latest_value(series_id, on)
 
 
 def risk_free_rate(currency: str, on: date | str | None = None) -> float:

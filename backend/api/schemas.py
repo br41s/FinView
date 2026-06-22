@@ -340,6 +340,8 @@ class LastAnalysisOut(BaseModel):
     market_sentiment: str | None = None
     claude_analysis: str | None = None
     ai_configured: bool = False
+    # Macro-regime annotation (FRED). None when no macro data is cached.
+    macro: dict | None = None
 
 
 class BacktestSignalOut(BaseModel):

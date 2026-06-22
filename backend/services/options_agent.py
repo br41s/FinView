@@ -24,6 +24,7 @@ from backend.models import (
 from backend.services.backtest_service import evaluate_pending, record_signal
 from backend.services.fred_rates import risk_free_rate_for_ticker
 from backend.services.greeks_calculator import enrich_options_with_greeks
+from backend.services.macro_context import macro_prompt_block
 from backend.services.notification_service import notify_alerts, notify_spike_telegram
 from backend.services.options_analyzer import analyze_ticker
 from backend.services.options_scraper import fetch_options
@@ -250,12 +251,16 @@ Total alertas: {n_alerts} | Severidad HIGH: {n_high} | Actividad inusual: {n_unu
 === ACTIVIDAD INUSUAL ===
 {unusual_json}
 
+=== CONTEXTO MACRO (FRED) ===
+{macro_block}
+
 ---
 Genera el informe estructurado con EXACTAMENTE estas 7 secciones:
 
 ## 1. Resumen Ejecutivo
 [Sentimiento global del ciclo: alcista / bajista / neutral / mixto. \
-Una frase por cada mercado con actividad relevante.]
+Una frase por cada mercado con actividad relevante. Considera el régimen macro \
+como telón de fondo (no cambies las señales, solo contextualízalas).]
 
 ## 2. Smart Money
 [Flujos institucionales detectados. Volumen/OI fuera de lo normal. \
@@ -301,6 +306,7 @@ def _run_claude_analysis(
             n_unusual=len(unusual),
             alerts_json=json.dumps(alerts_payload, indent=2, ensure_ascii=False),
             unusual_json=json.dumps(unusual_payload, indent=2, ensure_ascii=False),
+            macro_block=macro_prompt_block(),
         )
 
         if not has_meff:
