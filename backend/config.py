@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     aisstream_key: str = ""        # aisstream.io global AIS (maritime WS, deferred)
     geo_monitor_interval_minutes: int = 15
 
+    # FRED (St. Louis Fed) — risk-free rate source for Black-Scholes Greeks.
+    # Optional: when empty, Greeks fall back to per-currency constants (no-op,
+    # like Turnstile/aisstream). Free key: https://fred.stlouisfed.org/docs/api/api_key.html
+    fred_api_key: str = ""
+
     # Rate limiting (per-IP, see backend/services/rate_limit.py for IP extraction)
     rate_limit_login: str = "5/minute"
     rate_limit_register: str = "3/minute"
