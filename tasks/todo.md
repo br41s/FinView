@@ -63,10 +63,17 @@ cuestionario inteligente, preguntas amplias→detalle.
 - [x] `GET/POST/DELETE /fiscal/manual-income`.
 - [x] `GET /fiscal/estimate/{year}` → casillas + desglose de cuota + resultado.
 
-### Frontend — PENDIENTE
-- [ ] Tipos TS + cliente API (`src/lib/types.ts`, `src/lib/api.ts`).
-- [ ] Wizard de onboarding en la sección fiscal ([CasillasTable](frontend/src/components/CasillasTable.tsx) /
-      [dashboard/page.tsx](frontend/src/app/dashboard/page.tsx)) + tarjeta de resultado final con disclaimer.
+### Frontend — HECHO (typecheck limpio)
+- [x] Tipos TS + métodos de cliente API (`src/lib/types.ts`, `src/lib/api.ts`).
+- [x] Vista "Mi declaración" en la nav fiscal del dashboard (`app-sidebar.tsx` →
+      `view="declaracion"` → [DeclaracionView.tsx](frontend/src/components/DeclaracionView.tsx)):
+      formulario de datos (edad/discapacidad/descendientes/base general) + alta/baja de
+      ingresos del ahorro manuales + tarjeta de resultado (casillas, base, mínimo, cuota,
+      resultado a ingresar/devolver, aviso de año de tablas + disclaimer).
+
+### Pendiente de QA en vivo (localhost)
+- [ ] Smoke test del flujo en `/dashboard` con un año con datos: guardar perfil,
+      añadir/borrar ingreso manual, ver que el resultado recalcula.
 
 ### Decisiones tomadas
 - **v1 = declaración individual únicamente.** Conjunta vs individual (calcular ambas y
