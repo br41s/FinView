@@ -36,7 +36,8 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { api } from "@/lib/api";
+import { api, type OhlcBar } from "@/lib/api";
+import { PriceChart, type PriceLine } from "@/components/charts/PriceChart";
 import {
   Card,
   CardContent,
@@ -268,6 +269,7 @@ export default function OptionsPage() {
   const [loadingExpirationsByTicker, setLoadingExpirationsByTicker] = useState<Set<string>>(new Set());
   const [selectedExpiryIndexByTicker, setSelectedExpiryIndexByTicker] = useState<Record<string, number>>({});
   const [chainByExpiry, setChainByExpiry] = useState<Record<string, ChainData>>({});
+  const [ohlcByTicker, setOhlcByTicker] = useState<Record<string, OhlcBar[]>>({});
   const [loadingExpiry, setLoadingExpiry] = useState<Set<string>>(new Set());
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
@@ -341,6 +343,21 @@ export default function OptionsPage() {
           next.delete(expandedTicker);
           return next;
         }),
+      );
+  }, [expandedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch ~1y of underlying OHLC when a ticker is expanded (for the price chart).
+  // Cached per ticker; best-effort → empty hides the chart.
+  useEffect(() => {
+    if (!expandedTicker) return;
+    if (ohlcByTicker[expandedTicker] !== undefined) return;
+    api.charts
+      .priceHistory(expandedTicker, "1y")
+      .then((bars) =>
+        setOhlcByTicker((prev) => ({ ...prev, [expandedTicker]: bars })),
+      )
+      .catch(() =>
+        setOhlcByTicker((prev) => ({ ...prev, [expandedTicker]: [] })),
       );
   }, [expandedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1110,6 +1127,32 @@ export default function OptionsPage() {
                                             </span>
                                           </div>
                                         </div>
+                                        {(() => {
+                                          const bars = ohlcByTicker[ticker] ?? [];
+                                          if (bars.length === 0) return null;
+                                          const spot = bars[bars.length - 1].close;
+                                          // Spot (solid) + the strikes nearest spot (dashed): 3 below, 3 above.
+                                          const lines: PriceLine[] = [
+                                            { price: spot, color: "#3b82f6", strength: 1, title: "spot" },
+                                          ];
+                                          if (chain) {
+                                            const strikes = Array.from(
+                                              new Set(
+                                                [...chain.calls, ...chain.puts].map((c) => c.strike),
+                                              ),
+                                            ).sort((a, b) => a - b);
+                                            const below = strikes.filter((s) => s <= spot).slice(-3);
+                                            const above = strikes.filter((s) => s > spot).slice(0, 3);
+                                            for (const s of [...below, ...above]) {
+                                              lines.push({ price: s, color: "#f59e0b", strength: 0.5, title: fmt(s) });
+                                            }
+                                          }
+                                          return (
+                                            <div className="mb-4">
+                                              <PriceChart data={bars} priceLines={lines} height={300} />
+                                            </div>
+                                          );
+                                        })()}
                                         {isLoadingChain ? (
                                           <Skeleton className="h-32 w-full" />
                                         ) : !chain || (chain.calls.length === 0 && chain.puts.length === 0) ? (
