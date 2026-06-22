@@ -95,7 +95,21 @@ art. 58 (2.400/2.700/4.000/4.500 €), discapacidad art. 60 (3.000/9.000 €),
 compensación art. 49 (25%). Sin cambios de números; docstring cita artículos +
 documenta simplificaciones v1 (no aplica +2.800 <3a, +3.000 asistencia,
 ascendientes, ni mínimos autonómicos — todas reducirían la cuota, estimación
-conservadora). Pendiente: añadir tablas 2023/2025 (no verificadas aún).
+conservadora).
+
+**2025 añadido y verificado:** la escala del ahorro subió solo el tramo >300.000 €
+del 28% al 30% (Ley 7/2024, ef. 1-1-2025); mínimos y tope de compensación sin cambios.
+Ojo: el texto consolidado del BOE muestra SIEMPRE la redacción vigente (la de 2025,
+tramo estatal 15%), no la histórica — por eso 2024 (tramo estatal 14% → 28% combinado)
+hay que leerlo por la Ley 31/2022, no por el consolidado.
+
+**2023 añadido:** idéntico a 2024 (tramos 27%/28% introducidos por la Ley 31/2022,
+ef. 1-1-2023; mínimos y tope sin cambios) → reusa los valores de 2024. Cobertura
+completa 2023–2025. Pendiente: mínimos autonómicos por CCAA si se quiere precisión total.
+
+**Nota de proceso:** el PR #68 se fusionó con SOLO el primer commit (verificación 2024);
+el segundo (tabla 2025 + corrección del desglose ×2) se perdió. Recuperado por cherry-pick
+en este PR junto con 2023.
 
 ### Fase 2 (diferida) — base general
 Rentas del trabajo, inmuebles, escala general **autonómica**, planes de pensiones, etc.

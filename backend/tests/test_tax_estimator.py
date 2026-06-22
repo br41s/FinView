@@ -22,8 +22,27 @@ D = Decimal
 
 def test_resolve_year_falls_back_to_latest():
     assert resolve_year(2024) == 2024
-    assert resolve_year(2099) == 2024  # not encoded → latest available
-    assert resolve_year(1990) == 2024
+    assert resolve_year(2025) == 2025
+    assert resolve_year(2099) == 2025  # not encoded → latest available
+    assert resolve_year(1990) == 2025
+
+
+def test_savings_scale_2025_top_bracket_is_30pct():
+    # 2025 raised the >300.000 € bracket 28% → 30% (Ley 7/2024); lower brackets unchanged.
+    # On a 400k base the only delta is the 100k above 300k: 100000 * (0.30 - 0.28) = 2000.
+    tax_2024, _ = progressive_tax(D("400000"), 2024)
+    tax_2025, _ = progressive_tax(D("400000"), 2025)
+    assert tax_2025 - tax_2024 == D("2000")
+    # below 300k the two years are identical
+    assert progressive_tax(D("60000"), 2025) == progressive_tax(D("60000"), 2024)
+
+
+def test_savings_scale_2023_identical_to_2024():
+    assert resolve_year(2023) == 2023
+    for base in (D("1000"), D("60000"), D("400000")):
+        assert progressive_tax(base, 2023) == progressive_tax(base, 2024)
+    assert personal_minimum(TaxpayerProfile(age=80, descendants=2), 2023) == \
+        personal_minimum(TaxpayerProfile(age=80, descendants=2), 2024)
 
 
 def test_progressive_tax_brackets():
@@ -120,4 +139,4 @@ def test_estimate_with_loss_compensation():
 
 def test_estimate_rates_year_used_exposed():
     est = estimate_savings(SavingsInputs(rcm_net=D("100")), TaxpayerProfile(), 2030)
-    assert est.rates_year_used == 2024
+    assert est.rates_year_used == 2025  # falls back to latest encoded year
