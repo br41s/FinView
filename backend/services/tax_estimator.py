@@ -10,18 +10,22 @@ profile, it computes:
 
 Why this is the clean first slice: the savings-base scale is uniform across
 Spain. It is the sum of a state scale (Ley 35/2006 art. 66) and an autonomic
-scale that, for the savings base, is fixed equal to the state one — communities
-may modify the general-base scale but NOT the savings scale. So the combined
-savings rate (19/21/23/27/28%) does not depend on the autonomous community.
-The general base (employment, real estate…) does — that is deferred.
+scale (art. 76) that, for the savings base, is fixed equal to the state one —
+communities may modify the general-base scale but NOT the savings scale. So the
+combined savings rate does not depend on the autonomous community. The general
+base (employment, real estate…) does — that is deferred.
 
-Rate tables — VERIFIED against the BOE consolidated Ley 35/2006 (IRPF) for
-fiscal year 2024:
-  · savings scale            art. 66  (state 9.5/10.5/11.5/13.5/15% × 2)
+Rate tables — VERIFIED against the BOE consolidated Ley 35/2006 (IRPF):
+  · savings scale            arts. 66 + 76 (state half × 2; see per-year note below)
   · mínimo del contribuyente art. 57  (5.550 € · +1.150 >65 · +1.400 >75)
   · mínimo descendientes     art. 58  (2.400/2.700/4.000/4.500 €)
   · mínimo discapacidad      art. 60  (3.000 € · 9.000 € ≥65%)
   · compensación RCM↔G/P     art. 49  (límite 25%)
+
+Savings scale per year (combined = state+autonomic, both halves equal):
+  · 2024 → 19/21/23/27/28%  (top half 14% ×2; Ley 31/2022)
+  · 2025 → 19/21/23/27/30%  (top half raised to 15% ×2 by Ley 7/2024, ef. 1-1-2025)
+Minimums and the 25% compensation cap are unchanged across 2024–2025.
 
 v1 modelling simplifications (deliberately not applied; all would only REDUCE
 the taxpayer's bill, so the estimate is conservative):
@@ -32,7 +36,7 @@ the taxpayer's bill, so the estimate is conservative):
     half of the quota; v1 uses the state minimum for both halves.
 Age >65/>75 is applied as ≥65/≥75 (AEAT practical interpretation at 31-Dec).
 
-Only 2024 is encoded today. The result exposes `rates_year_used` so the UI can
+2024 and 2025 are encoded. The result exposes `rates_year_used` so the UI can
 warn when it differs from the requested year (we fall back to the latest
 encoded year rather than guess).
 """
@@ -56,6 +60,14 @@ _SAVINGS_SCALE: dict[int, list[tuple[Decimal | None, Decimal]]] = {
         (Decimal("300000"), Decimal("0.27")),
         (None, Decimal("0.28")),
     ],
+    # 2025: only the >300.000 € bracket changed (28% → 30%), Ley 7/2024.
+    2025: [
+        (Decimal("6000"), Decimal("0.19")),
+        (Decimal("50000"), Decimal("0.21")),
+        (Decimal("200000"), Decimal("0.23")),
+        (Decimal("300000"), Decimal("0.27")),
+        (None, Decimal("0.30")),
+    ],
 }
 
 # Mínimo personal y familiar (BOE arts. 57/58/60). age_over_75 is ADDITIONAL to
@@ -77,6 +89,11 @@ _MINIMUM: dict[int, dict[str, Decimal]] = {
 
 # RCM ↔ G/P cross-compensation cap, fraction of the positive balance (BOE art. 49).
 _COMPENSATION_CAP: dict[int, Decimal] = {2024: Decimal("0.25")}
+
+# Minimums and the compensation cap are unchanged for 2025 (Ley 7/2024 only
+# touched the savings-scale top bracket), so 2025 reuses the 2024 values.
+_MINIMUM[2025] = _MINIMUM[2024]
+_COMPENSATION_CAP[2025] = _COMPENSATION_CAP[2024]
 
 
 def _latest_year(table: dict[int, object]) -> int:
