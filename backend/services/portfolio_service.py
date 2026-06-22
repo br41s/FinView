@@ -452,4 +452,10 @@ def get_position_detail(db: Session, isin: str, user_id: int | None = None) -> d
             }
             for d in sorted(div_by_year.values(), key=lambda x: x["year"], reverse=True)
         ],
+        # Individual dividend dates for chart markers (kept out of `transactions`
+        # so the history table stays buy/sell only). ING dates are fiscal-year-end.
+        "dividend_events": [
+            {"date": tx.trade_date.isoformat(), "net_eur": float(tx.net_amount_eur)}
+            for tx in dividend_txs
+        ],
     }

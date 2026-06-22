@@ -71,9 +71,10 @@ frontend/
   src/app/options/page.tsx          — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
   src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
   src/components/                   — FileUpload, tables, stat cards
-  src/components/charts/            — 8 Recharts components + ZonasClaveChart (lightweight-charts)
-  src/lib/                          — API client + TypeScript types
+  src/components/charts/            — 8 Recharts components + PriceChart + ZonasClaveChart (lightweight-charts)
+  src/lib/                          — API client + TypeScript types; chartMarkers.ts (execution markers + scope slicing)
   src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
+  src/app/markets/page.tsx          — Markets: localStorage watchlist + candlestick viewer (suggestions from portfolio)
 
 ---
 
@@ -111,6 +112,29 @@ RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/beari
 
 ---
 
+## Price charts (lightweight-charts) — shared infra
+
+`components/charts/PriceChart.tsx` is the one generic price chart used everywhere
+except Zonas Clave's wrapper: candlesticks (line-series fallback when OHLC absent),
+optional `priceLines` (S/R, strikes, spot) and optional `markers` (executions).
+Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read CSS vars).
+
+- **Data**: `GET /charts/price-history?ticker=&period=` (charts.py) — daily OHLC from
+  yfinance, period whitelisted {6mo,1y,2y,5y,10y,max}, best-effort (returns `[]` on any
+  failure → caller hides the chart). Read-only; never touches FIFO/transactions.
+- **lib/chartMarkers.ts**: `executionMarkers(txs)` (BUY ▲ / SELL ▼ / DIVIDEND ●, same-day
+  same-type collapsed into one marker labelled with the count) + `sliceOhlc(bars, scope)`
+  + `CHART_SCOPES` (1D / 1W / 1M / 1A / 5A / MAX, client-side slicing).
+- **Used in**:
+  - `/portfolio` list expansion + `/portfolio/[isin]`: candles + buy/sell/dividend markers.
+    Dividends come from `position_detail`'s `dividend_events` (kept out of `transactions`
+    so the history table stays buy/sell only). Window auto-sized to the oldest trade.
+  - `/options` Cartera: underlying candles + spot (solid) + near-money strikes (3 below,
+    3 above, dashed) from the selected expiry's chain; OHLC fetched `max`, cached per ticker.
+  - `/markets`: localStorage watchlist; OHLC fetched `max` once, sliced client-side.
+
+---
+
 ## Options monitor — architecture
 
 ### Data sources
@@ -143,7 +167,7 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
 - UI shows accuracy % per horizon and per signal type in the Backtest tab
 
 ### Frontend — /options (6 tabs)
-- **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker.
+- **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker. Underlying `PriceChart` above the chain (spot + near-money strikes; see "Price charts").
 - **Watchlist**: add/remove tickers; stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color
 - **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW)
 - **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown

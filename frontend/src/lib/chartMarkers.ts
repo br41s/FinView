@@ -43,17 +43,23 @@ export function executionMarkers(txs: TxLike[]): PriceMarker[] {
   });
 }
 
-export type ChartScope = "1A" | "5A" | "MAX";
-export const CHART_SCOPES: ChartScope[] = ["1A", "5A", "MAX"];
+export type ChartScope = "1D" | "1W" | "1M" | "1A" | "5A" | "MAX";
+export const CHART_SCOPES: ChartScope[] = ["1D", "1W", "1M", "1A", "5A", "MAX"];
 
-/** Client-side slice of OHLC bars by scope, anchored on the last bar. */
+/**
+ * Client-side slice of OHLC bars by scope, anchored on the last bar. Data is
+ * daily, so 1D shows the last few trading days rather than a single candle.
+ */
 export function sliceOhlc(bars: OhlcBar[], scope: ChartScope): OhlcBar[] {
   if (scope === "MAX" || bars.length === 0) return bars;
   const last = new Date(bars[bars.length - 1].date + "T12:00:00");
   const cutoff = new Date(last);
-  if (scope === "1A") cutoff.setFullYear(last.getFullYear() - 1);
+  if (scope === "1D") cutoff.setDate(last.getDate() - 5);
+  else if (scope === "1W") cutoff.setDate(last.getDate() - 7);
+  else if (scope === "1M") cutoff.setMonth(last.getMonth() - 1);
+  else if (scope === "1A") cutoff.setFullYear(last.getFullYear() - 1);
   else if (scope === "5A") cutoff.setFullYear(last.getFullYear() - 5);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const filtered = bars.filter((b) => b.date >= cutoffStr);
-  return filtered.length >= 2 ? filtered : bars;
+  return filtered.length >= 2 ? filtered : bars.slice(-5);
 }
