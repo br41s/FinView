@@ -31,11 +31,14 @@ cuestionario inteligente, preguntas amplias→detalle.
 - **Timing:** recomputar cuota cuando cambie el perfil O una importación de broker.
 
 ### Modelo de datos
-- [ ] `FiscalProfile` (1 fila por user+año): residencia fiscal (confirmar España),
-      edad (tramos >65/>75), estado civil + declaración (individual/conjunta),
-      discapacidad (propia/familiar), descendientes/ascendientes, flag+importe de
-      base general. `Base.metadata.create_all` la crea sola.
-- [ ] Pseudo-broker `MANUAL` en el enum `Broker` para rentas del ahorro fuera de brokers.
+- [x] `FiscalProfile` (1 fila por user+año): edad, discapacidad (general/severe),
+      descendientes, importe de base general. `Base.metadata.create_all` la crea sola.
+      (Estado civil/conjunta y residencia autonómica → diferidos a Fase 2, no se usan
+      en v1 individual.)
+- [x] ~~Pseudo-broker `MANUAL`~~ → **tabla dedicada `ManualSavingsIncome`**. `Broker`
+      es un ENUM nativo de Postgres y el path `create_all`/`ensure_columns` NO puede
+      hacer `ALTER TYPE ... ADD VALUE`. La tabla es aditiva y más limpia. `amount_eur`
+      siempre magnitud positiva; el signo lo da `category` (RCM/GAIN/LOSS).
 
 ### Árbol de preguntas (amplio → detalle) — sección ahorro
 - [ ] Gate: "¿Tienes rendimientos/ganancias del ahorro aparte de tus brokers?"
@@ -45,17 +48,24 @@ cuestionario inteligente, preguntas amplias→detalle.
       discapacidad, descendientes/ascendientes.
 - [ ] Pregunta puente base general (para repartir el mínimo correctamente).
 
-### Cálculo (nuevo `services/tax_estimator.py`)
-- [ ] Base del ahorro = Σ casillas ahorro (brokers + MANUAL): RCM (027/029) + G/P (332/337).
-- [ ] Aplicar **escala estatal del ahorro por año fiscal** (tablas por año — **VERIFICAR
-      contra AEAT, no hardcodear de memoria**: tramos 19/21/23/27/28% y umbrales cambian).
-- [ ] Restar parte del mínimo personal/familiar no absorbida por la base general.
-- [ ] Restar retenciones → resultado a ingresar / a devolver.
+### Cálculo (`services/tax_estimator.py`) — HECHO (motor puro, 12 tests)
+- [x] Base del ahorro = RCM (027/029) + G/P (332/337) con compensación cruzada (cap 25%).
+- [x] Escala estatal del ahorro por año (tablas por año; **2024 codificado, marcado para
+      verificar contra AEAT antes de lanzar**: 19/21/23/27/28%).
+- [x] Mínimo personal/familiar (base + edad + discapacidad + descendientes) repartido tras
+      la base general. `rates_year_used` expuesto (fallback al último año codificado).
+- [x] Retenciones → resultado a ingresar / a devolver.
 
-### API + Frontend
-- [ ] `GET/PUT /fiscal/profile/{year}` (respuestas del wizard).
-- [ ] `GET /fiscal/estimate/{year}` → casillas + desglose de cuota.
-- [ ] Wizard de onboarding en la sección fiscal del dashboard ([CasillasTable](frontend/src/components/CasillasTable.tsx) /
+### API — HECHO (agregación DB + endpoints, 4 tests)
+- [x] `_aggregate_savings_inputs`: suma casillas broker (TaxResult) + entradas manuales
+      + retenciones (DIVIDEND/INTEREST).
+- [x] `GET/PUT /fiscal/profile/{year}`.
+- [x] `GET/POST/DELETE /fiscal/manual-income`.
+- [x] `GET /fiscal/estimate/{year}` → casillas + desglose de cuota + resultado.
+
+### Frontend — PENDIENTE
+- [ ] Tipos TS + cliente API (`src/lib/types.ts`, `src/lib/api.ts`).
+- [ ] Wizard de onboarding en la sección fiscal ([CasillasTable](frontend/src/components/CasillasTable.tsx) /
       [dashboard/page.tsx](frontend/src/app/dashboard/page.tsx)) + tarjeta de resultado final con disclaimer.
 
 ### Decisiones tomadas
