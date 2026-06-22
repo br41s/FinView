@@ -116,7 +116,7 @@ const FEATURES = [
   { Icon: IconPortfolio, title: 'Cartera unificada', desc: 'Importa posiciones de DEGIRO, IBKR y Trade Republic. Todas tus inversiones, sus dividendos y su evolución en un único panel.' },
   { Icon: IconCalendar, title: 'Calendario de pagos', desc: 'Visualiza cada cobro futuro con fecha ex-dividendo, fecha de pago e importe estimado en euros. Nunca más te pillará por sorpresa.' },
   { Icon: IconImport, title: 'Importación automática', desc: 'Sube el Tax Report de Trade Republic, los CSV de DEGIRO o los Activity Statements de IBKR. Procesado y cruzado en segundos.' },
-  { Icon: IconTax, title: 'Motor fiscal IRPF', desc: 'FIFO cross-broker según normativa española, casillas del Modelo 100 y 714 pre-calculadas y validadas contra los datos de Trade Republic.' },
+  { Icon: IconTax, title: 'Motor fiscal IRPF', desc: 'FIFO cross-broker según normativa española. Casillas del Modelo 100 y 714 pre-calculadas a partir de los datos de todos tus brokers, listas para tu declaración.' },
   { Icon: IconMetrics, title: 'Métricas avanzadas', desc: 'Yield on cost, yield on price, rentabilidad total, CAGR de dividendos y comparativa anual. Métricas que los grandes inversores siguen.' },
   { Icon: IconCurrency, title: 'Multi-divisa', desc: 'Conversión automática EUR/USD/GBP con tipo de cambio histórico. Tus retenciones en origen también quedan reflejadas con precisión.' },
 ];
