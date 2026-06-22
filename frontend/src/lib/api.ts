@@ -33,6 +33,11 @@ export interface ZcPricePoint {
   date: string;
   close: number;
   volume: number;
+  // OHLC added for candlestick rendering; optional so analyses stored before this
+  // change (close-only) still parse and fall back to a line series.
+  open?: number;
+  high?: number;
+  low?: number;
 }
 
 export interface ZcAnalysis {
