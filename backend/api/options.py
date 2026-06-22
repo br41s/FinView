@@ -440,9 +440,11 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
     """Return metadata from the most recent cycle + claude_analysis from the most recent cycle that has one."""
     base_q = db.query(OptionsAgentLog).filter(OptionsAgentLog.user_id == user.id)
 
+    from backend.services.macro_context import macro_context
+
     last_log = base_q.order_by(OptionsAgentLog.timestamp.desc()).first()
     if not last_log:
-        return LastAnalysisOut()
+        return LastAnalysisOut(macro=macro_context())
 
     analysis_log = (
         base_q
@@ -459,6 +461,7 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
         market_sentiment=last_log.market_sentiment,
         claude_analysis=analysis_log.claude_analysis if analysis_log else None,
         ai_configured=bool(settings.openrouter_api_key),
+        macro=macro_context(),
     )
 
 

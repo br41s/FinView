@@ -698,6 +698,14 @@ export const api = {
         market_sentiment: string | null;
         claude_analysis: string | null;
         ai_configured: boolean;
+        macro: {
+          regime: string;
+          vix: number | null;
+          yield_spread: number | null;
+          financial_stress: number | null;
+          hy_spread: number | null;
+          as_of: string | null;
+        } | null;
       }>("/options/agent/last-analysis"),
     runCycle: async () => {
       const headers = await authHeaders();

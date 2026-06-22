@@ -2006,7 +2006,47 @@ type LastAnalysis = {
   market_sentiment: string | null;
   claude_analysis: string | null;
   ai_configured: boolean;
+  macro: {
+    regime: string;
+    vix: number | null;
+    yield_spread: number | null;
+    financial_stress: number | null;
+    hy_spread: number | null;
+    as_of: string | null;
+  } | null;
 };
+
+/** Macro-regime annotation badge (FRED). Annotation only — does not affect signals. */
+function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {
+  if (!macro) return null;
+  const label =
+    macro.regime === "risk_off"
+      ? "Risk-off"
+      : macro.regime === "risk_on"
+        ? "Risk-on"
+        : "Neutral";
+  const color =
+    macro.regime === "risk_off"
+      ? "bg-red-500/10 text-red-600 border-red-500/20"
+      : macro.regime === "risk_on"
+        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+        : "bg-muted text-muted-foreground border-border";
+  const fmt = (v: number | null, suffix = "") =>
+    v == null ? "n/d" : `${v.toFixed(2)}${suffix}`;
+  const title =
+    `Régimen macro (FRED${macro.as_of ? `, ${macro.as_of}` : ""}) — ` +
+    `VIX ${fmt(macro.vix)} · Curva 10a-2a ${fmt(macro.yield_spread, "%")} · ` +
+    `Estrés ${fmt(macro.financial_stress)} · HY ${fmt(macro.hy_spread, "%")}`;
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${color}`}
+    >
+      Macro: {label}
+      <span className="text-muted-foreground font-normal">VIX {fmt(macro.vix)}</span>
+    </span>
+  );
+}
 
 /** Parse a Markdown string with "## N. Title\n..." into [{title, body}] sections. */
 function parseAnalysisSections(text: string): { title: string; body: string }[] {
@@ -2096,7 +2136,10 @@ function AnalysisTab() {
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="text-base">Informe VolatilityEdge</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Informe VolatilityEdge</CardTitle>
+                <MacroBadge macro={analysis.macro} />
+              </div>
               <CardDescription>
                 {analysis.timestamp
                   ? `Ciclo #${analysis.cycle ?? "—"} · ${new Date(analysis.timestamp).toLocaleString("es-ES")}`

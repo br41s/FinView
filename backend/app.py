@@ -67,12 +67,15 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
 
-    # Sync FRED risk-free rates in the background (no-op without FRED_API_KEY)
+    # Sync FRED risk-free rates + macro indicators in the background
+    # (no-op without FRED_API_KEY)
     def _sync_fred_rates():
         try:
             from backend.services.fred_rates import sync_rates as sync_fred
+            from backend.services.macro_context import sync_macro
 
             sync_fred()
+            sync_macro()
         except Exception as exc:  # noqa: BLE001 - background best-effort
             print(f"[fred-sync] skipped: {exc}")
 
