@@ -198,7 +198,7 @@ export function PriceChart({
   return (
     <div className="relative w-full" style={{ height }}>
       <div ref={containerRef} className="h-full w-full" />
-      <div className="absolute right-1 top-1 z-10 flex flex-col gap-0.5">
+      <div className="absolute left-1 top-1 z-10 flex flex-col gap-0.5">
         <button
           onClick={() => adjustZoom(1.3)}
           title="Acercar"
