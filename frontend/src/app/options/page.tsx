@@ -2100,6 +2100,11 @@ function AnalysisTab() {
     const configured = analysis?.ai_configured ?? false;
     return (
       <Card className="p-6 text-center space-y-2">
+        {analysis?.macro && (
+          <div className="flex justify-center pb-1">
+            <MacroBadge macro={analysis.macro} />
+          </div>
+        )}
         {!hasRun && (
           <p className="text-sm text-muted-foreground">
             No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe.
