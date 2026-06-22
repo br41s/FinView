@@ -73,6 +73,11 @@ def sync_macro() -> int:
     return total
 
 
+def _as_float(v) -> float | None:
+    """Decimal/None → plain float/None (JSON-serializable)."""
+    return float(v) if v is not None else None
+
+
 def macro_context() -> dict | None:
     """Current macro regime snapshot, or None when no macro data is cached.
 
@@ -86,8 +91,12 @@ def macro_context() -> dict | None:
     if all(v is None for v in (vix, spread, stress, hy)):
         return None
 
-    f = lambda v: float(v) if v is not None else None  # noqa: E731
-    vix_f, spread_f, stress_f, hy_f = f(vix), f(spread), f(stress), f(hy)
+    vix_f, spread_f, stress_f, hy_f = (
+        _as_float(vix),
+        _as_float(spread),
+        _as_float(stress),
+        _as_float(hy),
+    )
 
     as_of = fred_rates._max_cached("VIXCLS") or fred_rates._max_cached("T10Y2Y")
     return {
