@@ -67,6 +67,17 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
 
+    # Sync FRED risk-free rates in the background (no-op without FRED_API_KEY)
+    def _sync_fred_rates():
+        try:
+            from backend.services.fred_rates import sync_rates as sync_fred
+
+            sync_fred()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            print(f"[fred-sync] skipped: {exc}")
+
+    threading.Thread(target=_sync_fred_rates, daemon=True, name="fred-rate-sync").start()
+
     # Refresh the CNMV alt-investments catalog if stale (best-effort, never blocks)
     def _refresh_cnmv_catalog():
         try:

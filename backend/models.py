@@ -814,6 +814,29 @@ class ExchangeRate(Base):
     )
 
 
+class FredRate(Base):
+    """FRED (St. Louis Fed) risk-free rate series cache.
+
+    rate = annualized risk-free rate as a decimal (0.053 = 5.3%). One row per
+    (series_id, rate_date). Populated incrementally from the FRED API by
+    services.fred_rates and used as the risk-free input for Black-Scholes
+    Greeks, resolved per option currency. Empty/stale → Greeks fall back to
+    per-currency constants (no-op when FINVIEW_FRED_API_KEY is unset).
+    """
+
+    __tablename__ = "fred_rates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("series_id", "rate_date"),
+        Index("ix_fred_series_date", "series_id", "rate_date"),
+    )
+
+
 # ── Alternative Investments (private banking) ────────────────────────
 
 

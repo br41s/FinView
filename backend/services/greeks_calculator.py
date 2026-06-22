@@ -95,8 +95,13 @@ def calculate_greeks(
     }
 
 
-def enrich_options_with_greeks(options_data: dict) -> dict:
-    """Add Greeks to each option in the chain."""
+def enrich_options_with_greeks(options_data: dict, r: float = RISK_FREE_RATE) -> dict:
+    """Add Greeks to each option in the chain.
+
+    `r` is the annualized risk-free rate; callers resolve it per option
+    currency (see services.fred_rates). Defaults to the USD constant so
+    behaviour is unchanged when no rate is supplied.
+    """
     S = options_data.get("current_price", 0)
     if not S:
         return options_data
@@ -108,7 +113,7 @@ def enrich_options_with_greeks(options_data: dict) -> dict:
         T = days / 365.0
 
         if K > 0 and iv > 0:
-            option["greeks"] = calculate_greeks(S, K, T, iv, option["type"].lower())
+            option["greeks"] = calculate_greeks(S, K, T, iv, option["type"].lower(), r=r)
         else:
             option["greeks"] = {}
 

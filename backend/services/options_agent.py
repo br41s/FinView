@@ -22,6 +22,7 @@ from backend.models import (
     WatchlistItem,
 )
 from backend.services.backtest_service import evaluate_pending, record_signal
+from backend.services.fred_rates import risk_free_rate_for_ticker
 from backend.services.greeks_calculator import enrich_options_with_greeks
 from backend.services.notification_service import notify_alerts, notify_spike_telegram
 from backend.services.options_analyzer import analyze_ticker
@@ -77,8 +78,10 @@ def run_cycle(user_id: int) -> dict:
                 logger.warning("No data for %s", ticker)
                 continue
 
-            # Phase 2: Greeks
-            options_data = enrich_options_with_greeks(options_data)
+            # Phase 2: Greeks (risk-free rate resolved per ticker currency,
+            # FRED-backed with a per-currency constant fallback)
+            r = risk_free_rate_for_ticker(ticker)
+            options_data = enrich_options_with_greeks(options_data, r=r)
 
             # Phase 3: Analyze
             analysis = analyze_ticker(options_data)
