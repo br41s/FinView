@@ -71,9 +71,12 @@ cuestionario inteligente, preguntas amplias→detalle.
       ingresos del ahorro manuales + tarjeta de resultado (casillas, base, mínimo, cuota,
       resultado a ingresar/devolver, aviso de año de tablas + disclaimer).
 
-### Pendiente de QA en vivo (localhost)
-- [ ] Smoke test del flujo en `/dashboard` con un año con datos: guardar perfil,
-      añadir/borrar ingreso manual, ver que el resultado recalcula.
+### QA en vivo (localhost) — HECHO ✅
+- [x] Backend HTTP end-to-end: PUT perfil, POST/DELETE ingreso manual, GET estimate.
+      Compensación (cap 25%), borrado revierte, validación 422. Números exactos.
+- [x] Navegador (login → año 2024 → "Mi declaración"): formulario + ingresos manuales +
+      tarjeta de resultado renderizan; broker + manual combinan bien; añadir ingreso
+      recalcula al instante (A devolver 982 € → A ingresar 68 €). Sin errores de consola.
 
 ### Decisiones tomadas
 - **v1 = declaración individual únicamente.** Conjunta vs individual (calcular ambas y
