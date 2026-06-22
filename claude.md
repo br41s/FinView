@@ -327,6 +327,18 @@ replace each other:
   bump to 1 (~€45/mo always-on) only if always-instant European data is worth it.
 - Full deploy docs: docs/deployment.md
 
+### Pre-push build guard (no CI)
+
+There is no GitHub Actions / CI build gate. Instead `.githooks/pre-push` runs the
+production Next build (`pnpm run build`, Vercel parity) before any push that touches
+`frontend/**`, and aborts the push if it fails. This exists because blog-branch merges
+repeatedly fused per-article blocks in `frontend/src/app/blog/page.tsx` + `blog.module.css`
+and broke prod (PRs #59, #64) — the corruption enters locally before the push.
+
+- **Enable once per clone** (not auto-shared by git): `git config core.hooksPath .githooks`
+- Backend/docs-only pushes skip the build and stay fast.
+- Bypass when needed: `SKIP_BUILD_CHECK=1 git push`.
+
 ---
 
 ## Tests
