@@ -8,14 +8,33 @@ profile, it computes:
   − parte del mínimo personal/familiar no absorbida por la base general
   − retenciones (brokers + manuales)               ──▶  resultado (a ingresar/devolver)
 
-Why this is the clean first slice: the savings-base scale is STATE-level
-(uniform across Spain), so the final number does NOT depend on the autonomous
-community. The general base (employment, real estate…) does — that is deferred.
+Why this is the clean first slice: the savings-base scale is uniform across
+Spain. It is the sum of a state scale (Ley 35/2006 art. 66) and an autonomic
+scale that, for the savings base, is fixed equal to the state one — communities
+may modify the general-base scale but NOT the savings scale. So the combined
+savings rate (19/21/23/27/28%) does not depend on the autonomous community.
+The general base (employment, real estate…) does — that is deferred.
 
-⚠️ RATE TABLES MUST BE VERIFIED AGAINST AEAT PER FISCAL YEAR before the
-estimate is presented as authoritative. Only 2024 is encoded today. The
-result exposes `rates_year_used` so the UI can warn when it differs from the
-requested year (we fall back to the latest encoded year rather than guess).
+Rate tables — VERIFIED against the BOE consolidated Ley 35/2006 (IRPF) for
+fiscal year 2024:
+  · savings scale            art. 66  (state 9.5/10.5/11.5/13.5/15% × 2)
+  · mínimo del contribuyente art. 57  (5.550 € · +1.150 >65 · +1.400 >75)
+  · mínimo descendientes     art. 58  (2.400/2.700/4.000/4.500 €)
+  · mínimo discapacidad      art. 60  (3.000 € · 9.000 € ≥65%)
+  · compensación RCM↔G/P     art. 49  (límite 25%)
+
+v1 modelling simplifications (deliberately not applied; all would only REDUCE
+the taxpayer's bill, so the estimate is conservative):
+  · descendientes: +2.800 € por hijo <3 años (art. 58.2) not modelled
+  · discapacidad: +3.000 € gastos de asistencia (art. 60) not modelled
+  · ascendientes (art. 59) not modelled
+  · autonomic minimums: a few CCAA raise the personal/family minimum for their
+    half of the quota; v1 uses the state minimum for both halves.
+Age >65/>75 is applied as ≥65/≥75 (AEAT practical interpretation at 31-Dec).
+
+Only 2024 is encoded today. The result exposes `rates_year_used` so the UI can
+warn when it differs from the requested year (we fall back to the latest
+encoded year rather than guess).
 """
 
 from __future__ import annotations
@@ -26,8 +45,9 @@ from decimal import Decimal
 _CENTS = Decimal("0.01")
 
 
-# ── Per-year rate tables — VERIFY AGAINST AEAT ──────────────────────────────
-# Savings scale: ascending (upper_bound_exclusive | None for the top, rate).
+# ── Per-year rate tables — verified vs BOE Ley 35/2006 (see module docstring) ─
+# Combined (state + autonomic) savings scale: ascending
+# (upper_bound_exclusive | None for the top, rate). State half in BOE art. 66.
 _SAVINGS_SCALE: dict[int, list[tuple[Decimal | None, Decimal]]] = {
     2024: [
         (Decimal("6000"), Decimal("0.19")),
@@ -38,7 +58,7 @@ _SAVINGS_SCALE: dict[int, list[tuple[Decimal | None, Decimal]]] = {
     ],
 }
 
-# Mínimo personal y familiar (state totals). age_over_75 is ADDITIONAL to
+# Mínimo personal y familiar (BOE arts. 57/58/60). age_over_75 is ADDITIONAL to
 # age_over_65 (a >75 taxpayer gets base + over_65 + over_75).
 # Descendants are tiered by birth order (1st, 2nd, 3rd, 4th+).
 _MINIMUM: dict[int, dict[str, Decimal]] = {
@@ -55,7 +75,7 @@ _MINIMUM: dict[int, dict[str, Decimal]] = {
     },
 }
 
-# RCM ↔ G/P cross-compensation cap (fraction of the positive balance).
+# RCM ↔ G/P cross-compensation cap, fraction of the positive balance (BOE art. 49).
 _COMPENSATION_CAP: dict[int, Decimal] = {2024: Decimal("0.25")}
 
 

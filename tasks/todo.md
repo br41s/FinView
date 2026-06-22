@@ -87,6 +87,16 @@ cuestionario inteligente, preguntas amplias→detalle.
 ### Riesgos a confirmar antes de construir
 - Postura legal: copy de "estimación orientativa, no asesoramiento fiscal".
 
+### Verificación AEAT (2024) — HECHO ✅
+Tablas 2024 confirmadas contra el BOE consolidado de la Ley 35/2006 (IRPF):
+escala del ahorro art. 66 (estatal 9,5/10,5/11,5/13,5/15% ×2 → 19/21/23/27/28%),
+mínimo contribuyente art. 57 (5.550 € · +1.150 >65 · +1.400 >75), descendientes
+art. 58 (2.400/2.700/4.000/4.500 €), discapacidad art. 60 (3.000/9.000 €),
+compensación art. 49 (25%). Sin cambios de números; docstring cita artículos +
+documenta simplificaciones v1 (no aplica +2.800 <3a, +3.000 asistencia,
+ascendientes, ni mínimos autonómicos — todas reducirían la cuota, estimación
+conservadora). Pendiente: añadir tablas 2023/2025 (no verificadas aún).
+
 ### Fase 2 (diferida) — base general
 Rentas del trabajo, inmuebles, escala general **autonómica**, planes de pensiones, etc.
 Aquí entran las preguntas amplias tipo "¿trabajas? ¿tienes inmuebles?".
