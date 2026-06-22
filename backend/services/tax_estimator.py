@@ -23,9 +23,10 @@ Rate tables — VERIFIED against the BOE consolidated Ley 35/2006 (IRPF):
   · compensación RCM↔G/P     art. 49  (límite 25%)
 
 Savings scale per year (combined = state+autonomic, both halves equal):
-  · 2024 → 19/21/23/27/28%  (top half 14% ×2; Ley 31/2022)
+  · 2023 → 19/21/23/27/28%  (27%/28% brackets introduced by Ley 31/2022, ef. 1-1-2023)
+  · 2024 → 19/21/23/27/28%  (top half 14% ×2; unchanged from 2023)
   · 2025 → 19/21/23/27/30%  (top half raised to 15% ×2 by Ley 7/2024, ef. 1-1-2025)
-Minimums and the 25% compensation cap are unchanged across 2024–2025.
+Minimums and the 25% compensation cap are unchanged across 2023–2025.
 
 v1 modelling simplifications (deliberately not applied; all would only REDUCE
 the taxpayer's bill, so the estimate is conservative):
@@ -36,8 +37,8 @@ the taxpayer's bill, so the estimate is conservative):
     half of the quota; v1 uses the state minimum for both halves.
 Age >65/>75 is applied as ≥65/≥75 (AEAT practical interpretation at 31-Dec).
 
-2024 and 2025 are encoded. The result exposes `rates_year_used` so the UI can
-warn when it differs from the requested year (we fall back to the latest
+2023, 2024 and 2025 are encoded. The result exposes `rates_year_used` so the UI
+can warn when it differs from the requested year (we fall back to the latest
 encoded year rather than guess).
 """
 
@@ -94,6 +95,13 @@ _COMPENSATION_CAP: dict[int, Decimal] = {2024: Decimal("0.25")}
 # touched the savings-scale top bracket), so 2025 reuses the 2024 values.
 _MINIMUM[2025] = _MINIMUM[2024]
 _COMPENSATION_CAP[2025] = _COMPENSATION_CAP[2024]
+
+# 2023 is identical to 2024: the 27% (200–300k) and 28% (>300k) savings brackets
+# were introduced for 2023 by Ley 31/2022 (ef. 1-1-2023); minimums (unchanged
+# since Ley 26/2014) and the 25% cap also match. Reuse to avoid drift.
+_SAVINGS_SCALE[2023] = _SAVINGS_SCALE[2024]
+_MINIMUM[2023] = _MINIMUM[2024]
+_COMPENSATION_CAP[2023] = _COMPENSATION_CAP[2024]
 
 
 def _latest_year(table: dict[int, object]) -> int:

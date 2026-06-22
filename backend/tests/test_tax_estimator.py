@@ -37,6 +37,14 @@ def test_savings_scale_2025_top_bracket_is_30pct():
     assert progressive_tax(D("60000"), 2025) == progressive_tax(D("60000"), 2024)
 
 
+def test_savings_scale_2023_identical_to_2024():
+    assert resolve_year(2023) == 2023
+    for base in (D("1000"), D("60000"), D("400000")):
+        assert progressive_tax(base, 2023) == progressive_tax(base, 2024)
+    assert personal_minimum(TaxpayerProfile(age=80, descendants=2), 2023) == \
+        personal_minimum(TaxpayerProfile(age=80, descendants=2), 2024)
+
+
 def test_progressive_tax_brackets():
     # 8000 → 6000@19% + 2000@21% = 1140 + 420 = 1560
     tax, detail = progressive_tax(D("8000"), 2024)
