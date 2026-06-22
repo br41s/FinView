@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, type OhlcBar } from "@/lib/api";
+import { PriceChart, type PriceMarker } from "@/components/charts/PriceChart";
 import {
   Card,
   CardContent,
@@ -117,6 +118,17 @@ function fmt(n: number | null | undefined, decimals = 2): string {
   });
 }
 
+// Smallest whitelisted yfinance period that still covers the oldest transaction.
+function periodForOldest(oldest: string | undefined): string {
+  if (!oldest) return "2y";
+  const years =
+    (Date.now() - new Date(oldest).getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (years <= 2) return "2y";
+  if (years <= 5) return "5y";
+  if (years <= 10) return "10y";
+  return "max";
+}
+
 const TX_LABELS: Record<string, string> = {
   BUY: "Compra",
   SELL: "Venta",
@@ -142,6 +154,7 @@ function PortfolioContent() {
   const [retryKey, setRetryKey] = useState(0);
   const [pricesLoaded, setPricesLoaded] = useState(false);
   const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
+  const [ohlcByIsin, setOhlcByIsin] = useState<Map<string, OhlcBar[]>>(new Map());
   const [details, setDetails] = useState<Map<string, PositionDetail>>(
     new Map(),
   );
@@ -216,6 +229,24 @@ function PortfolioContent() {
     },
     [expandedIsin, details],
   );
+
+  // Fetch OHLC for the expanded position once its detail (with ticker) is loaded.
+  // Cached per ISIN so re-expanding doesn't refetch. Best-effort → empty hides the chart.
+  useEffect(() => {
+    if (!expandedIsin) return;
+    const detail = details.get(expandedIsin);
+    if (!detail?.ticker || ohlcByIsin.has(expandedIsin)) return;
+    const dates = detail.transactions.map((t) => t.date).filter(Boolean).sort();
+    const period = periodForOldest(dates[0]);
+    api.charts
+      .priceHistory(detail.ticker, period)
+      .then((bars) =>
+        setOhlcByIsin((prev) => new Map(prev).set(expandedIsin, bars)),
+      )
+      .catch(() =>
+        setOhlcByIsin((prev) => new Map(prev).set(expandedIsin, [])),
+      );
+  }, [expandedIsin, details, ohlcByIsin]);
 
   if (loading) {
     return (
@@ -687,6 +718,50 @@ function PortfolioContent() {
                                     </Table>
                                   </div>
                                 )}
+
+                                {(() => {
+                                  const bars =
+                                    ohlcByIsin.get(detail.isin) ?? [];
+                                  if (!detail.ticker || bars.length === 0)
+                                    return null;
+                                  const markers: PriceMarker[] =
+                                    detail.transactions
+                                      .filter(
+                                        (t) =>
+                                          t.type === "BUY" || t.type === "SELL",
+                                      )
+                                      .map((t) => ({
+                                        date: t.date.slice(0, 10),
+                                        position:
+                                          t.type === "BUY"
+                                            ? "belowBar"
+                                            : "aboveBar",
+                                        color:
+                                          t.type === "BUY"
+                                            ? "#22c55e"
+                                            : "#ef4444",
+                                        shape:
+                                          t.type === "BUY"
+                                            ? "arrowUp"
+                                            : "arrowDown",
+                                        text: t.type === "BUY" ? "C" : "V",
+                                      }));
+                                  return (
+                                    <div>
+                                      <h4 className="mb-2 text-sm font-semibold">
+                                        Precio y operaciones{" "}
+                                        <span className="font-normal text-muted-foreground">
+                                          ▲ compra · ▼ venta
+                                        </span>
+                                      </h4>
+                                      <PriceChart
+                                        data={bars}
+                                        markers={markers}
+                                        height={360}
+                                      />
+                                    </div>
+                                  );
+                                })()}
 
                                 <div>
                                   <h4 className="mb-2 text-sm font-semibold">
