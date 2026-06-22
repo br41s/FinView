@@ -16,19 +16,31 @@ from backend.api.schemas import (
     CrossValidationRow,
     DashboardStats,
     FIFOAdjustmentOut,
+    FiscalProfileIn,
+    FiscalProfileOut,
     FiscalSummary,
+    ManualSavingsIncomeIn,
+    ManualSavingsIncomeOut,
     OptionAssignmentOut,
+    SavingsEstimateOut,
     YearlyComparisonResult,
     YearlyMetrics,
 )
 from backend.database import DbSession
 from backend.services.sql_compat import year_range, year_str
+from backend.services.tax_estimator import (
+    SavingsInputs,
+    TaxpayerProfile,
+    estimate_savings,
+)
 from backend.models import (
     Account,
     Broker,
     CrossBrokerLot,
     FIFOAdjustment,
+    FiscalProfile,
     ImportRecord,
+    ManualSavingsIncome,
     OptionAssignmentRecord,
     TaxLot,
     TaxResult,
@@ -488,3 +500,196 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
         )
         for row in tax_rows
     ])
+
+
+# ── Fiscal onboarding: savings-base estimate (v1 individual) ─────────────────
+_SAVINGS_CASILLAS = (27, 29, 332, 337)
+
+
+def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInputs, dict]:
+    """Sum savings components from broker casillas + manual entries + withholdings."""
+    rows = (
+        db.query(TaxResult.casilla, func.sum(TaxResult.amount_eur))
+        .filter(
+            TaxResult.user_id == user_id,
+            TaxResult.fiscal_year == year,
+            TaxResult.modelo == 100,
+            TaxResult.casilla.in_(_SAVINGS_CASILLAS),
+        )
+        .group_by(TaxResult.casilla)
+        .all()
+    )
+    cas = {c: (a or Decimal("0")) for c, a in rows}
+    rcm = cas.get(27, Decimal("0")) + cas.get(29, Decimal("0"))
+    gains = cas.get(332, Decimal("0"))
+    losses = cas.get(337, Decimal("0"))  # stored ≤ 0
+
+    # Withholdings on savings income (dividends + interest)
+    whg = (
+        db.query(func.coalesce(func.sum(Transaction.withholding_tax), Decimal("0")))
+        .join(Account, Account.id == Transaction.account_id)
+        .filter(
+            Account.user_id == user_id,
+            Transaction.type.in_(
+                [TransactionType.DIVIDEND.value, TransactionType.INTEREST.value]
+            ),
+            year_range(Transaction.trade_date, year),
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    # Manual entries (outside broker imports)
+    manual = (
+        db.query(ManualSavingsIncome)
+        .filter(
+            ManualSavingsIncome.user_id == user_id,
+            ManualSavingsIncome.fiscal_year == year,
+        )
+        .all()
+    )
+    for m in manual:
+        if m.category == "RCM":
+            rcm += m.amount_eur
+        elif m.category == "GAIN":
+            gains += m.amount_eur
+        elif m.category == "LOSS":
+            losses -= m.amount_eur  # amount is a positive magnitude
+        whg += m.withholding_eur or Decimal("0")
+
+    casillas = {"rcm": rcm, "gains": gains, "losses": losses, "withholdings": whg}
+    return SavingsInputs(rcm_net=rcm, gains=gains, losses=losses, withholdings=whg), casillas
+
+
+@router.get("/profile/{fiscal_year}", response_model=FiscalProfileOut)
+def get_fiscal_profile(db: DbSession, user: CurrentUser, fiscal_year: int):
+    """Taxpayer profile for the year; returns defaults if none saved yet."""
+    p = (
+        db.query(FiscalProfile)
+        .filter(FiscalProfile.user_id == user.id, FiscalProfile.fiscal_year == fiscal_year)
+        .first()
+    )
+    if p is None:
+        return FiscalProfileOut(fiscal_year=fiscal_year)
+    return FiscalProfileOut(
+        fiscal_year=p.fiscal_year,
+        age=p.age,
+        disability=p.disability,
+        descendants=p.descendants,
+        general_base=p.general_base,
+        updated_at=p.updated_at,
+    )
+
+
+@router.put("/profile/{fiscal_year}", response_model=FiscalProfileOut)
+def upsert_fiscal_profile(
+    db: DbSession, user: CurrentUser, fiscal_year: int, body: FiscalProfileIn
+):
+    """Create or update the taxpayer profile for the year."""
+    if body.disability not in (None, "general", "severe"):
+        raise HTTPException(422, "disability must be null, 'general' or 'severe'")
+    p = (
+        db.query(FiscalProfile)
+        .filter(FiscalProfile.user_id == user.id, FiscalProfile.fiscal_year == fiscal_year)
+        .first()
+    )
+    if p is None:
+        p = FiscalProfile(user_id=user.id, fiscal_year=fiscal_year)
+        db.add(p)
+    p.age = body.age
+    p.disability = body.disability
+    p.descendants = max(body.descendants, 0)
+    p.general_base = body.general_base
+    db.commit()
+    db.refresh(p)
+    return FiscalProfileOut(
+        fiscal_year=p.fiscal_year,
+        age=p.age,
+        disability=p.disability,
+        descendants=p.descendants,
+        general_base=p.general_base,
+        updated_at=p.updated_at,
+    )
+
+
+@router.get("/manual-income/{fiscal_year}", response_model=list[ManualSavingsIncomeOut])
+def list_manual_income(db: DbSession, user: CurrentUser, fiscal_year: int):
+    return (
+        db.query(ManualSavingsIncome)
+        .filter(
+            ManualSavingsIncome.user_id == user.id,
+            ManualSavingsIncome.fiscal_year == fiscal_year,
+        )
+        .order_by(ManualSavingsIncome.id)
+        .all()
+    )
+
+
+@router.post("/manual-income", response_model=ManualSavingsIncomeOut)
+def create_manual_income(db: DbSession, user: CurrentUser, body: ManualSavingsIncomeIn):
+    if body.category not in ("RCM", "GAIN", "LOSS"):
+        raise HTTPException(422, "category must be 'RCM', 'GAIN' or 'LOSS'")
+    if body.amount_eur < 0 or body.withholding_eur < 0:
+        raise HTTPException(422, "amount_eur and withholding_eur must be ≥ 0")
+    m = ManualSavingsIncome(
+        user_id=user.id,
+        fiscal_year=body.fiscal_year,
+        category=body.category,
+        label=body.label,
+        amount_eur=body.amount_eur,
+        withholding_eur=body.withholding_eur,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+@router.delete("/manual-income/{entry_id}")
+def delete_manual_income(db: DbSession, user: CurrentUser, entry_id: int):
+    m = (
+        db.query(ManualSavingsIncome)
+        .filter(ManualSavingsIncome.id == entry_id, ManualSavingsIncome.user_id == user.id)
+        .first()
+    )
+    if m is None:
+        raise HTTPException(404, "Manual income entry not found")
+    db.delete(m)
+    db.commit()
+    return {"status": "deleted", "id": entry_id}
+
+
+@router.get("/estimate/{fiscal_year}", response_model=SavingsEstimateOut)
+def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
+    """Estimated savings-base IRPF result (casillas + final number)."""
+    inputs, casillas = _aggregate_savings_inputs(db, user.id, fiscal_year)
+
+    p = (
+        db.query(FiscalProfile)
+        .filter(FiscalProfile.user_id == user.id, FiscalProfile.fiscal_year == fiscal_year)
+        .first()
+    )
+    profile = TaxpayerProfile(
+        age=p.age if p else None,
+        disability=p.disability if p else None,
+        descendants=p.descendants if p else 0,
+        general_base=p.general_base if p else Decimal("0"),
+    )
+
+    est = estimate_savings(inputs, profile, fiscal_year)
+    return SavingsEstimateOut(
+        fiscal_year=fiscal_year,
+        rates_year_used=est.rates_year_used,
+        rcm_net=est.rcm_net,
+        gp_net=est.gp_net,
+        savings_base=est.savings_base,
+        rcm_carryforward=est.rcm_carryforward,
+        gp_carryforward=est.gp_carryforward,
+        personal_minimum=est.personal_minimum,
+        minimum_on_savings=est.minimum_on_savings,
+        gross_quota=est.gross_quota,
+        quota=est.quota,
+        withholdings=est.withholdings,
+        result=est.result,
+        brackets=est.breakdown,
+        casillas=casillas,
+    )

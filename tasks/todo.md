@@ -1,5 +1,98 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Onboarding fiscal estilo TaxDown — base del ahorro primero — 2026-06-22
+
+**Decisión CEO:** (1) por fases — completar la **base del ahorro** primero, luego la
+base general. (2) salida doble: **casillas** (para rellenar el Modelo 100 guiado) **y**
+el **número final estimado** (cuota / resultado a ingresar o devolver). Estilo
+cuestionario inteligente, preguntas amplias→detalle.
+
+**Done en esta sesión (copy público, fuera del alcance del onboarding):**
+- [x] Quitar el claim "solo validado contra Trade Republic" de las páginas públicas;
+      ahora afirman cálculo cross-broker para todos los brokers.
+      [features/page.tsx:119](frontend/src/app/features/page.tsx), [pricing/page.tsx:86](frontend/src/app/pricing/page.tsx).
+
+### Por qué "ahorro primero" es la rebanada limpia
+- La **escala de la base del ahorro es estatal** (uniforme en toda España) → el número
+  final del ahorro **no depende de la comunidad autónoma**. La base general sí (tramo
+  autonómico) → de ahí que se difiera. Esto valida la decisión de empezar por ahorro.
+- **Acoplamiento a vigilar:** el *mínimo personal y familiar* se aplica primero contra
+  la base general y solo el sobrante contra la base del ahorro. Para estimar bien la
+  cuota del ahorro hace falta UNA pregunta puente: "¿tienes rentas del trabajo / base
+  general?" (sí/no + importe aprox). Sin general → el mínimo entero recae en ahorro.
+
+### Invariantes (topología)
+- **Estado:** nueva tabla `FiscalProfile` (user_id, fiscal_year, respuestas). Renta
+  manual fuera de brokers → filas `TaxResult` con pseudo-broker `MANUAL` → entran solas
+  en la agregación de casillas existente (no se toca el motor FIFO).
+- **Feedback:** wizard con progreso; resultado = casillas + desglose de cuota + aviso
+  "estimación, no asesoramiento fiscal".
+- **Blast radius:** aditivo. NO tocar `fifo_engine.py`. Reusa la suma de `TaxResult`.
+- **Timing:** recomputar cuota cuando cambie el perfil O una importación de broker.
+
+### Modelo de datos
+- [x] `FiscalProfile` (1 fila por user+año): edad, discapacidad (general/severe),
+      descendientes, importe de base general. `Base.metadata.create_all` la crea sola.
+      (Estado civil/conjunta y residencia autonómica → diferidos a Fase 2, no se usan
+      en v1 individual.)
+- [x] ~~Pseudo-broker `MANUAL`~~ → **tabla dedicada `ManualSavingsIncome`**. `Broker`
+      es un ENUM nativo de Postgres y el path `create_all`/`ensure_columns` NO puede
+      hacer `ALTER TYPE ... ADD VALUE`. La tabla es aditiva y más limpia. `amount_eur`
+      siempre magnitud positiva; el signo lo da `category` (RCM/GAIN/LOSS).
+
+### Árbol de preguntas (amplio → detalle) — sección ahorro
+- [ ] Gate: "¿Tienes rendimientos/ganancias del ahorro aparte de tus brokers?"
+      (intereses bancarios, cripto, fondos en otra plataforma) → si no, salta el bloque.
+- [ ] Gate: "¿Te han practicado retenciones fuera de tus brokers?"
+- [ ] Datos personales para la cuota: edad, estado civil + conjunta/individual,
+      discapacidad, descendientes/ascendientes.
+- [ ] Pregunta puente base general (para repartir el mínimo correctamente).
+
+### Cálculo (`services/tax_estimator.py`) — HECHO (motor puro, 12 tests)
+- [x] Base del ahorro = RCM (027/029) + G/P (332/337) con compensación cruzada (cap 25%).
+- [x] Escala estatal del ahorro por año (tablas por año; **2024 codificado, marcado para
+      verificar contra AEAT antes de lanzar**: 19/21/23/27/28%).
+- [x] Mínimo personal/familiar (base + edad + discapacidad + descendientes) repartido tras
+      la base general. `rates_year_used` expuesto (fallback al último año codificado).
+- [x] Retenciones → resultado a ingresar / a devolver.
+
+### API — HECHO (agregación DB + endpoints, 4 tests)
+- [x] `_aggregate_savings_inputs`: suma casillas broker (TaxResult) + entradas manuales
+      + retenciones (DIVIDEND/INTEREST).
+- [x] `GET/PUT /fiscal/profile/{year}`.
+- [x] `GET/POST/DELETE /fiscal/manual-income`.
+- [x] `GET /fiscal/estimate/{year}` → casillas + desglose de cuota + resultado.
+
+### Frontend — HECHO (typecheck limpio)
+- [x] Tipos TS + métodos de cliente API (`src/lib/types.ts`, `src/lib/api.ts`).
+- [x] Vista "Mi declaración" en la nav fiscal del dashboard (`app-sidebar.tsx` →
+      `view="declaracion"` → [DeclaracionView.tsx](frontend/src/components/DeclaracionView.tsx)):
+      formulario de datos (edad/discapacidad/descendientes/base general) + alta/baja de
+      ingresos del ahorro manuales + tarjeta de resultado (casillas, base, mínimo, cuota,
+      resultado a ingresar/devolver, aviso de año de tablas + disclaimer).
+
+### QA en vivo (localhost) — HECHO ✅
+- [x] Backend HTTP end-to-end: PUT perfil, POST/DELETE ingreso manual, GET estimate.
+      Compensación (cap 25%), borrado revierte, validación 422. Números exactos.
+- [x] Navegador (login → año 2024 → "Mi declaración"): formulario + ingresos manuales +
+      tarjeta de resultado renderizan; broker + manual combinan bien; añadir ingreso
+      recalcula al instante (A devolver 982 € → A ingresar 68 €). Sin errores de consola.
+
+### Decisiones tomadas
+- **v1 = declaración individual únicamente.** Conjunta vs individual (calcular ambas y
+  sugerir la mejor) se difiere a una iteración posterior.
+- Tablas de escala/mínimos **por año fiscal**, verificadas contra AEAT al construir
+  (no hardcodear de memoria).
+
+### Riesgos a confirmar antes de construir
+- Postura legal: copy de "estimación orientativa, no asesoramiento fiscal".
+
+### Fase 2 (diferida) — base general
+Rentas del trabajo, inmuebles, escala general **autonómica**, planes de pensiones, etc.
+Aquí entran las preguntas amplias tipo "¿trabajas? ¿tienes inmuebles?".
+
+---
+
 ## TR foundation: CSV ledger + PDF fiscal, no data loss — 2026-06-05
 
 **Goal:** 100% accurate for taxes AND positions, composing TR's documents without

@@ -15,6 +15,7 @@ import {
   Briefcase,
   Target,
   Landmark,
+  Calculator,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -39,6 +40,7 @@ export type View =
   | "graficas"
   | "rendimiento"
   | "casillas"
+  | "declaracion"
   | "dividendos"
   | "ganancias"
   | "comparativa"
@@ -67,6 +69,7 @@ const mainNav = [
 const fiscalNav = [
   { key: "casillas" as const, label: "Casillas fiscales", icon: FileText },
   { key: "ganancias" as const, label: "Ganancias de capital", icon: LineChart },
+  { key: "declaracion" as const, label: "Mi declaración", icon: Calculator },
 ];
 
 const analysisNav = [

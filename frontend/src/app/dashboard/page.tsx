@@ -35,6 +35,7 @@ import { FileUpload } from "@/components/FileUpload";
 import { ImportedFilesList } from "@/components/ImportedFilesList";
 import { StatsCards } from "@/components/StatsCards";
 import { CasillasTable } from "@/components/CasillasTable";
+import { DeclaracionView } from "@/components/DeclaracionView";
 import { DividendsTable } from "@/components/DividendsTable";
 import { CapitalGainsTable } from "@/components/CapitalGainsTable";
 import { DividendYieldTable } from "@/components/DividendYieldTable";
@@ -154,6 +155,7 @@ const viewTitles: Record<View, string> = {
   graficas: "Dashboard",
   rendimiento: "Rendimiento",
   casillas: "Casillas fiscales",
+  declaracion: "Mi declaración",
   dividendos: "Dividendos",
   ganancias: "Ganancias de capital",
   comparativa: "Comparativa anual",
@@ -330,7 +332,10 @@ export default function Home() {
 
   // Reset to non-fiscal view when switching to "Todos los años"
   useEffect(() => {
-    if (!showFiscal && (view === "casillas" || view === "ganancias")) {
+    if (
+      !showFiscal &&
+      (view === "casillas" || view === "ganancias" || view === "declaracion")
+    ) {
       setView("graficas");
     }
   }, [showFiscal, view]);
@@ -532,6 +537,11 @@ export default function Home() {
                 description="Selecciona un año fiscal con datos importados para ver las casillas."
               />
             ))}
+
+          {/* Mi declaración — estimación base del ahorro */}
+          {view === "declaracion" && hasData && selectedYear !== null && (
+            <DeclaracionView fiscalYear={selectedYear} />
+          )}
 
           {/* Dividendos */}
           {view === "dividendos" &&

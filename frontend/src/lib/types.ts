@@ -259,3 +259,40 @@ export interface YearlyMetrics {
 export interface YearlyComparisonResult {
   years: YearlyMetrics[];
 }
+
+// Fiscal onboarding — savings-base estimate (v1 individual)
+export interface FiscalProfile {
+  fiscal_year: number;
+  age: number | null;
+  disability: "general" | "severe" | null;
+  descendants: number;
+  general_base: string;
+  updated_at?: string | null;
+}
+
+export interface ManualSavingsIncome {
+  id: number;
+  fiscal_year: number;
+  category: "RCM" | "GAIN" | "LOSS";
+  label: string;
+  amount_eur: string;
+  withholding_eur: string;
+}
+
+export interface SavingsEstimate {
+  fiscal_year: number;
+  rates_year_used: number;
+  rcm_net: string;
+  gp_net: string;
+  savings_base: string;
+  rcm_carryforward: string;
+  gp_carryforward: string;
+  personal_minimum: string;
+  minimum_on_savings: string;
+  gross_quota: string;
+  quota: string;
+  withholdings: string;
+  result: string; // >0 a ingresar · <0 a devolver
+  brackets: { from: string; to: string; rate: string; tax: string }[];
+  casillas: Record<string, string>;
+}
