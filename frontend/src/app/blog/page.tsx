@@ -422,6 +422,11 @@ function ImgPrimaEmision() {
         {/* Bottom annotation */}
         <text x="100" y="105" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">No tributa → reduce valor de adquisición</text>
         <text x="100" y="114" fontSize="5" fill="var(--fv-ink-20)" fontFamily="system-ui" textAnchor="middle">Exceso sobre coste → tributa como RCM</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgCalendarioDividendos() {
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const dividends = [85, 120, 95, 110, 130, 280, 90, 45, 45, 140, 100, 40];
@@ -459,6 +464,8 @@ const POSTS: Post[] = [
     title: 'Prima de emisión y reducción de capital en el IRPF: qué tributa y qué no cuando la empresa devuelve tu dinero',
     excerpt: 'La prima de emisión y la reducción de capital no tributan como dividendo en la mayoría de casos. Guía práctica con ejemplos, la DGT V0215-26 de febrero 2026 y cómo afecta a tu cartera de dividendos.',
     Image: ImgPrimaEmision,
+  },
+  {
     slug: 'calendario-dividendos-irpf',
     tag: 'Estrategia',
     date: '20 jun 2026',
