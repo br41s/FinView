@@ -54,6 +54,15 @@ export interface ZcAnalysis {
   price_history: ZcPricePoint[];
 }
 
+export interface OhlcBar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface ZcSchedulerStatus {
   running: boolean;
   last_run: string | null;
@@ -527,6 +536,8 @@ export const api = {
       fetchCached(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
     dividendsByCompanyYearly: () =>
       fetchCached("/charts/dividends-by-company-yearly"),
+    priceHistory: (ticker: string, period = "2y") =>
+      fetchJSON<OhlcBar[]>(`/charts/price-history${qs({ ticker, period })}`),
   },
 
   // Options monitor
