@@ -218,6 +218,43 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 
 ---
 
+## FRED service — risk-free rate + macro regime
+
+`services/fred_rates.py` + `services/macro_context.py` — St. Louis Fed (FRED) data,
+hand-rolled httpx (not the `fredapi` dep, to match the ECB service). Both sync in the
+same startup background thread (`fred-rate-sync` in app.py). **No-op without
+`FINVIEW_FRED_API_KEY`** (free key) — degrades to constants/omission like Turnstile/aisstream.
+The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never touches FRED.
+
+### Shared cache (`fred_rates` table)
+- One row per (series_id, rate_date); `rate` column holds the stored value. New table,
+  auto-creates via `create_all`. `_fetch_observations(series_id, start, scale)` multiplies the
+  raw FRED value: rates use `scale=0.01` (percent → decimal), macro indices `scale=1.0` (raw).
+- `latest_value(series_id, on)` is DB-only with a ±14-day look-back window (shared reader).
+
+### Risk-free rate (Phase 1)
+- Fixes Black-Scholes Greeks: previously a single hardcoded `0.053` US rate priced **every**
+  option (EUR `.MC`/Eurex underlyings were mispriced — error concentrates in rho/theta, grows
+  with expiry). Now resolved **per option currency**: USD=`DGS3MO`, EUR=`ECBESTRVOLWGTTRMDMNRT`
+  (€STR). `currency_for_ticker()` maps euro suffixes (`.MC`,`.DE`,`.PA`,`.AS`,`.MI`,`.BR`,
+  `.VI`,`.HE`,`.LS`) → EUR; everything else → USD (GBP/CHF series = Phase-2 follow-up).
+- **Fallback policy (A):** `risk_free_rate()` returns a per-currency constant when FRED is
+  stale/unconfigured; USD keeps `0.053` so behaviour is unchanged without a key.
+- Wired at `options_agent.py` (the only Greeks call site): resolves `r` per ticker, passes it
+  into `enrich_options_with_greeks(data, r=...)`. `greeks_calculator.py` stays pure math.
+
+### Macro regime (Phase 2a — annotation only)
+- `macro_context()` reads VIX (`VIXCLS`), 10y-2y curve (`T10Y2Y`), financial stress
+  (`STLFSI4`), HY spread (`BAMLH0A0HYM2`) → coarse `risk_on/neutral/risk_off` via transparent
+  vote-scoring (tunable thresholds in `macro_context.py`). **Stateless / read-time** — computed
+  in `GET /options/agent/last-analysis`, no per-cycle persistence, no schema change.
+- Surfaced in the VolatilityEdge Claude prompt (`macro_prompt_block()`, "contextualize, don't
+  change signals") and the Análisis-tab `MacroBadge`. **Does NOT touch scoring/gating.**
+- **Phase 2b (deferred):** weight signal confidence by regime (would persist regime per signal
+  for backtesting) — only after the badge proves out.
+
+---
+
 ## Trade Republic importer — formats & migration year
 
 `parse_tr_tax_report()` (tr.py) dispatches by report layout:
