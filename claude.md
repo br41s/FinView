@@ -21,7 +21,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
 | AI | anthropic SDK — claude-haiku-4-5-20251001 (options analysis) |
-| Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · NextAuth · shadcn/ui |
+| Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
@@ -71,7 +71,7 @@ frontend/
   src/app/options/page.tsx          — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
   src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
   src/components/                   — FileUpload, tables, stat cards
-  src/components/charts/            — 8 chart components (Recharts)
+  src/components/charts/            — 8 Recharts components + ZonasClaveChart (lightweight-charts)
   src/lib/                          — API client + TypeScript types
   src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
 
@@ -90,6 +90,7 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 - `_CLUSTER_THRESHOLD = 0.015` — 1.5% merge radius for zone clustering
 - `_MAX_ZONES = 8` — top zones returned (scored by touches × volume)
 - All bars sent to frontend (no server-side truncation); frontend slices by scope
+- `price_history` points carry full OHLC (`open/high/low/close`) + `volume`; OHLC drives candlesticks
 
 ### Add-ticker flow
 - `POST /zonas-clave/watchlist` → persists item → fires `_analyze_single_in_background(item_id, ticker)` in a background thread (only that ticker, not all)
@@ -97,7 +98,10 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 
 ### Frontend — /zonas-clave
 - Left panel: ticker list with trend bias %; clicking selects ticker
-- Right panel: trend card (RSI, MACD, price) + price chart + zones table
+- Right panel: trend card (RSI, MACD, price) + candlestick chart + zones table.
+  Chart is `components/charts/ZonasClaveChart.tsx` (TradingView lightweight-charts v5,
+  candlesticks + S/R as `createPriceLine` overlays; line-series fallback for pre-OHLC
+  stored analyses). Attribution logo on (Apache-2.0). Other charts stay on Recharts.
 - Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
 - Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
 - Scheduler: APScheduler every 24h; start/stop via UI

@@ -305,16 +305,24 @@ def analyze_ticker(ticker: str) -> dict | None:
         ma = compute_moving_averages(close)
         bias = compute_trend_bias(rsi, macd, ma)
 
-        # Price history for chart — send all available bars so frontend can slice by scope
+        # Price history for chart — send all available bars so frontend can slice by scope.
+        # OHLC is included so the frontend can render candlesticks; close/volume kept for
+        # back-compat with any consumer that only reads the line value.
         chart_df = df
         price_history = [
             {
                 "date": str(idx.date()) if hasattr(idx, "date") else str(idx)[:10],
+                "open": round(float(open_val), 4),
+                "high": round(float(high_val), 4),
+                "low": round(float(low_val), 4),
                 "close": round(float(close_val), 4),
                 "volume": int(vol_val),
             }
-            for idx, close_val, vol_val in zip(
+            for idx, open_val, high_val, low_val, close_val, vol_val in zip(
                 chart_df.index,
+                _safe_series(chart_df, "Open"),
+                _safe_series(chart_df, "High"),
+                _safe_series(chart_df, "Low"),
                 _safe_series(chart_df, "Close"),
                 _safe_series(chart_df, "Volume"),
             )
