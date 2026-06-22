@@ -20,7 +20,13 @@ import {
 
 import { toast } from "sonner";
 import { api, type OhlcBar } from "@/lib/api";
-import { PriceChart, type PriceMarker } from "@/components/charts/PriceChart";
+import { PriceChart } from "@/components/charts/PriceChart";
+import {
+  executionMarkers,
+  sliceOhlc,
+  CHART_SCOPES,
+  type ChartScope,
+} from "@/lib/chartMarkers";
 import {
   Card,
   CardContent,
@@ -155,6 +161,7 @@ function PortfolioContent() {
   const [pricesLoaded, setPricesLoaded] = useState(false);
   const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
   const [ohlcByIsin, setOhlcByIsin] = useState<Map<string, OhlcBar[]>>(new Map());
+  const [chartScope, setChartScope] = useState<ChartScope>("MAX");
   const [details, setDetails] = useState<Map<string, PositionDetail>>(
     new Map(),
   );
@@ -724,39 +731,36 @@ function PortfolioContent() {
                                     ohlcByIsin.get(detail.isin) ?? [];
                                   if (!detail.ticker || bars.length === 0)
                                     return null;
-                                  const markers: PriceMarker[] =
-                                    detail.transactions
-                                      .filter(
-                                        (t) =>
-                                          t.type === "BUY" || t.type === "SELL",
-                                      )
-                                      .map((t) => ({
-                                        date: t.date.slice(0, 10),
-                                        position:
-                                          t.type === "BUY"
-                                            ? "belowBar"
-                                            : "aboveBar",
-                                        color:
-                                          t.type === "BUY"
-                                            ? "#22c55e"
-                                            : "#ef4444",
-                                        shape:
-                                          t.type === "BUY"
-                                            ? "arrowUp"
-                                            : "arrowDown",
-                                        text: t.type === "BUY" ? "C" : "V",
-                                      }));
                                   return (
                                     <div>
-                                      <h4 className="mb-2 text-sm font-semibold">
-                                        Precio y operaciones{" "}
-                                        <span className="font-normal text-muted-foreground">
-                                          ▲ compra · ▼ venta
-                                        </span>
-                                      </h4>
+                                      <div className="mb-2 flex items-center justify-between">
+                                        <h4 className="text-sm font-semibold">
+                                          Precio y operaciones{" "}
+                                          <span className="font-normal text-muted-foreground">
+                                            ▲ compra · ▼ venta · ● dividendo
+                                          </span>
+                                        </h4>
+                                        <div className="flex items-center gap-0.5">
+                                          {CHART_SCOPES.map((s) => (
+                                            <button
+                                              key={s}
+                                              onClick={() => setChartScope(s)}
+                                              className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                                                chartScope === s
+                                                  ? "bg-primary text-primary-foreground"
+                                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                              }`}
+                                            >
+                                              {s}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
                                       <PriceChart
-                                        data={bars}
-                                        markers={markers}
+                                        data={sliceOhlc(bars, chartScope)}
+                                        markers={executionMarkers(
+                                          detail.transactions,
+                                        )}
                                         height={360}
                                       />
                                     </div>

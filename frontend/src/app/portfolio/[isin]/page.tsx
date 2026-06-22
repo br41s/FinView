@@ -10,7 +10,13 @@ import {
 } from "lucide-react";
 
 import { api, type OhlcBar } from "@/lib/api";
-import { PriceChart, type PriceMarker } from "@/components/charts/PriceChart";
+import { PriceChart } from "@/components/charts/PriceChart";
+import {
+  executionMarkers,
+  sliceOhlc,
+  CHART_SCOPES,
+  type ChartScope,
+} from "@/lib/chartMarkers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,6 +107,7 @@ function PositionDetailContent() {
   const [detail, setDetail] = useState<PositionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [ohlc, setOhlc] = useState<OhlcBar[]>([]);
+  const [chartScope, setChartScope] = useState<ChartScope>("MAX");
 
   useEffect(() => {
     async function load() {
@@ -153,17 +160,6 @@ function PositionDetailContent() {
       </div>
     );
   }
-
-  // Buy/sell executions as chart markers (other tx types omitted to keep it readable).
-  const markers: PriceMarker[] = detail.transactions
-    .filter((t) => t.type === "BUY" || t.type === "SELL")
-    .map((t) => ({
-      date: t.date.slice(0, 10),
-      position: t.type === "BUY" ? "belowBar" : "aboveBar",
-      color: t.type === "BUY" ? "#22c55e" : "#ef4444",
-      shape: t.type === "BUY" ? "arrowUp" : "arrowDown",
-      text: t.type === "BUY" ? "C" : "V",
-    }));
 
   const plKnown = detail.unrealized_pl_eur != null;
   const plPositive = (detail.unrealized_pl_eur ?? 0) >= 0;
@@ -280,19 +276,40 @@ function PositionDetailContent() {
         </Card>
       </div>
 
-      {/* Price chart with buy/sell executions */}
+      {/* Price chart with buy/sell/dividend executions */}
       {ticker && ohlc.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Precio y operaciones
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                ▲ compra · ▼ venta
-              </span>
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">
+                Precio y operaciones
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  ▲ compra · ▼ venta · ● dividendo
+                </span>
+              </CardTitle>
+              <div className="flex items-center gap-0.5">
+                {CHART_SCOPES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setChartScope(s)}
+                    className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                      chartScope === s
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <PriceChart data={ohlc} markers={markers} height={380} />
+            <PriceChart
+              data={sliceOhlc(ohlc, chartScope)}
+              markers={executionMarkers(detail.transactions)}
+              height={380}
+            />
           </CardContent>
         </Card>
       )}
