@@ -70,7 +70,17 @@ export function PriceChart({
   height?: number;
 }>) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const chartApiRef = useRef<IChartApi | null>(null);
   const { resolvedTheme } = useTheme();
+
+  // Manual candle-width control (on top of the auto-fit done on each rebuild).
+  function adjustZoom(factor: number) {
+    const chart = chartApiRef.current;
+    if (!chart) return;
+    const ts = chart.timeScale();
+    const current = ts.options().barSpacing ?? 6;
+    ts.applyOptions({ barSpacing: Math.max(1, current * factor) });
+  }
 
   // Rebuild only when something visible actually changes — not on every parent
   // render (callers often re-slice data into a fresh array each render).
@@ -108,9 +118,12 @@ export function PriceChart({
         horzLines: { color: c.grid },
       },
       rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+      // maxBarSpacing caps candle width so short ranges (few bars) don't stretch
+      // across the whole pane. Edges left unpinned so the cap can take effect.
+      timeScale: { borderVisible: false, maxBarSpacing: 24 },
       crosshair: { horzLine: { labelVisible: true }, vertLine: { labelVisible: true } },
     });
+    chartApiRef.current = chart;
 
     const useCandles = data.every(hasOHLC);
     let series: ISeriesApi<SeriesType>;
@@ -174,10 +187,33 @@ export function PriceChart({
 
     chart.timeScale().fitContent();
 
-    return () => chart.remove();
+    return () => {
+      chart.remove();
+      chartApiRef.current = null;
+    };
     // rebuildKey captures every dependency that should trigger a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rebuildKey]);
 
-  return <div ref={containerRef} style={{ height }} className="w-full" />;
+  return (
+    <div className="relative w-full" style={{ height }}>
+      <div ref={containerRef} className="h-full w-full" />
+      <div className="absolute right-1 top-1 z-10 flex flex-col gap-0.5">
+        <button
+          onClick={() => adjustZoom(1.3)}
+          title="Acercar"
+          className="flex h-6 w-6 items-center justify-center rounded border bg-background/80 text-sm text-muted-foreground backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
+        >
+          +
+        </button>
+        <button
+          onClick={() => adjustZoom(1 / 1.3)}
+          title="Alejar"
+          className="flex h-6 w-6 items-center justify-center rounded border bg-background/80 text-sm text-muted-foreground backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
+        >
+          −
+        </button>
+      </div>
+    </div>
+  );
 }
