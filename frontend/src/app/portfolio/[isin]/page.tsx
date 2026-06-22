@@ -63,6 +63,7 @@ interface PositionDetail {
   unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
   transactions: TxHistory[];
+  dividend_events?: { date: string; net_eur: number }[];
 }
 
 function fmt(n: number | null | undefined, decimals = 2): string {
@@ -307,7 +308,13 @@ function PositionDetailContent() {
           <CardContent>
             <PriceChart
               data={sliceOhlc(ohlc, chartScope)}
-              markers={executionMarkers(detail.transactions)}
+              markers={executionMarkers([
+                ...detail.transactions,
+                ...(detail.dividend_events ?? []).map((d) => ({
+                  type: "DIVIDEND",
+                  date: d.date,
+                })),
+              ])}
               height={380}
             />
           </CardContent>

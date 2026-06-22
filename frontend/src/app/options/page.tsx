@@ -38,6 +38,7 @@ import {
 } from "recharts";
 import { api, type OhlcBar } from "@/lib/api";
 import { PriceChart, type PriceLine } from "@/components/charts/PriceChart";
+import { CHART_SCOPES, sliceOhlc, type ChartScope } from "@/lib/chartMarkers";
 import {
   Card,
   CardContent,
@@ -270,6 +271,7 @@ export default function OptionsPage() {
   const [selectedExpiryIndexByTicker, setSelectedExpiryIndexByTicker] = useState<Record<string, number>>({});
   const [chainByExpiry, setChainByExpiry] = useState<Record<string, ChainData>>({});
   const [ohlcByTicker, setOhlcByTicker] = useState<Record<string, OhlcBar[]>>({});
+  const [optionsChartScope, setOptionsChartScope] = useState<ChartScope>("1M");
   const [loadingExpiry, setLoadingExpiry] = useState<Set<string>>(new Set());
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
@@ -352,7 +354,7 @@ export default function OptionsPage() {
     if (!expandedTicker) return;
     if (ohlcByTicker[expandedTicker] !== undefined) return;
     api.charts
-      .priceHistory(expandedTicker, "1y")
+      .priceHistory(expandedTicker, "max")
       .then((bars) =>
         setOhlcByTicker((prev) => ({ ...prev, [expandedTicker]: bars })),
       )
@@ -1149,7 +1151,26 @@ export default function OptionsPage() {
                                           }
                                           return (
                                             <div className="mb-4">
-                                              <PriceChart data={bars} priceLines={lines} height={300} />
+                                              <div className="mb-1 flex justify-end gap-0.5">
+                                                {CHART_SCOPES.map((s) => (
+                                                  <button
+                                                    key={s}
+                                                    onClick={() => setOptionsChartScope(s)}
+                                                    className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                                                      optionsChartScope === s
+                                                        ? "bg-primary text-primary-foreground"
+                                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    }`}
+                                                  >
+                                                    {s}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                              <PriceChart
+                                                data={sliceOhlc(bars, optionsChartScope)}
+                                                priceLines={lines}
+                                                height={300}
+                                              />
                                             </div>
                                           );
                                         })()}

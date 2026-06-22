@@ -38,12 +38,30 @@ export default function MarketsPage() {
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [scope, setScope] = useState<ChartScope>("1A");
   const [input, setInput] = useState("");
+  const [suggestions, setSuggestions] = useState<
+    { ticker: string; name: string; isin: string }[]
+  >([]);
 
   // Hydrate from localStorage on mount.
   useEffect(() => {
     const wl = loadWatchlist();
     setWatchlist(wl);
     setSelected(wl[0] ?? null);
+  }, []);
+
+  // Suggestions come from the user's portfolio positions (name + ticker + ISIN).
+  useEffect(() => {
+    api.portfolio
+      .positions(true)
+      .then((pos) => {
+        const p = pos as { ticker: string | null; isin: string; name: string }[];
+        setSuggestions(
+          p
+            .filter((x) => x.ticker)
+            .map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name, isin: x.isin })),
+        );
+      })
+      .catch(() => {});
   }, []);
 
   // Persist whenever the watchlist changes (skip the pre-hydration empty state).
@@ -69,13 +87,32 @@ export default function MarketsPage() {
       );
   }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function addTicker() {
-    const t = input.trim().toUpperCase();
+  function addSpecific(ticker: string) {
+    const t = ticker.trim().toUpperCase();
     if (!t) return;
     if (!watchlist.includes(t)) setWatchlist((prev) => [...prev, t]);
     setSelected(t);
     setInput("");
   }
+
+  function addTicker() {
+    addSpecific(input);
+  }
+
+  // Match suggestions by ticker, name or ISIN; hide ones already in the list.
+  const matches = useMemo(() => {
+    const q = input.trim().toUpperCase();
+    if (!q) return [];
+    return suggestions
+      .filter(
+        (s) =>
+          s.ticker.includes(q) ||
+          s.name.toUpperCase().includes(q) ||
+          s.isin.toUpperCase().includes(q),
+      )
+      .filter((s) => !watchlist.includes(s.ticker))
+      .slice(0, 8);
+  }, [input, suggestions, watchlist]);
 
   function removeTicker(t: string) {
     setWatchlist((prev) => {
@@ -113,17 +150,36 @@ export default function MarketsPage() {
         {/* Left — watchlist */}
         <Card className="h-fit">
           <CardContent className="p-2 pt-3">
-            <div className="mb-2 flex items-center gap-1 px-1">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addTicker()}
-                placeholder="Añadir ticker…"
-                className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-              />
-              <Button size="icon" className="h-8 w-8 shrink-0" onClick={addTicker} title="Añadir">
-                <Plus className="h-4 w-4" />
-              </Button>
+            <div className="relative mb-2 px-1">
+              <div className="flex items-center gap-1">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addTicker()}
+                  placeholder="Ticker, nombre o ISIN…"
+                  className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Button size="icon" className="h-8 w-8 shrink-0" onClick={addTicker} title="Añadir">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {matches.length > 0 && (
+                <div className="absolute left-1 right-1 top-full z-10 mt-1 overflow-hidden rounded-md border bg-popover shadow-md">
+                  {matches.map((s) => (
+                    <button
+                      key={s.isin}
+                      onClick={() => addSpecific(s.ticker)}
+                      className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-muted"
+                    >
+                      <span className="text-sm font-medium">{s.ticker}</span>
+                      <span className="w-full truncate text-xs text-muted-foreground">
+                        {s.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/70">{s.isin}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {watchlist.length === 0 ? (
               <p className="px-3 py-6 text-center text-xs text-muted-foreground">
