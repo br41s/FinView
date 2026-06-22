@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+# Pre-push guard: refuse to push frontend changes that don't compile.
+#
+# Why: blog merges have broken the production build 3 times (PRs #59, #64)
+# by fusing per-article blocks in frontend/src/app/blog/page.tsx and
+# blog.module.css. The corruption enters locally (e.g. "git merge main"
+# into a blog branch) and Vercel only fails AFTER it reaches main. This
+# runs the exact build Vercel runs, before the push leaves the machine.
+#
+# Scope: only triggers when the pushed commits touch frontend/**, so
+# backend/docs pushes stay fast.
+#
+# Escape hatch: SKIP_BUILD_CHECK=1 git push   (use sparingly)
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+set -euo pipefail
+
+if [ "${SKIP_BUILD_CHECK:-}" = "1" ]; then
+  echo "pre-push: SKIP_BUILD_CHECK=1 set — skipping frontend build check."
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+zero="0000000000000000000000000000000000000000"
+frontend_touched=0
+
+# stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>  (one line per ref)
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Deleting a remote branch — nothing to build.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch on the remote: diff against origin/main if we have it,
+    # otherwise check every file in the pushed commits.
+    if git rev-parse --verify --quiet origin/main >/dev/null; then
+      range="origin/main..$local_sha"
+    else
+      range="$local_sha"   # all files in these commits
+    fi
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  if git diff --name-only "$range" -- 'frontend/' | grep -q .; then
+    frontend_touched=1
+    break
+  fi
+done
+
+if [ "$frontend_touched" -eq 0 ]; then
+  exit 0
+fi
+
+echo "pre-push: frontend changed — running production build (Vercel parity)…"
+echo "          bypass with SKIP_BUILD_CHECK=1 git push"
+
+if ! ( cd "$repo_root/frontend" && pnpm run build ); then
+  echo ""
+  echo "❌ pre-push: frontend build FAILED. Push aborted so prod stays green."
+  echo "   Fix the build, or bypass with: SKIP_BUILD_CHECK=1 git push"
+  exit 1
+fi
+
+echo "✅ pre-push: frontend build OK."
+exit 0
