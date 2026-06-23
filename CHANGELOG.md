@@ -87,3 +87,12 @@ All notable changes to FinView are documented here.
 - Removed 4 unused imports: `sqlalchemy.orm.Session` (`auth.py`),
   `dataclasses.field` and `TaxResult` (`fifo_engine.py`), `CasillaOut`
   (`fiscal.py`).
+- **`.githooks/pre-commit` asset-refs guard** — blocks a commit that introduces
+  a new dangling image reference in blog MDX (markdown `![](./x.png)` relative
+  to the `.mdx` dir, or `<img src="/x.png">` → `frontend/public/x.png`). Closes
+  the gap where the article-generation cron commits an MDX but not the
+  infographic it points at; a missing ES `import` is already caught by the
+  existing `pre-push` build check. Pre-existing breakage is baselined in
+  `.githooks/asset-refs-baseline.txt`; only new breakage fails. Enable locally
+  with `git config core.hooksPath .githooks` (agent clones get it automatically
+  via the Hermes managed git-guard).
