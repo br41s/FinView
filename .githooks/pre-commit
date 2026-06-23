@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+#
+# pre-commit — guard against shipping dangling image references in articles.
+#
+# FinView generates blog articles as MDX under frontend/src/app/blog/<slug>/
+# page.mdx, and the article-generation cron commits the MDX alongside any
+# infographic it produced. The classic failure mode is committing the MDX but
+# forgetting the image it points at (or renaming one without the other), which
+# ships a broken <img> to production. This catches that before the commit.
+#
+# Mirrors biglobster's validate-assets.sh `refs` check, adapted to MDX. Two
+# reference forms are checked, for LOCAL images only:
+#
+#   ![alt](./infografia.png)        markdown image  -> relative to the .mdx dir
+#   <img src="/foo.png">            HTML image      -> /foo -> frontend/public/foo
+#
+# Remote URLs (http/https/protocol-relative), data: URIs and templated/
+# interpolated paths ({...} / ${...}) are skipped. Static ES `import x from
+# './y.png'` is intentionally not checked: a missing import fails the Next
+# build (already guarded by .githooks/pre-push), whereas a markdown/HTML image
+# ref silently 404s, so that is the gap this hook closes.
+#
+# Pre-existing breakage is tolerated via .githooks/asset-refs-baseline.txt;
+# only NEW dangling references fail the commit. Re-snapshot current debt with:
+#   .githooks/pre-commit --write-baseline
+#
+# This hook takes no arguments when run by the Hermes managed git-guard, which
+# discovers and chains to it automatically (core.hooksPath is set per-clone).
+#
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+PUBLIC_DIR="frontend/public"   # Next.js serves "/" from here
+BASELINE=".githooks/asset-refs-baseline.txt"
+IMG_EXT='png|jpg|jpeg|svg|webp|avif|gif'
+
+# Emit "<resolved-relpath>\t<mdx-file>" for every missing local image ref.
+collect_missing() {
+  local tmp; tmp="$(mktemp)"
+  find . -path ./.git -prune -o -path ./node_modules -prune -o \
+       -type f -name '*.mdx' -print \
+    | while IFS= read -r mdx; do
+        local dir; dir="$(dirname "$mdx")"
+        {
+          # markdown image: ![alt](path ...)  -> path is up to whitespace/)
+          grep -oiE '!\[[^]]*\]\([^) ]+\.('"$IMG_EXT"')' "$mdx" 2>/dev/null \
+            | sed -E 's/^!\[[^]]*\]\(//' || true
+          # html image: <img ... src="path">
+          grep -oiE '<img[^>]+src="[^"]+\.('"$IMG_EXT"')(\?[^"]*)?"' "$mdx" 2>/dev/null \
+            | sed -E 's/.*src="//; s/"$//' || true
+        } \
+          | sed -E 's/[?#].*$//' \
+          | while IFS= read -r ref; do
+              [ -z "$ref" ] && continue
+              case "$ref" in
+                http://*|https://*|//*|data:*) continue ;;
+                *'{'*|*'}'*|*'$'*) continue ;;
+              esac
+              local path
+              case "$ref" in
+                /*) path="$PUBLIC_DIR$ref" ;;   # site-root -> Next public/
+                *)  path="$dir/$ref" ;;         # relative to the .mdx file
+              esac
+              path="$(printf '%s' "$path" | sed -E 's#/\./#/#g; s#//+#/#g')"
+              printf '%s\t%s\n' "$path" "$mdx"
+            done
+      done | sort -u > "$tmp"
+
+  while IFS=$'\t' read -r path mdx; do
+    [ -z "$path" ] && continue
+    [ -f "$path" ] || printf '%s\t%s\n' "$path" "$mdx"
+  done < "$tmp"
+  rm -f "$tmp"
+}
+
+miss="$(collect_missing)"
+
+if [ "${1:-}" = "--write-baseline" ]; then
+  printf '%s\n' "$miss" | cut -f1 | sed '/^$/d' | sort -u > "$BASELINE"
+  echo "wrote $(grep -c . "$BASELINE" 2>/dev/null || echo 0) baseline entr(ies) to $BASELINE"
+  exit 0
+fi
+
+new=0 known=0
+while IFS=$'\t' read -r path mdx; do
+  [ -z "$path" ] && continue
+  if [ -f "$BASELINE" ] && grep -qxF "$path" "$BASELINE"; then
+    known=$((known + 1))
+  else
+    printf '  MISSING (new)  %s\n                 referenced by %s\n' "$path" "$mdx"
+    new=$((new + 1))
+  fi
+done <<< "$miss"
+
+if [ "$new" -gt 0 ]; then
+  echo "✗ asset check: $new newly-missing image reference(s) ($known known/baselined)." >&2
+  echo "  An article references an image that does not exist. Commit the image" >&2
+  echo "  alongside the MDX, or fix/remove the reference." >&2
+  echo "  If this is pre-existing debt, re-snapshot: .githooks/pre-commit --write-baseline" >&2
+  exit 1
+fi
+echo "✓ asset check: no new missing image refs ($known known/baselined)."
+exit 0
