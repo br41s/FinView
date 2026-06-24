@@ -17,6 +17,7 @@ from backend.api.portfolio import router as portfolio_router
 from backend.api.fiscal import router as fiscal_router
 from backend.api.charts import router as charts_router
 from backend.api.options import router as options_router
+from backend.api.markets import router as markets_router
 from backend.api.geo import router as geo_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.api.alt_investments import router as alt_investments_router
@@ -130,6 +131,7 @@ app.include_router(portfolio_router, prefix="/api")
 app.include_router(fiscal_router, prefix="/api")
 app.include_router(charts_router, prefix="/api")
 app.include_router(options_router, prefix="/api")
+app.include_router(markets_router, prefix="/api")
 app.include_router(zonas_clave_router, prefix="/api")
 app.include_router(geo_router, prefix="/api")
 app.include_router(alt_investments_router, prefix="/api")
