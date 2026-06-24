@@ -426,6 +426,30 @@ function ImgPlanesPensiones() {
   );
 }
 
+function ImgCriptomonedas() {
+  return (
+    <div className={styles.postImgCriptomonedas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">CRIPTOMONEDAS — BASE DEL AHORRO</text>
+        {/* BTC block */}
+        <rect x="12" y="28" width="50" height="72" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="44" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">BTC</text>
+        <text x="37" y="58" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Compra</text>
+        <text x="37" y="72" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">20K€</text>
+        <text x="37" y="86" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">enero</text>
+        {/* Arrow */}
+        <line x1="62" y1="64" x2="78" y2="64" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        {/* Sale block */}
+        <rect x="78" y="28" width="50" height="72" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="103" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Venta</text>
+        <text x="103" y="58" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">octubre</text>
+        <text x="103" y="72" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">45K€</text>
+        <text x="103" y="86" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">+25K€</text>
+        {/* Tax block */}
+        <rect x="138" y="40" width="50" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="163" y="56" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
+        <text x="163" y="70" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ahorro</text>
+        <text x="163" y="84" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19-30%</text>
 function ImgPrimaEmision() {
   return (
     <div className={styles.postImgPrimaEmision}>
@@ -488,6 +512,13 @@ function ImgCalendarioDividendos() {
 
 const POSTS: Post[] = [
   {
+    slug: 'criptomonedas-irpf-espana',
+    tag: 'Fiscal',
+    date: '23 jun 2026',
+    readTime: '16 min',
+    title: 'Criptomonedas en el IRPF: guía completa para declarar en España 2026',
+    excerpt: 'Cómo tributan las criptomonedas en el IRPF: venta, permuta, staking, modelo 721, FIFO, casillas 1800-1814, DAC8 y ejemplos con números reales.',
+    Image: ImgCriptomonedas,
     slug: 'reits-extranjeros-irpf-espana',
     tag: 'Fiscal',
     date: '24 jun 2026',
