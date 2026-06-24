@@ -21,8 +21,10 @@ interface Chain {
   puts: ChainLeg[];
 }
 
+// summary IV/HV/skew are already in percent units (e.g. 87.84 = 87.84%),
+// matching the options page convention — do NOT multiply by 100.
 function pct(v: number | null | undefined): string {
-  return v == null ? "—" : `${(v * 100).toFixed(1)}%`;
+  return v == null ? "—" : `${v.toFixed(1)}%`;
 }
 function num(v: number | null | undefined, d = 2): string {
   return v == null ? "—" : v.toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -47,7 +49,7 @@ function ivBadge(summary: TickerAnalysis["summary"]) {
   const iv = summary.avg_call_iv;
   const hv = summary.historical_volatility;
   if (iv == null || hv == null) return null;
-  const diff = (iv - hv) * 100;
+  const diff = iv - hv; // both already in percentage points
   if (diff > 5) return <Badge variant="destructive">IV cara</Badge>;
   if (diff < -5) return <Badge variant="secondary">IV barata</Badge>;
   return <Badge variant="outline">IV normal</Badge>;

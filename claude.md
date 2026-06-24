@@ -49,7 +49,7 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 backend/
   app.py              — FastAPI entry point
   models.py           — ORM models
-  api/                — Endpoints: imports, transactions, fiscal, charts, options
+  api/                — Endpoints: imports, transactions, fiscal, charts, options, markets
   importers/          — One file per broker: tr.py (+ tr_v2.py, tr_csv.py), dg.py, ibkr.py, ing.py, bbva.py, etoro.py
   services/
     fifo_engine.py         — Cross-broker FIFO engine — most critical, touch carefully
@@ -74,7 +74,7 @@ frontend/
   src/components/charts/            — 8 Recharts components + PriceChart + ZonasClaveChart (lightweight-charts)
   src/lib/                          — API client + TypeScript types; chartMarkers.ts (execution markers + scope slicing)
   src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
-  src/app/markets/page.tsx          — Markets: localStorage watchlist + candlestick viewer (suggestions from portfolio)
+  src/app/markets/page.tsx          — Markets: DB-backed watchlist (markets_watchlist) + candlestick viewer (suggestions from portfolio)
 
 ---
 
@@ -131,9 +131,30 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
   - `/options` Cartera: underlying candles + spot (solid) + near-money strikes (3 below,
     3 above, dashed) from the selected expiry's chain; OHLC fetched `max`, cached per ticker.
-  - `/markets`: localStorage watchlist; OHLC fetched `max` once, sliced client-side.
+  - `/markets`: DB-backed watchlist (`markets_watchlist` table, `/markets/watchlist`
+    API; separate from options/zonas lists); OHLC fetched `max` once, sliced client-side.
 
 ---
+
+## Instrument drawer — cross-section hub
+
+`components/InstrumentDrawer.tsx` — global, ticker-keyed slide-over mounted in
+`app/layout.tsx`. Any section calls `openInstrument(symbol, { isin?, name?, tab? })`
+(via `useInstrumentDrawer()`) to open it. Tabs are self-contained `{ symbol }`
+components (page-ready for a future `/ticker/[symbol]` view):
+- **Precio** — `PriceChart` + `/charts/price-history` + scope buttons (inline in InstrumentDrawer).
+- **Opciones** (`components/instrument/OpcionesTab.tsx`) — on-demand per-ticker AI report
+  (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section VolatilityEdge
+  prompt, runs regardless of alerts, AI failure still returns rule summary) + compact chain.
+- **Zonas** (`components/instrument/ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y
+  analizar" CTA when the ticker isn't in `zonas_clave_watchlist`.
+- **Fiscal / Dividendos** (`components/instrument/{FiscalTab,DividendosTab}.tsx`) — cost
+  basis / P&L / per-broker breakdown and dividends-by-year, both from
+  `GET /portfolio/positions/{isin}` via the shared `usePositionDetail` hook (ISIN-keyed
+  session cache → one fetch for both). ISIN resolved in the provider from holdings;
+  non-held tickers show an empty state.
+Header shows an "En cartera" badge from lazily-loaded holdings. Cross-links
+(options "ZC", zonas "ver opciones") open the drawer instead of navigating.
 
 ## Options monitor — architecture
 
