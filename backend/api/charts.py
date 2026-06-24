@@ -633,3 +633,46 @@ def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
 
     result.sort(key=lambda x: float(x["total"]), reverse=True)
     return result
+
+
+@router.get("/price-history")
+def price_history(
+    ticker: str,
+    user: CurrentUser,
+    period: str = Query("2y"),
+):
+    """Daily OHLC history for a ticker (yfinance), for position price charts.
+
+    Read-only and best-effort: any failure or unknown ticker returns []
+    so the frontend simply hides the chart. period is whitelisted.
+    """
+    import pandas as pd
+    import yfinance as yf
+
+    allowed = {"6mo", "1y", "2y", "5y", "10y", "max"}
+    if period not in allowed:
+        period = "2y"
+    t = ticker.strip().upper()
+    if not t:
+        return []
+    try:
+        df = yf.download(t, period=period, interval="1d", auto_adjust=True, progress=False)
+        if df is None or df.empty:
+            return []
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df = df.dropna(subset=["Close"])
+        return [
+            {
+                "date": str(idx.date()) if hasattr(idx, "date") else str(idx)[:10],
+                "open": round(float(row["Open"]), 4),
+                "high": round(float(row["High"]), 4),
+                "low": round(float(row["Low"]), 4),
+                "close": round(float(row["Close"]), 4),
+                "volume": int(row["Volume"]) if not pd.isna(row["Volume"]) else 0,
+            }
+            for idx, row in df.iterrows()
+        ]
+    except Exception:
+        logger.exception("price_history failed for %s", t)
+        return []

@@ -7,7 +7,10 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Turnstile } from "@/components/Turnstile";
 import styles from "./login.module.css";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 function LogoMark() {
   return (
@@ -25,15 +28,24 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    // When Turnstile is configured, require a fresh token before submitting.
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setError("Completa la verificación de seguridad");
+      return;
+    }
+
     setLoading(true);
 
     const result = await signIn("credentials", {
       email,
       password,
+      turnstileToken,
       redirect: false,
     });
 
@@ -41,6 +53,8 @@ export default function LoginPage() {
 
     if (result?.error) {
       setError("Email o contraseña incorrectos");
+      // Token is single-use; clear it so the widget must re-issue one.
+      setTurnstileToken("");
     } else {
       router.push("/dashboard");
       router.refresh();
@@ -84,8 +98,19 @@ export default function LoginPage() {
                 autoComplete="current-password"
               />
             </div>
+            {TURNSTILE_SITE_KEY && (
+              <Turnstile
+                siteKey={TURNSTILE_SITE_KEY}
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken("")}
+              />
+            )}
             {error && <p className={styles.error}>{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || (!!TURNSTILE_SITE_KEY && !turnstileToken)}
+            >
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>

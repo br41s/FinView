@@ -35,6 +35,7 @@ import { FileUpload } from "@/components/FileUpload";
 import { ImportedFilesList } from "@/components/ImportedFilesList";
 import { StatsCards } from "@/components/StatsCards";
 import { CasillasTable } from "@/components/CasillasTable";
+import { DeclaracionView } from "@/components/DeclaracionView";
 import { DividendsTable } from "@/components/DividendsTable";
 import { CapitalGainsTable } from "@/components/CapitalGainsTable";
 import { DividendYieldTable } from "@/components/DividendYieldTable";
@@ -57,6 +58,8 @@ import {
   CalendarRange,
   AlertCircle,
   Info,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   Card,
@@ -152,6 +155,7 @@ const viewTitles: Record<View, string> = {
   graficas: "Dashboard",
   rendimiento: "Rendimiento",
   casillas: "Casillas fiscales",
+  declaracion: "Mi declaración",
   dividendos: "Dividendos",
   ganancias: "Ganancias de capital",
   comparativa: "Comparativa anual",
@@ -192,6 +196,20 @@ export default function Home() {
     OptionAssignment[]
   >([]);
   const [yearlyComparison, setYearlyComparison] = useState<YearlyMetrics[]>([]);
+
+  // Privacy mode: blurs sensitive monetary values. Persisted in localStorage so
+  // the choice survives reloads. Starts hidden=false to avoid a flash of blur.
+  const [privacy, setPrivacy] = useState(false);
+  useEffect(() => {
+    setPrivacy(localStorage.getItem("fv-privacy") === "1");
+  }, []);
+  const togglePrivacy = useCallback(() => {
+    setPrivacy((prev) => {
+      const next = !prev;
+      localStorage.setItem("fv-privacy", next ? "1" : "0");
+      return next;
+    });
+  }, []);
 
   // Guards against stale responses: a rapid year switch can leave an older
   // (slow) request in flight; only the latest load is allowed to set state.
@@ -314,7 +332,10 @@ export default function Home() {
 
   // Reset to non-fiscal view when switching to "Todos los años"
   useEffect(() => {
-    if (!showFiscal && (view === "casillas" || view === "ganancias")) {
+    if (
+      !showFiscal &&
+      (view === "casillas" || view === "ganancias" || view === "declaracion")
+    ) {
       setView("graficas");
     }
   }, [showFiscal, view]);
@@ -355,12 +376,29 @@ export default function Home() {
                 Año fiscal {selectedYear}
               </span>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={togglePrivacy}
+              aria-pressed={privacy}
+              title={privacy ? "Mostrar importes" : "Ocultar importes"}
+              aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
+            >
+              {privacy ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </Button>
             <QuickNav current="/dashboard" />
           </div>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-auto p-3 sm:p-6">
+        <main
+          className="flex-1 overflow-auto p-3 sm:p-6"
+          data-privacy={privacy ? "true" : "false"}
+        >
           {/* Import view */}
           {view === "importar" && (
             <div className="max-w-3xl mx-auto space-y-6">
@@ -499,6 +537,11 @@ export default function Home() {
                 description="Selecciona un año fiscal con datos importados para ver las casillas."
               />
             ))}
+
+          {/* Mi declaración — estimación base del ahorro */}
+          {view === "declaracion" && hasData && selectedYear !== null && (
+            <DeclaracionView fiscalYear={selectedYear} />
+          )}
 
           {/* Dividendos */}
           {view === "dividendos" &&

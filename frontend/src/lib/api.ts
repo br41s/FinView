@@ -1,6 +1,7 @@
 import { getSession } from "next-auth/react";
 
 import type { GeoSignal } from "@/lib/geo";
+import type { SavingsEstimate } from "@/lib/types";
 
 const BASE = "/api";
 
@@ -10,6 +11,35 @@ export interface GeoSchedulerStatus {
   total_signals: number;
   active_signals: number;
   last_signal_at: string | null;
+}
+
+// ── Markets types ────────────────────────────────────────────────────
+
+export interface MarketsWatchlistItem {
+  id: number;
+  ticker: string;
+  name: string;
+  created_at: string;
+}
+
+export interface TickerAnalysis {
+  status: string;
+  ticker: string;
+  summary: {
+    current_price: number | null;
+    put_call_ratio_volume: number | null;
+    put_call_ratio_oi: number | null;
+    avg_call_iv: number | null;
+    avg_put_iv: number | null;
+    historical_volatility: number | null;
+    iv_skew: number | null;
+    market_sentiment: string | null;
+  };
+  alerts: { type?: string; severity?: string; message?: string }[];
+  unusual: { type?: string; ticker?: string; detail?: string }[];
+  analysis: string | null;
+  ai_configured: boolean;
+  ai_error: string | null;
 }
 
 // ── Zonas Clave types ────────────────────────────────────────────────
@@ -33,6 +63,11 @@ export interface ZcPricePoint {
   date: string;
   close: number;
   volume: number;
+  // OHLC added for candlestick rendering; optional so analyses stored before this
+  // change (close-only) still parse and fall back to a line series.
+  open?: number;
+  high?: number;
+  low?: number;
 }
 
 export interface ZcAnalysis {
@@ -47,6 +82,15 @@ export interface ZcAnalysis {
   macd_histogram: number | null;
   current_price: number | null;
   price_history: ZcPricePoint[];
+}
+
+export interface OhlcBar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
 export interface ZcSchedulerStatus {
@@ -418,6 +462,56 @@ export const api = {
   crossValidation: (year: number) =>
     fetchCached(`/fiscal/cross-validation/${year}`),
   yearlyComparison: () => fetchCached("/fiscal/yearly-comparison"),
+
+  // Fiscal onboarding — savings-base estimate (v1 individual)
+  fiscalProfile: (year: number) => fetchJSON(`/fiscal/profile/${year}`),
+  saveFiscalProfile: async (
+    year: number,
+    body: {
+      age: number | null;
+      disability: "general" | "severe" | null;
+      descendants: number;
+      general_base: string;
+    },
+  ) => {
+    const headers = await authHeaders();
+    const res = await fetch(`${BASE}/fiscal/profile/${year}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+    invalidateCache(`/fiscal/estimate/${year}`);
+    return res.json();
+  },
+  manualIncome: (year: number) => fetchJSON(`/fiscal/manual-income/${year}`),
+  addManualIncome: async (body: {
+    fiscal_year: number;
+    category: "RCM" | "GAIN" | "LOSS";
+    label: string;
+    amount_eur: string;
+    withholding_eur: string;
+  }) => {
+    const headers = await authHeaders();
+    const res = await fetch(`${BASE}/fiscal/manual-income`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+    invalidateCache(`/fiscal/estimate/${body.fiscal_year}`);
+    return res.json();
+  },
+  deleteManualIncome: async (id: number, year: number) => {
+    const headers = await authHeaders();
+    await fetch(`${BASE}/fiscal/manual-income/${id}`, {
+      method: "DELETE",
+      headers,
+    });
+    invalidateCache(`/fiscal/estimate/${year}`);
+  },
+  savingsEstimate: (year: number): Promise<SavingsEstimate> =>
+    fetchCached(`/fiscal/estimate/${year}`),
   transactions: (params?: Record<string, string>) => {
     const qstr = params ? "?" + new URLSearchParams(params).toString() : "";
     return fetchJSON(`/transactions/${qstr}`);
@@ -522,6 +616,8 @@ export const api = {
       fetchCached(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
     dividendsByCompanyYearly: () =>
       fetchCached("/charts/dividends-by-company-yearly"),
+    priceHistory: (ticker: string, period = "2y") =>
+      fetchJSON<OhlcBar[]>(`/charts/price-history${qs({ ticker, period })}`),
   },
 
   // Options monitor
@@ -631,6 +727,14 @@ export const api = {
         market_sentiment: string | null;
         claude_analysis: string | null;
         ai_configured: boolean;
+        macro: {
+          regime: string;
+          vix: number | null;
+          yield_spread: number | null;
+          financial_stress: number | null;
+          hy_spread: number | null;
+          as_of: string | null;
+        } | null;
       }>("/options/agent/last-analysis"),
     runCycle: async () => {
       const headers = await authHeaders();
@@ -640,6 +744,16 @@ export const api = {
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json();
+    },
+    analyzeTicker: async (ticker: string) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/agent/analyze-ticker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker }),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      return res.json() as Promise<TickerAnalysis>;
     },
     startAgent: async () => {
       const headers = await authHeaders();
@@ -681,6 +795,38 @@ export const api = {
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json() as Promise<{ answer: string }>;
+    },
+  },
+
+  // Markets — DB-backed candlestick-viewer watchlist
+  markets: {
+    watchlist: () => fetchJSON<MarketsWatchlistItem[]>("/markets/watchlist"),
+    addTicker: async (ticker: string, name = "") => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/markets/watchlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker, name }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<MarketsWatchlistItem>;
+    },
+    importTickers: async (tickers: string[]) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/markets/watchlist/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ tickers }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<MarketsWatchlistItem[]>;
+    },
+    removeTicker: async (id: number) => {
+      const headers = await authHeaders();
+      await fetch(`${BASE}/markets/watchlist/${id}`, {
+        method: "DELETE",
+        headers,
+      });
     },
   },
 

@@ -9,7 +9,14 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { api } from "@/lib/api";
+import { api, type OhlcBar } from "@/lib/api";
+import { PriceChart } from "@/components/charts/PriceChart";
+import {
+  executionMarkers,
+  sliceOhlc,
+  CHART_SCOPES,
+  type ChartScope,
+} from "@/lib/chartMarkers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +63,7 @@ interface PositionDetail {
   unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
   transactions: TxHistory[];
+  dividend_events?: { date: string; net_eur: number }[];
 }
 
 function fmt(n: number | null | undefined, decimals = 2): string {
@@ -64,6 +72,17 @@ function fmt(n: number | null | undefined, decimals = 2): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+}
+
+// Smallest whitelisted yfinance period that still covers the oldest transaction.
+function periodForOldest(oldest: string | undefined): string {
+  if (!oldest) return "2y";
+  const years =
+    (Date.now() - new Date(oldest).getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (years <= 2) return "2y";
+  if (years <= 5) return "5y";
+  if (years <= 10) return "10y";
+  return "max";
 }
 
 const TX_LABELS: Record<string, string> = {
@@ -88,6 +107,8 @@ function PositionDetailContent() {
   const isin = decodeURIComponent(params.isin as string);
   const [detail, setDetail] = useState<PositionDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ohlc, setOhlc] = useState<OhlcBar[]>([]);
+  const [chartScope, setChartScope] = useState<ChartScope>("MAX");
 
   useEffect(() => {
     async function load() {
@@ -104,6 +125,19 @@ function PositionDetailContent() {
     }
     load();
   }, [isin]);
+
+  // Fetch price history once the ticker is known. Window covers the oldest
+  // transaction so all buy/sell markers land on-chart. Best-effort: empty → card hidden.
+  const ticker = detail?.ticker ?? null;
+  useEffect(() => {
+    if (!ticker || !detail) return;
+    const dates = detail.transactions.map((t) => t.date).filter(Boolean).sort();
+    const period = periodForOldest(dates[0]);
+    api.charts
+      .priceHistory(ticker, period)
+      .then(setOhlc)
+      .catch(() => setOhlc([]));
+  }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -242,6 +276,50 @@ function PositionDetailContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Price chart with buy/sell/dividend executions */}
+      {ticker && ohlc.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">
+                Precio y operaciones
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  ▲ compra · ▼ venta · ● dividendo
+                </span>
+              </CardTitle>
+              <div className="flex items-center gap-0.5">
+                {CHART_SCOPES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setChartScope(s)}
+                    className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                      chartScope === s
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <PriceChart
+              data={sliceOhlc(ohlc, chartScope)}
+              markers={executionMarkers([
+                ...detail.transactions,
+                ...(detail.dividend_events ?? []).map((d) => ({
+                  type: "DIVIDEND",
+                  date: d.date,
+                })),
+              ])}
+              height={380}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Per-Account Breakdown */}
       {detail.accounts.length > 1 && (

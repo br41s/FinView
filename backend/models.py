@@ -408,6 +408,28 @@ class WatchlistItem(Base):
     )
 
 
+class MarketsWatchlistItem(Base):
+    """Tickers the user follows in the /markets candlestick viewer.
+
+    Separate list from the options and zonas-clave watchlists by design:
+    markets is a casual price-viewing list, not a monitoring or analysis scope.
+    """
+
+    __tablename__ = "markets_watchlist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "ticker"),
+    )
+
+
 class OptionsSnapshot(Base):
     """Point-in-time options chain metrics for a ticker."""
 
@@ -814,6 +836,29 @@ class ExchangeRate(Base):
     )
 
 
+class FredRate(Base):
+    """FRED (St. Louis Fed) risk-free rate series cache.
+
+    rate = annualized risk-free rate as a decimal (0.053 = 5.3%). One row per
+    (series_id, rate_date). Populated incrementally from the FRED API by
+    services.fred_rates and used as the risk-free input for Black-Scholes
+    Greeks, resolved per option currency. Empty/stale → Greeks fall back to
+    per-currency constants (no-op when FINVIEW_FRED_API_KEY is unset).
+    """
+
+    __tablename__ = "fred_rates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("series_id", "rate_date"),
+        Index("ix_fred_series_date", "series_id", "rate_date"),
+    )
+
+
 # ── Alternative Investments (private banking) ────────────────────────
 
 
@@ -909,3 +954,57 @@ class AltInvestmentCatalog(Base):
         UniqueConstraint("source", "external_id"),
         Index("ix_alt_catalog_name", "name"),
     )
+
+
+class FiscalProfile(Base):
+    """Per-user, per-year taxpayer answers feeding the IRPF savings estimate.
+
+    v1 covers the individual return only. Marital status / joint-vs-separate and
+    autonomic-community data are deferred with the general base (Fase 2).
+    """
+
+    __tablename__ = "fiscal_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    age: Mapped[int | None] = mapped_column(Integer)
+    disability: Mapped[str | None] = mapped_column(String(10))  # None | general | severe
+    descendants: Mapped[int] = mapped_column(Integer, default=0)
+    # Net general-base income (employment, etc.). Absorbs the personal minimum
+    # first; only the remainder lands on the savings base. 0 → full minimum on savings.
+    general_base: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "fiscal_year"),)
+
+
+class ManualSavingsIncome(Base):
+    """Savings income/withholdings entered by hand (outside broker imports).
+
+    A dedicated table — NOT a `MANUAL` value on the Broker enum — because Broker
+    is a native Postgres ENUM and the create_all/ensure_columns migration path
+    cannot ADD VALUE to it. `amount_eur` is always a positive magnitude; the
+    sign is implied by `category` (LOSS subtracts).
+    """
+
+    __tablename__ = "manual_savings_income"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    category: Mapped[str] = mapped_column(String(8), nullable=False)  # RCM | GAIN | LOSS
+    label: Mapped[str] = mapped_column(String(120), default="")
+    amount_eur: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    withholding_eur: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (Index("ix_manual_savings_user_year", "user_id", "fiscal_year"),)

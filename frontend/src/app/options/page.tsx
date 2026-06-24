@@ -1,14 +1,12 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
   Bell,
   Bot,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
@@ -58,6 +56,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
+import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -147,26 +146,6 @@ interface BacktestStats {
   by_signal_type: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
 }
 
-interface ChainContract {
-  strike: number;
-  expiration: string;
-  daysToExpiry: number;
-  impliedVolatility: number;
-  bid: number;
-  ask: number;
-  volume: number;
-  openInterest: number;
-  lastPrice: number;
-  type: string;
-}
-
-interface ChainData {
-  ticker: string;
-  timestamp: string;
-  calls: ChainContract[];
-  puts: ChainContract[];
-}
-
 interface AgentStatus {
   running: boolean;
   interval_minutes: number;
@@ -252,7 +231,7 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
-  const router = useRouter();
+  const { openInstrument } = useInstrumentDrawer();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -263,12 +242,6 @@ export default function OptionsPage() {
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [running, setRunning] = useState(false);
   const [newTicker, setNewTicker] = useState("");
-  const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
-  const [availableExpirationsByTicker, setAvailableExpirationsByTicker] = useState<Record<string, string[]>>({});
-  const [loadingExpirationsByTicker, setLoadingExpirationsByTicker] = useState<Set<string>>(new Set());
-  const [selectedExpiryIndexByTicker, setSelectedExpiryIndexByTicker] = useState<Record<string, number>>({});
-  const [chainByExpiry, setChainByExpiry] = useState<Record<string, ChainData>>({});
-  const [loadingExpiry, setLoadingExpiry] = useState<Set<string>>(new Set());
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
   const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
@@ -304,7 +277,7 @@ export default function OptionsPage() {
         if (initialTickerRef.current) {
           const hint = initialTickerRef.current.toUpperCase();
           initialTickerRef.current = null;
-          if (tickers.includes(hint)) setExpandedTicker(hint);
+          if (tickers.includes(hint)) openInstrument(hint, { tab: "opciones" });
         }
         try {
           const { no_options } = await api.options.checkAvailability(tickers);
@@ -319,60 +292,6 @@ export default function OptionsPage() {
       })
       .finally(() => setLoadingPositions(false));
   }, [retryPositions]);
-
-  // Fetch available expiration dates when a ticker is expanded
-  useEffect(() => {
-    if (!expandedTicker) return;
-    if (availableExpirationsByTicker[expandedTicker] !== undefined) return;
-    if (loadingExpirationsByTicker.has(expandedTicker)) return;
-
-    setLoadingExpirationsByTicker((prev) => new Set(prev).add(expandedTicker));
-    (api.options.tickerExpirations(expandedTicker) as Promise<{ expirations: string[] }>)
-      .then(({ expirations }) => {
-        setAvailableExpirationsByTicker((prev) => ({ ...prev, [expandedTicker]: expirations }));
-        setSelectedExpiryIndexByTicker((prev) => ({ ...prev, [expandedTicker]: 0 }));
-      })
-      .catch(() =>
-        setAvailableExpirationsByTicker((prev) => ({ ...prev, [expandedTicker]: [] })),
-      )
-      .finally(() =>
-        setLoadingExpirationsByTicker((prev) => {
-          const next = new Set(prev);
-          next.delete(expandedTicker);
-          return next;
-        }),
-      );
-  }, [expandedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fetch chain data when the selected expiry changes
-  useEffect(() => {
-    if (!expandedTicker) return;
-    const expirations = availableExpirationsByTicker[expandedTicker];
-    if (!expirations || expirations.length === 0) return;
-    const idx = selectedExpiryIndexByTicker[expandedTicker] ?? 0;
-    const expiry = expirations[idx];
-    if (!expiry) return;
-    const cacheKey = `${expandedTicker}:${expiry}`;
-    if (chainByExpiry[cacheKey] !== undefined) return;
-    if (loadingExpiry.has(cacheKey)) return;
-
-    setLoadingExpiry((prev) => new Set(prev).add(cacheKey));
-    (api.options.tickerChain(expandedTicker, expiry) as Promise<ChainData>)
-      .then((data) => setChainByExpiry((prev) => ({ ...prev, [cacheKey]: data })))
-      .catch(() =>
-        setChainByExpiry((prev) => ({
-          ...prev,
-          [cacheKey]: { ticker: expandedTicker, timestamp: "", calls: [], puts: [] },
-        })),
-      )
-      .finally(() =>
-        setLoadingExpiry((prev) => {
-          const next = new Set(prev);
-          next.delete(cacheKey);
-          return next;
-        }),
-      );
-  }, [expandedTicker, availableExpirationsByTicker, selectedExpiryIndexByTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load options data in parallel (independent of positions)
   useEffect(() => {
@@ -468,7 +387,6 @@ export default function OptionsPage() {
     // Persist exclusion from options monitor
     await api.options.hidePortfolioTicker(ticker);
     setHiddenTickers((prev) => new Set([...prev, ticker]));
-    if (expandedTicker === ticker) setExpandedTicker(null);
   }
 
   async function handleAddPositionToWatchlist(ticker: string, name: string) {
@@ -546,9 +464,6 @@ export default function OptionsPage() {
   // Get alerts/snapshots/unusual for a specific ticker
   function getTickerAlerts(ticker: string) {
     return alerts.filter((a) => a.ticker === ticker && !a.acknowledged);
-  }
-  function getTickerUnusual(ticker: string) {
-    return unusual.filter((u) => u.ticker === ticker);
   }
 
   return (
@@ -741,10 +656,7 @@ export default function OptionsPage() {
                   <TableBody>
                     {mainPositions.map((p) => {
                       const ticker = p.ticker || p.isin;
-                      const isExpanded = expandedTicker === ticker;
-                      const snap = latestByTicker.get(ticker);
                       const tickerAlerts = getTickerAlerts(ticker);
-                      const tickerUnusual = getTickerUnusual(ticker);
                       const plPositive =
                         p.unrealized_pl_eur != null && p.unrealized_pl_eur >= 0;
                       const plClass = plPositive
@@ -756,15 +668,11 @@ export default function OptionsPage() {
                           <TableRow
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() =>
-                              setExpandedTicker(isExpanded ? null : ticker)
+                              openInstrument(ticker, { tab: "opciones", name: p.name })
                             }
                           >
                             <TableCell className="w-8 pr-0">
-                              {isExpanded ? (
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                              )}
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
                             </TableCell>
                             <TableCell className="font-medium">
                               {ticker}
@@ -844,366 +752,6 @@ export default function OptionsPage() {
                             </TableCell>
                           </TableRow>
 
-                          {/* Expanded details */}
-                          {isExpanded && (
-                            <TableRow key={`${p.isin}-${p.broker}-detail`}>
-                              <TableCell
-                                colSpan={6}
-                                className="bg-muted/30 p-4"
-                              >
-                                <div className="space-y-4">
-                                  {/* Company name + actions */}
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-semibold">{p.name}</p>
-                                    <div className="flex items-center gap-2">
-                                      {p.current_price_eur != null && (
-                                        <p className="text-sm tabular-nums text-muted-foreground">
-                                          {fmt(p.current_price_eur)} €
-                                        </p>
-                                      )}
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-                                        title="Ver en Zonas Clave"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          router.push(`/zonas-clave?ticker=${encodeURIComponent(ticker)}`);
-                                        }}
-                                      >
-                                        <Target className="h-3 w-3" />
-                                        ZC
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  {/* Position summary */}
-                                  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">
-                                        Coste medio
-                                      </p>
-                                      <p className="font-medium">
-                                        {fmt(p.avg_cost_eur)} €
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">
-                                        Invertido
-                                      </p>
-                                      <p className="font-medium">
-                                        {fmt(p.total_cost_eur)} €
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">
-                                        Rentabilidad
-                                      </p>
-                                      <p className={`font-medium ${plClass}`}>
-                                        {p.unrealized_pl_pct != null
-                                          ? `${p.unrealized_pl_pct >= 0 ? "+" : ""}${fmt(p.unrealized_pl_pct)}%`
-                                          : "—"}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">
-                                        Peso cartera
-                                      </p>
-                                      <p className="font-medium">
-                                        {p.weight_pct
-                                          ? `${fmt(p.weight_pct, 1)}%`
-                                          : "—"}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Options snapshot data */}
-                                  {snap ? (
-                                    <div>
-                                      <h4 className="mb-2 text-sm font-semibold">
-                                        Datos de opciones
-                                        <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                          {new Date(
-                                            snap.timestamp,
-                                          ).toLocaleString("es-ES")}
-                                        </span>
-                                      </h4>
-                                      <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
-                                        <div>
-                                          <p className="text-xs text-muted-foreground">
-                                            Call Vol
-                                          </p>
-                                          <p className="font-medium">
-                                            {snap.call_volume.toLocaleString()}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-muted-foreground">
-                                            Put Vol
-                                          </p>
-                                          <p className="font-medium">
-                                            {snap.put_volume.toLocaleString()}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-muted-foreground">
-                                            P/C Ratio
-                                          </p>
-                                          <p className="font-medium">
-                                            {fmt(snap.put_call_ratio_volume)}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-muted-foreground">
-                                            IV Skew
-                                          </p>
-                                          <p className="font-medium">
-                                            {fmt(snap.iv_skew, 1)}%
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-muted-foreground">
-                                            Call IV
-                                          </p>
-                                          <p className="font-medium">
-                                            {fmt(snap.avg_call_iv, 1)}%
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-muted-foreground">
-                                            Sentimiento
-                                          </p>
-                                          <div className="flex items-center gap-1">
-                                            {sentimentIcon(
-                                              snap.market_sentiment,
-                                            )}
-                                            <span className="text-sm">
-                                              {snap.market_sentiment || "—"}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* HV vs IV comparison row */}
-                                      {(snap.historical_volatility != null || snap.avg_put_iv != null) && (
-                                        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-muted/50 bg-muted/20 px-3 py-2">
-                                          <span className="text-xs font-semibold text-muted-foreground">Vol:</span>
-                                          <div className="flex items-center gap-1 text-xs">
-                                            <span className="text-muted-foreground">HV</span>
-                                            <span className="font-medium tabular-nums">
-                                              {snap.historical_volatility != null ? `${fmt(snap.historical_volatility, 1)}%` : "—"}
-                                            </span>
-                                          </div>
-                                          <span className="text-muted-foreground">·</span>
-                                          <div className="flex items-center gap-1 text-xs">
-                                            <span className="text-muted-foreground">IV Call</span>
-                                            <span className="font-medium tabular-nums">
-                                              {snap.avg_call_iv != null ? `${fmt(snap.avg_call_iv, 1)}%` : "—"}
-                                            </span>
-                                          </div>
-                                          <div className="flex items-center gap-1 text-xs">
-                                            <span className="text-muted-foreground">IV Put</span>
-                                            <span className="font-medium tabular-nums">
-                                              {snap.avg_put_iv != null ? `${fmt(snap.avg_put_iv, 1)}%` : "—"}
-                                            </span>
-                                          </div>
-                                          {snap.historical_volatility != null && snap.avg_call_iv != null && (() => {
-                                            const diff = Number(snap.avg_call_iv) - Number(snap.historical_volatility);
-                                            const label = diff > 5 ? "IV cara" : diff < -5 ? "IV barata" : "IV normal";
-                                            const cls = diff > 5
-                                              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                                              : diff < -5
-                                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                                              : "bg-muted text-muted-foreground";
-                                            return (
-                                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-                                                {label} {diff >= 0 ? "+" : ""}{diff.toFixed(1)}pp
-                                              </span>
-                                            );
-                                          })()}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : null}
-
-                                  {/* Options chain with expiry navigator */}
-                                  {(() => {
-                                    const isLoadingDates = loadingExpirationsByTicker.has(ticker);
-                                    const expirations = availableExpirationsByTicker[ticker];
-
-                                    if (isLoadingDates) {
-                                      return <Skeleton className="h-8 w-48" />;
-                                    }
-                                    if (!expirations || expirations.length === 0) return null;
-
-                                    const idx = selectedExpiryIndexByTicker[ticker] ?? 0;
-                                    const expiry = expirations[idx];
-                                    const cacheKey = `${ticker}:${expiry}`;
-                                    const chain = chainByExpiry[cacheKey];
-                                    const isLoadingChain = loadingExpiry.has(cacheKey);
-
-                                    const navigate = (delta: number) => {
-                                      const next = idx + delta;
-                                      if (next < 0 || next >= expirations.length) return;
-                                      setSelectedExpiryIndexByTicker((prev) => ({ ...prev, [ticker]: next }));
-                                    };
-
-                                    const renderContracts = (contracts: ChainContract[], label: string) => (
-                                      <div>
-                                        <h5 className="mb-1 text-xs font-semibold text-muted-foreground">
-                                          {label} ({contracts.length})
-                                        </h5>
-                                        <div className="overflow-x-auto">
-                                          <table className="w-full text-xs">
-                                            <thead>
-                                              <tr className="border-b text-muted-foreground">
-                                                <th className="py-1 pr-3 text-right">Strike</th>
-                                                <th className="py-1 pr-3 text-right">IV</th>
-                                                <th className="py-1 pr-3 text-right">Bid</th>
-                                                <th className="py-1 pr-3 text-right">Ask</th>
-                                                <th className="py-1 pr-3 text-right">Vol</th>
-                                                <th className="py-1 text-right">OI</th>
-                                              </tr>
-                                            </thead>
-                                            <tbody>
-                                              {contracts.slice(0, 20).map((c, i) => (
-                                                <tr key={i} className="border-b border-muted/30">
-                                                  <td className="py-1 pr-3 text-right tabular-nums font-medium">{fmt(c.strike)}</td>
-                                                  <td className="py-1 pr-3 text-right">
-                                                    {c.impliedVolatility ? `${(c.impliedVolatility * 100).toFixed(1)}%` : "—"}
-                                                  </td>
-                                                  <td className="py-1 pr-3 text-right tabular-nums">{fmt(c.bid)}</td>
-                                                  <td className="py-1 pr-3 text-right tabular-nums">{fmt(c.ask)}</td>
-                                                  <td className="py-1 pr-3 text-right tabular-nums">{c.volume.toLocaleString()}</td>
-                                                  <td className="py-1 text-right tabular-nums">{c.openInterest.toLocaleString()}</td>
-                                                </tr>
-                                              ))}
-                                            </tbody>
-                                          </table>
-                                        </div>
-                                      </div>
-                                    );
-
-                                    return (
-                                      <div>
-                                        <div className="mb-3 flex items-center gap-3">
-                                          <h4 className="text-sm font-semibold">Cadena de opciones</h4>
-                                          <div className="flex items-center gap-1">
-                                            <button
-                                              onClick={() => navigate(-1)}
-                                              disabled={idx === 0}
-                                              className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                                            >
-                                              ‹
-                                            </button>
-                                            <span className="min-w-[88px] text-center text-xs font-medium tabular-nums">
-                                              {expiry}
-                                            </span>
-                                            <button
-                                              onClick={() => navigate(1)}
-                                              disabled={idx === expirations.length - 1}
-                                              className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                                            >
-                                              ›
-                                            </button>
-                                            <span className="ml-1 text-xs text-muted-foreground">
-                                              {idx + 1}/{expirations.length}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        {isLoadingChain ? (
-                                          <Skeleton className="h-32 w-full" />
-                                        ) : !chain || (chain.calls.length === 0 && chain.puts.length === 0) ? (
-                                          <p className="text-xs text-muted-foreground">Sin datos para esta fecha.</p>
-                                        ) : (
-                                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            {renderContracts(chain.calls, "Calls")}
-                                            {renderContracts(chain.puts, "Puts")}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-
-                                  {/* Alerts for this ticker */}
-                                  {tickerAlerts.length > 0 && (
-                                    <div>
-                                      <h4 className="mb-2 text-sm font-semibold text-destructive">
-                                        Alertas activas ({tickerAlerts.length})
-                                      </h4>
-                                      <div className="space-y-1">
-                                        {tickerAlerts.map((a) => (
-                                          <div
-                                            key={a.id}
-                                            className="flex items-center gap-2 text-sm"
-                                          >
-                                            <Badge
-                                              variant={
-                                                severityColor(a.severity) as
-                                                  | "destructive"
-                                                  | "secondary"
-                                                  | "outline"
-                                              }
-                                              className="text-[10px]"
-                                            >
-                                              {a.severity}
-                                            </Badge>
-                                            <span>{a.message}</span>
-                                            <Button
-                                              variant="ghost"
-                                              size="sm"
-                                              className="ml-auto h-6 px-2 text-xs"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleAckAlert(a.id);
-                                              }}
-                                            >
-                                              Ack
-                                            </Button>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Unusual activity for this ticker */}
-                                  {tickerUnusual.length > 0 && (
-                                    <div>
-                                      <h4 className="mb-2 text-sm font-semibold text-amber-600">
-                                        Actividad inusual (
-                                        {tickerUnusual.length})
-                                      </h4>
-                                      <div className="space-y-1">
-                                        {tickerUnusual.map((u) => (
-                                          <div
-                                            key={u.id}
-                                            className="flex items-center gap-3 text-sm"
-                                          >
-                                            <Badge
-                                              variant={
-                                                u.option_type === "CALL"
-                                                  ? "default"
-                                                  : "secondary"
-                                              }
-                                              className="text-[10px]"
-                                            >
-                                              {u.option_type}
-                                            </Badge>
-                                            <span>
-                                              Strike ${fmt(u.strike)} · Exp{" "}
-                                              {u.expiration}
-                                            </span>
-                                            <span className="font-medium text-amber-600">
-                                              Vol/OI {fmt(u.vol_oi_ratio, 1)}x
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          )}
                         </Fragment>
                       );
                     })}
@@ -1449,7 +997,7 @@ export default function OptionsPage() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <span
                                   className="font-medium cursor-pointer text-primary hover:underline"
-                                  onClick={() => { setExpandedTicker(a.ticker); setActiveTab("portfolio"); }}
+                                  onClick={() => openInstrument(a.ticker, { tab: "opciones" })}
                                 >
                                   {a.ticker}
                                 </span>
@@ -1482,7 +1030,7 @@ export default function OptionsPage() {
                             {alerts.map((a) => (
                               <TableRow key={a.id} className={a.acknowledged ? "opacity-50" : ""}>
                                 <TableCell className="text-xs">{new Date(a.timestamp).toLocaleString("es-ES")}</TableCell>
-                                <TableCell className="font-medium cursor-pointer text-primary hover:underline" title="Ver en Cartera" onClick={() => { setExpandedTicker(a.ticker); setActiveTab("portfolio"); }}>{a.ticker}</TableCell>
+                                <TableCell className="font-medium cursor-pointer text-primary hover:underline" title="Ver opciones" onClick={() => openInstrument(a.ticker, { tab: "opciones" })}>{a.ticker}</TableCell>
                                 <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
                                 <TableCell>{a.message}</TableCell>
                                 <TableCell><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge></TableCell>
@@ -1942,7 +1490,47 @@ type LastAnalysis = {
   market_sentiment: string | null;
   claude_analysis: string | null;
   ai_configured: boolean;
+  macro: {
+    regime: string;
+    vix: number | null;
+    yield_spread: number | null;
+    financial_stress: number | null;
+    hy_spread: number | null;
+    as_of: string | null;
+  } | null;
 };
+
+/** Macro-regime annotation badge (FRED). Annotation only — does not affect signals. */
+function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {
+  if (!macro) return null;
+  const label =
+    macro.regime === "risk_off"
+      ? "Risk-off"
+      : macro.regime === "risk_on"
+        ? "Risk-on"
+        : "Neutral";
+  const color =
+    macro.regime === "risk_off"
+      ? "bg-red-500/10 text-red-600 border-red-500/20"
+      : macro.regime === "risk_on"
+        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+        : "bg-muted text-muted-foreground border-border";
+  const fmt = (v: number | null, suffix = "") =>
+    v == null ? "n/d" : `${v.toFixed(2)}${suffix}`;
+  const title =
+    `Régimen macro (FRED${macro.as_of ? `, ${macro.as_of}` : ""}) — ` +
+    `VIX ${fmt(macro.vix)} · Curva 10a-2a ${fmt(macro.yield_spread, "%")} · ` +
+    `Estrés ${fmt(macro.financial_stress)} · HY ${fmt(macro.hy_spread, "%")}`;
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${color}`}
+    >
+      Macro: {label}
+      <span className="text-muted-foreground font-normal">VIX {fmt(macro.vix)}</span>
+    </span>
+  );
+}
 
 /** Parse a Markdown string with "## N. Title\n..." into [{title, body}] sections. */
 function parseAnalysisSections(text: string): { title: string; body: string }[] {
@@ -1996,6 +1584,11 @@ function AnalysisTab() {
     const configured = analysis?.ai_configured ?? false;
     return (
       <Card className="p-6 text-center space-y-2">
+        {analysis?.macro && (
+          <div className="flex justify-center pb-1">
+            <MacroBadge macro={analysis.macro} />
+          </div>
+        )}
         {!hasRun && (
           <p className="text-sm text-muted-foreground">
             No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe.
@@ -2032,7 +1625,10 @@ function AnalysisTab() {
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="text-base">Informe VolatilityEdge</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Informe VolatilityEdge</CardTitle>
+                <MacroBadge macro={analysis.macro} />
+              </div>
               <CardDescription>
                 {analysis.timestamp
                   ? `Ciclo #${analysis.cycle ?? "—"} · ${new Date(analysis.timestamp).toLocaleString("es-ES")}`

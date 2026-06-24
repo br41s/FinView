@@ -13,18 +13,8 @@ import {
   Square,
   AlertCircle,
 } from "lucide-react";
-import {
-  ComposedChart,
-  Line,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from "recharts";
-
 import { api, type ZcAnalysis, type ZcWatchlistItem } from "@/lib/api";
+import { ZonasClaveChart } from "@/components/charts/ZonasClaveChart";
 import {
   Card,
   CardContent,
@@ -35,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
+import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
 import {
   Table,
   TableBody,
@@ -105,6 +96,7 @@ function macdColor(signal: string | null) {
 
 export default function ZonasClavePage() {
   const router = useRouter();
+  const { openInstrument } = useInstrumentDrawer();
   const [watchlist, setWatchlist] = useState<ZcWatchlistItem[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
@@ -260,14 +252,10 @@ export default function ZonasClavePage() {
     if (yearsStored < 4) handleRefresh(selectedTicker);
   }, [scope, selectedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Chart data — filter by selected scope
-  // Y domain is driven by price history only; ReferenceLine clips to domain automatically
+  // Chart data — filter by selected scope. lightweight-charts autoscales the price
+  // axis, so no manual Y domain is needed.
   const priceHistory = filterByScope(analysis?.price_history ?? [], scope);
   const visibleZones = analysis?.zones ?? [];
-
-  const allPrices = priceHistory.map((p) => p.close);
-  const yMin = allPrices.length > 0 ? Math.min(...allPrices) * 0.97 : undefined;
-  const yMax = allPrices.length > 0 ? Math.max(...allPrices) * 1.03 : undefined;
 
   return (
     <div className="space-y-6 p-6">
@@ -404,7 +392,7 @@ export default function ZonasClavePage() {
                           title="Ver opciones"
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/options?ticker=${encodeURIComponent(item.ticker)}`);
+                            openInstrument(item.ticker, { tab: "opciones", name: item.name });
                           }}
                         >
                           <Activity className="h-3 w-3" />
@@ -604,69 +592,7 @@ export default function ZonasClavePage() {
                     {priceHistory.length === 0 ? (
                       <Skeleton className="h-64 w-full" />
                     ) : (
-                      <ResponsiveContainer width="100%" height={360}>
-                        <ComposedChart
-                          data={priceHistory}
-                          margin={{ top: 4, right: 60, bottom: 4, left: 4 }}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke="hsl(var(--border))"
-                            opacity={0.5}
-                          />
-                          <XAxis
-                            dataKey="date"
-                            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
-                            tickFormatter={(d: string) =>
-                              new Date(d).toLocaleDateString("es-ES", {
-                                month: "short",
-                                year: "2-digit",
-                              })
-                            }
-                            interval="preserveStartEnd"
-                          />
-                          <YAxis
-                            domain={[yMin ?? "auto", yMax ?? "auto"]}
-                            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                            tickFormatter={(v: number) => v.toFixed(0)}
-                            width={55}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "hsl(var(--popover))",
-                              border: "1px solid hsl(var(--border))",
-                              borderRadius: 8,
-                              fontSize: 12,
-                            }}
-                            formatter={(value: unknown) => [fmt(Number(value), 2), "Precio"]}
-                            labelFormatter={(label: unknown) =>
-                              new Date(String(label)).toLocaleDateString("es-ES")
-                            }
-                          />
-                          <Line
-                            dataKey="close"
-                            stroke="#60a5fa"
-                            dot={false}
-                            strokeWidth={1.5}
-                            isAnimationActive={false}
-                          />
-                          {visibleZones.map((z, i) => (
-                            <ReferenceLine
-                              key={i}
-                              y={z.level}
-                              stroke={z.zone_type === "support" ? "#22c55e" : "#ef4444"}
-                              strokeDasharray={z.strength > 0.7 ? undefined : "4 2"}
-                              strokeWidth={Math.max(1, Math.round(z.strength * 2.5))}
-                              label={{
-                                value: fmt(z.level, 2),
-                                fill: z.zone_type === "support" ? "#22c55e" : "#ef4444",
-                                fontSize: 10,
-                                position: "right",
-                              }}
-                            />
-                          ))}
-                        </ComposedChart>
-                      </ResponsiveContainer>
+                      <ZonasClaveChart data={priceHistory} zones={visibleZones} />
                     )}
                   </CardContent>
                 </Card>

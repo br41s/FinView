@@ -19,7 +19,14 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, type OhlcBar } from "@/lib/api";
+import { PriceChart } from "@/components/charts/PriceChart";
+import {
+  executionMarkers,
+  sliceOhlc,
+  CHART_SCOPES,
+  type ChartScope,
+} from "@/lib/chartMarkers";
 import {
   Card,
   CardContent,
@@ -107,6 +114,7 @@ interface PositionDetail {
   accounts: AccountBreakdown[];
   transactions: TxHistory[];
   dividends_by_year: DividendByYear[];
+  dividend_events?: { date: string; net_eur: number }[];
 }
 
 function fmt(n: number | null | undefined, decimals = 2): string {
@@ -115,6 +123,17 @@ function fmt(n: number | null | undefined, decimals = 2): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+}
+
+// Smallest whitelisted yfinance period that still covers the oldest transaction.
+function periodForOldest(oldest: string | undefined): string {
+  if (!oldest) return "2y";
+  const years =
+    (Date.now() - new Date(oldest).getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (years <= 2) return "2y";
+  if (years <= 5) return "5y";
+  if (years <= 10) return "10y";
+  return "max";
 }
 
 const TX_LABELS: Record<string, string> = {
@@ -142,6 +161,8 @@ function PortfolioContent() {
   const [retryKey, setRetryKey] = useState(0);
   const [pricesLoaded, setPricesLoaded] = useState(false);
   const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
+  const [ohlcByIsin, setOhlcByIsin] = useState<Map<string, OhlcBar[]>>(new Map());
+  const [chartScope, setChartScope] = useState<ChartScope>("MAX");
   const [details, setDetails] = useState<Map<string, PositionDetail>>(
     new Map(),
   );
@@ -216,6 +237,24 @@ function PortfolioContent() {
     },
     [expandedIsin, details],
   );
+
+  // Fetch OHLC for the expanded position once its detail (with ticker) is loaded.
+  // Cached per ISIN so re-expanding doesn't refetch. Best-effort → empty hides the chart.
+  useEffect(() => {
+    if (!expandedIsin) return;
+    const detail = details.get(expandedIsin);
+    if (!detail?.ticker || ohlcByIsin.has(expandedIsin)) return;
+    const dates = detail.transactions.map((t) => t.date).filter(Boolean).sort();
+    const period = periodForOldest(dates[0]);
+    api.charts
+      .priceHistory(detail.ticker, period)
+      .then((bars) =>
+        setOhlcByIsin((prev) => new Map(prev).set(expandedIsin, bars)),
+      )
+      .catch(() =>
+        setOhlcByIsin((prev) => new Map(prev).set(expandedIsin, [])),
+      );
+  }, [expandedIsin, details, ohlcByIsin]);
 
   if (loading) {
     return (
@@ -687,6 +726,53 @@ function PortfolioContent() {
                                     </Table>
                                   </div>
                                 )}
+
+                                {(() => {
+                                  const bars =
+                                    ohlcByIsin.get(detail.isin) ?? [];
+                                  if (!detail.ticker || bars.length === 0)
+                                    return null;
+                                  return (
+                                    <div>
+                                      <div className="mb-2 flex items-center justify-between">
+                                        <h4 className="text-sm font-semibold">
+                                          Precio y operaciones{" "}
+                                          <span className="font-normal text-muted-foreground">
+                                            ▲ compra · ▼ venta · ● dividendo
+                                          </span>
+                                        </h4>
+                                        <div className="flex items-center gap-0.5">
+                                          {CHART_SCOPES.map((s) => (
+                                            <button
+                                              key={s}
+                                              onClick={() => setChartScope(s)}
+                                              className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                                                chartScope === s
+                                                  ? "bg-primary text-primary-foreground"
+                                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                              }`}
+                                            >
+                                              {s}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <PriceChart
+                                        data={sliceOhlc(bars, chartScope)}
+                                        markers={executionMarkers([
+                                          ...detail.transactions,
+                                          ...(detail.dividend_events ?? []).map(
+                                            (d) => ({
+                                              type: "DIVIDEND",
+                                              date: d.date,
+                                            }),
+                                          ),
+                                        ])}
+                                        height={360}
+                                      />
+                                    </div>
+                                  );
+                                })()}
 
                                 <div>
                                   <h4 className="mb-2 text-sm font-semibold">

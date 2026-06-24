@@ -414,6 +414,21 @@ def trigger_cycle(user: CurrentUser):
     return AgentCycleResult(**result)
 
 
+@router.post("/agent/analyze-ticker", responses=_404)
+def analyze_ticker_on_demand(body: WatchlistItemIn, user: CurrentUser):
+    """On-demand single-ticker AI options analysis for the instrument drawer.
+
+    Runs regardless of alerts (user explicitly requested it). AI failure still
+    returns the rule-based summary/alerts; only missing options data is a 404.
+    """
+    from backend.services.options_agent import analyze_single_ticker
+
+    result = analyze_single_ticker(body.ticker)
+    if result.get("status") == "no_data":
+        raise HTTPException(status_code=404, detail="No options data for this ticker")
+    return result
+
+
 @router.get("/agent/status", response_model=AgentStatusOut)
 def agent_status(db: DbSession, user: CurrentUser):
     last_log = (
@@ -440,9 +455,11 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
     """Return metadata from the most recent cycle + claude_analysis from the most recent cycle that has one."""
     base_q = db.query(OptionsAgentLog).filter(OptionsAgentLog.user_id == user.id)
 
+    from backend.services.macro_context import macro_context
+
     last_log = base_q.order_by(OptionsAgentLog.timestamp.desc()).first()
     if not last_log:
-        return LastAnalysisOut()
+        return LastAnalysisOut(macro=macro_context())
 
     analysis_log = (
         base_q
@@ -459,6 +476,7 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
         market_sentiment=last_log.market_sentiment,
         claude_analysis=analysis_log.claude_analysis if analysis_log else None,
         ai_configured=bool(settings.openrouter_api_key),
+        macro=macro_context(),
     )
 
 

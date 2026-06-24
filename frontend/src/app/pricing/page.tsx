@@ -83,7 +83,7 @@ const FAQ = [
   },
   {
     q: '¿Los cálculos del IRPF son fiables?',
-    a: 'Validamos nuestro motor FIFO contra los cálculos pre-computados que Trade Republic incluye en su Tax Report. Los resultados son idénticos para los datos de TR.',
+    a: 'Nuestro motor FIFO cross-broker aplica la normativa española del IRPF a los datos de todos tus brokers, cruzando compras y ventas entre cuentas para calcular las casillas del Modelo 100 y 714.',
   },
 ];
 

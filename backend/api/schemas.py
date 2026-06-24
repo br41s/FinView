@@ -250,6 +250,21 @@ class WatchlistItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MarketsWatchlistItemOut(BaseModel):
+    id: int
+    ticker: str
+    name: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MarketsWatchlistImportIn(BaseModel):
+    """Bulk import for the one-time localStorage → DB migration."""
+
+    tickers: list[str]
+
+
 class OptionsSnapshotOut(BaseModel):
     id: int
     timestamp: datetime
@@ -340,6 +355,8 @@ class LastAnalysisOut(BaseModel):
     market_sentiment: str | None = None
     claude_analysis: str | None = None
     ai_configured: bool = False
+    # Macro-regime annotation (FRED). None when no macro data is cached.
+    macro: dict | None = None
 
 
 class BacktestSignalOut(BaseModel):
@@ -463,3 +480,50 @@ class GeoRunResult(BaseModel):
     events: int | None = None
     new_signals: int | None = None
     notified: int | None = None
+
+
+# ── Fiscal onboarding (savings-base IRPF estimate, v1 individual) ────────────
+class FiscalProfileIn(BaseModel):
+    age: int | None = None
+    disability: str | None = None  # None | "general" | "severe"
+    descendants: int = 0
+    general_base: Decimal = Decimal("0")
+
+
+class FiscalProfileOut(FiscalProfileIn):
+    fiscal_year: int
+    updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ManualSavingsIncomeIn(BaseModel):
+    fiscal_year: int
+    category: str  # RCM | GAIN | LOSS
+    label: str = ""
+    amount_eur: Decimal
+    withholding_eur: Decimal = Decimal("0")
+
+
+class ManualSavingsIncomeOut(ManualSavingsIncomeIn):
+    id: int
+
+    model_config = {"from_attributes": True}
+
+
+class SavingsEstimateOut(BaseModel):
+    fiscal_year: int
+    rates_year_used: int
+    rcm_net: Decimal
+    gp_net: Decimal
+    savings_base: Decimal
+    rcm_carryforward: Decimal
+    gp_carryforward: Decimal
+    personal_minimum: Decimal
+    minimum_on_savings: Decimal
+    gross_quota: Decimal
+    quota: Decimal
+    withholdings: Decimal
+    result: Decimal  # >0 a ingresar · <0 a devolver
+    brackets: list[dict]
+    casillas: dict[str, Decimal]  # source casilla totals (brokers + manual)

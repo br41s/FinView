@@ -4,6 +4,7 @@ import { Geist, Fraunces, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/auth-provider";
+import { InstrumentDrawerProvider } from "@/components/InstrumentDrawer";
 import { cn } from "@/lib/utils";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
@@ -28,7 +29,9 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-background text-foreground antialiased">
         <AuthProvider>
-          <TooltipProvider>{children}</TooltipProvider>
+          <TooltipProvider>
+            <InstrumentDrawerProvider>{children}</InstrumentDrawerProvider>
+          </TooltipProvider>
           <Toaster richColors position="bottom-right" />
         </AuthProvider>
       </body>

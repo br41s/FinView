@@ -1,5 +1,232 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Cross-section coherence — instrument drawer (C now, B roadmap) — 2026-06-24
+
+**Origen:** /office-hours (proyecto completo). Decisión: **coherencia, no features.**
+Diseño completo: `~/.gstack/projects/braisntext-FinView/brais-claude-festive-northcutt-faf7e2-design-20260624-015924.md`
+
+**Modelo elegido:** "C ahora, B en roadmap". Drawer global por instrumento (ticker)
+con pestañas que reutilizan cada sección; pensado para promocionarse luego a una
+página `/ticker/[symbol]` (B) sin reescribir los componentes de pestaña.
+
+**Decisiones cerradas:**
+- Watchlists de opciones y zonas son **listas distintas** (no fusionar). `zonas_clave_watchlist`
+  es tabla aparte y **posee** filas `zonas_clave_analysis` por FK → se deja intacta.
+- El informe IA de opciones **por ticker** vive en la pestaña Opciones del drawer,
+  **bajo demanda** (llamada fresca al abrir), separado del informe global del ciclo.
+
+### Fase 0 — Decisión a confirmar antes de tocar código
+- [x] **Almacén de la watchlist de markets → Opción B (CEO, 2026-06-24):** tabla
+      nueva `markets_watchlist` (mismo patrón de API que `/options/watchlist`, sin
+      cirugía de constraint). Options queda sin tocar; mínimo blast radius en prod.
+
+### Fase 1 — Unificación de mecanismo de watchlist (fundación de A) ✅
+- [x] Backend: tabla `markets_watchlist` ([models.py](backend/models.py)) +
+      router `/markets/watchlist` (list/add/import/delete) ([api/markets.py](backend/api/markets.py)),
+      schemas + registro en [app.py](backend/app.py). Endpoint `import` idempotente
+      para la migración. (No toca `watchlist_items` ni zonas.)
+- [x] Tipos TS + cliente API (`MarketsWatchlistItem` + `api.markets` en
+      [lib/api.ts](frontend/src/lib/api.ts)).
+- [x] `markets/page.tsx`: lee/escribe vía API; **migración única** localStorage→DB
+      al montar (importa `fv-markets-watchlist`, limpia la clave); siembra defaults
+      si la lista está vacía.
+- [x] Verificado: ruff limpio; app importa y monta rutas; **120 passed** (los 60
+      errors son fixtures sin ficheros reales en `files/`, preexistentes); E2E con
+      TestClient: list/add(201)/dup(409)/import idempotente/delete(204)/404 ✅.
+- Nota: si el usuario borra TODOS los tickers, al recargar se re-siembran los
+      defaults (igual que el comportamiento previo de localStorage). Aceptable; si
+      molesta → flag "seeded" en follow-up.
+
+**Invariantes:** estado→DB por usuario (fin del localStorage no portable);
+blast radius→aditivo, no toca FIFO ni el scraper; timing→migración idempotente
+(solo si existe la clave).
+
+### Fase 2 — Shell del drawer global de instrumento ✅
+- [x] `InstrumentDrawerProvider` + `useInstrumentDrawer()` ([components/InstrumentDrawer.tsx](frontend/src/components/InstrumentDrawer.tsx))
+      montado en [app/layout.tsx](frontend/src/app/layout.tsx) dentro de
+      `AuthProvider`/`TooltipProvider`; expone `openInstrument(symbol, { isin?, name?, tab? })`.
+- [x] Drawer con `Sheet` (side=right, `data-[side=right]:sm:max-w-2xl`); cabecera
+      ticker + badge **"En cartera"** (holdings lazy-cargados al abrir); `Tabs`
+      controladas (Precio | Opciones | Zonas).
+- [x] **Precio** tab funcional (`PrecioTab` self-contained `{symbol}` → `priceHistory`
+      + `PriceChart` + scopes); Opciones/Zonas = placeholders con CTA a la página
+      completa (sin pérdida de acceso).
+- [x] Rewire cross-links: options "ZC" → `openInstrument(t,{tab:'zonas'})`;
+      zonas "ver opciones" → `openInstrument(t,{tab:'opciones'})`. `router` sobrante
+      eliminado en options.
+- [x] Verificado: `tsc --noEmit` limpio + `next build` verde (todas las rutas).
+- **Tradeoff transitorio:** los dos cross-links ahora abren el drawer en una
+      pestaña placeholder (Opciones/Zonas) → 1 click extra hasta la página completa.
+      Se elimina en Fase 3 cuando esas pestañas rendericen el análisis real in-place.
+- Pendiente: QA en navegador (requiere stack levantado + login).
+
+**Invariantes:** estado→efímero en cliente (qué ticker/pestaña), nada en DB;
+blast radius→nuevo provider envuelve children, no rompe páginas; cada pestaña
+componente aislado `{ symbol }` (listo para promocionar a B).
+
+### Fase 3 — Pestañas v1 (las que ya tienen plumbing `?ticker=`) ✅
+- [x] **Precio**: `PrecioTab` (Fase 2) — `PriceChart` + `/charts/price-history`.
+- [x] **Opciones** ([components/instrument/OpcionesTab.tsx](frontend/src/components/instrument/OpcionesTab.tsx)):
+      **informe IA por ticker bajo demanda** → nuevo `POST /options/agent/analyze-ticker`
+      ([options_agent.py](backend/services/options_agent.py) `analyze_single_ticker` +
+      prompt `_CLAUDE_TICKER_*` de 5 secciones, max_tokens 1500; corre aunque no haya
+      alertas; guard `openrouter_api_key`; fallo IA devuelve igualmente el resumen de
+      reglas). Más cadena compacta (selector de vencimiento + tabla calls/puts por strike).
+- [x] **Zonas** ([components/instrument/ZonasTab.tsx](frontend/src/components/instrument/ZonasTab.tsx)):
+      `ZonasClaveChart` + tarjeta de tendencia (RSI/MACD/bias) + tabla de zonas. Si el
+      ticker NO está en `zonas_clave_watchlist` (404) → CTA "Añadir y analizar"
+      (`addTicker` dispara análisis en background, polling 3s ×12).
+- [x] Placeholders eliminados; cross-links aterrizan en contenido real. Link sutil
+      "Ver en Opciones/Zonas Clave" a la página completa.
+- [x] Verificado: ruff limpio; `tsc` limpio; `next build` verde; `analyze_single_ticker`
+      probado (status ok/no_data, ai_error not_configured sin key, resumen siempre).
+
+### Fase 4 — Pestañas v2 ✅
+- [x] **Fiscal** ([components/instrument/FiscalTab.tsx](frontend/src/components/instrument/FiscalTab.tsx)):
+      coste medio/total, valor, P&L no realizada, país, desglose por bróker.
+- [x] **Dividendos** ([components/instrument/DividendosTab.tsx](frontend/src/components/instrument/DividendosTab.tsx)):
+      `dividends_by_year` (bruto/neto/pagos) + total.
+- [x] Ambas reusan `GET /portfolio/positions/{isin}` vía hook compartido
+      `usePositionDetail` (cache por ISIN en sesión → 1 fetch para las 2 pestañas).
+      ISIN resuelto en el provider desde holdings (ticker→isin); si no es posición
+      en cartera → estado vacío. Sin cambios de backend (solo Vercel al desplegar).
+- [x] Verificado: `tsc` limpio; `next build` verde.
+
+### Fase 5 — Resolver Cartera (pregunta original) ✅
+- [x] **CEO: drawer + portar strikes.** Cartera ahora es un lanzador: la fila abre
+      el drawer (pestaña Opciones) en vez de expandir inline. Eliminadas ~500 líneas
+      de chain/expiry/chart inline + su estado y effects ([options/page.tsx](frontend/src/app/options/page.tsx) 2212→1696).
+      Overlay de strikes near-money portado a la pestaña Opciones del drawer
+      (spot + 3 abajo/3 arriba sobre las velas). Cross-links "Ver en Cartera" y el
+      deep-link `?ticker=` también abren el drawer. P&L de holdings preservado en la lista.
+- [x] Verificado en local: fila AAPL → drawer en Opciones con chart de strikes + cadena;
+      sin expansión inline. `tsc` limpio, `next build` verde.
+
+### Fase 6 — Documentar promoción a B ✅
+- [x] Documentado el camino `/ticker/[symbol]` en [claude.md](claude.md) (sección
+      Instrument drawer → "Promotion to /ticker/[symbol]"): los componentes de pestaña
+      se montan tal cual como secciones de página; `usePositionDetail` + APIs por sección
+      funcionan fuera del drawer; owned/watched pasa a flag explícito solo si SSR/SEO lo pide.
+
+---
+
+## Onboarding fiscal estilo TaxDown — base del ahorro primero — 2026-06-22
+
+**Decisión CEO:** (1) por fases — completar la **base del ahorro** primero, luego la
+base general. (2) salida doble: **casillas** (para rellenar el Modelo 100 guiado) **y**
+el **número final estimado** (cuota / resultado a ingresar o devolver). Estilo
+cuestionario inteligente, preguntas amplias→detalle.
+
+**Done en esta sesión (copy público, fuera del alcance del onboarding):**
+- [x] Quitar el claim "solo validado contra Trade Republic" de las páginas públicas;
+      ahora afirman cálculo cross-broker para todos los brokers.
+      [features/page.tsx:119](frontend/src/app/features/page.tsx), [pricing/page.tsx:86](frontend/src/app/pricing/page.tsx).
+
+### Por qué "ahorro primero" es la rebanada limpia
+- La **escala de la base del ahorro es estatal** (uniforme en toda España) → el número
+  final del ahorro **no depende de la comunidad autónoma**. La base general sí (tramo
+  autonómico) → de ahí que se difiera. Esto valida la decisión de empezar por ahorro.
+- **Acoplamiento a vigilar:** el *mínimo personal y familiar* se aplica primero contra
+  la base general y solo el sobrante contra la base del ahorro. Para estimar bien la
+  cuota del ahorro hace falta UNA pregunta puente: "¿tienes rentas del trabajo / base
+  general?" (sí/no + importe aprox). Sin general → el mínimo entero recae en ahorro.
+
+### Invariantes (topología)
+- **Estado:** nueva tabla `FiscalProfile` (user_id, fiscal_year, respuestas). Renta
+  manual fuera de brokers → filas `TaxResult` con pseudo-broker `MANUAL` → entran solas
+  en la agregación de casillas existente (no se toca el motor FIFO).
+- **Feedback:** wizard con progreso; resultado = casillas + desglose de cuota + aviso
+  "estimación, no asesoramiento fiscal".
+- **Blast radius:** aditivo. NO tocar `fifo_engine.py`. Reusa la suma de `TaxResult`.
+- **Timing:** recomputar cuota cuando cambie el perfil O una importación de broker.
+
+### Modelo de datos
+- [x] `FiscalProfile` (1 fila por user+año): edad, discapacidad (general/severe),
+      descendientes, importe de base general. `Base.metadata.create_all` la crea sola.
+      (Estado civil/conjunta y residencia autonómica → diferidos a Fase 2, no se usan
+      en v1 individual.)
+- [x] ~~Pseudo-broker `MANUAL`~~ → **tabla dedicada `ManualSavingsIncome`**. `Broker`
+      es un ENUM nativo de Postgres y el path `create_all`/`ensure_columns` NO puede
+      hacer `ALTER TYPE ... ADD VALUE`. La tabla es aditiva y más limpia. `amount_eur`
+      siempre magnitud positiva; el signo lo da `category` (RCM/GAIN/LOSS).
+
+### Árbol de preguntas (amplio → detalle) — sección ahorro
+- [ ] Gate: "¿Tienes rendimientos/ganancias del ahorro aparte de tus brokers?"
+      (intereses bancarios, cripto, fondos en otra plataforma) → si no, salta el bloque.
+- [ ] Gate: "¿Te han practicado retenciones fuera de tus brokers?"
+- [ ] Datos personales para la cuota: edad, estado civil + conjunta/individual,
+      discapacidad, descendientes/ascendientes.
+- [ ] Pregunta puente base general (para repartir el mínimo correctamente).
+
+### Cálculo (`services/tax_estimator.py`) — HECHO (motor puro, 12 tests)
+- [x] Base del ahorro = RCM (027/029) + G/P (332/337) con compensación cruzada (cap 25%).
+- [x] Escala estatal del ahorro por año (tablas por año; **2024 codificado, marcado para
+      verificar contra AEAT antes de lanzar**: 19/21/23/27/28%).
+- [x] Mínimo personal/familiar (base + edad + discapacidad + descendientes) repartido tras
+      la base general. `rates_year_used` expuesto (fallback al último año codificado).
+- [x] Retenciones → resultado a ingresar / a devolver.
+
+### API — HECHO (agregación DB + endpoints, 4 tests)
+- [x] `_aggregate_savings_inputs`: suma casillas broker (TaxResult) + entradas manuales
+      + retenciones (DIVIDEND/INTEREST).
+- [x] `GET/PUT /fiscal/profile/{year}`.
+- [x] `GET/POST/DELETE /fiscal/manual-income`.
+- [x] `GET /fiscal/estimate/{year}` → casillas + desglose de cuota + resultado.
+
+### Frontend — HECHO (typecheck limpio)
+- [x] Tipos TS + métodos de cliente API (`src/lib/types.ts`, `src/lib/api.ts`).
+- [x] Vista "Mi declaración" en la nav fiscal del dashboard (`app-sidebar.tsx` →
+      `view="declaracion"` → [DeclaracionView.tsx](frontend/src/components/DeclaracionView.tsx)):
+      formulario de datos (edad/discapacidad/descendientes/base general) + alta/baja de
+      ingresos del ahorro manuales + tarjeta de resultado (casillas, base, mínimo, cuota,
+      resultado a ingresar/devolver, aviso de año de tablas + disclaimer).
+
+### QA en vivo (localhost) — HECHO ✅
+- [x] Backend HTTP end-to-end: PUT perfil, POST/DELETE ingreso manual, GET estimate.
+      Compensación (cap 25%), borrado revierte, validación 422. Números exactos.
+- [x] Navegador (login → año 2024 → "Mi declaración"): formulario + ingresos manuales +
+      tarjeta de resultado renderizan; broker + manual combinan bien; añadir ingreso
+      recalcula al instante (A devolver 982 € → A ingresar 68 €). Sin errores de consola.
+
+### Decisiones tomadas
+- **v1 = declaración individual únicamente.** Conjunta vs individual (calcular ambas y
+  sugerir la mejor) se difiere a una iteración posterior.
+- Tablas de escala/mínimos **por año fiscal**, verificadas contra AEAT al construir
+  (no hardcodear de memoria).
+
+### Riesgos a confirmar antes de construir
+- Postura legal: copy de "estimación orientativa, no asesoramiento fiscal".
+
+### Verificación AEAT (2024) — HECHO ✅
+Tablas 2024 confirmadas contra el BOE consolidado de la Ley 35/2006 (IRPF):
+escala del ahorro art. 66 (estatal 9,5/10,5/11,5/13,5/15% ×2 → 19/21/23/27/28%),
+mínimo contribuyente art. 57 (5.550 € · +1.150 >65 · +1.400 >75), descendientes
+art. 58 (2.400/2.700/4.000/4.500 €), discapacidad art. 60 (3.000/9.000 €),
+compensación art. 49 (25%). Sin cambios de números; docstring cita artículos +
+documenta simplificaciones v1 (no aplica +2.800 <3a, +3.000 asistencia,
+ascendientes, ni mínimos autonómicos — todas reducirían la cuota, estimación
+conservadora).
+
+**2025 añadido y verificado:** la escala del ahorro subió solo el tramo >300.000 €
+del 28% al 30% (Ley 7/2024, ef. 1-1-2025); mínimos y tope de compensación sin cambios.
+Ojo: el texto consolidado del BOE muestra SIEMPRE la redacción vigente (la de 2025,
+tramo estatal 15%), no la histórica — por eso 2024 (tramo estatal 14% → 28% combinado)
+hay que leerlo por la Ley 31/2022, no por el consolidado.
+
+**2023 añadido:** idéntico a 2024 (tramos 27%/28% introducidos por la Ley 31/2022,
+ef. 1-1-2023; mínimos y tope sin cambios) → reusa los valores de 2024. Cobertura
+completa 2023–2025. Pendiente: mínimos autonómicos por CCAA si se quiere precisión total.
+
+**Nota de proceso:** el PR #68 se fusionó con SOLO el primer commit (verificación 2024);
+el segundo (tabla 2025 + corrección del desglose ×2) se perdió. Recuperado por cherry-pick
+en este PR junto con 2023.
+
+### Fase 2 (diferida) — base general
+Rentas del trabajo, inmuebles, escala general **autonómica**, planes de pensiones, etc.
+Aquí entran las preguntas amplias tipo "¿trabajas? ¿tienes inmuebles?".
+
+---
+
 ## TR foundation: CSV ledger + PDF fiscal, no data loss — 2026-06-05
 
 **Goal:** 100% accurate for taxes AND positions, composing TR's documents without

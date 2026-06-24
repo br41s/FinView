@@ -21,7 +21,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
 | AI | anthropic SDK — claude-haiku-4-5-20251001 (options analysis) |
-| Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · NextAuth · shadcn/ui |
+| Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
@@ -49,7 +49,7 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 backend/
   app.py              — FastAPI entry point
   models.py           — ORM models
-  api/                — Endpoints: imports, transactions, fiscal, charts, options
+  api/                — Endpoints: imports, transactions, fiscal, charts, options, markets
   importers/          — One file per broker: tr.py (+ tr_v2.py, tr_csv.py), dg.py, ibkr.py, ing.py, bbva.py, etoro.py
   services/
     fifo_engine.py         — Cross-broker FIFO engine — most critical, touch carefully
@@ -71,9 +71,10 @@ frontend/
   src/app/options/page.tsx          — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
   src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
   src/components/                   — FileUpload, tables, stat cards
-  src/components/charts/            — 8 chart components (Recharts)
-  src/lib/                          — API client + TypeScript types
+  src/components/charts/            — 8 Recharts components + PriceChart + ZonasClaveChart (lightweight-charts)
+  src/lib/                          — API client + TypeScript types; chartMarkers.ts (execution markers + scope slicing)
   src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
+  src/app/markets/page.tsx          — Markets: DB-backed watchlist (markets_watchlist) + candlestick viewer (suggestions from portfolio)
 
 ---
 
@@ -90,6 +91,7 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 - `_CLUSTER_THRESHOLD = 0.015` — 1.5% merge radius for zone clustering
 - `_MAX_ZONES = 8` — top zones returned (scored by touches × volume)
 - All bars sent to frontend (no server-side truncation); frontend slices by scope
+- `price_history` points carry full OHLC (`open/high/low/close`) + `volume`; OHLC drives candlesticks
 
 ### Add-ticker flow
 - `POST /zonas-clave/watchlist` → persists item → fires `_analyze_single_in_background(item_id, ticker)` in a background thread (only that ticker, not all)
@@ -97,7 +99,10 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 
 ### Frontend — /zonas-clave
 - Left panel: ticker list with trend bias %; clicking selects ticker
-- Right panel: trend card (RSI, MACD, price) + price chart + zones table
+- Right panel: trend card (RSI, MACD, price) + candlestick chart + zones table.
+  Chart is `components/charts/ZonasClaveChart.tsx` (TradingView lightweight-charts v5,
+  candlesticks + S/R as `createPriceLine` overlays; line-series fallback for pre-OHLC
+  stored analyses). Attribution logo on (Apache-2.0). Other charts stay on Recharts.
 - Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
 - Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
 - Scheduler: APScheduler every 24h; start/stop via UI
@@ -106,6 +111,69 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/bearish %
 
 ---
+
+## Price charts (lightweight-charts) — shared infra
+
+`components/charts/PriceChart.tsx` is the one generic price chart used everywhere
+except Zonas Clave's wrapper: candlesticks (line-series fallback when OHLC absent),
+optional `priceLines` (S/R, strikes, spot) and optional `markers` (executions).
+Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read CSS vars).
+
+- **Data**: `GET /charts/price-history?ticker=&period=` (charts.py) — daily OHLC from
+  yfinance, period whitelisted {6mo,1y,2y,5y,10y,max}, best-effort (returns `[]` on any
+  failure → caller hides the chart). Read-only; never touches FIFO/transactions.
+- **lib/chartMarkers.ts**: `executionMarkers(txs)` (BUY ▲ / SELL ▼ / DIVIDEND ●, same-day
+  same-type collapsed into one marker labelled with the count) + `sliceOhlc(bars, scope)`
+  + `CHART_SCOPES` (1D / 1W / 1M / 1A / 5A / MAX, client-side slicing).
+- **Used in**:
+  - `/portfolio` list expansion + `/portfolio/[isin]`: candles + buy/sell/dividend markers.
+    Dividends come from `position_detail`'s `dividend_events` (kept out of `transactions`
+    so the history table stays buy/sell only). Window auto-sized to the oldest trade.
+  - Instrument drawer Opciones tab: underlying candles + spot (solid) + near-money
+    strikes (3 below, 3 above, dashed) from the selected expiry's chain. (Was the
+    `/options` Cartera inline expansion; moved into the drawer in phase 5.)
+  - `/markets`: DB-backed watchlist (`markets_watchlist` table, `/markets/watchlist`
+    API; separate from options/zonas lists); OHLC fetched `max` once, sliced client-side.
+
+---
+
+## Instrument drawer — cross-section hub
+
+`components/InstrumentDrawer.tsx` — global, ticker-keyed slide-over mounted in
+`app/layout.tsx`. Any section calls `openInstrument(symbol, { isin?, name?, tab? })`
+(via `useInstrumentDrawer()`) to open it. Tabs are self-contained `{ symbol }`
+components (page-ready for a future `/ticker/[symbol]` view):
+- **Precio** — `PriceChart` + `/charts/price-history` + scope buttons (inline in InstrumentDrawer).
+- **Opciones** (`components/instrument/OpcionesTab.tsx`) — on-demand per-ticker AI report
+  (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section VolatilityEdge
+  prompt, runs regardless of alerts, AI failure still returns rule summary) + compact chain.
+- **Zonas** (`components/instrument/ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y
+  analizar" CTA when the ticker isn't in `zonas_clave_watchlist`.
+- **Fiscal / Dividendos** (`components/instrument/{FiscalTab,DividendosTab}.tsx`) — cost
+  basis / P&L / per-broker breakdown and dividends-by-year, both from
+  `GET /portfolio/positions/{isin}` via the shared `usePositionDetail` hook (ISIN-keyed
+  session cache → one fetch for both). ISIN resolved in the provider from holdings;
+  non-held tickers show an empty state.
+Header shows an "En cartera" badge from lazily-loaded holdings. Cross-links
+(options "ZC", zonas "ver opciones") open the drawer instead of navigating.
+The options Cartera tab is now a row→drawer launcher (no inline chain); the
+near-money strikes overlay lives in the drawer's Opciones tab.
+
+### Promotion to `/ticker/[symbol]` (roadmap B, deferred)
+The drawer is the staging ground for a future standalone instrument page. The
+tab components were built page-ready, so promotion is mechanical:
+1. Add `app/ticker/[symbol]/page.tsx`; resolve `isin` from holdings the way the
+   provider does (ticker→isin map from `/portfolio/positions`).
+2. Render the tab components verbatim as page sections — `OpcionesTab`,
+   `ZonasTab`, `FiscalTab`, `DividendosTab` take `{ symbol }` (+ `{ isin }` for
+   fiscal/dividendos); the Precio chart is inline in InstrumentDrawer and would
+   be extracted to a `PrecioTab`. No component changes needed.
+3. Point `openInstrument()` call sites at `router.push('/ticker/'+symbol)`, or
+   keep the drawer for quick-peek and the page for shareable/deep-linked views.
+4. Promote owned/watched from the provider's derived state to an explicit field
+   only if SSR/SEO needs it.
+The shared `usePositionDetail` hook and the per-section APIs already work outside
+the drawer context, so there's no data-layer change.
 
 ## Options monitor — architecture
 
@@ -139,7 +207,7 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
 - UI shows accuracy % per horizon and per signal type in the Backtest tab
 
 ### Frontend — /options (6 tabs)
-- **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker.
+- **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker. Underlying `PriceChart` above the chain (spot + near-money strikes; see "Price charts").
 - **Watchlist**: add/remove tickers; stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color
 - **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW)
 - **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown
@@ -214,6 +282,43 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 
 ---
 
+## FRED service — risk-free rate + macro regime
+
+`services/fred_rates.py` + `services/macro_context.py` — St. Louis Fed (FRED) data,
+hand-rolled httpx (not the `fredapi` dep, to match the ECB service). Both sync in the
+same startup background thread (`fred-rate-sync` in app.py). **No-op without
+`FINVIEW_FRED_API_KEY`** (free key) — degrades to constants/omission like Turnstile/aisstream.
+The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never touches FRED.
+
+### Shared cache (`fred_rates` table)
+- One row per (series_id, rate_date); `rate` column holds the stored value. New table,
+  auto-creates via `create_all`. `_fetch_observations(series_id, start, scale)` multiplies the
+  raw FRED value: rates use `scale=0.01` (percent → decimal), macro indices `scale=1.0` (raw).
+- `latest_value(series_id, on)` is DB-only with a ±14-day look-back window (shared reader).
+
+### Risk-free rate (Phase 1)
+- Fixes Black-Scholes Greeks: previously a single hardcoded `0.053` US rate priced **every**
+  option (EUR `.MC`/Eurex underlyings were mispriced — error concentrates in rho/theta, grows
+  with expiry). Now resolved **per option currency**: USD=`DGS3MO`, EUR=`ECBESTRVOLWGTTRMDMNRT`
+  (€STR). `currency_for_ticker()` maps euro suffixes (`.MC`,`.DE`,`.PA`,`.AS`,`.MI`,`.BR`,
+  `.VI`,`.HE`,`.LS`) → EUR; everything else → USD (GBP/CHF series = Phase-2 follow-up).
+- **Fallback policy (A):** `risk_free_rate()` returns a per-currency constant when FRED is
+  stale/unconfigured; USD keeps `0.053` so behaviour is unchanged without a key.
+- Wired at `options_agent.py` (the only Greeks call site): resolves `r` per ticker, passes it
+  into `enrich_options_with_greeks(data, r=...)`. `greeks_calculator.py` stays pure math.
+
+### Macro regime (Phase 2a — annotation only)
+- `macro_context()` reads VIX (`VIXCLS`), 10y-2y curve (`T10Y2Y`), financial stress
+  (`STLFSI4`), HY spread (`BAMLH0A0HYM2`) → coarse `risk_on/neutral/risk_off` via transparent
+  vote-scoring (tunable thresholds in `macro_context.py`). **Stateless / read-time** — computed
+  in `GET /options/agent/last-analysis`, no per-cycle persistence, no schema change.
+- Surfaced in the VolatilityEdge Claude prompt (`macro_prompt_block()`, "contextualize, don't
+  change signals") and the Análisis-tab `MacroBadge`. **Does NOT touch scoring/gating.**
+- **Phase 2b (deferred):** weight signal confidence by regime (would persist regime per signal
+  for backtesting) — only after the badge proves out.
+
+---
+
 ## Trade Republic importer — formats & migration year
 
 `parse_tr_tax_report()` (tr.py) dispatches by report layout:
@@ -237,6 +342,48 @@ replace each other:
   broker+year). Upload each PDF separately — both persist and combine.
 - tr_csv.py imports the TR transaction-export CSV (multi-year ledger, dedups by
   date/isin/type/qty, never year-replaces).
+
+---
+
+## Auth & security
+
+### Auth flow
+- Frontend `NextAuth` (Credentials provider, `frontend/src/auth.ts`) → backend `/api/auth/login`.
+  Backend issues an HS256 JWT signed with `FINVIEW_SECRET_KEY`; NextAuth stores it as
+  `accessToken` and the API client (`src/lib/api.ts`) sends it as `Authorization: Bearer`.
+- Passwords: bcrypt (`auth_service.py`). JWT + NextAuth session both last **90 days**.
+- `FINVIEW_AUTH_SECRET` (backend) **must equal** `AUTH_SECRET` (frontend) or every request
+  fails with "Invalid token".
+
+### Secret enforcement
+- `config.py` blocks startup if `FINVIEW_ENV ∈ {staging,production,prod}` and `secret_key`
+  or `auth_secret` is missing / still the insecure default. **`FINVIEW_ENV=production` must
+  be set on Cloud Run** or the guard never fires and JWTs sign with the public default.
+
+### Turnstile (bot protection on login)
+- Cloudflare Turnstile gates login. Token: login page → NextAuth `authorize` →
+  backend body `turnstile_token` → `services/turnstile.py` verifies via Cloudflare siteverify.
+- **No-op when `FINVIEW_TURNSTILE_SECRET` is unset** (dev/unconfigured deploys work unchanged).
+  Frontend widget renders only when `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set.
+- **Fail-closed**: missing/invalid token or any verify error → 403. Flip the `except` in
+  `turnstile.py` to fail-open if a Cloudflare outage blocking logins is unacceptable.
+- Login only (not register) — register Turnstile is a deferred follow-up.
+
+### HTTP security headers
+- Set on every response in `frontend/next.config.ts` (`headers()`): `X-Frame-Options: DENY`,
+  CSP `frame-ancestors 'none'`, HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Permissions-Policy`. **Intentionally no content-CSP** (`script-src` etc.) — would break
+  Next.js inline scripts / Recharts. Don't add one without testing every page.
+
+### Rate limiting
+- slowapi per-IP on login (`5/minute`) and register (`3/minute`), in-memory per instance.
+  Client IP = **rightmost** `X-Forwarded-For` entry (the value Cloud Run's GFE appended;
+  leftmost is spoofable). See `services/rate_limit.py`.
+
+### Privacy mode (dashboard)
+- Eye toggle in the dashboard header sets `data-privacy` on `<main>`; CSS blurs any
+  `.fv-sensitive` value (`globals.css`). Persisted in `localStorage` (`fv-privacy`).
+  Currently tags StatsCards money only — add the class to extend to tables/charts.
 
 ---
 

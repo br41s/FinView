@@ -17,6 +17,7 @@ from backend.api.portfolio import router as portfolio_router
 from backend.api.fiscal import router as fiscal_router
 from backend.api.charts import router as charts_router
 from backend.api.options import router as options_router
+from backend.api.markets import router as markets_router
 from backend.api.geo import router as geo_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.api.alt_investments import router as alt_investments_router
@@ -67,6 +68,20 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
 
+    # Sync FRED risk-free rates + macro indicators in the background
+    # (no-op without FRED_API_KEY)
+    def _sync_fred_rates():
+        try:
+            from backend.services.fred_rates import sync_rates as sync_fred
+            from backend.services.macro_context import sync_macro
+
+            sync_fred()
+            sync_macro()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            print(f"[fred-sync] skipped: {exc}")
+
+    threading.Thread(target=_sync_fred_rates, daemon=True, name="fred-rate-sync").start()
+
     # Refresh the CNMV alt-investments catalog if stale (best-effort, never blocks)
     def _refresh_cnmv_catalog():
         try:
@@ -116,6 +131,7 @@ app.include_router(portfolio_router, prefix="/api")
 app.include_router(fiscal_router, prefix="/api")
 app.include_router(charts_router, prefix="/api")
 app.include_router(options_router, prefix="/api")
+app.include_router(markets_router, prefix="/api")
 app.include_router(zonas_clave_router, prefix="/api")
 app.include_router(geo_router, prefix="/api")
 app.include_router(alt_investments_router, prefix="/api")

@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # NextAuth shared secret (must match AUTH_SECRET on frontend)
     auth_secret: str = INSECURE_DEFAULT_SECRET
 
+    # Cloudflare Turnstile (bot protection on login). When empty, verification
+    # is skipped so local dev / unconfigured deploys keep working. Set
+    # FINVIEW_TURNSTILE_SECRET in prod; the frontend uses NEXT_PUBLIC_TURNSTILE_SITE_KEY.
+    turnstile_secret: str = ""
+
     # Stripe
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
@@ -53,6 +58,11 @@ class Settings(BaseSettings):
     acled_key: str = ""
     aisstream_key: str = ""        # aisstream.io global AIS (maritime WS, deferred)
     geo_monitor_interval_minutes: int = 15
+
+    # FRED (St. Louis Fed) — risk-free rate source for Black-Scholes Greeks.
+    # Optional: when empty, Greeks fall back to per-currency constants (no-op,
+    # like Turnstile/aisstream). Free key: https://fred.stlouisfed.org/docs/api/api_key.html
+    fred_api_key: str = ""
 
     # Rate limiting (per-IP, see backend/services/rate_limit.py for IP extraction)
     rate_limit_login: str = "5/minute"

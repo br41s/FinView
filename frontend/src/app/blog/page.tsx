@@ -235,6 +235,37 @@ function ImgTramo30() {
   );
 }
 
+function ImgReitsExtranjeros() {
+  return (
+    <div className={styles.postImgReitsExtranjeros}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">REITs EXTRANJEROS — FISCALIDAD IRPF</text>
+        {/* US REIT */}
+        <rect x="15" y="30" width="45" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">EE.UU.</text>
+        <text x="37" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Realty</text>
+        <text x="37" y="74" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Income</text>
+        <text x="37" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">15% ret.</text>
+        {/* Germany REIT */}
+        <rect x="75" y="30" width="45" height="60" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="97" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">DE</text>
+        <text x="97" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Vonovia</text>
+        <text x="97" y="74" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">26,375%</text>
+        <text x="97" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">15% CDI</text>
+        {/* UK REIT */}
+        <rect x="135" y="30" width="45" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="157" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">UK</text>
+        <text x="157" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Segro</text>
+        <text x="157" y="74" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">0% ret.</text>
+        <text x="157" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">mejor fiscal</text>
+        {/* Arrows */}
+        <line x1="60" y1="60" x2="75" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        <line x1="120" y1="60" x2="135" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+      </svg>
+    </div>
+  );
+}
+
 function ImgSocimi() {
   return (
     <div className={styles.postImgSocimi}>
@@ -419,6 +450,61 @@ function ImgCriptomonedas() {
         <text x="163" y="56" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
         <text x="163" y="70" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ahorro</text>
         <text x="163" y="84" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19-30%</text>
+function ImgPrimaEmision() {
+  return (
+    <div className={styles.postImgPrimaEmision}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">PRIMA DE EMISIÓN — FLUJO FISCAL</text>
+        {/* Company box */}
+        <rect x="10" y="30" width="55" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Empresa</text>
+        <text x="37" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Ampliación</text>
+        <text x="37" y="76" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">+100€</text>
+        {/* Arrow */}
+        <line x1="65" y1="60" x2="85" y2="60" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        {/* Investor box */}
+        <rect x="85" y="30" width="55" height="60" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="112" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Inversor</text>
+        <text x="112" y="62" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">recibe</text>
+        <text x="112" y="76" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">100€</text>
+        {/* Arrow to result */}
+        <line x1="140" y1="60" x2="155" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Result box */}
+        <rect x="155" y="35" width="40" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="175" y="52" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Base</text>
+        <text x="175" y="64" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">coste</text>
+        <text x="175" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">−100€</text>
+        {/* Bottom annotation */}
+        <text x="100" y="105" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">No tributa → reduce valor de adquisición</text>
+        <text x="100" y="114" fontSize="5" fill="var(--fv-ink-20)" fontFamily="system-ui" textAnchor="middle">Exceso sobre coste → tributa como RCM</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgCalendarioDividendos() {
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const dividends = [85, 120, 95, 110, 130, 280, 90, 45, 45, 140, 100, 40];
+  const maxDiv = Math.max(...dividends);
+  return (
+    <div className={styles.postImgCalendarioDividendos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">INGRESOS POR DIVIDENDOS — MES A MES</text>
+        {months.map((m, i) => {
+          const x = 14 + i * 15.5;
+          const h = Math.round((dividends[i] / maxDiv) * 65);
+          const y = 100 - h;
+          const isPeak = dividends[i] >= 200;
+          return (
+            <g key={m}>
+              <rect x={x} y={y} width="11" height={h} rx="2" fill={isPeak ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'}/>
+              <text x={x + 5.5} y={112} fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">{m}</text>
+            </g>
+          );
+        })}
+        <line x1="10" y1="100" x2="195" y2="100" stroke="var(--fv-ink-20)" strokeWidth="1"/>
+        <text x="100" y="55" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">280€</text>
+        <text x="100" y="62" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">junio</text>
       </svg>
     </div>
   );
@@ -433,6 +519,31 @@ const POSTS: Post[] = [
     title: 'Criptomonedas en el IRPF: guía completa para declarar en España 2026',
     excerpt: 'Cómo tributan las criptomonedas en el IRPF: venta, permuta, staking, modelo 721, FIFO, casillas 1800-1814, DAC8 y ejemplos con números reales.',
     Image: ImgCriptomonedas,
+    slug: 'reits-extranjeros-irpf-espana',
+    tag: 'Fiscal',
+    date: '24 jun 2026',
+    readTime: '15 min',
+    title: 'Dividendos de REITs extranjeros en el IRPF: guía fiscal para inversores desde España',
+    excerpt: 'Cómo tributan los dividendos de REITs extranjeros (Realty Income, Prologis, Vonovia) en el IRPF: retenciones por país, convenios de doble imposición, casillas 029 y 0588, y ejemplos con números reales.',
+    Image: ImgReitsExtranjeros,
+  },
+  {
+    slug: 'prima-emision-reduccion-capital-irpf',
+    tag: 'Fiscal',
+    date: '22 jun 2026',
+    readTime: '14 min',
+    title: 'Prima de emisión y reducción de capital en el IRPF: qué tributa y qué no cuando la empresa devuelve tu dinero',
+    excerpt: 'La prima de emisión y la reducción de capital no tributan como dividendo en la mayoría de casos. Guía práctica con ejemplos, la DGT V0215-26 de febrero 2026 y cómo afecta a tu cartera de dividendos.',
+    Image: ImgPrimaEmision,
+  },
+  {
+    slug: 'calendario-dividendos-irpf',
+    tag: 'Estrategia',
+    date: '20 jun 2026',
+    readTime: '14 min',
+    title: 'Calendario de dividendos: cómo planificar tus ingresos mes a mes',
+    excerpt: 'Guía completa sobre el calendario de dividendos: fecha ex-dividendo, fecha de pago, cómo planificar ingresos mensuales con cartera mixta España-EE.UU. y errores frecuentes al cobrar.',
+    Image: ImgCalendarioDividendos,
   },
   {
     slug: 'tramo-30-base-ahorro-irpf',
