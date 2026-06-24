@@ -64,15 +64,22 @@ blast radius→aditivo, no toca FIFO ni el scraper; timing→migración idempote
 blast radius→nuevo provider envuelve children, no rompe páginas; cada pestaña
 componente aislado `{ symbol }` (listo para promocionar a B).
 
-### Fase 3 — Pestañas v1 (las que ya tienen plumbing `?ticker=`)
-- [ ] **Precio**: reusar `PriceChart` + `GET /charts/price-history`.
-- [ ] **Opciones**: reusar `GET /options/expirations` + `/options/chain`; añadir
-      **informe IA por ticker bajo demanda** → nuevo endpoint
-      `POST /options/agent/analyze-ticker` (chain+greeks+alerts de ese ticker, prompt
-      enfocado, presupuesto de tokens mayor; guard `openrouter_api_key`; fire-and-forget).
-- [ ] **Zonas**: reusar `ZonasClaveChart` + análisis ZC. **Caso a resolver:** si el
-      ticker no está en `zonas_clave_watchlist` no hay análisis → mostrar CTA
-      "analizar"/"añadir a Zonas" o disparar análisis on-demand (decidir en build).
+### Fase 3 — Pestañas v1 (las que ya tienen plumbing `?ticker=`) ✅
+- [x] **Precio**: `PrecioTab` (Fase 2) — `PriceChart` + `/charts/price-history`.
+- [x] **Opciones** ([components/instrument/OpcionesTab.tsx](frontend/src/components/instrument/OpcionesTab.tsx)):
+      **informe IA por ticker bajo demanda** → nuevo `POST /options/agent/analyze-ticker`
+      ([options_agent.py](backend/services/options_agent.py) `analyze_single_ticker` +
+      prompt `_CLAUDE_TICKER_*` de 5 secciones, max_tokens 1500; corre aunque no haya
+      alertas; guard `openrouter_api_key`; fallo IA devuelve igualmente el resumen de
+      reglas). Más cadena compacta (selector de vencimiento + tabla calls/puts por strike).
+- [x] **Zonas** ([components/instrument/ZonasTab.tsx](frontend/src/components/instrument/ZonasTab.tsx)):
+      `ZonasClaveChart` + tarjeta de tendencia (RSI/MACD/bias) + tabla de zonas. Si el
+      ticker NO está en `zonas_clave_watchlist` (404) → CTA "Añadir y analizar"
+      (`addTicker` dispara análisis en background, polling 3s ×12).
+- [x] Placeholders eliminados; cross-links aterrizan en contenido real. Link sutil
+      "Ver en Opciones/Zonas Clave" a la página completa.
+- [x] Verificado: ruff limpio; `tsc` limpio; `next build` verde; `analyze_single_ticker`
+      probado (status ok/no_data, ai_error not_configured sin key, resumen siempre).
 
 ### Fase 4 — Pestañas v2
 - [ ] **Fiscal**: lotes/casillas del instrumento (de `TaxLot`/`TaxResult`).

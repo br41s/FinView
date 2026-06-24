@@ -337,3 +337,165 @@ def _run_claude_analysis(
         error_msg = f"{type(exc).__name__}: {exc} | response: {body}"
         logger.error("OpenRouter analysis failed — %s", error_msg)
         return None, error_msg
+
+
+# ── Single-ticker on-demand analysis (instrument drawer) ──────────────
+
+_CLAUDE_TICKER_SYSTEM = """\
+Eres VolatilityEdge, un analista cuantitativo senior especializado en opciones. \
+Analizas UN SOLO subyacente en profundidad combinando IV/HV, skew, Greeks y flujo \
+(Smart Money).
+
+REGLAS ESTRICTAS:
+- Responde SIEMPRE en español.
+- Usa EXACTAMENTE las secciones indicadas (## 1. ... ## 5. ...).
+- Máximo 500 palabras.
+- Sé concreto: usa solo los datos proporcionados, no inventes cifras.
+- NUNCA des recomendaciones directas de compra/venta. Usa lenguaje analítico \
+  ("sugiere", "apunta a", "podría indicar", "merece seguimiento").
+- Termina SIEMPRE con ## 5. Gestión de Riesgo."""
+
+_CLAUDE_TICKER_TEMPLATE = """\
+=== ANÁLISIS DE OPCIONES — {ticker} ===
+Fecha/Hora: {timestamp}
+
+=== MÉTRICAS ===
+Precio actual: {current_price}
+Volumen calls / puts: {call_volume} / {put_volume}
+Open interest calls / puts: {call_oi} / {put_oi}
+Ratio Put/Call (volumen): {pcr_vol}
+Ratio Put/Call (OI): {pcr_oi}
+IV media calls / puts: {avg_call_iv} / {avg_put_iv}
+Volatilidad histórica (HV): {hv}
+Skew IV (put - call): {iv_skew}
+Sentimiento (regla): {sentiment}
+
+=== ALERTAS DE LA REGLA ===
+{alerts_json}
+
+=== ACTIVIDAD INUSUAL ===
+{unusual_json}
+
+=== CONTEXTO MACRO (FRED) ===
+{macro_block}
+
+---
+Genera el informe con EXACTAMENTE estas 5 secciones:
+
+## 1. Resumen
+[Tesis en 2-3 frases sobre {ticker}: sentimiento, qué dicen los datos. \
+Contextualiza con el régimen macro como telón de fondo, no cambies las señales.]
+
+## 2. Volatilidad
+[IV vs HV: ¿cara o barata? Skew put/call y qué implica (cobertura vs apuesta direccional).]
+
+## 3. Señales Greeks y Flujo
+[Lectura de Greeks de las posiciones con más actividad. Volumen/OI fuera de lo normal. \
+¿Compra de protección o posicionamiento direccional?]
+
+## 4. Niveles y Escenarios
+[Strikes con mayor interés. Escenarios alcista/bajista según los vencimientos detectados.]
+
+## 5. Gestión de Riesgo
+[Stop-loss conceptual por tipo de estrategia, tamaño según volatilidad, horizonte temporal.]"""
+
+
+def _run_ticker_claude_analysis(
+    ticker: str, summary: dict, alerts: list[dict], unusual: list[dict]
+) -> tuple[str | None, str | None]:
+    """Focused single-ticker AI analysis via OpenRouter. Returns (text, error)."""
+    response = None
+    try:
+        def _f(v, pct=False):
+            if v is None:
+                return "n/d"
+            return f"{float(v) * 100:.1f}%" if pct else f"{float(v):.2f}"
+
+        user_content = _CLAUDE_TICKER_TEMPLATE.format(
+            ticker=ticker,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            current_price=_f(summary.get("current_price")),
+            call_volume=summary.get("call_volume", 0),
+            put_volume=summary.get("put_volume", 0),
+            call_oi=summary.get("call_open_interest", 0),
+            put_oi=summary.get("put_open_interest", 0),
+            pcr_vol=_f(summary.get("put_call_ratio_volume")),
+            pcr_oi=_f(summary.get("put_call_ratio_oi")),
+            avg_call_iv=_f(summary.get("avg_call_iv"), pct=True),
+            avg_put_iv=_f(summary.get("avg_put_iv"), pct=True),
+            hv=_f(summary.get("historical_volatility"), pct=True),
+            iv_skew=_f(summary.get("iv_skew"), pct=True),
+            sentiment=summary.get("market_sentiment", "n/d"),
+            alerts_json=json.dumps(alerts[:10], indent=2, ensure_ascii=False),
+            unusual_json=json.dumps(unusual[:8], indent=2, ensure_ascii=False),
+            macro_block=macro_prompt_block(),
+        )
+
+        response = httpx.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+            json={
+                "model": settings.openrouter_model,
+                "max_tokens": 1500,
+                "messages": [
+                    {"role": "system", "content": _CLAUDE_TICKER_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        text = response.json()["choices"][0]["message"]["content"]
+        return text, None
+    except Exception as exc:
+        body = response.text[:500] if response is not None else "no response"
+        error_msg = f"{type(exc).__name__}: {exc} | response: {body}"
+        logger.error("OpenRouter ticker analysis failed (%s) — %s", ticker, error_msg)
+        return None, error_msg
+
+
+def analyze_single_ticker(ticker: str) -> dict:
+    """On-demand single-ticker analysis for the instrument drawer's Opciones tab.
+
+    Unlike run_cycle, this runs regardless of whether alerts fired — the user
+    explicitly requested the drill-down. Fire-and-forget on the AI side: any AI
+    failure still returns the rule-based summary/alerts.
+    """
+    ticker = ticker.upper()
+    data = fetch_options(ticker)
+    if not data:
+        return {"status": "no_data", "ticker": ticker}
+
+    r = risk_free_rate_for_ticker(ticker)
+    data = enrich_options_with_greeks(data, r=r)
+    analysis = analyze_ticker(data)
+    summary = analysis["summary"]
+    alerts = analysis["alerts"]
+    unusual = analysis["unusual_activity"]
+
+    ai_text = None
+    ai_error = None
+    if not settings.openrouter_api_key:
+        ai_error = "not_configured"
+    else:
+        ai_text, ai_error = _run_ticker_claude_analysis(ticker, summary, alerts, unusual)
+
+    return {
+        "status": "ok",
+        "ticker": ticker,
+        "summary": {
+            "current_price": summary.get("current_price"),
+            "put_call_ratio_volume": summary.get("put_call_ratio_volume"),
+            "put_call_ratio_oi": summary.get("put_call_ratio_oi"),
+            "avg_call_iv": summary.get("avg_call_iv"),
+            "avg_put_iv": summary.get("avg_put_iv"),
+            "historical_volatility": summary.get("historical_volatility"),
+            "iv_skew": summary.get("iv_skew"),
+            "market_sentiment": summary.get("market_sentiment"),
+        },
+        "alerts": alerts,
+        "unusual": unusual,
+        "analysis": ai_text,
+        "ai_configured": bool(settings.openrouter_api_key),
+        "ai_error": ai_error,
+    }

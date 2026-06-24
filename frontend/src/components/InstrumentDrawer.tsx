@@ -25,6 +25,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OpcionesTab } from "@/components/instrument/OpcionesTab";
+import { ZonasTab } from "@/components/instrument/ZonasTab";
 
 // Which lens to open the drawer on. "precio" is the only one wired in Phase 2;
 // "opciones"/"zonas" are placeholders until Phase 3 fills them in place.
@@ -128,27 +130,25 @@ export function InstrumentDrawerProvider({ children }: { children: React.ReactNo
                 <PrecioTab symbol={symbol} />
               </TabsContent>
 
-              <TabsContent value="opciones" className="pt-3">
-                <ComingSoon
-                  label="Opciones"
-                  phase="Fase 3"
-                  onOpenFull={() => {
+              <TabsContent value="opciones" className="overflow-auto pt-3">
+                <OpcionesTab symbol={symbol} />
+                <FullPageLink
+                  label="Ver en Opciones"
+                  onClick={() => {
                     setOpen(false);
                     router.push(`/options?ticker=${encodeURIComponent(symbol)}`);
                   }}
-                  cta="Abrir en Opciones"
                 />
               </TabsContent>
 
-              <TabsContent value="zonas" className="pt-3">
-                <ComingSoon
-                  label="Zonas Clave"
-                  phase="Fase 3"
-                  onOpenFull={() => {
+              <TabsContent value="zonas" className="overflow-auto pt-3">
+                <ZonasTab symbol={symbol} name={name || undefined} />
+                <FullPageLink
+                  label="Ver en Zonas Clave"
+                  onClick={() => {
                     setOpen(false);
                     router.push(`/zonas-clave?ticker=${encodeURIComponent(symbol)}`);
                   }}
-                  cta="Abrir en Zonas Clave"
                 />
               </TabsContent>
             </Tabs>
@@ -210,24 +210,11 @@ function PrecioTab({ symbol }: { symbol: string }) {
   );
 }
 
-function ComingSoon({
-  label,
-  phase,
-  onOpenFull,
-  cta,
-}: {
-  label: string;
-  phase: string;
-  onOpenFull: () => void;
-  cta: string;
-}) {
+function FullPageLink({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <div className="flex h-[260px] flex-col items-center justify-center gap-3 text-center">
-      <p className="text-sm text-muted-foreground">
-        {label} en el drawer — {phase}.
-      </p>
-      <Button variant="outline" size="sm" onClick={onOpenFull} className="gap-1">
-        {cta}
+    <div className="mt-3 flex justify-end">
+      <Button variant="ghost" size="sm" onClick={onClick} className="h-7 gap-1 px-2 text-xs text-muted-foreground">
+        {label}
         <ArrowRight className="h-3.5 w-3.5" />
       </Button>
     </div>

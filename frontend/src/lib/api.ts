@@ -22,6 +22,26 @@ export interface MarketsWatchlistItem {
   created_at: string;
 }
 
+export interface TickerAnalysis {
+  status: string;
+  ticker: string;
+  summary: {
+    current_price: number | null;
+    put_call_ratio_volume: number | null;
+    put_call_ratio_oi: number | null;
+    avg_call_iv: number | null;
+    avg_put_iv: number | null;
+    historical_volatility: number | null;
+    iv_skew: number | null;
+    market_sentiment: string | null;
+  };
+  alerts: { type?: string; severity?: string; message?: string }[];
+  unusual: { type?: string; ticker?: string; detail?: string }[];
+  analysis: string | null;
+  ai_configured: boolean;
+  ai_error: string | null;
+}
+
 // ── Zonas Clave types ────────────────────────────────────────────────
 
 export interface ZcWatchlistItem {
@@ -724,6 +744,16 @@ export const api = {
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json();
+    },
+    analyzeTicker: async (ticker: string) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/options/agent/analyze-ticker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker }),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      return res.json() as Promise<TickerAnalysis>;
     },
     startAgent: async () => {
       const headers = await authHeaders();
