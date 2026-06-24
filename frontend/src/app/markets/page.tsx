@@ -11,20 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
 
+// Legacy localStorage key — read once on mount to migrate into the DB, then cleared.
 const STORAGE_KEY = "fv-markets-watchlist";
 const DEFAULT_TICKERS = ["AAPL", "MSFT", "SPY"];
-
-function loadWatchlist(): string[] {
-  if (typeof window === "undefined") return DEFAULT_TICKERS;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_TICKERS;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : DEFAULT_TICKERS;
-  } catch {
-    return DEFAULT_TICKERS;
-  }
-}
 
 function fmt(n: number | null | undefined, d = 2): string {
   if (n == null) return "—";
@@ -33,6 +22,7 @@ function fmt(n: number | null | undefined, d = 2): string {
 
 export default function MarketsPage() {
   const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [idByTicker, setIdByTicker] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [ohlcByTicker, setOhlcByTicker] = useState<Record<string, OhlcBar[]>>({});
   const [loading, setLoading] = useState<Set<string>>(new Set());
@@ -42,11 +32,33 @@ export default function MarketsPage() {
     { ticker: string; name: string; isin: string }[]
   >([]);
 
-  // Hydrate from localStorage on mount.
+  // Load the DB-backed watchlist on mount, migrating any legacy localStorage list
+  // once (then clearing it). Seeds defaults for first-time users with no list.
   useEffect(() => {
-    const wl = loadWatchlist();
-    setWatchlist(wl);
-    setSelected(wl[0] ?? null);
+    (async () => {
+      let legacy: string[] = [];
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) legacy = parsed.filter((x) => typeof x === "string");
+        }
+      } catch {
+        /* ignore corrupt legacy value */
+      }
+
+      let items = await api.markets.watchlist();
+      if (legacy.length > 0) {
+        items = await api.markets.importTickers(legacy);
+        window.localStorage.removeItem(STORAGE_KEY);
+      } else if (items.length === 0) {
+        items = await api.markets.importTickers(DEFAULT_TICKERS);
+      }
+
+      setWatchlist(items.map((i) => i.ticker));
+      setIdByTicker(Object.fromEntries(items.map((i) => [i.ticker, i.id])));
+      setSelected((prev) => prev ?? items[0]?.ticker ?? null);
+    })().catch(() => {});
   }, []);
 
   // Suggestions come from the user's portfolio positions (name + ticker + ISIN).
@@ -63,12 +75,6 @@ export default function MarketsPage() {
       })
       .catch(() => {});
   }, []);
-
-  // Persist whenever the watchlist changes (skip the pre-hydration empty state).
-  useEffect(() => {
-    if (watchlist.length === 0 && selected === null) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(watchlist));
-  }, [watchlist]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch full history for the selected ticker once; scopes slice it client-side.
   useEffect(() => {
@@ -87,16 +93,27 @@ export default function MarketsPage() {
       );
   }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function addSpecific(ticker: string) {
+  async function addSpecific(ticker: string) {
     const t = ticker.trim().toUpperCase();
     if (!t) return;
-    if (!watchlist.includes(t)) setWatchlist((prev) => [...prev, t]);
-    setSelected(t);
     setInput("");
+    if (watchlist.includes(t)) {
+      setSelected(t);
+      return;
+    }
+    try {
+      const item = await api.markets.addTicker(t);
+      setWatchlist((prev) => [...prev, item.ticker]);
+      setIdByTicker((prev) => ({ ...prev, [item.ticker]: item.id }));
+      setSelected(item.ticker);
+    } catch {
+      // 409 (already exists) or transient error — select it if it's somehow present
+      setSelected(t);
+    }
   }
 
   function addTicker() {
-    addSpecific(input);
+    void addSpecific(input);
   }
 
   // Match suggestions by ticker, name or ISIN; hide ones already in the list.
@@ -115,11 +132,18 @@ export default function MarketsPage() {
   }, [input, suggestions, watchlist]);
 
   function removeTicker(t: string) {
+    const id = idByTicker[t];
     setWatchlist((prev) => {
       const next = prev.filter((x) => x !== t);
       if (selected === t) setSelected(next[0] ?? null);
       return next;
     });
+    setIdByTicker((prev) => {
+      const next = { ...prev };
+      delete next[t];
+      return next;
+    });
+    if (id != null) api.markets.removeTicker(id).catch(() => {});
   }
 
   const bars = selected ? (ohlcByTicker[selected] ?? []) : [];
@@ -168,7 +192,7 @@ export default function MarketsPage() {
                   {matches.map((s) => (
                     <button
                       key={s.isin}
-                      onClick={() => addSpecific(s.ticker)}
+                      onClick={() => void addSpecific(s.ticker)}
                       className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-muted"
                     >
                       <span className="text-sm font-medium">{s.ticker}</span>

@@ -1,5 +1,84 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Cross-section coherence — instrument drawer (C now, B roadmap) — 2026-06-24
+
+**Origen:** /office-hours (proyecto completo). Decisión: **coherencia, no features.**
+Diseño completo: `~/.gstack/projects/braisntext-FinView/brais-claude-festive-northcutt-faf7e2-design-20260624-015924.md`
+
+**Modelo elegido:** "C ahora, B en roadmap". Drawer global por instrumento (ticker)
+con pestañas que reutilizan cada sección; pensado para promocionarse luego a una
+página `/ticker/[symbol]` (B) sin reescribir los componentes de pestaña.
+
+**Decisiones cerradas:**
+- Watchlists de opciones y zonas son **listas distintas** (no fusionar). `zonas_clave_watchlist`
+  es tabla aparte y **posee** filas `zonas_clave_analysis` por FK → se deja intacta.
+- El informe IA de opciones **por ticker** vive en la pestaña Opciones del drawer,
+  **bajo demanda** (llamada fresca al abrir), separado del informe global del ciclo.
+
+### Fase 0 — Decisión a confirmar antes de tocar código
+- [x] **Almacén de la watchlist de markets → Opción B (CEO, 2026-06-24):** tabla
+      nueva `markets_watchlist` (mismo patrón de API que `/options/watchlist`, sin
+      cirugía de constraint). Options queda sin tocar; mínimo blast radius en prod.
+
+### Fase 1 — Unificación de mecanismo de watchlist (fundación de A) ✅
+- [x] Backend: tabla `markets_watchlist` ([models.py](backend/models.py)) +
+      router `/markets/watchlist` (list/add/import/delete) ([api/markets.py](backend/api/markets.py)),
+      schemas + registro en [app.py](backend/app.py). Endpoint `import` idempotente
+      para la migración. (No toca `watchlist_items` ni zonas.)
+- [x] Tipos TS + cliente API (`MarketsWatchlistItem` + `api.markets` en
+      [lib/api.ts](frontend/src/lib/api.ts)).
+- [x] `markets/page.tsx`: lee/escribe vía API; **migración única** localStorage→DB
+      al montar (importa `fv-markets-watchlist`, limpia la clave); siembra defaults
+      si la lista está vacía.
+- [x] Verificado: ruff limpio; app importa y monta rutas; **120 passed** (los 60
+      errors son fixtures sin ficheros reales en `files/`, preexistentes); E2E con
+      TestClient: list/add(201)/dup(409)/import idempotente/delete(204)/404 ✅.
+- Nota: si el usuario borra TODOS los tickers, al recargar se re-siembran los
+      defaults (igual que el comportamiento previo de localStorage). Aceptable; si
+      molesta → flag "seeded" en follow-up.
+
+**Invariantes:** estado→DB por usuario (fin del localStorage no portable);
+blast radius→aditivo, no toca FIFO ni el scraper; timing→migración idempotente
+(solo si existe la clave).
+
+### Fase 2 — Shell del drawer global de instrumento
+- [ ] `InstrumentDrawerProvider` (context) montado en `app/layout.tsx` junto a
+      `AuthProvider`/`TooltipProvider`; expone `openInstrument(symbol, isin?)`.
+- [ ] Drawer con `components/ui/sheet.tsx` (ya disponible); cabecera con ticker +
+      estado **owned/watched** derivado (holdings + watchlist), pestañas lazy.
+- [ ] Redirigir los `router.push('/options?ticker=')` y `'/zonas-clave?ticker='`
+      existentes ([options/page.tsx:890](frontend/src/app/options/page.tsx), [zonas-clave/page.tsx:393](frontend/src/app/zonas-clave/page.tsx))
+      a `openInstrument()` en vez de navegar.
+
+**Invariantes:** estado→efímero en cliente (qué ticker está abierto), nada en DB;
+blast radius→nuevo provider, no rompe páginas; cada pestaña componente aislado
+`{ symbol }` (listo para promocionar a B).
+
+### Fase 3 — Pestañas v1 (las que ya tienen plumbing `?ticker=`)
+- [ ] **Precio**: reusar `PriceChart` + `GET /charts/price-history`.
+- [ ] **Opciones**: reusar `GET /options/expirations` + `/options/chain`; añadir
+      **informe IA por ticker bajo demanda** → nuevo endpoint
+      `POST /options/agent/analyze-ticker` (chain+greeks+alerts de ese ticker, prompt
+      enfocado, presupuesto de tokens mayor; guard `openrouter_api_key`; fire-and-forget).
+- [ ] **Zonas**: reusar `ZonasClaveChart` + análisis ZC. **Caso a resolver:** si el
+      ticker no está en `zonas_clave_watchlist` no hay análisis → mostrar CTA
+      "analizar"/"añadir a Zonas" o disparar análisis on-demand (decidir en build).
+
+### Fase 4 — Pestañas v2
+- [ ] **Fiscal**: lotes/casillas del instrumento (de `TaxLot`/`TaxResult`).
+- [ ] **Dividendos**: `dividend_events` del `position_detail`.
+
+### Fase 5 — Resolver Cartera (pregunta original)
+- [ ] Con el drawer cubriendo opciones-por-holding, decidir si Cartera pasa a ser
+      una **vista filtrada de instrumentos owned** en vez de pestaña separada.
+      Preservar el P&L de holdings (valor único de Cartera).
+
+### Fase 6 — Documentar promoción a B
+- [ ] Anotar el camino `/ticker/[symbol]`: los componentes de pestaña se montan
+      tal cual como secciones de página; "owned/watched" pasa a flag explícito.
+
+---
+
 ## Onboarding fiscal estilo TaxDown — base del ahorro primero — 2026-06-22
 
 **Decisión CEO:** (1) por fases — completar la **base del ahorro** primero, luego la

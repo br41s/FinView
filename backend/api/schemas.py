@@ -250,6 +250,21 @@ class WatchlistItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MarketsWatchlistItemOut(BaseModel):
+    id: int
+    ticker: str
+    name: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MarketsWatchlistImportIn(BaseModel):
+    """Bulk import for the one-time localStorage → DB migration."""
+
+    tickers: list[str]
+
+
 class OptionsSnapshotOut(BaseModel):
     id: int
     timestamp: datetime

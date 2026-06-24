@@ -13,6 +13,15 @@ export interface GeoSchedulerStatus {
   last_signal_at: string | null;
 }
 
+// ── Markets types ────────────────────────────────────────────────────
+
+export interface MarketsWatchlistItem {
+  id: number;
+  ticker: string;
+  name: string;
+  created_at: string;
+}
+
 // ── Zonas Clave types ────────────────────────────────────────────────
 
 export interface ZcWatchlistItem {
@@ -756,6 +765,38 @@ export const api = {
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
       return res.json() as Promise<{ answer: string }>;
+    },
+  },
+
+  // Markets — DB-backed candlestick-viewer watchlist
+  markets: {
+    watchlist: () => fetchJSON<MarketsWatchlistItem[]>("/markets/watchlist"),
+    addTicker: async (ticker: string, name = "") => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/markets/watchlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ ticker, name }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<MarketsWatchlistItem>;
+    },
+    importTickers: async (tickers: string[]) => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/markets/watchlist/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ tickers }),
+      });
+      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      return res.json() as Promise<MarketsWatchlistItem[]>;
+    },
+    removeTicker: async (id: number) => {
+      const headers = await authHeaders();
+      await fetch(`${BASE}/markets/watchlist/${id}`, {
+        method: "DELETE",
+        headers,
+      });
     },
   },
 
