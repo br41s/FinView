@@ -129,8 +129,9 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
   - `/portfolio` list expansion + `/portfolio/[isin]`: candles + buy/sell/dividend markers.
     Dividends come from `position_detail`'s `dividend_events` (kept out of `transactions`
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
-  - `/options` Cartera: underlying candles + spot (solid) + near-money strikes (3 below,
-    3 above, dashed) from the selected expiry's chain; OHLC fetched `max`, cached per ticker.
+  - Instrument drawer Opciones tab: underlying candles + spot (solid) + near-money
+    strikes (3 below, 3 above, dashed) from the selected expiry's chain. (Was the
+    `/options` Cartera inline expansion; moved into the drawer in phase 5.)
   - `/markets`: DB-backed watchlist (`markets_watchlist` table, `/markets/watchlist`
     API; separate from options/zonas lists); OHLC fetched `max` once, sliced client-side.
 
@@ -155,6 +156,24 @@ components (page-ready for a future `/ticker/[symbol]` view):
   non-held tickers show an empty state.
 Header shows an "En cartera" badge from lazily-loaded holdings. Cross-links
 (options "ZC", zonas "ver opciones") open the drawer instead of navigating.
+The options Cartera tab is now a row→drawer launcher (no inline chain); the
+near-money strikes overlay lives in the drawer's Opciones tab.
+
+### Promotion to `/ticker/[symbol]` (roadmap B, deferred)
+The drawer is the staging ground for a future standalone instrument page. The
+tab components were built page-ready, so promotion is mechanical:
+1. Add `app/ticker/[symbol]/page.tsx`; resolve `isin` from holdings the way the
+   provider does (ticker→isin map from `/portfolio/positions`).
+2. Render the tab components verbatim as page sections — `OpcionesTab`,
+   `ZonasTab`, `FiscalTab`, `DividendosTab` take `{ symbol }` (+ `{ isin }` for
+   fiscal/dividendos); the Precio chart is inline in InstrumentDrawer and would
+   be extracted to a `PrecioTab`. No component changes needed.
+3. Point `openInstrument()` call sites at `router.push('/ticker/'+symbol)`, or
+   keep the drawer for quick-peek and the page for shareable/deep-linked views.
+4. Promote owned/watched from the provider's derived state to an explicit field
+   only if SSR/SEO needs it.
+The shared `usePositionDetail` hook and the per-section APIs already work outside
+the drawer context, so there's no data-layer change.
 
 ## Options monitor — architecture
 

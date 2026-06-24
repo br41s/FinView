@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 
-import { api, type TickerAnalysis } from "@/lib/api";
+import { api, type TickerAnalysis, type OhlcBar } from "@/lib/api";
+import { PriceChart, type PriceLine } from "@/components/charts/PriceChart";
+import { CHART_SCOPES, sliceOhlc, type ChartScope } from "@/lib/chartMarkers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,6 +67,9 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
   const [chain, setChain] = useState<Chain | null>(null);
   const [chainLoading, setChainLoading] = useState(false);
 
+  const [ohlc, setOhlc] = useState<OhlcBar[] | null>(null);
+  const [scope, setScope] = useState<ChartScope>("1A");
+
   // Load expirations once per symbol.
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +113,23 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
     };
   }, [symbol, expiry]);
 
+  // Underlying OHLC for the strikes-overlay chart (ported from the old Cartera view).
+  useEffect(() => {
+    let cancelled = false;
+    setOhlc(null);
+    api.charts
+      .priceHistory(symbol, "max")
+      .then((b) => {
+        if (!cancelled) setOhlc(b);
+      })
+      .catch(() => {
+        if (!cancelled) setOhlc([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
+
   async function runAi() {
     setAiLoading(true);
     setAiError(null);
@@ -136,6 +158,25 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
     }
     return [...byStrike.entries()].sort((a, b) => a[0] - b[0]).map(([strike, v]) => ({ strike, ...v }));
   }, [chain]);
+
+  // Spot (last close) + near-money strikes (3 below / 3 above) from the selected
+  // expiry — the strikes-on-chart overlay ported from the old Cartera inline view.
+  const spot = ohlc && ohlc.length > 0 ? ohlc[ohlc.length - 1].close : null;
+  const priceLines = useMemo<PriceLine[]>(() => {
+    if (spot == null) return [];
+    const lines: PriceLine[] = [{ price: spot, color: "#3b82f6", strength: 1, title: "spot" }];
+    if (chain) {
+      const strikes = [...new Set([...chain.calls, ...chain.puts].map((c) => c.strike))].sort(
+        (a, b) => a - b,
+      );
+      const below = strikes.filter((s) => s <= spot).slice(-3);
+      const above = strikes.filter((s) => s > spot).slice(0, 3);
+      for (const s of [...below, ...above]) {
+        lines.push({ price: s, color: "#f59e0b", strength: 0.5, title: num(s) });
+      }
+    }
+    return lines;
+  }, [spot, chain]);
 
   const sections = analysis?.analysis ? parseSections(analysis.analysis) : [];
 
@@ -190,6 +231,28 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
           </div>
         )}
       </div>
+
+      {/* Underlying chart with spot + near-money strikes from the selected expiry */}
+      {ohlc && ohlc.length > 0 && (
+        <div>
+          <div className="mb-1 flex items-center justify-end gap-0.5">
+            {CHART_SCOPES.map((s) => (
+              <button
+                key={s}
+                onClick={() => setScope(s)}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  scope === s
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <PriceChart data={sliceOhlc(ohlc, scope)} priceLines={priceLines} height={280} />
+        </div>
+      )}
 
       {/* Chain */}
       <div>
