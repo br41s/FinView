@@ -407,9 +407,11 @@ def _run_ticker_claude_analysis(
     response = None
     try:
         def _f(v, pct=False):
+            # IV/HV/skew from the analyzer are already in percent units (e.g. 87.84),
+            # so pct just appends "%" — it must NOT scale by 100.
             if v is None:
                 return "n/d"
-            return f"{float(v) * 100:.1f}%" if pct else f"{float(v):.2f}"
+            return f"{float(v):.1f}%" if pct else f"{float(v):.2f}"
 
         user_content = _CLAUDE_TICKER_TEMPLATE.format(
             ticker=ticker,
