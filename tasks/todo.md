@@ -81,9 +81,16 @@ componente aislado `{ symbol }` (listo para promocionar a B).
 - [x] Verificado: ruff limpio; `tsc` limpio; `next build` verde; `analyze_single_ticker`
       probado (status ok/no_data, ai_error not_configured sin key, resumen siempre).
 
-### Fase 4 — Pestañas v2
-- [ ] **Fiscal**: lotes/casillas del instrumento (de `TaxLot`/`TaxResult`).
-- [ ] **Dividendos**: `dividend_events` del `position_detail`.
+### Fase 4 — Pestañas v2 ✅
+- [x] **Fiscal** ([components/instrument/FiscalTab.tsx](frontend/src/components/instrument/FiscalTab.tsx)):
+      coste medio/total, valor, P&L no realizada, país, desglose por bróker.
+- [x] **Dividendos** ([components/instrument/DividendosTab.tsx](frontend/src/components/instrument/DividendosTab.tsx)):
+      `dividends_by_year` (bruto/neto/pagos) + total.
+- [x] Ambas reusan `GET /portfolio/positions/{isin}` vía hook compartido
+      `usePositionDetail` (cache por ISIN en sesión → 1 fetch para las 2 pestañas).
+      ISIN resuelto en el provider desde holdings (ticker→isin); si no es posición
+      en cartera → estado vacío. Sin cambios de backend (solo Vercel al desplegar).
+- [x] Verificado: `tsc` limpio; `next build` verde.
 
 ### Fase 5 — Resolver Cartera (pregunta original)
 - [ ] Con el drawer cubriendo opciones-por-holding, decidir si Cartera pasa a ser
