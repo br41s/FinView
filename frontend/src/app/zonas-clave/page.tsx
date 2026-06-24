@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
+import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
 import {
   Table,
   TableBody,
@@ -95,6 +96,7 @@ function macdColor(signal: string | null) {
 
 export default function ZonasClavePage() {
   const router = useRouter();
+  const { openInstrument } = useInstrumentDrawer();
   const [watchlist, setWatchlist] = useState<ZcWatchlistItem[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
@@ -390,7 +392,7 @@ export default function ZonasClavePage() {
                           title="Ver opciones"
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/options?ticker=${encodeURIComponent(item.ticker)}`);
+                            openInstrument(item.ticker, { tab: "opciones", name: item.name });
                           }}
                         >
                           <Activity className="h-3 w-3" />

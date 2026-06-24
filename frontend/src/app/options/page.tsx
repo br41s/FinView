@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
@@ -60,6 +59,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
+import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -254,7 +254,7 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
-  const router = useRouter();
+  const { openInstrument } = useInstrumentDrawer();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -887,7 +887,7 @@ export default function OptionsPage() {
                                         title="Ver en Zonas Clave"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          router.push(`/zonas-clave?ticker=${encodeURIComponent(ticker)}`);
+                                          openInstrument(ticker, { tab: "zonas" });
                                         }}
                                       >
                                         <Target className="h-3 w-3" />

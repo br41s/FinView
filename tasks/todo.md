@@ -41,18 +41,28 @@ página `/ticker/[symbol]` (B) sin reescribir los componentes de pestaña.
 blast radius→aditivo, no toca FIFO ni el scraper; timing→migración idempotente
 (solo si existe la clave).
 
-### Fase 2 — Shell del drawer global de instrumento
-- [ ] `InstrumentDrawerProvider` (context) montado en `app/layout.tsx` junto a
-      `AuthProvider`/`TooltipProvider`; expone `openInstrument(symbol, isin?)`.
-- [ ] Drawer con `components/ui/sheet.tsx` (ya disponible); cabecera con ticker +
-      estado **owned/watched** derivado (holdings + watchlist), pestañas lazy.
-- [ ] Redirigir los `router.push('/options?ticker=')` y `'/zonas-clave?ticker='`
-      existentes ([options/page.tsx:890](frontend/src/app/options/page.tsx), [zonas-clave/page.tsx:393](frontend/src/app/zonas-clave/page.tsx))
-      a `openInstrument()` en vez de navegar.
+### Fase 2 — Shell del drawer global de instrumento ✅
+- [x] `InstrumentDrawerProvider` + `useInstrumentDrawer()` ([components/InstrumentDrawer.tsx](frontend/src/components/InstrumentDrawer.tsx))
+      montado en [app/layout.tsx](frontend/src/app/layout.tsx) dentro de
+      `AuthProvider`/`TooltipProvider`; expone `openInstrument(symbol, { isin?, name?, tab? })`.
+- [x] Drawer con `Sheet` (side=right, `data-[side=right]:sm:max-w-2xl`); cabecera
+      ticker + badge **"En cartera"** (holdings lazy-cargados al abrir); `Tabs`
+      controladas (Precio | Opciones | Zonas).
+- [x] **Precio** tab funcional (`PrecioTab` self-contained `{symbol}` → `priceHistory`
+      + `PriceChart` + scopes); Opciones/Zonas = placeholders con CTA a la página
+      completa (sin pérdida de acceso).
+- [x] Rewire cross-links: options "ZC" → `openInstrument(t,{tab:'zonas'})`;
+      zonas "ver opciones" → `openInstrument(t,{tab:'opciones'})`. `router` sobrante
+      eliminado en options.
+- [x] Verificado: `tsc --noEmit` limpio + `next build` verde (todas las rutas).
+- **Tradeoff transitorio:** los dos cross-links ahora abren el drawer en una
+      pestaña placeholder (Opciones/Zonas) → 1 click extra hasta la página completa.
+      Se elimina en Fase 3 cuando esas pestañas rendericen el análisis real in-place.
+- Pendiente: QA en navegador (requiere stack levantado + login).
 
-**Invariantes:** estado→efímero en cliente (qué ticker está abierto), nada en DB;
-blast radius→nuevo provider, no rompe páginas; cada pestaña componente aislado
-`{ symbol }` (listo para promocionar a B).
+**Invariantes:** estado→efímero en cliente (qué ticker/pestaña), nada en DB;
+blast radius→nuevo provider envuelve children, no rompe páginas; cada pestaña
+componente aislado `{ symbol }` (listo para promocionar a B).
 
 ### Fase 3 — Pestañas v1 (las que ya tienen plumbing `?ticker=`)
 - [ ] **Precio**: reusar `PriceChart` + `GET /charts/price-history`.
