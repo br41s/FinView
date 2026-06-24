@@ -235,6 +235,37 @@ function ImgTramo30() {
   );
 }
 
+function ImgReitsExtranjeros() {
+  return (
+    <div className={styles.postImgReitsExtranjeros}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">REITs EXTRANJEROS — FISCALIDAD IRPF</text>
+        {/* US REIT */}
+        <rect x="15" y="30" width="45" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">EE.UU.</text>
+        <text x="37" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Realty</text>
+        <text x="37" y="74" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Income</text>
+        <text x="37" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">15% ret.</text>
+        {/* Germany REIT */}
+        <rect x="75" y="30" width="45" height="60" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="97" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">DE</text>
+        <text x="97" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Vonovia</text>
+        <text x="97" y="74" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">26,375%</text>
+        <text x="97" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">15% CDI</text>
+        {/* UK REIT */}
+        <rect x="135" y="30" width="45" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="157" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">UK</text>
+        <text x="157" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Segro</text>
+        <text x="157" y="74" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">0% ret.</text>
+        <text x="157" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">mejor fiscal</text>
+        {/* Arrows */}
+        <line x1="60" y1="60" x2="75" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        <line x1="120" y1="60" x2="135" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+      </svg>
+    </div>
+  );
+}
+
 function ImgSocimi() {
   return (
     <div className={styles.postImgSocimi}>
@@ -456,6 +487,15 @@ function ImgCalendarioDividendos() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'reits-extranjeros-irpf-espana',
+    tag: 'Fiscal',
+    date: '24 jun 2026',
+    readTime: '15 min',
+    title: 'Dividendos de REITs extranjeros en el IRPF: guía fiscal para inversores desde España',
+    excerpt: 'Cómo tributan los dividendos de REITs extranjeros (Realty Income, Prologis, Vonovia) en el IRPF: retenciones por país, convenios de doble imposición, casillas 029 y 0588, y ejemplos con números reales.',
+    Image: ImgReitsExtranjeros,
+  },
   {
     slug: 'prima-emision-reduccion-capital-irpf',
     tag: 'Fiscal',
