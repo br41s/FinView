@@ -27,10 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 import { ZonasTab } from "@/components/instrument/ZonasTab";
+import { FiscalTab } from "@/components/instrument/FiscalTab";
+import { DividendosTab } from "@/components/instrument/DividendosTab";
 
 // Which lens to open the drawer on. "precio" is the only one wired in Phase 2;
 // "opciones"/"zonas" are placeholders until Phase 3 fills them in place.
-export type InstrumentTab = "precio" | "opciones" | "zonas";
+export type InstrumentTab = "precio" | "opciones" | "zonas" | "fiscal" | "dividendos";
 
 interface OpenOpts {
   isin?: string;
@@ -64,7 +66,9 @@ export function InstrumentDrawerProvider({ children }: { children: React.ReactNo
   const [symbol, setSymbol] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [tab, setTab] = useState<InstrumentTab>("precio");
-  const [ownedTickers, setOwnedTickers] = useState<Set<string> | null>(null);
+  // ticker -> { isin } for the open holding (drives the "En cartera" badge and
+  // resolves the ISIN that the Fiscal/Dividendos tabs need).
+  const [holdings, setHoldings] = useState<Map<string, { isin: string }> | null>(null);
 
   const openInstrument = useCallback((sym: string, opts?: OpenOpts) => {
     const s = sym.trim().toUpperCase();
@@ -75,21 +79,25 @@ export function InstrumentDrawerProvider({ children }: { children: React.ReactNo
     setOpen(true);
   }, []);
 
-  // Lazy-load holdings once (cached) to show an "En cartera" badge.
+  // Lazy-load holdings once: powers the "En cartera" badge and ticker->ISIN
+  // resolution for the Fiscal/Dividendos tabs.
   useEffect(() => {
-    if (!open || ownedTickers !== null) return;
+    if (!open || holdings !== null) return;
     api.portfolio
       .positions(true)
       .then((pos) => {
-        const p = pos as { ticker: string | null }[];
-        setOwnedTickers(
-          new Set(p.filter((x) => x.ticker).map((x) => x.ticker!.toUpperCase())),
-        );
+        const p = pos as { ticker: string | null; isin: string }[];
+        const map = new Map<string, { isin: string }>();
+        for (const x of p) {
+          if (x.ticker) map.set(x.ticker.toUpperCase(), { isin: x.isin });
+        }
+        setHoldings(map);
       })
-      .catch(() => setOwnedTickers(new Set()));
-  }, [open, ownedTickers]);
+      .catch(() => setHoldings(new Map()));
+  }, [open, holdings]);
 
-  const owned = symbol != null && (ownedTickers?.has(symbol) ?? false);
+  const owned = symbol != null && (holdings?.has(symbol) ?? false);
+  const isin = symbol != null ? (holdings?.get(symbol)?.isin ?? null) : null;
   const ctx = useMemo(() => ({ openInstrument }), [openInstrument]);
 
   return (
@@ -124,6 +132,8 @@ export function InstrumentDrawerProvider({ children }: { children: React.ReactNo
                 <TabsTrigger value="precio">Precio</TabsTrigger>
                 <TabsTrigger value="opciones">Opciones</TabsTrigger>
                 <TabsTrigger value="zonas">Zonas</TabsTrigger>
+                <TabsTrigger value="fiscal">Fiscal</TabsTrigger>
+                <TabsTrigger value="dividendos">Dividendos</TabsTrigger>
               </TabsList>
 
               <TabsContent value="precio" className="overflow-auto pt-3">
@@ -150,6 +160,32 @@ export function InstrumentDrawerProvider({ children }: { children: React.ReactNo
                     router.push(`/zonas-clave?ticker=${encodeURIComponent(symbol)}`);
                   }}
                 />
+              </TabsContent>
+
+              <TabsContent value="fiscal" className="overflow-auto pt-3">
+                <FiscalTab isin={isin} symbol={symbol} />
+                {isin && (
+                  <FullPageLink
+                    label="Ver posición completa"
+                    onClick={() => {
+                      setOpen(false);
+                      router.push(`/portfolio/${encodeURIComponent(isin)}`);
+                    }}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent value="dividendos" className="overflow-auto pt-3">
+                <DividendosTab isin={isin} symbol={symbol} />
+                {isin && (
+                  <FullPageLink
+                    label="Ver posición completa"
+                    onClick={() => {
+                      setOpen(false);
+                      router.push(`/portfolio/${encodeURIComponent(isin)}`);
+                    }}
+                  />
+                )}
               </TabsContent>
             </Tabs>
           )}
