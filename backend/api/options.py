@@ -414,6 +414,21 @@ def trigger_cycle(user: CurrentUser):
     return AgentCycleResult(**result)
 
 
+@router.post("/agent/analyze-ticker", responses=_404)
+def analyze_ticker_on_demand(body: WatchlistItemIn, user: CurrentUser):
+    """On-demand single-ticker AI options analysis for the instrument drawer.
+
+    Runs regardless of alerts (user explicitly requested it). AI failure still
+    returns the rule-based summary/alerts; only missing options data is a 404.
+    """
+    from backend.services.options_agent import analyze_single_ticker
+
+    result = analyze_single_ticker(body.ticker)
+    if result.get("status") == "no_data":
+        raise HTTPException(status_code=404, detail="No options data for this ticker")
+    return result
+
+
 @router.get("/agent/status", response_model=AgentStatusOut)
 def agent_status(db: DbSession, user: CurrentUser):
     last_log = (
