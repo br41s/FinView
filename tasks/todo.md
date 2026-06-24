@@ -92,14 +92,21 @@ componente aislado `{ symbol }` (listo para promocionar a B).
       en cartera → estado vacío. Sin cambios de backend (solo Vercel al desplegar).
 - [x] Verificado: `tsc` limpio; `next build` verde.
 
-### Fase 5 — Resolver Cartera (pregunta original)
-- [ ] Con el drawer cubriendo opciones-por-holding, decidir si Cartera pasa a ser
-      una **vista filtrada de instrumentos owned** en vez de pestaña separada.
-      Preservar el P&L de holdings (valor único de Cartera).
+### Fase 5 — Resolver Cartera (pregunta original) ✅
+- [x] **CEO: drawer + portar strikes.** Cartera ahora es un lanzador: la fila abre
+      el drawer (pestaña Opciones) en vez de expandir inline. Eliminadas ~500 líneas
+      de chain/expiry/chart inline + su estado y effects ([options/page.tsx](frontend/src/app/options/page.tsx) 2212→1696).
+      Overlay de strikes near-money portado a la pestaña Opciones del drawer
+      (spot + 3 abajo/3 arriba sobre las velas). Cross-links "Ver en Cartera" y el
+      deep-link `?ticker=` también abren el drawer. P&L de holdings preservado en la lista.
+- [x] Verificado en local: fila AAPL → drawer en Opciones con chart de strikes + cadena;
+      sin expansión inline. `tsc` limpio, `next build` verde.
 
-### Fase 6 — Documentar promoción a B
-- [ ] Anotar el camino `/ticker/[symbol]`: los componentes de pestaña se montan
-      tal cual como secciones de página; "owned/watched" pasa a flag explícito.
+### Fase 6 — Documentar promoción a B ✅
+- [x] Documentado el camino `/ticker/[symbol]` en [claude.md](claude.md) (sección
+      Instrument drawer → "Promotion to /ticker/[symbol]"): los componentes de pestaña
+      se montan tal cual como secciones de página; `usePositionDetail` + APIs por sección
+      funcionan fuera del drawer; owned/watched pasa a flag explícito solo si SSR/SEO lo pide.
 
 ---
 
