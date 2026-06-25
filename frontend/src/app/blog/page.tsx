@@ -450,6 +450,11 @@ function ImgCriptomonedas() {
         <text x="163" y="56" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
         <text x="163" y="70" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ahorro</text>
         <text x="163" y="84" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19-30%</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgPrimaEmision() {
   return (
     <div className={styles.postImgPrimaEmision}>
@@ -559,6 +564,8 @@ const POSTS: Post[] = [
     title: 'Criptomonedas en el IRPF: guía completa para declarar en España 2026',
     excerpt: 'Cómo tributan las criptomonedas en el IRPF: venta, permuta, staking, modelo 721, FIFO, casillas 1800-1814, DAC8 y ejemplos con números reales.',
     Image: ImgCriptomonedas,
+  },
+  {
     slug: 'reits-extranjeros-irpf-espana',
     tag: 'Fiscal',
     date: '24 jun 2026',
