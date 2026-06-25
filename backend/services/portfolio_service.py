@@ -340,9 +340,10 @@ def get_portfolio_summary(db: Session, user_id: int | None = None, *, skip_price
     raw = get_open_positions(db, user_id, skip_prices=skip_prices, aggregate=False)
     positions = _aggregate_by_isin(raw)
 
-    total_cost = sum((p.total_cost_eur for p in positions if p.total_cost_eur is not None), ZERO)
-    total_value = sum((p.market_value_eur for p in positions if p.market_value_eur), ZERO)
-    total_pl = sum((p.unrealized_pl_eur for p in positions if p.unrealized_pl_eur), ZERO)
+    priced = [p for p in positions if p.market_value_eur is not None]
+    total_cost = sum((p.total_cost_eur for p in priced if p.total_cost_eur is not None), ZERO)
+    total_value = sum((p.market_value_eur for p in priced), ZERO)
+    total_pl = total_value - total_cost
     total_pl_pct = (total_pl / total_cost * Decimal("100")) if total_cost > ZERO else ZERO
 
     unique_isins = {p.isin for p in raw}
