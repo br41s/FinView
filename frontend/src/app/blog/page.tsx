@@ -510,7 +510,47 @@ function ImgCalendarioDividendos() {
   );
 }
 
+function ImgGastosDeducibles() {
+  return (
+    <div className={styles.postImgGastosDeducibles}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">GASTOS DEDUCIBLES — BASE DEL AHORRO</text>
+        {/* Income box */}
+        <rect x="12" y="28" width="50" height="60" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="46" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Bruto</text>
+        <text x="37" y="60" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">3.000€</text>
+        <text x="37" y="74" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">dividendos</text>
+        {/* Arrow with expense */}
+        <line x1="62" y1="58" x2="82" y2="58" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <text x="72" y="52" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">−50€</text>
+        <text x="72" y="68" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">custodia</text>
+        {/* Net box */}
+        <rect x="88" y="28" width="50" height="60" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="113" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Neto</text>
+        <text x="113" y="60" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">2.950€</text>
+        <text x="113" y="74" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">a declarar</text>
+        {/* Tax box */}
+        <rect x="148" y="38" width="40" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="168" y="54" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
+        <text x="168" y="66" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19%</text>
+        <text x="168" y="78" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">sobre neto</text>
+        {/* Bottom annotation */}
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Gastos de administración y depósito restan del bruto</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'gastos-deducibles-inversion-irpf',
+    tag: 'Fiscal',
+    date: '25 jun 2026',
+    readTime: '14 min',
+    title: 'Gastos deducibles del inversor en el IRPF: qué comisiones y costes puedes restar',
+    excerpt: 'Guía práctica sobre qué gastos de inversión son deducibles en el IRPF: comisiones de custodia, administración de valores, cánones de bolsa, gastos de divisa y cómo incluirlos en la declaración.',
+    Image: ImgGastosDeducibles,
+  },
   {
     slug: 'criptomonedas-irpf-espana',
     tag: 'Fiscal',
