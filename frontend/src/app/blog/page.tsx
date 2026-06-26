@@ -546,7 +546,58 @@ function ImgGastosDeducibles() {
   );
 }
 
+function ImgDerechosSuscripcion() {
+  return (
+    <div className={styles.postImgDerechosSuscripcion}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DSP — 3 OPCIONES, 3 FISCALIDADES</text>
+        {/* Shareholder box */}
+        <rect x="5" y="28" width="40" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="25" y="46" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Tienes</text>
+        <text x="25" y="58" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">100 DSP</text>
+        <text x="25" y="72" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">de Iberdrola</text>
+        {/* Arrow to subscribe */}
+        <line x1="45" y1="38" x2="60" y2="32" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        {/* Subscribe option */}
+        <rect x="60" y="20" width="48" height="30" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="84" y="33" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Suscribir</text>
+        <text x="84" y="44" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">0€ ahora</text>
+        {/* Arrow to sell market */}
+        <line x1="45" y1="53" x2="60" y2="53" stroke="var(--fv-ink-40)" strokeWidth="1"/>
+        {/* Sell market option */}
+        <rect x="60" y="45" width="48" height="30" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="84" y="58" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Vender</text>
+        <text x="84" y="69" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">gan. patrim.</text>
+        {/* Arrow to sell company */}
+        <line x1="45" y1="68" x2="60" y2="74" stroke="var(--fv-ink-40)" strokeWidth="1"/>
+        {/* Sell company option */}
+        <rect x="60" y="70" width="48" height="30" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="84" y="83" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Empresa</text>
+        <text x="84" y="94" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">rend. capit.</text>
+        {/* Result labels */}
+        <rect x="118" y="20" width="72" height="24" rx="4" fill="var(--fv-ochre-ghost)"/>
+        <text x="154" y="36" fontSize="5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Diferido → plusvalía al vender</text>
+        <rect x="118" y="50" width="72" height="18" rx="4" fill="rgba(31,27,22,0.04)"/>
+        <text x="154" y="63" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">19% retención · Bloque A</text>
+        <rect x="118" y="76" width="72" height="18" rx="4" fill="rgba(31,27,22,0.04)"/>
+        <text x="154" y="89" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">19% retención · Bloque B</text>
+        {/* Bottom note */}
+        <text x="100" y="108" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Misma cuantía, distinto bloque → distinto ahorro fiscal</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'derechos-suscripcion-preferente-irpf',
+    tag: 'Fiscal',
+    date: '26 jun 2026',
+    readTime: '13 min',
+    title: 'Derechos de suscripción preferente en el IRPF: qué hacer y cómo tributa cada opción',
+    excerpt: 'Guía práctica sobre los derechos de suscripción preferente: las tres opciones (suscribir, vender en mercado, vender a la empresa), cómo tributa cada una en el IRPF, el cambio de 2017 y ejemplos con números reales.',
+    Image: ImgDerechosSuscripcion,
+  },
   {
     slug: 'gastos-deducibles-inversion-irpf',
     tag: 'Fiscal',
