@@ -515,6 +515,43 @@ function ImgCalendarioDividendos() {
   );
 }
 
+function ImgDividendosVsEtf() {
+  // Side-by-side: bar chart (stocks) vs growing plant curve (ETF acc)
+  const buyFlows = [30, 35, 42, 38, 50, 45, 55, 60];
+  const etfCurve = [30, 36, 43, 51, 60, 70, 82, 95];
+  const maxY = 110;
+  return (
+    <div className={styles.postImgDividendosVsEtf}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">LASTRE FISCAL ANUAL vs DIFERIMIENTO</text>
+        {/* Left bars = buy/sell leak every year */}
+        <text x="52" y="24" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Acciones</text>
+        {buyFlows.map((h, i) => {
+          const x = 14 + i * 10;
+          return (
+            <rect key={`b${i}`} x={x} y={maxY - h * 1.2} width="7" height={h * 1.2}
+              fill={i === buyFlows.length - 1 ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'} rx="1.5"/>
+          );
+        })}
+        {/* Tax leak arrows */}
+        <line x1="100" y1="60" x2="100" y2="58" stroke="var(--fv-ink-30)" strokeWidth="0.5"/>
+        <text x="100" y="72" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">−19%/año</text>
+        {/* Right curve = ETF compounding growth */}
+        <text x="148" y="24" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">ETF Acc</text>
+        <polyline
+          points={etfCurve.map((h, i) => `${110 + i * 11},${maxY - h * 1.0}`).join(' ')}
+          stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+        <circle cx="198" cy={maxY - etfCurve[etfCurve.length - 1] * 1.0} r="3" fill="var(--fv-ochre)"/>
+        {/* Dashed separator */}
+        <line x1="105" y1="28" x2="105" y2="112" stroke="var(--fv-ink-15)" strokeWidth="0.8" strokeDasharray="2 2"/>
+        {/* Bottom annotation */}
+        <text x="100" y="118" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">20 años · 50K€ inicial + 500€/mes · 7% bruto</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgGastosDeducibles() {
   return (
     <div className={styles.postImgGastosDeducibles}>
@@ -589,6 +626,15 @@ function ImgDerechosSuscripcion() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'dividendos-individuales-vs-etf-acumulacion-fiscal',
+    tag: 'Estrategia',
+    date: '27 jun 2026',
+    readTime: '14 min',
+    title: 'Acciones de dividendos vs ETFs de acumulación: la cuenta que nadie te hace',
+    excerpt: 'Comparativa fiscal real entre una cartera DGI de acciones individuales y un ETF de acumulación en España. El tax drag a 20 años, cuánto pierdes por el camino y qué te conviene según tu perfil.',
+    Image: ImgDividendosVsEtf,
+  },
   {
     slug: 'derechos-suscripcion-preferente-irpf',
     tag: 'Fiscal',
