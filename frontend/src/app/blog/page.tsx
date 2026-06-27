@@ -625,7 +625,47 @@ function ImgDerechosSuscripcion() {
   );
 }
 
+function ImgRetencion19() {
+  return (
+    <div className={styles.postImgRetencion19}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">RETENCIÓN vs TRIBUACIÓN REAL</text>
+        {/* 19% bar */}
+        <rect x="20" y="30" width="60" height="14" rx="3" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <text x="50" y="40" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19% retención</text>
+        {/* 28% bar */}
+        <rect x="20" y="52" width="60" height="14" rx="3" fill="var(--fv-ink-10)" stroke="var(--fv-ink-20)" strokeWidth="1"/>
+        <text x="50" y="62" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">28% real max.</text>
+        {/* Arrow */}
+        <line x1="85" y1="48" x2="110" y2="48" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="3 2"/>
+        <polygon points="108,44 114,48 108,52" fill="var(--fv-ochre)"/>
+        {/* Difference */}
+        <rect x="115" y="36" width="65" height="24" rx="5" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="147" y="47" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Diferencia:</text>
+        <text x="147" y="57" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">hasta +9 pts</text>
+        {/* Bottom scale */}
+        <rect x="20" y="82" width="160" height="6" rx="3" fill="var(--fv-ink-10)"/>
+        <rect x="20" y="82" width="24" height="6" rx="3" fill="var(--fv-ochre)"/>
+        <rect x="44" y="82" width="36" height="6" fill="var(--fv-ochre)" opacity="0.7"/>
+        <rect x="80" y="82" width="48" height="6" fill="var(--fv-ochre)" opacity="0.4"/>
+        <rect x="128" y="82" width="52" height="6" fill="var(--fv-ochre)" opacity="0.2"/>
+        <text x="100" y="100" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">19%        21%        23%        28%</text>
+        <text x="100" y="112" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Base del ahorro →</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'retencion-19-vs-tributacion-real-irpf',
+    tag: 'Fiscal',
+    date: '28 jun 2026',
+    readTime: '11 min',
+    title: 'La retención del 19% de los dividendos no es lo que pagas realmente',
+    excerpt: 'Tu broker te retiene el 19% cuando cobras dividendos, pero ese no es tu impuesto real. Si tu base del ahorro supera los 6.000 €, acabas pagando hasta un 28%. Te explico la diferencia con ejemplos prácticos.',
+    Image: ImgRetencion19,
+  },
   {
     slug: 'dividendos-individuales-vs-etf-acumulacion-fiscal',
     tag: 'Estrategia',
