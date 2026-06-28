@@ -656,7 +656,48 @@ function ImgRetencion19() {
   );
 }
 
+function ImgPlanificacionFiscalFinAno() {
+  return (
+    <div className={styles.postImgPlanificacionFiscalFinAno}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">PLANIFICACIÓN FISCAL — CIERRE ANUAL</text>
+        {/* December box */}
+        <rect x="10" y="28" width="55" height="65" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="44" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Dic</text>
+        <text x="37" y="58" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Vender</text>
+        <text x="37" y="72" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">pérdidas</text>
+        <text x="37" y="84" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−1.200€</text>
+        {/* Arrow */}
+        <line x1="65" y1="60" x2="85" y2="60" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <polygon points="83,56 89,60 83,64" fill="var(--fv-ochre)"/>
+        {/* Tax saving box */}
+        <rect x="88" y="38" width="55" height="50" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="115" y="54" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Ahorro</text>
+        <text x="115" y="68" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">252€</text>
+        <text x="115" y="80" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">19% s/1.200€</text>
+        {/* January box */}
+        <rect x="148" y="28" width="42" height="65" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="169" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Ene</text>
+        <text x="169" y="58" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">+12m</text>
+        <text x="169" y="72" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">dinero</text>
+        <text x="169" y="84" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">trabajando</text>
+        {/* Bottom annotation */}
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Vender en dic → pagar en jun 2027 · Vender en ene → pagar en jun 2028</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'planificacion-fiscal-fin-ano',
+    tag: 'Fiscal',
+    date: '29 jun 2026',
+    readTime: '12 min',
+    title: 'Planificación fiscal de fin de año para el inversor en dividendos: la guía que te ahorra dinero antes del 31 de diciembre',
+    excerpt: 'Guía práctica para reducir tu factura fiscal antes del cierre del ejercicio: cuándo vender con pérdida, cómo manejar los tramos del ahorro, la regla de los 2 meses y un checklist de 7 pasos para diciembre.',
+    Image: ImgPlanificacionFiscalFinAno,
+  },
   {
     slug: 'retencion-19-vs-tributacion-real-irpf',
     tag: 'Fiscal',
