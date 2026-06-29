@@ -688,7 +688,44 @@ function ImgPlanificacionFiscalFinAno() {
   );
 }
 
+function ImgTrampasDividendo() {
+  return (
+    <div className={styles.postImgTrampasDividendo}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">YIELD TRAP — SEÑALES DE ALERTA</text>
+        {/* High yield bar with warning */}
+        <rect x="15" y="25" width="35" height="70" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="32" y="42" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Yield</text>
+        <text x="32" y="56" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">12%</text>
+        <text x="32" y="70" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">insostenible</text>
+        {/* Warning triangle */}
+        <polygon points="70,95 85,60 100,95" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="85" y="85" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">!</text>
+        {/* Sustainable bar */}
+        <rect x="115" y="40" width="35" height="55" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="132" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Yield</text>
+        <text x="132" y="70" fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">5%</text>
+        <text x="132" y="84" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">sostenible</text>
+        {/* Arrow from trap to safe */}
+        <line x1="50" y1="60" x2="115" y2="60" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        <text x="82" y="55" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">payout, FCF</text>
+        {/* Bottom annotation */}
+        <text x="100" y="112" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Payout &gt; 90% + FCF no cubye = señal de peligro</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'trampas-dividendo-yield-insostenible',
+    tag: 'Estrategia',
+    date: '1 jul 2026',
+    readTime: '13 min',
+    title: 'Trampas del dividendo: cómo detectar un yield insostenible antes de que sea tarde',
+    excerpt: 'Una rentabilidad por dividendo del 12% suena demasiado bien porque suele serlo. Guía práctica para identificar dividendos insostenibles en el mercado español con ejemplos reales y métricas clave.',
+    Image: ImgTrampasDividendo,
+  },
   {
     slug: 'planificacion-fiscal-fin-ano',
     tag: 'Fiscal',
