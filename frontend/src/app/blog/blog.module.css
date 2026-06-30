@@ -642,3 +642,12 @@
   align-items: center;
   justify-content: center;
 }
+
+.postImgTrampasDividendo {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, rgba(154,107,31,0.10) 0%, rgba(154,107,31,0.25) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
