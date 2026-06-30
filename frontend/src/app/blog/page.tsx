@@ -716,7 +716,41 @@ function ImgTrampasDividendo() {
   );
 }
 
+function ImgBroker() {
+  return (
+    <div className={styles.postImgBroker}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        {/* Laptop / Broker terminal */}
+        <rect x="30" y="30" width="140" height="70" rx="8" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <line x1="30" y1="55" x2="170" y2="55" stroke="var(--fv-ink-15)" strokeWidth="1"/>
+        {/* Bars for comparison */}
+        {[
+          { x: 50, h: 30, label: 'TR' },
+          { x: 90, h: 45, label: 'IBKR' },
+          { x: 130, h: 20, label: 'DG' },
+        ].map(({ x, h, label }) => (
+          <g key={label}>
+            <rect x={x} y={110 - h} width="20" height={h} fill="rgba(154,107,31,0.25)" rx="3"/>
+            <rect x={x} y={110 - h} width="20" height={h * 0.3} fill="var(--fv-ochre)" rx="3"/>
+            <text x={x + 10} y="118" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">{label}</text>
+          </g>
+        ))}
+        <text x="100" y="18" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">BROKER COMPARISON</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'broker-dividendos-espana-2025',
+    tag: 'Estrategia',
+    date: '1 jul 2026',
+    readTime: '10 min',
+    title: 'Mejor broker para cobrar dividendos en España (2025)',
+    excerpt: 'Comparativa real de brokers para inversores en dividendos: TR, DEGIRO, IBKR e ING. Retenciones, informes fiscales y qué hacer con Hacienda.',
+    Image: ImgBroker,
+  },
   {
     slug: 'trampas-dividendo-yield-insostenible',
     tag: 'Estrategia',
