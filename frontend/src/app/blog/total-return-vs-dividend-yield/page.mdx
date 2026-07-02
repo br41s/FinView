@@ -1,0 +1,153 @@
+export const metadata = {
+  title: "Total return vs dividend yield: por qué el yield no es tu rentabilidad real — FinView",
+  description: "El dividend yield es solo una parte de tu rentabilidad. Aprende a calcular el total return y por qué ignorar la revalorización te está costando dinero.",
+};
+
+# Total return vs dividend yield: por qué el yield no es tu rentabilidad real
+
+> Tienes una acción que paga un 6% de dividendo. Parece una pasada. Pero la acción ha bajado un 15% en dos años. ¿Sigues ganando dinero? La respuesta te va a sorprender (y probablemente enfadar).
+
+---
+
+## 1. El espejismo del dividend yield alto
+
+Te voy a ser sincero: me cansé de ver carteras llenas de valores con yields del 7% y 8% que llevan años destruyendo patrimonio.
+
+El dividend yield es una métrica simple. Dividides el dividendo anual entre el precio actual y te da un porcentaje. Si una acción cotiza a 100€ y paga 5€ al año, el yield es el 5%.
+
+El problema es que ese 5% no te dice nada sobre si la acción está subiendo, bajando o si la empresa está en problemas.
+
+Mira este ejemplo real. Imaginemos dos empresas del Ibex:
+
+- **Empresa A**: Yield del 2%. Cotiza a 100€ y sube un 8% al año.
+- **Empresa B**: Yield del 7%. Cotiza a 50€ y baja un 4% al año.
+
+¿Cuál te da más dinero a cinco años?
+
+Si solo miras el yield, eliges la B. Si miras el total return, la A te da un 50% más de rentabilidad.
+
+---
+
+## 2. Qué es el total return (y por qué debería importarte)
+
+El total return es la suma de dos cosas:
+
+1. **Dividendos cobrados** (en efectivo o reinvertidos)
+2. **Revalorización (o devaluación) de la acción**
+
+La fórmula es esta:
+
+```
+Total Return = (Precio final - Precio inicial + Dividendos cobrados) / Precio inicial
+```
+
+Parece obvio, ¿no? Pues la mayoría de inversores particulares lo ignoran completamente.
+
+Te pongo un ejemplo con números reales. Digamos que compraste 1.000€ en acciones de una empresa española hace tres años:
+
+| Concepto | Importe |
+|----------|---------|
+| Inversión inicial | 1.000€ |
+| Dividendos cobrados (3 años) | 180€ |
+| Valor actual de las acciones | 920€ |
+| **Rentabilidad total** | **+100€ (+10%)** |
+
+El yield medio fue del 6% anual. Pero el total return es del 3,3% anualizado porque la acción cayó un 8%.
+
+FinView te muestra exactamente esto en tu dashboard. No solo cuánto cobras, sino cuánto vale tu cartera hoy comparado con lo que invertiste.
+
+---
+
+## 3. Cuándo el high yield es una trampa
+
+Hay veces que un yield alto es simplemente el mercado diciendo que la empresa tiene problemas.
+
+Si una acción baja mucho y el dividendo se mantiene, el yield sube mecánicamente. No porque la empresa vaya bien, sino porque el precio ha caído.
+
+Aquí tienes tres señales de que un yield alto es una trampa:
+
+1. **El payout ratio supera el 100%**. La empresa está pagando más dividendos de lo que gana. Eso no es sostenible.
+2. **La deuda neta/EBITDA es superior a 3x**. La empresa se está endeudando para pagar el dividendo.
+3. **El dividendo lleva años sin subir** mientras la acción cae. Los inversores no confían en el negocio.
+
+Si quieres profundizar en cómo detectar yields insostenibles, tienes [este artículo](/blog/trampas-dividendo-yield-insostenible) que te explica las señales de alerta con ejemplos reales del mercado español.
+
+---
+
+## 4. Ejemplos reales: Iberdrola vs una utility de alto yield
+
+Vamos a comparar dos perfiles típicos de empresas españolas. Los datos son orientativos basados en el comportamiento del mercado en los últimos cinco años:
+
+**Iberdrola (perfil crecimiento + dividendo moderado)**
+- Yield promedio: 4-5%
+- Revalorización: +60% (5 años)
+- Total return anualizado: ~14%
+
+**Una utility hipotética con yield del 8%**
+- Yield: 8%
+- Revalorización: -30% (5 años)
+- Total return anualizado: ~-1% (sí, pierdes dinero)
+
+El mercado no es tonto. Si una acción tiene un yield del 8% y no sube, es porque los inversores institucionales no confían en que ese dividendo sea sostenible.
+
+---
+
+## 5. Cómo calcular tu total return real (paso a paso)
+
+No necesitas ser un matemático. Solo necesitas estos datos:
+
+1. **Precio de compra** (coste base ajustado por splits, etc.)
+2. **Dividendos cobrados** (en efectivo, no reinvertidos)
+3. **Valor actual** de tus acciones
+
+FinView lo calcula automáticamente porque tiene tus transacciones y los dividendos importados de tus brokers. Pero si lo quieres hacer a mano:
+
+```
+1. Suma todos los dividendos que has cobrado de esa posición.
+2. Resta el valor actual menos lo que invertiste.
+3. Suma el resultado del paso 2 a los dividendos del paso 1.
+4. Divide esa suma por lo que invertiste.
+5. Divídelo por los años que llevas invertido.
+```
+
+Ese es tu CAGR (Compound Annual Growth Rate). Si es negativo, estás perdiendo dinero aunque cobres dividendos.
+
+---
+
+## 6. El efecto de reinvertir (por qué el total return importa más todavía)
+
+Aquí es donde la cosa se pone interesante.
+
+Si reinviertes los dividendos, el total return es la métrica que determina cuánto crece tu cartera mediante el interés compuesto.
+
+Te pongo un ejemplo a 10 años con 10.000€ iniciales:
+
+| Estrategia | Rentabilidad final |
+|------------|-------------------|
+| Solo dividendos (cobras y gastas) | 16.000€ |
+| Dividendos reinvertidos (total return 8%) | 21.590€ |
+| Dividendos reinvertidos (total return 12%) | 31.060€ |
+
+La diferencia entre un total return del 8% y del 12% son más de 9.000€. Por eso perseguir yields altos sin mirar la revalorización te está costando una fortuna.
+
+Si quieres ver cómo el Yield on Cost se relaciona con el total return, échale un ojo a [este artículo](/blog/yield-on-cost) que explica cómo el YOC evoluciona con el tiempo.
+
+---
+
+## Preguntas frecuentes
+
+### ¿El total return sustituye al dividend yield?
+
+No. El yield te dice qué flujo de caja tienes ahora mismo. El total return te dice si tu inversión está ganando o perdiendo dinero en conjunto. Necesitas las dos métricas.
+
+### ¿Cómo afecta la fiscalidad al total return?
+
+En España, los dividendos tributan en la base del ahorro (19-30%) mientras que las plusvalías tributan al vender. Eso significa que el total return antes de impuestos es mayor que después de impuestos. FinView no resta los impuestos automáticamente (porque depende de tu situación personal), pero te da los datos para que puedas calcularlo.
+
+### ¿Debería vender una acción con yield alto si el total return es negativo?
+
+Depende. Si la empresa ha cortado el dividendo o lo ha reducido, probablemente sí. Si solo es una caída temporal en una empresa sólida, puede que quieras mantener. El total return es una métrica, no una decisión automática.
+
+### ¿Dónde veo el total return en FinView?
+
+En tu dashboard principal, cada posición muestra la rentabilidad total (precio actual + dividendos cobrados vs coste base). En la vista detallada de cada posición tienes el desglose completo.

@@ -741,7 +741,46 @@ function ImgBroker() {
   );
 }
 
+function ImgTotalReturn() {
+  return (
+    <div className={styles.postImgTotalReturn}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">TOTAL RETURN = DIVIDENDO + PRECIO</text>
+        {/* Dividend bar */}
+        <rect x="30" y="50" width="30" height="50" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="45" y="46" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Div.</text>
+        <text x="45" y="98" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">+5%</text>
+        {/* Price change bar */}
+        <rect x="85" y="65" width="30" height="35" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="100" y="61" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Precio</text>
+        <text x="100" y="98" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">+8%</text>
+        {/* Plus sign */}
+        <text x="70" y="76" fontSize="10" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">+</text>
+        {/* Total return bar */}
+        <rect x="140" y="35" width="30" height="65" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="155" y="31" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Total</text>
+        <text x="155" y="98" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">+13%</text>
+        {/* Arrow from dividend to total */}
+        <line x1="60" y1="75" x2="75" y2="75" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Arrow from price to total */}
+        <line x1="115" y1="75" x2="130" y2="75" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 2"/>
+        {/* Bottom annotation */}
+        <text x="100" y="115" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">El yield del 5% no cuenta la subida del 8%</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'total-return-vs-dividend-yield',
+    tag: 'Métricas',
+    date: '3 jul 2026',
+    readTime: '11 min',
+    title: 'Total return vs dividend yield: por qué el yield no es tu rentabilidad real',
+    excerpt: 'El dividend yield es solo una parte de tu rentabilidad. Aprende a calcular el total return y por qué ignorar la revalorización te está costando dinero.',
+    Image: ImgTotalReturn,
+  },
   {
     slug: 'broker-dividendos-espana-2025',
     tag: 'Estrategia',
