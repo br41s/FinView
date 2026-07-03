@@ -771,7 +771,44 @@ function ImgTotalReturn() {
   );
 }
 
+function ImgSeguridadDividendo() {
+  return (
+    <div className={styles.postImgSeguridadDividendo}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SEGURIDAD DIVIDENDO — MÉTRICAS</text>
+        {/* Payout ratio gauge */}
+        <rect x="15" y="30" width="50" height="70" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="40" y="48" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Payout</text>
+        <text x="40" y="62" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">65%</text>
+        <text x="40" y="76" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">saludable</text>
+        {/* FCF coverage */}
+        <rect x="75" y="30" width="50" height="70" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="100" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">FCF</text>
+        <text x="100" y="62" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">1,4x</text>
+        <text x="100" y="76" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">cobertura</text>
+        {/* Debt ratio */}
+        <rect x="135" y="30" width="50" height="70" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="160" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Deuda</text>
+        <text x="160" y="62" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">3,2x</text>
+        <text x="160" y="76" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">EBITDA</text>
+        {/* Checkmark for safe */}
+        <circle cx="100" cy="110" r="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <polyline points="96,110 99,113 104,108" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'seguridad-dividendo-metricas',
+    tag: 'Métricas',
+    date: '4 jul 2026',
+    readTime: '13 min',
+    title: 'Cómo analizar la seguridad del dividendo: las métricas que te alertan antes del recorte',
+    excerpt: 'Aprende a evaluar si un dividendo es sostenible antes de que la empresa lo recorte. Payout ratio, free cash flow, cobertura y las señales de alerta que los inversores pasan por alto.',
+    Image: ImgSeguridadDividendo,
+  },
   {
     slug: 'total-return-vs-dividend-yield',
     tag: 'Métricas',
