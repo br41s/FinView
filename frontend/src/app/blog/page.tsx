@@ -799,7 +799,31 @@ function ImgSeguridadDividendo() {
   );
 }
 
+function ImgMetodoDgi() {
+  return (
+    <div className={styles.postImgMetodoDgi}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        {/* Abstract growing path representing DGI */}
+        <path d="M20,100 C40,80 60,60 80,50 C100,40 120,30 140,20 C160,10 180,5 190,10" stroke="var(--fv-ochre)" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+        <circle cx="140" cy="20" r="4" fill="var(--fv-ochre)"/>
+        <circle cx="80" cy="50" r="3" fill="rgba(154,107,31,0.5)"/>
+        <circle cx="30" cy="90" r="3" fill="rgba(154,107,31,0.3)"/>
+        <text x="100" y="115" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">CONSTRUIR CARTERA DGI</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'metodo-dgi-construir-cartera-dividendos-20250705',
+    tag: 'Estrategia',
+    date: '5 jul 2025',
+    readTime: '7 min',
+    title: 'Cómo construir una cartera de dividendos desde cero: El método DGI',
+    excerpt: 'Guía paso a paso para montar tu cartera de Dividend Growth Investing. Criterios de selección, métricas de seguridad y errores que te costarán dinero.',
+    Image: ImgMetodoDgi,
+  },
   {
     slug: 'seguridad-dividendo-metricas',
     tag: 'Métricas',
