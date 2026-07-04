@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 151 tests (35 skipped — need real PDFs/CSVs in files/) |
+| Tests | pytest · 255 tests (~131 skip without real broker PDFs/CSVs in files/) |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -430,6 +430,10 @@ replace each other:
 - Backend: push to main touching backend/**, Dockerfile, pyproject.toml, or cloudbuild.yaml
   → Cloud Build triggers → deploys to Cloud Run europe-west1.
 - Never touch cloudbuild.yaml without knowing what you are doing — it controls prod deploys.
+- Backend deps are pinned: the Dockerfile installs from requirements.txt (hash-locked,
+  exported from uv.lock). After ANY pyproject.toml dependency change run
+  `uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt` and commit
+  both files — `backend/tests/test_requirements_sync.py` fails the suite if you forget.
 - Cloud Run runtime flags in cloudbuild.yaml are load-bearing: `--no-cpu-throttling` +
   `--cpu-boost` + `--memory=1Gi` (+ `--min-instances=0`). Without `--no-cpu-throttling`,
   CPU is throttled outside requests and the startup background loaders (Eurex RDF ~63s,
@@ -442,7 +446,8 @@ replace each other:
 
 ## Tests
 
-Run: pytest backend/tests/ -v
+Run: pytest
 
-151 tests pass on clean data. 35 skipped = need real broker files in files/ (not in repo).
+255 tests collected (all under backend/tests/). ~131 skip when the real broker files in
+files/ are absent (not in repo — worktrees/CI skip them; the main machine runs them).
 If a test breaks, fix it before committing — no exceptions.
