@@ -405,6 +405,12 @@ replace each other:
 - Premium spike baselines are in-memory only. Do not try to persist them to DB.
 - Claude analysis is fire-and-forget; non-availability must never break the agent cycle.
   Always guard: `if _ANTHROPIC_AVAILABLE and settings.anthropic_api_key and all_alerts`.
+- Blog/MDX: in `.mdx` prose always escape `<` as `&lt;` — MDX parses `<1` (e.g. "FCF <1,2x")
+  as a JSX tag start and breaks the whole Vercel build (see PR #101 → #105).
+  Quick check: `grep -rn '<[0-9]' frontend/src/app/blog/*/page.mdx` must return nothing.
+- Merge gate: before merging ANY PR that touches `frontend/**`, run `gh pr checks <n>` and
+  require the Vercel preview check green. Never merge on a red or pending preview — there
+  are no GitHub Actions and no branch protection here; the merge step is the only gate.
 
 ---
 
