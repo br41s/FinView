@@ -635,6 +635,13 @@ def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
     return result
 
 
+# OHLC history cache: key "TICKER:period" → (rows, fetched_at). Daily bars only
+# change once per session close, so a short TTL kills repeat yfinance downloads
+# (every drawer/chart open re-fetched up to 10y of bars) without staleness risk.
+_PRICE_HISTORY_CACHE: dict[str, tuple[list, float]] = {}
+_PRICE_HISTORY_TTL = 900.0  # seconds
+
+
 @router.get("/price-history")
 def price_history(
     ticker: str,
@@ -646,6 +653,8 @@ def price_history(
     Read-only and best-effort: any failure or unknown ticker returns []
     so the frontend simply hides the chart. period is whitelisted.
     """
+    import time
+
     import pandas as pd
     import yfinance as yf
 
@@ -655,6 +664,10 @@ def price_history(
     t = ticker.strip().upper()
     if not t:
         return []
+    cache_key = f"{t}:{period}"
+    cached = _PRICE_HISTORY_CACHE.get(cache_key)
+    if cached and time.time() - cached[1] < _PRICE_HISTORY_TTL:
+        return cached[0]
     try:
         df = yf.download(t, period=period, interval="1d", auto_adjust=True, progress=False)
         if df is None or df.empty:
@@ -662,7 +675,7 @@ def price_history(
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df = df.dropna(subset=["Close"])
-        return [
+        rows = [
             {
                 "date": str(idx.date()) if hasattr(idx, "date") else str(idx)[:10],
                 "open": round(float(row["Open"]), 4),
@@ -673,6 +686,10 @@ def price_history(
             }
             for idx, row in df.iterrows()
         ]
+        # Only cache successful non-empty fetches — an empty [] is usually a
+        # transient Yahoo failure, and caching it would hide the chart for 15 min.
+        _PRICE_HISTORY_CACHE[cache_key] = (rows, time.time())
+        return rows
     except Exception:
         logger.exception("price_history failed for %s", t)
         return []
