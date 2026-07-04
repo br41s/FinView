@@ -12,7 +12,8 @@ CSV_PATH = Path(__file__).parent.parent.parent / "files" / "IBKR-U11040354_2024_
 
 @pytest.fixture
 def report():
-    assert CSV_PATH.exists(), f"Test CSV not found: {CSV_PATH}"
+    if not CSV_PATH.exists():
+        pytest.skip(f"IBKR 2024 CSV not available: {CSV_PATH}")
     return parse_ibkr_activity_statement(CSV_PATH)
 
 
@@ -256,7 +257,8 @@ CSV_2025 = Path(__file__).parent.parent.parent / "files" / "IBKR-U11040354_2025_
 
 @pytest.fixture
 def report_2025():
-    assert CSV_2025.exists(), f"Test CSV not found: {CSV_2025}"
+    if not CSV_2025.exists():
+        pytest.skip(f"IBKR 2025 CSV not available: {CSV_2025}")
     return parse_ibkr_activity_statement(CSV_2025)
 
 
