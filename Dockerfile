@@ -7,10 +7,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-COPY backend ./backend
+# Deps are pinned+hashed in requirements.txt (exported from uv.lock — after any
+# pyproject change run: uv lock && uv export --frozen --no-dev --no-emit-project
+# -o requirements.txt). Copied before backend/ so the dep layer caches across
+# code-only deploys.
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-RUN pip install --upgrade pip && pip install .
+COPY backend ./backend
+ENV PYTHONPATH=/app
 
 # Cloud Run injects PORT (defaults to 8080). uvicorn binds there.
 ENV PORT=8080
