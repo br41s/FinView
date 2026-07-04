@@ -18,10 +18,13 @@ returns None and callers simply omit the annotation.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from backend.config import settings
 from backend.services import fred_rates
+
+logger = logging.getLogger(__name__)
 
 _MACRO_SERIES = ("VIXCLS", "T10Y2Y", "STLFSI4", "BAMLH0A0HYM2")
 
@@ -69,7 +72,7 @@ def sync_macro() -> int:
         rows = fred_rates._fetch_observations(series_id, start, scale=1.0)
         total += fred_rates._upsert(series_id, rows)
     if total:
-        print(f"[macro-sync] added {total} macro observations")
+        logger.info("[macro-sync] added %s macro observations", total)
     return total
 
 
