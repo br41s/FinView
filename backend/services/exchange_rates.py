@@ -15,6 +15,7 @@ Ported from OptionsAI (fiscal/exchange_rates.py), adapted to SQLAlchemy.
 
 from __future__ import annotations
 
+import logging
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -25,6 +26,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from backend.database import SessionLocal, engine
 from backend.models import ExchangeRate
+
+logger = logging.getLogger(__name__)
 
 _ECB_90D_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml"
 _ECB_FULL_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml"
@@ -122,27 +125,27 @@ def sync_rates() -> int:
     min_cached, max_cached = _cached_date_range("USD")
 
     if not min_cached:
-        print("[ecb-sync] No cached rates — downloading full ECB history...")
+        logger.info("[ecb-sync] No cached rates — downloading full ECB history...")
         rows = _parse_ecb_rates(_fetch_ecb_xml(_ECB_FULL_URL))
         n = _upsert_rates(rows)
-        print(f"[ecb-sync] Loaded {n} rates (full history)")
+        logger.info("[ecb-sync] Loaded %s rates (full history)", n)
         return n
 
     today = datetime.now(timezone.utc).date()
     max_date = date.fromisoformat(max_cached)
     gap_days = (today - max_date).days
     if gap_days <= 1:
-        print(f"[ecb-sync] Rates already fresh (last: {max_cached})")
+        logger.info("[ecb-sync] Rates already fresh (last: %s)", max_cached)
         return 0
 
-    print(f"[ecb-sync] Updating rates (last: {max_cached}, gap: {gap_days}d)...")
+    logger.info("[ecb-sync] Updating rates (last: %s, gap: %sd)...", max_cached, gap_days)
     rows = _parse_ecb_rates(_fetch_ecb_xml(_ECB_90D_URL))
     new_rows = [(d, c, r) for d, c, r in rows if d > max_cached]
     if new_rows:
         n = _upsert_rates(new_rows)
-        print(f"[ecb-sync] Added {n} new rate entries")
+        logger.info("[ecb-sync] Added %s new rate entries", n)
         return n
-    print("[ecb-sync] 90-day feed had no new dates")
+    logger.info("[ecb-sync] 90-day feed had no new dates")
     return 0
 
 

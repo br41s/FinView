@@ -1,5 +1,6 @@
 """FinView FastAPI application."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,6 +29,14 @@ from backend.services.geo.scheduler import shutdown_scheduler as shutdown_geo_sc
 from backend.services.options_scheduler import shutdown_scheduler
 from backend.services.rate_limit import limiter
 from backend.services.zonas_clave_scheduler import shutdown_scheduler as shutdown_zc_scheduler
+
+# Without a root handler, module loggers fall back to Python's WARNING-level
+# lastResort handler and every logger.info() in the codebase is dropped.
+# Root stays at WARNING so third-party libs (httpx, apscheduler) don't get chatty.
+logging.basicConfig(format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logging.getLogger("backend").setLevel(logging.INFO)
+
+logger = logging.getLogger(__name__)
 
 # Create tables on startup, then apply any additive column / constraint migrations
 Base.metadata.create_all(bind=engine)
@@ -64,7 +73,7 @@ async def lifespan(app: FastAPI):
 
             sync_rates()
         except Exception as exc:  # noqa: BLE001 - background best-effort
-            print(f"[ecb-sync] skipped: {exc}")
+            logger.warning("[ecb-sync] skipped: %s", exc)
 
     threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
 
@@ -78,7 +87,7 @@ async def lifespan(app: FastAPI):
             sync_fred()
             sync_macro()
         except Exception as exc:  # noqa: BLE001 - background best-effort
-            print(f"[fred-sync] skipped: {exc}")
+            logger.warning("[fred-sync] skipped: %s", exc)
 
     threading.Thread(target=_sync_fred_rates, daemon=True, name="fred-rate-sync").start()
 
@@ -93,7 +102,7 @@ async def lifespan(app: FastAPI):
             if stale:
                 refresh_iic_catalog()
         except Exception as exc:  # noqa: BLE001 - background best-effort
-            print(f"[cnmv-catalog] skipped: {exc}")
+            logger.warning("[cnmv-catalog] skipped: %s", exc)
 
     threading.Thread(target=_refresh_cnmv_catalog, daemon=True, name="cnmv-catalog-refresh").start()
 

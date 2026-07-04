@@ -19,6 +19,7 @@ constants, exactly like Turnstile/aisstream degrade.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -29,6 +30,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from backend.config import settings
 from backend.database import SessionLocal, engine
 from backend.models import FredRate
+
+logger = logging.getLogger(__name__)
 
 _FRED_URL = "https://api.stlouisfed.org/fred/series/observations"
 
@@ -150,7 +153,7 @@ def sync_rates() -> int:
     No-op (returns 0) when no FRED API key is configured.
     """
     if not settings.fred_api_key:
-        print("[fred-sync] no FRED_API_KEY — skipping (Greeks use constants)")
+        logger.info("[fred-sync] no FRED_API_KEY — skipping (Greeks use constants)")
         return 0
 
     total = 0
@@ -164,7 +167,7 @@ def sync_rates() -> int:
         rows = _fetch_observations(series_id, start)
         total += _upsert(series_id, rows)
     if total:
-        print(f"[fred-sync] added {total} rate observations")
+        logger.info("[fred-sync] added %s rate observations", total)
     return total
 
 
