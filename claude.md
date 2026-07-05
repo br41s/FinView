@@ -64,7 +64,9 @@ backend/
     notification_service.py — ntfy.sh push + Gmail SMTP + Telegram Bot API
     exchange_rates.py      — ECB reference-rate service (DB cache + ±7d fallback); official FX fallback for IRPF
     cnmv_catalog.py        — CNMV IIC registry → searchable catalog for the alt-investments search bar
+    geo/                   — Geo-Intel pipeline (WorldHawk port): ingest/ + sentinel, analyst, advisor, auditor, notify, orchestrator, scheduler, ais_collector
   api/alt_investments.py — Alt-investments CRUD + /summary consolidation (TVPI/DPI/RVPI) + /search
+  api/geo.py             — Geo-Intel endpoints: signals, run, scheduler control, /geo/cron (external cron entry)
 
 frontend/
   src/app/page.tsx                  — Main investment dashboard (5 tabs)
@@ -75,6 +77,7 @@ frontend/
   src/lib/                          — API client + TypeScript types; chartMarkers.ts (execution markers + scope slicing)
   src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
   src/app/markets/page.tsx          — Markets: DB-backed watchlist (markets_watchlist) + candlestick viewer (suggestions from portfolio)
+  src/app/geo-intel/page.tsx        — Geo-Intel dashboard (map + signal feed; components in src/components/geo-intel/)
 
 ---
 
@@ -266,6 +269,49 @@ summary stat cards + allocation bars + positions table + inline add/edit form (n
 Structured-products barrier/knock-in alerts, private-bank PDF import, AI reporting,
 capital-call/distribution movement sub-table. Search: CNMV ECR (PE/VC) + SICAV/RE/hedge registries,
 listed SOCIMIs via Yahoo.
+
+---
+
+## Geo-Intel — architecture
+
+WorldHawk port: geopolitical/natural events → market signals. 89 rules / 46 regions
+(`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
+maritime AIS, meteo, flights, GDELT, ACLED) — every source key optional, a missing
+key degrades that source to empty.
+
+### Pipeline (`services/geo/orchestrator.py`, per user)
+`ingest → sentinel (event extraction) → analyst (rule matching, LLM enrichment for
+importance ≥ 60) → compound rules (energy/food/conflict buckets, ≥2 simultaneous) →
+advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pending`.
+- **Dedup**: per-user by (source, external_id) on ACTIVE signals. Existing signals get
+  confidence/importance refreshed; they only re-notify when confidence shifts ≥ 15.
+- **Notify gate**: importance = round(confidence × risk/10) ≥ 60 → ntfy + Telegram + email
+  via `geo/notify.py` (Telegram text is Markdown-escaped — external headlines contain
+  `*_[` and would 400 the Bot API otherwise; keep the escaping).
+- **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
+  checkpoint resolves the signal and feeds confidence_mod back into geo_rule_stats.
+
+### Scheduling — prod runs on external cron, NOT APScheduler
+The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives
+while the instance is alive — with `--min-instances=0` it dies on scale-to-zero.
+**Prod periodicity = Cloud Scheduler → `POST /api/geo/cron` every 10 min**, authenticated
+by header `X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret
+disables the endpoint). The endpoint runs one cycle per user synchronously so Cloud Run
+keeps CPU until it finishes. Don't convert it to fire-and-forget threads — the instance
+can be reclaimed after the response.
+
+### Frontend — /geo-intel
+Map (react-simple-maps) + signal feed + detail panel. Header: "Run cycle" (manual,
+polls until signals land), "Monitor" toggle (in-process scheduler — dev convenience,
+not the prod mechanism), Active/Tracked/Regions/Last-signal stats. Signals silently
+re-fetch every 60s.
+
+### Env keys (Cloud Run)
+Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KEY`,
+`FINVIEW_ACLED_EMAIL/KEY`, `FINVIEW_OPENSKY_USERNAME/PASSWORD` (all optional).
+Notifications: `FINVIEW_NTFY_TOPIC`, `FINVIEW_TELEGRAM_BOT_TOKEN/CHAT_ID`,
+`FINVIEW_NOTIFY_EMAIL_FROM/TO/PASSWORD` — unset = channel silently no-ops.
+Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header).
 
 ---
 
