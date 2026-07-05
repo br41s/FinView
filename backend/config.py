@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # NextAuth shared secret (must match AUTH_SECRET on frontend)
     auth_secret: str = INSECURE_DEFAULT_SECRET
 
+    # Shared secret for external cron callers (Cloud Scheduler → POST /geo/cron).
+    # Empty disables the endpoint entirely.
+    cron_secret: str = ""
+
     # Cloudflare Turnstile (bot protection on login). When empty, verification
     # is skipped so local dev / unconfigured deploys keep working. Set
     # FINVIEW_TURNSTILE_SECRET in prod; the frontend uses NEXT_PUBLIC_TURNSTILE_SITE_KEY.
