@@ -8,6 +8,7 @@ shared with the options agent.
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 
 import httpx
@@ -60,10 +61,20 @@ def correlate_with_rules(
     return rules, list(ticker_map.values()), confidence, rules[0].direction
 
 
+# The pipeline runs per user but events are global: cache LLM analyses by event id
+# so N users cost one call. In-memory only (resets on cold start, like premium_spike).
+_LLM_CACHE: dict[str, tuple[float, dict]] = {}
+_LLM_CACHE_TTL = 6 * 3600  # seconds
+
+
 def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
     """OpenRouter deep analysis. Fire-and-forget — returns None on any failure."""
     if not settings.openrouter_api_key:
         return None
+
+    cached = _LLM_CACHE.get(event.id)
+    if cached and time.time() - cached[0] < _LLM_CACHE_TTL:
+        return cached[1]
 
     prompt = (
         "You are VolatilityEdge, a senior geopolitical-macro analyst. Analyze this "
@@ -97,7 +108,14 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
             logger.warning("geo LLM HTTP %s", resp.status_code)
             return None
         content = resp.json()["choices"][0]["message"]["content"]
-        return json.loads(content)
+        result = json.loads(content)
+        # Cache only successes so transient failures retry next cycle.
+        if len(_LLM_CACHE) > 500:
+            cutoff = time.time() - _LLM_CACHE_TTL
+            for key in [k for k, (ts, _) in _LLM_CACHE.items() if ts < cutoff]:
+                _LLM_CACHE.pop(key, None)
+        _LLM_CACHE[event.id] = (time.time(), result)
+        return result
     except Exception:
         logger.warning("geo LLM analysis failed", exc_info=True)
         return None

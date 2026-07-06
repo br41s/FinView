@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from backend.models import GeoRuleStat
+from backend.models import GeoRuleStat, GeoSignal, GeoSignalStatus
 
 from . import sentinel
 from .advisor import IMPORTANCE_THRESHOLD, SignalResult, compute_importance, generate_signal
@@ -48,6 +48,20 @@ class CycleResult:
 
 def _load_stats(db: Session) -> dict[str, GeoRuleStat]:
     return {s.rule_id: s for s in db.query(GeoRuleStat).all()}
+
+
+def _has_active_signal(db: Session, user_id: int, event: GeoEvent) -> bool:
+    return (
+        db.query(GeoSignal.id)
+        .filter(
+            GeoSignal.user_id == user_id,
+            GeoSignal.source == event.source,
+            GeoSignal.external_id == event.id,
+            GeoSignal.status == GeoSignalStatus.ACTIVE.value,
+        )
+        .first()
+        is not None
+    )
 
 
 def _collect_events(bundle) -> list[GeoEvent]:
@@ -117,7 +131,9 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     # Phase B: compound rules (orchestrator-level bucket tally).
     analyses.extend(_compound_analyses(analyses))
 
-    # Phase C: LLM enrichment only for important, rule-backed signals.
+    # Phase C: LLM enrichment only for important, rule-backed signals the user
+    # doesn't already track — known active signals only get their scores refreshed
+    # by the advisor, so re-running the LLM for them every cycle is pure token burn.
     enriched: list[AnalystResult] = []
     for a in analyses:
         est_importance = compute_importance(a.confidence, a.risk_score)
@@ -125,6 +141,7 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
             est_importance >= IMPORTANCE_THRESHOLD
             and any(r.tickers for r in a.matched_rules)
             and a.event.type != "compound"
+            and not _has_active_signal(db, user_id, a.event)
         )
         enriched.append(analyze_event(a.event, stats, use_llm=True) if use_llm else a)
 
