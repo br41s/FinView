@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # Telegram notifications (optional)
     telegram_bot_token: str = ""  # from @BotFather
     telegram_chat_id: str = ""    # personal chat or group ID
+    telegram_thread_id: str = ""  # forum-topic (message_thread_id) in the group; empty = General
 
     # Geo-Intel (WorldHawk) ingest source keys — all optional; a missing key
     # degrades that single source to empty rather than failing the cycle.

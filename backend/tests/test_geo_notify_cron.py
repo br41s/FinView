@@ -73,6 +73,47 @@ def test_notify_signal_never_raises(monkeypatch):
     notify_signal(_signal(), importance=72)  # must not raise
 
 
+# ── Telegram forum-topic routing ──────────────────────────────────────
+
+
+def test_send_telegram_includes_thread_id_when_set(monkeypatch):
+    import io
+    import json
+    import urllib.request
+
+    from backend.config import settings
+    from backend.services import notification_service
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "tok")
+    monkeypatch.setattr(settings, "telegram_chat_id", "-100123")
+    monkeypatch.setattr(settings, "telegram_thread_id", "42")
+
+    captured: dict = {}
+
+    class _Resp(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured.update(json.loads(req.data))
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert notification_service.send_telegram("hola") is True
+    assert captured["message_thread_id"] == 42
+
+    # Empty thread id → field omitted (message goes to General)
+    monkeypatch.setattr(settings, "telegram_thread_id", "")
+    captured.clear()
+    notification_service.send_telegram("hola")
+    assert "message_thread_id" not in captured
+
+
 # ── /geo/cron shared-secret auth ──────────────────────────────────────
 
 
