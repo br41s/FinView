@@ -114,6 +114,60 @@ def test_send_telegram_includes_thread_id_when_set(monkeypatch):
     assert "message_thread_id" not in captured
 
 
+# ── LLM token gating ──────────────────────────────────────────────────
+
+
+def test_llm_analyze_caches_per_event(monkeypatch):
+    import httpx
+
+    from backend.config import settings
+    from backend.services.geo import analyst
+    from backend.services.geo.sentinel import GeoEvent
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(analyst, "_LLM_CACHE", {})
+
+    calls = []
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"choices": [{"message": {"content": '{"confidence": 80}'}}]}
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: calls.append(1) or _Resp())
+
+    event = GeoEvent(
+        id="ev-cache", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    # Second call for the same event id (another user's cycle) must hit the cache.
+    assert analyst._llm_analyze(event, []) == {"confidence": 80}
+    assert analyst._llm_analyze(event, []) == {"confidence": 80}
+    assert len(calls) == 1
+
+
+def test_has_active_signal_gates_known_events(db):
+    from backend.services.geo.orchestrator import _has_active_signal
+    from backend.services.geo.sentinel import GeoEvent
+
+    db.add(_signal())
+    db.commit()
+
+    known = GeoEvent(
+        id="ev-1", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    unknown = GeoEvent(
+        id="ev-new", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    assert _has_active_signal(db, 1, known) is True
+    assert _has_active_signal(db, 1, unknown) is False
+    assert _has_active_signal(db, 2, known) is False  # other user, own scope
+
+
 # ── /geo/cron shared-secret auth ──────────────────────────────────────
 
 

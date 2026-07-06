@@ -283,6 +283,9 @@ key degrades that source to empty.
 `ingest → sentinel (event extraction) → analyst (rule matching, LLM enrichment for
 importance ≥ 60) → compound rules (energy/food/conflict buckets, ≥2 simultaneous) →
 advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pending`.
+- **LLM token gating**: the OpenRouter call fires only on first sighting — skipped when
+  the user already has an ACTIVE signal for the event, and results are cached in-memory
+  per event id (6h TTL) so N users cost one call. Long-lived feed events cost ~1 call total.
 - **Dedup**: per-user by (source, external_id) on ACTIVE signals. Existing signals get
   confidence/importance refreshed; they only re-notify when confidence shifts ≥ 15.
 - **Notify gate**: importance = round(confidence × risk/10) ≥ 60 → ntfy + Telegram + email
