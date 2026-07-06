@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # NextAuth shared secret (must match AUTH_SECRET on frontend)
     auth_secret: str = INSECURE_DEFAULT_SECRET
 
+    # Shared secret for external cron callers (Cloud Scheduler → POST /geo/cron).
+    # Empty disables the endpoint entirely.
+    cron_secret: str = ""
+
     # Cloudflare Turnstile (bot protection on login). When empty, verification
     # is skipped so local dev / unconfigured deploys keep working. Set
     # FINVIEW_TURNSTILE_SECRET in prod; the frontend uses NEXT_PUBLIC_TURNSTILE_SITE_KEY.
@@ -47,6 +51,7 @@ class Settings(BaseSettings):
     # Telegram notifications (optional)
     telegram_bot_token: str = ""  # from @BotFather
     telegram_chat_id: str = ""    # personal chat or group ID
+    telegram_thread_id: str = ""  # forum-topic (message_thread_id) in the group; empty = General
 
     # Geo-Intel (WorldHawk) ingest source keys — all optional; a missing key
     # degrades that single source to empty rather than failing the cycle.

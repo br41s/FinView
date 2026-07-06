@@ -5,7 +5,7 @@ import { SignalPanel } from "./SignalPanel";
 import { FilterBar, CATEGORIES, type DirectionFilter } from "./FilterBar";
 import { MapLoading, MapEmpty, MapError } from "./MapStates";
 import { type GeoSignal } from "@/lib/geo";
-import { api } from "@/lib/api";
+import { api, type GeoSchedulerStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { QuickNav } from "@/components/QuickNav";
 
@@ -21,6 +21,8 @@ export function GeoIntelSection() {
   // SSR/CSR and would otherwise cause hydration mismatches.
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [running, setRunning] = useState(false);
+  const [monitor, setMonitor] = useState<GeoSchedulerStatus | null>(null);
+  const [togglingMonitor, setTogglingMonitor] = useState(false);
 
   const load = useCallback(() => {
     setPhase("loading");
@@ -33,9 +35,46 @@ export function GeoIntelSection() {
       .catch(() => setPhase("error"));
   }, []);
 
+  const loadMonitor = useCallback(() => {
+    api.geo
+      .schedulerStatus()
+      .then(setMonitor)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadMonitor();
+  }, [load, loadMonitor]);
+
+  // Silent refresh so new signals/alerts appear without user interaction.
+  useEffect(() => {
+    const id = setInterval(() => {
+      api.geo
+        .signals("all")
+        .then((data) => {
+          setSignals(data);
+          setPhase((p) => (p === "error" ? "ready" : p));
+        })
+        .catch(() => {});
+      loadMonitor();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [loadMonitor]);
+
+  const toggleMonitor = useCallback(async () => {
+    if (!monitor) return;
+    setTogglingMonitor(true);
+    try {
+      if (monitor.running) await api.geo.stopScheduler();
+      else await api.geo.startScheduler();
+      loadMonitor();
+    } catch {
+      // status refetch below reflects reality
+    } finally {
+      setTogglingMonitor(false);
+    }
+  }, [monitor, loadMonitor]);
 
   const filtered = useMemo(() => {
     return signals.filter((s) => {
@@ -47,6 +86,13 @@ export function GeoIntelSection() {
   }, [signals, categories, direction, activeOnly]);
 
   const active = filtered.filter((s) => s.status === "active").length;
+  const regions = useMemo(
+    () => new Set(filtered.map((s) => s.location).filter(Boolean)).size,
+    [filtered],
+  );
+  const lastSignal = monitor?.last_signal_at
+    ? new Date(monitor.last_signal_at).toLocaleString()
+    : "—";
 
   const retry = load;
 
@@ -96,10 +142,21 @@ export function GeoIntelSection() {
           <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
             {running ? "Running…" : "Run cycle"}
           </Button>
+          <Button
+            variant={monitor?.running ? "default" : "outline"}
+            size="sm"
+            onClick={toggleMonitor}
+            disabled={togglingMonitor || monitor === null}
+          >
+            {monitor?.running
+              ? `Monitor ON · ${monitor.interval_minutes}m`
+              : "Start monitor"}
+          </Button>
           <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground lg:gap-6">
             <Stat label="Active" value={String(active)} />
             <Stat label="Tracked" value={String(filtered.length)} />
-            <Stat label="Regions" value="7" />
+            <Stat label="Regions" value={String(regions)} />
+            <Stat label="Last signal" value={lastSignal} />
           </div>
         </div>
       </header>

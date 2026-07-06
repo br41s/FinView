@@ -1,9 +1,10 @@
 """Geo-Intel API — signal listing, detail, manual trigger, scheduler control."""
 
+import hmac
 import logging
 import threading
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import GeoRunResult, GeoSchedulerStatus, GeoSignalOut
@@ -77,6 +78,30 @@ def trigger_run(user: CurrentUser):
         target=run_cycle_for_user, args=(user.id,), daemon=True
     ).start()
     return GeoRunResult(status="started")
+
+
+@router.post("/cron", include_in_schema=False)
+def cron_run(request: Request, db: DbSession):
+    """External-cron entry (Cloud Scheduler / any cron): one cycle per user.
+
+    The in-process APScheduler dies whenever Cloud Run scales to zero, so prod
+    periodicity comes from an external scheduler hitting this endpoint. Auth is
+    a shared secret (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables
+    the endpoint. Runs synchronously so the instance stays alive for the cycle.
+    """
+    from backend.config import settings
+
+    secret = settings.cron_secret
+    provided = request.headers.get("x-cron-key", "")
+    if not secret or not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from backend.models import User
+    from backend.services.geo.orchestrator import run_cycle_for_user
+
+    user_ids = [uid for (uid,) in db.query(User.id).all()]
+    ok = sum(1 for uid in user_ids if run_cycle_for_user(uid) is not None)
+    return {"status": "done", "users": len(user_ids), "cycles_ok": ok}
 
 
 @router.post("/scheduler/start")

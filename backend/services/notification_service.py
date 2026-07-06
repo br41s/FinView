@@ -80,12 +80,17 @@ def send_telegram(text: str) -> bool:
         return False
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = json.dumps({
+        body = {
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
-        }).encode("utf-8")
+        }
+        # Forum groups: route into the app's topic instead of General.
+        thread_id = settings.telegram_thread_id.strip()
+        if thread_id.isdigit():
+            body["message_thread_id"] = int(thread_id)
+        payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
             url,
             data=payload,
