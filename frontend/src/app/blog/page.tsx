@@ -814,7 +814,30 @@ function ImgMetodoDgi() {
   );
 }
 
+function ImgVivirDividendos() {
+  return (
+    <div className={styles.postImgVivirDividendos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        {/* Stacked coins / money bags abstract representation */}
+        <rect x="40" y="70" width="120" height="30" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <rect x="50" y="50" width="100" height="30" rx="6" fill="rgba(154,107,31,0.15)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="60" y="30" width="80" height="30" rx="6" fill="rgba(154,107,31,0.25)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <text x="100" y="115" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">VIVIR DE DIVIDENDOS</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'vivir-de-dividendos-20250707',
+    tag: 'Estrategia',
+    date: '7 jul 2026',
+    readTime: '9 min',
+    title: 'Vivir de los dividendos en España: el capital necesario y la realidad fiscal',
+    excerpt: 'Cuánto capital necesitas para generar 2.000€ netos al mes y qué impacto tiene Hacienda en tu cartera. DGI, High Yield y CEFs comparados con números reales.',
+    Image: ImgVivirDividendos,
+  },
   {
     slug: 'metodo-dgi-construir-cartera-dividendos-20250705',
     tag: 'Estrategia',
