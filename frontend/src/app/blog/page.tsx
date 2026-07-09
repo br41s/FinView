@@ -295,6 +295,29 @@ function ImgSocimi() {
   );
 }
 
+
+function ImgDividendosHaciendaForal() {
+  return (
+    <div className={styles.postImgDividendosHaciendaForal}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">HACIENDA FORAL VS COMÚN</text>
+        {/* Foral box */}
+        <rect x="20" y="30" width="70" height="65" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="55" y="50" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">FORAL</text>
+        <text x="55" y="65" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Navarra</text>
+        <text x="55" y="80" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">15%</text>
+        {/* Common regime box */}
+        <rect x="110" y="30" width="70" height="65" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="145" y="50" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">COMÚN</text>
+        <text x="145" y="65" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">España</text>
+        <text x="145" y="80" fontSize="10" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">19%</text>
+        {/* vs text */}
+        <text x="100" y="110" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">primer tramo base ahorro</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -858,7 +881,16 @@ function ImgOpcionesIngresos() {
 }
 
 const POSTS: Post[] = [
-  {
+    {
+    slug: 'dividendos-hacienda-foral-navarra-euskadi',
+    tag: 'Fiscal',
+    date: '10 jul 2026',
+    readTime: '13 min',
+    title: 'Dividendos en Navarra y País Vasco: qué cambia con Hacienda Foral',
+    excerpt: 'Cómo tributan los dividendos en Navarra y el País Vasco. Diferencias con el régimen común, tipos aplicables y el impacto en tu cartera.',
+    Image: ImgDividendosHaciendaForal,
+  },
+{
     slug: 'opciones-ingresos-extra-dividendos',
     tag: 'Estrategia',
     date: '9 jul 2026',
