@@ -1,0 +1,147 @@
+export const metadata = {
+  title: "Opciones para inversores de dividendos: ingresos extra con covered calls — FinView",
+  description: "Cómo usar covered calls y cash-secured puts para generar ingresos adicionales sobre tu cartera de dividendos. Fiscalidad IRPF incluida.",
+};
+
+# Opciones para inversores de dividendos: ingresos extra con covered calls
+
+> Tienes una cartera de dividendos sólida. Cobras trimestralmente. Pero el resto del tiempo, esas acciones solo ocupan espacio en tu broker. ¿Y si pudieras cobrar una prima extra solo por estar dispuesto a venderlas a un precio superior?
+
+---
+
+## 1. Por qué los dividendos no son suficientes
+
+El dividendo es pasivo. Compras, esperas y cobras. Si el mercado cae, sigues cobrando, pero tu capital sufre. Si el mercado sube, no ves un euro extra a menos que vendas.
+
+Las opciones cambian eso. Te dan control activo sobre tus ingresos.
+
+No hablo de comprar opciones para especular. Hablo de **vender opciones** sobre las acciones que ya tienes (o quieres tener). Es una estrategia conservadora que muchos inversores de dividendos en EE.UU. usan para batir al índice. En España, casi nadie la menciona.
+
+---
+
+## 2. Covered calls: cobra por prometer que venderás
+
+Una *covered call* es simple: vendes una opción de compra (*call*) sobre una acción que ya tienes en cartera.
+
+Te pagan una prima hoy. A cambio, te comprometes a vender la acción a un precio determinado (*strike*) si el mercado sube hasta ahí antes de la fecha de vencimiento.
+
+### Ejemplo real con Santander
+
+Supongamos que tienes **1.000 acciones de Santander** a 4,50 €. El dividend yield es del 3,5% anual. Cobras unos 157 € al trimestre.
+
+Ahora vendes una *call* con:
+- **Strike**: 5,00 € (un 11% por encima del precio actual)
+- **Vencimiento**: 3 meses
+- **Prima**: 0,15 € por acción
+
+Ingresas **150 € hoy** (1.000 × 0,15 €). Eso es casi un trimestre de dividendos extra, pero en un solo día.
+
+¿Qué pasa al vencimiento?
+
+| Escenario | Precio Santander | Resultado |
+|-----------|------------------|-----------|
+| Baja o se queda igual | < 5,00 € | Te quedas la prima (150 €) y las acciones. Pierdes si cae, pero no más de lo que ya perderías. |
+| Sube por encima de 5 € | > 5,00 € | Te obligan a vender a 5,00 €. Ganas 500 € de plusvalía + 150 € de prima. Te pierdes la subida extra. |
+
+La desventaja es obvia: si Santander sube a 6 €, tú solo cobras hasta 5 €. Pero piénsalo así: **vendiste a 5 € con un beneficio del 11% en 3 meses**. ¿Te quejas?
+
+---
+
+## 3. Cash-secured puts: cobra por prometer que compraras
+
+Esta es la inversa. Vendes una opción de venta (*put*) sobre una acción que **quieres tener**.
+
+Te pagan una prima hoy. A cambio, te comprometes a comprar la acción a un precio determinado si el mercado baja hasta ahí.
+
+### Ejemplo con Iberdrola
+
+Quieres entrar en **Iberdrola** a 10 € porque crees que es un buen precio. Hoy cotiza a 11,50 €.
+
+En lugar de esperar y ver si baja, vendes una *put* con:
+- **Strike**: 10,00 €
+- **Vencimiento**: 3 meses
+- **Prima**: 0,30 € por acción
+
+Ingresas **300 €** (1.000 acciones × 0,30 €) hoy.
+
+Si Iberdrola baja de 10 €, te asignan las acciones a 10 € (más baratas de lo que cotizaban cuando vendiste la put). Si no baja, te quedas la prima y no compras nada.
+
+Has cobrado por esperar.
+
+---
+
+## 4. Fiscalidad en España: cómo tributa esto en el IRPF
+
+Aquí es donde la mayoría se equivoca. La prima de una opción **no es un dividendo**. Tributa como ganancia o pérdida patrimonial en la base del ahorro.
+
+### Reglas clave
+
+1. **La prima cobrada** se resta del coste de adquisición de la acción (si eres el vendedor de la call y acabas vendiendo) o se imputa como ganancia patrimonial el día del vencimiento.
+2. **Si la opción caduca sin ejercerse** (no se llega al strike), la prima es una ganancia patrimonial pura. Tributa al **19-28%** según tu tramo.
+3. **Si te ejercen la opción** (tienes que vender), la prima se suma al precio de venta para calcular la plusvalía total.
+
+### Ejemplo de tributación
+
+Vendes una covered call sobre Santander:
+- Compraste Santander a 4,00 €
+- Vendes call a strike 5,00 €, prima 0,15 €
+- Te ejercen: vendes a 5,00 €
+
+Tu plusvalía real es: (5,00 € + 0,15 € prima) - 4,00 € = **1,15 € por acción**.
+
+Tributas por 1,15 € por acción, no por 1,00 €. Hacienda se queda con su parte de la prima también.
+
+> **Ojo**: Si operas opciones en EE.UU. (IBKR), los *wash sales* no existen en España, pero la AEAT exige que declares cada operación individualmente. FinView te ayuda a llevar el registro FIFO cruzado para que no te pierdas.
+
+---
+
+## 5. Cuándo NO hacer covered calls
+
+Esta estrategia no es gratis. Tiene riesgos reales:
+
+- **Riesgo de oportunidad**: Si la acción se dispara un 30%, tú solo cobras hasta el strike. Te vas a odiar un poco.
+- **Riesgo de caída**: Si la acción cae un 20%, la prima cobrada amortigua la caída, pero sigues perdiendo dinero. La prima no es un seguro total.
+- **Riesgo de liquidez**: Si vendes opciones muy lejanas al precio actual (OTM), la prima es baja. Si vendes muy cerca (ATM), el riesgo de que te ejerzan es alto.
+
+**No hagas covered calls** si:
+1. Crees que la acción va a subir un 50% en un mes (mejor guarda las acciones).
+2. La acción tiene un dividendo ex-dividendo antes del vencimiento y la prima no compensa el riesgo de asignación.
+3. No entiendes cómo funciona el apalancamiento (una opción son 100 acciones, no te pases de tamaño).
+
+---
+
+## 6. Comparativa: dividendo vs covered call
+
+| Concepto | Dividendo | Covered Call |
+|----------|-----------|--------------|
+| Frecuencia | Trimestral o anual | Al vencimiento (mensual, trimestral) |
+| Control | Ninguno | Tú eliges el strike y fecha |
+| Fiscalidad | IRPF casilla 29 (retención 19%) | Base del ahorro (19-28%) |
+| Riesgo | Caída del precio | Oportunidad perdida si sube mucho |
+| Ingreso extra | No | Sí, la prima |
+
+¿Cuál es mejor? Depende. Yo uso dividendos para ingresos estables a largo plazo y covered calls para aprovechar la volatilidad cuando el mercado está alto y creo que no va a subir mucho más.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Necesito mucho dinero para empezar?
+
+Sí. Una opción estandariza 100 acciones. Si Santander vale 4,50 €, necesitas 450 € por opción para una covered call, o 450 € de liquidez por opción para una cash-secured put.
+
+### ¿Puedo hacer esto en mi broker español?
+
+La mayoría de brokers españoles (ING, BBVA) no ofrecen opciones. Necesitas IBKR, DeGiro (limitado) o TR. FinView importa datos de todos estos.
+
+### ¿Qué pasa si me ejercen y no tengo las acciones?
+
+Eso es un *naked call* y es muy peligroso. Pierdes dinero ilimitado. Solo haz covered calls si tienes las acciones en cartera.
+
+### ¿Tributan igual en todas las comunidades autónomas?
+
+Sí. La base del ahorro es estatal, aunque algunas comunidades tienen deducciones propias. Consulta tu asesor fiscal.
+
+### ¿Dónde veo las opciones de mis acciones del Ibex?
+
+FinView tiene un monitor de opciones que escrapea MEFF (el mercado de opciones español) y Yahoo Finance. Puedes ver las cadenas de opciones de Santander, Iberdrola, Telefónica y más en tiempo real.

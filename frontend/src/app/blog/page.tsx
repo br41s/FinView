@@ -828,7 +828,45 @@ function ImgVivirDividendos() {
   );
 }
 
+function ImgOpcionesIngresos() {
+  return (
+    <div className={styles.postImgOpcionesIngresos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">COVERED CALLS — INGRESOS EXTRA</text>
+        {/* Underlying price path */}
+        <polyline
+          points="20,90 50,75 80,70 110,55 140,45 170,40"
+          stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"
+        />
+        {/* Strike line */}
+        <line x1="30" y1="45" x2="190" y2="45" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="6 3"/>
+        <text x="185" y="40" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="end">Strike</text>
+        {/* Premium dot */}
+        <circle cx="110" cy="55" r="5" fill="var(--fv-ochre)"/>
+        <text x="110" y="58" fontSize="5" fill="var(--fv-paper)" fontFamily="system-ui" textAnchor="middle" fontWeight="bold">P</text>
+        {/* Arrow showing premium received */}
+        <line x1="110" y1="70" x2="110" y2="90" stroke="var(--fv-ochre)" strokeWidth="1.5" markerEnd="url(#arrowDown)"/>
+        <text x="125" y="82" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui">prima</text>
+        <defs>
+          <marker id="arrowDown" markerWidth="6" markerHeight="6" refX="3" refY="5" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'opciones-ingresos-extra-dividendos',
+    tag: 'Estrategia',
+    date: '9 jul 2026',
+    readTime: '12 min',
+    title: 'Opciones para inversores de dividendos: ingresos extra con covered calls',
+    excerpt: 'Cómo usar covered calls y cash-secured puts para generar ingresos adicionales sobre tu cartera de dividendos. Fiscalidad IRPF incluida.',
+    Image: ImgOpcionesIngresos,
+  },
   {
     slug: 'vivir-de-dividendos-20250707',
     tag: 'Estrategia',
