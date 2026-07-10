@@ -154,8 +154,17 @@ function DirChip({ dir }: { dir: GeoSignal["direction"] }) {
   );
 }
 
+const OUTCOME_COLORS = {
+  CORRECT: "#6B7A3A",
+  INCORRECT: "#9B3D2C",
+  NEUTRAL: "#9A6B1F",
+} as const;
+
+function checkpointLabel(horizon: string) {
+  return `+${horizon}`;
+}
+
 function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void }) {
-  const checkpoints = ["+1h", "+6h", "+1d", "+3d", "+7d"];
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[rgba(31,27,22,0.14)] px-5 py-3">
@@ -192,25 +201,66 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
 
         <div className="mt-6">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+            Why this was triggered
+          </p>
+          {signal.rules.length === 0 ? (
+            <p className="mt-2 text-[12px] text-[rgba(31,27,22,0.5)]">
+              No specific rule matched — scored on base event severity.
+            </p>
+          ) : (
+            <div className="mt-2 flex flex-col gap-2.5">
+              {signal.rules.map((r) => (
+                <div key={r.id} className="rounded-md border border-[rgba(31,27,22,0.12)] bg-[#FEFCF5] px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[12px] font-medium leading-snug text-[#1F1B16]">
+                      {r.description}
+                    </p>
+                    <span
+                      className="shrink-0 text-[10px] tabular-nums text-[rgba(31,27,22,0.5)]"
+                      style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                    >
+                      {Math.round(r.confidence * 100)}%
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
+                    {r.thesis}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
             Affected tickers
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {signal.tickers.length === 0 ? (
               <span className="text-[12px] text-[rgba(31,27,22,0.5)]">None tagged</span>
             ) : (
-              signal.tickers.map((t) => (
-                <span
-                  key={t}
-                  className="rounded-full px-2.5 py-1 text-[11px]"
-                  style={{
-                    fontFamily: "var(--fv-font-jetbrains), monospace",
-                    color: "#9A6B1F",
-                    backgroundColor: "rgba(154,107,31,0.10)",
-                  }}
-                >
-                  {t}
-                </span>
-              ))
+              signal.tickers.map((t) => {
+                const color = DIR_COLORS[t.direction];
+                const arrow = t.direction === "bullish" ? "↑" : t.direction === "bearish" ? "↓" : "•";
+                return (
+                  <span
+                    key={t.symbol}
+                    title={
+                      t.priceAtSignal != null
+                        ? `Price at signal: $${t.priceAtSignal.toFixed(2)}`
+                        : undefined
+                    }
+                    className="rounded-full px-2.5 py-1 text-[11px]"
+                    style={{
+                      fontFamily: "var(--fv-font-jetbrains), monospace",
+                      color,
+                      backgroundColor: color + "1A",
+                    }}
+                  >
+                    {arrow} {t.symbol}
+                  </span>
+                );
+              })
             )}
           </div>
         </div>
@@ -222,23 +272,45 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           <div className="mt-4 relative">
             <div className="absolute left-0 right-0 top-[7px] h-px bg-[rgba(31,27,22,0.14)]" />
             <div className="relative flex justify-between">
-              {checkpoints.map((c) => (
-                <div key={c} className="flex flex-col items-center gap-2">
-                  <span
-                    className="h-3.5 w-3.5 rounded-full border border-[rgba(31,27,22,0.25)] bg-[#FEFCF5]"
-                  />
-                  <span
-                    className="text-[10px] text-[rgba(31,27,22,0.6)]"
-                    style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
-                  >
-                    {c}
-                  </span>
-                </div>
-              ))}
+              {signal.checkpoints.map((c) => {
+                const pending = c.evaluatedAt == null;
+                const dotColor = pending
+                  ? undefined
+                  : OUTCOME_COLORS[c.outcome ?? "NEUTRAL"];
+                const title = pending
+                  ? "Not yet evaluated"
+                  : `${c.score != null ? Math.round(c.score) + "% correct" : "no measurable tickers"}${c.detail ? ` — ${c.detail}` : ""}`;
+                return (
+                  <div key={c.horizon} className="flex flex-col items-center gap-2" title={title}>
+                    <span
+                      className="h-3.5 w-3.5 rounded-full border"
+                      style={{
+                        borderColor: pending ? "rgba(31,27,22,0.25)" : dotColor,
+                        backgroundColor: pending ? "#FEFCF5" : dotColor,
+                      }}
+                    />
+                    <span
+                      className="text-[10px] text-[rgba(31,27,22,0.6)]"
+                      style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                    >
+                      {checkpointLabel(c.horizon)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            <p className="mt-3 text-[11px] text-[rgba(31,27,22,0.5)]">
-              Outcome tracking pending — checkpoints fill in as the signal ages.
-            </p>
+            {(() => {
+              const lastEvaluated = [...signal.checkpoints]
+                .reverse()
+                .find((c) => c.evaluatedAt != null);
+              return (
+                <p className="mt-3 text-[11px] text-[rgba(31,27,22,0.5)]">
+                  {lastEvaluated
+                    ? `${checkpointLabel(lastEvaluated.horizon)}: ${lastEvaluated.score != null ? Math.round(lastEvaluated.score) + "% correct" : "no measurable tickers"}${lastEvaluated.detail ? ` — ${lastEvaluated.detail}` : ""}`
+                    : "Outcome tracking pending — checkpoints fill in as the signal ages."}
+                </p>
+              );
+            })()}
           </div>
         </div>
       </div>

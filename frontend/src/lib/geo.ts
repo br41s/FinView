@@ -2,6 +2,30 @@
 // (Lives in lib/ because src/data/ is gitignored; the original Lovable mock file
 // stays there for local reference only — production imports come from here.)
 
+export type GeoSignalTicker = {
+  symbol: string;
+  direction: "bullish" | "bearish" | "neutral";
+  priceAtSignal: number | null;
+};
+
+export type GeoRule = {
+  id: string;
+  description: string; // what happened
+  thesis: string; // why it moves markets
+  confidence: number; // 0-1
+};
+
+export type GeoCheckpointHorizon = "1h" | "6h" | "1d" | "3d" | "7d";
+
+export type GeoCheckpoint = {
+  horizon: GeoCheckpointHorizon;
+  targetAt: string;
+  score: number | null; // 0-100
+  outcome: "CORRECT" | "INCORRECT" | "NEUTRAL" | null; // null = pending
+  detail: string | null;
+  evaluatedAt: string | null;
+};
+
 export type GeoSignal = {
   id: string;
   headline: string;
@@ -20,7 +44,9 @@ export type GeoSignal = {
   confidence: number; // 0-1
   riskScore: number; // 0-10
   direction: "bullish" | "bearish" | "neutral";
-  tickers: string[];
+  tickers: GeoSignalTicker[];
+  rules: GeoRule[];
+  checkpoints: GeoCheckpoint[];
   timestamp: string;
   status: "active" | "resolved";
 };

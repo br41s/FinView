@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -17,6 +17,10 @@ const COLORS = {
   bearish: "#9B3D2C",
   neutral: "#9A6B1F",
 };
+
+const DEFAULT_CENTER: [number, number] = [10, 15];
+const DEFAULT_ZOOM = 1;
+const SELECTED_ZOOM = 4;
 
 function markerRadius(importance: number) {
   const t = Math.max(0, Math.min(100, importance)) / 100;
@@ -41,6 +45,25 @@ export function GeoMap({
   const setHoverId = (id: string | null) => onHoverSignal?.(id);
   const hoverId = hoveredId;
 
+  const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+
+  // Fly to the selected signal; return to the default view on deselect. Driven
+  // entirely by selectedId so map-marker clicks and Live Feed clicks (which set
+  // the same `selected` state upstream) both trigger the same zoom effect.
+  useEffect(() => {
+    const target = selectedId
+      ? signals.find((s) => s.id === selectedId)
+      : null;
+    if (target) {
+      setCenter([target.lng, target.lat]);
+      setZoom(SELECTED_ZOOM);
+    } else {
+      setCenter(DEFAULT_CENTER);
+      setZoom(DEFAULT_ZOOM);
+    }
+  }, [selectedId, signals]);
+
   const arcs = useMemo(
     () =>
       signals
@@ -57,6 +80,7 @@ export function GeoMap({
           50% { transform: scale(1.35); opacity: 0.35; }
         }
         .geo-pulse { transform-box: fill-box; transform-origin: center; animation: geoPulse 2s cubic-bezier(0.2,0.8,0.2,1) infinite; }
+        .rsm-zoomable-group { transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); }
       `}</style>
       <ComposableMap
         projection="geoEqualEarth"
@@ -65,7 +89,7 @@ export function GeoMap({
         height={520}
         style={{ width: "100%", height: "100%" }}
       >
-        <ZoomableGroup center={[10, 15]} zoom={1} minZoom={1} maxZoom={6}>
+        <ZoomableGroup center={center} zoom={zoom} minZoom={1} maxZoom={6}>
           <Geographies geography={WORLD_TOPO}>
             {({ geographies }) =>
               geographies.map((geo) => (

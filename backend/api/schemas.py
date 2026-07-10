@@ -448,6 +448,30 @@ class ZonasClaveSchedulerStatus(BaseModel):
 # ── Geo-Intel ────────────────────────────────────────────────────────
 
 
+class GeoSignalTickerOut(BaseModel):
+    symbol: str
+    direction: str  # bullish|bearish|neutral
+    priceAtSignal: float | None = None
+
+
+class GeoRuleOut(BaseModel):
+    """Matched rule that explains why a signal fired (what/why)."""
+
+    id: str
+    description: str  # what happened, e.g. "Major Chilean earthquake disrupts copper supply"
+    thesis: str  # rationale, e.g. "Copper supply disruption → COPX up, miners down"
+    confidence: float  # rule's base confidence, 0-1
+
+
+class GeoCheckpointOut(BaseModel):
+    horizon: str  # 1h|6h|1d|3d|7d
+    targetAt: datetime
+    score: float | None = None  # 0-100, % of tickers that moved as predicted
+    outcome: str | None = None  # CORRECT|INCORRECT|NEUTRAL, None = not yet evaluated
+    detail: str | None = None  # per-ticker % move breakdown
+    evaluatedAt: datetime | None = None
+
+
 class GeoSignalOut(BaseModel):
     """Matches the frontend GeoSignal contract (camelCase, lowercase enums)."""
 
@@ -462,7 +486,9 @@ class GeoSignalOut(BaseModel):
     confidence: float  # 0-1
     riskScore: float  # 0-10
     direction: str  # bullish|bearish|neutral
-    tickers: list[str]
+    tickers: list[GeoSignalTickerOut]
+    rules: list[GeoRuleOut] = []
+    checkpoints: list[GeoCheckpointOut] = []
     timestamp: datetime
     status: str  # active|resolved
 
