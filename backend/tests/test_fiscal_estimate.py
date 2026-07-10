@@ -12,7 +12,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.api.fiscal import _aggregate_savings_inputs
+from backend.api.fiscal import _aggregate_savings_inputs, _savings_estimate_csv
+from backend.api.schemas import SavingsEstimateOut
 from backend.models import (
     Account,
     Base,
@@ -114,3 +115,38 @@ def test_withholdings_from_dividend_and_interest_transactions(db):
 
     inputs, _ = _aggregate_savings_inputs(db, 1, 2024)
     assert inputs.withholdings == D("28")  # 19 + 9 (BUY and 2023 excluded)
+
+
+def _sample_estimate(year=2024, rates_year=2024):
+    return SavingsEstimateOut(
+        fiscal_year=year, rates_year_used=rates_year,
+        rcm_net=D("12500"), gp_net=D("0"), savings_base=D("12500"),
+        rcm_carryforward=D("0"), gp_carryforward=D("0"),
+        personal_minimum=D("6700"), minimum_on_savings=D("6700"),
+        gross_quota=D("2505"), quota=D("1218"), withholdings=D("2200"),
+        result=D("-982"),
+        brackets=[
+            {"from": D("0"), "to": D("6000"), "rate": D("0.19"), "tax": D("1140")},
+            {"from": D("6000"), "to": D("12500"), "rate": D("0.21"), "tax": D("1365")},
+        ],
+        casillas={"rcm": D("12500"), "gains": D("0"), "losses": D("0"),
+                  "withholdings": D("2200")},
+    )
+
+
+def test_estimate_csv_has_summary_and_brackets():
+    csv_text = _savings_estimate_csv(_sample_estimate())
+    assert "Base imponible del ahorro,12500" in csv_text
+    assert "Cuota tras mínimo,1218" in csv_text
+    assert "Resultado" in csv_text and "-982" in csv_text
+    # per-bracket rows present with rate and tax
+    assert "0,6000,0.19,1140" in csv_text
+    assert "6000,12500,0.21,1365" in csv_text
+    # no stale-year warning when rates match the year
+    assert "Aviso: sin tablas" not in csv_text
+
+
+def test_estimate_csv_warns_on_rates_year_mismatch():
+    csv_text = _savings_estimate_csv(_sample_estimate(year=2030, rates_year=2025))
+    assert "Aviso: sin tablas fiscales para 2030" in csv_text
+    assert "se usaron las de 2025" in csv_text

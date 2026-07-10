@@ -693,3 +693,58 @@ def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
         brackets=est.breakdown,
         casillas=casillas,
     )
+
+
+def _savings_estimate_csv(est: SavingsEstimateOut) -> str:
+    """Render a savings-base estimate as a CSV string (summary + per-bracket)."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["FinView — Estimación base del ahorro", f"Ejercicio {est.fiscal_year}"])
+    writer.writerow([])
+    writer.writerow(["concepto", "importe_eur"])
+    for label, val in [
+        ("RCM neto (intereses + dividendos)", est.rcm_net),
+        ("Ganancias/pérdidas netas", est.gp_net),
+        ("Base imponible del ahorro", est.savings_base),
+        ("Mínimo personal y familiar", est.personal_minimum),
+        ("Mínimo aplicado al ahorro", est.minimum_on_savings),
+        ("Cuota íntegra del ahorro", est.gross_quota),
+        ("Cuota tras mínimo", est.quota),
+        ("Retenciones soportadas", est.withholdings),
+        ("Resultado (>0 a ingresar · <0 a devolver)", est.result),
+    ]:
+        writer.writerow([label, str(val)])
+
+    writer.writerow([])
+    writer.writerow(["tramo_desde", "tramo_hasta", "tipo", "cuota_tramo_eur"])
+    for b in est.brackets:
+        writer.writerow([str(b["from"]), str(b["to"]), str(b["rate"]), str(b["tax"])])
+
+    if est.rates_year_used != est.fiscal_year:
+        writer.writerow([])
+        writer.writerow([
+            f"Aviso: sin tablas fiscales para {est.fiscal_year}; "
+            f"se usaron las de {est.rates_year_used}."
+        ])
+    writer.writerow([])
+    writer.writerow([
+        "Estimación orientativa de la base del ahorro. No es asesoramiento fiscal "
+        "ni incluye la base general (trabajo, inmuebles…)."
+    ])
+    return output.getvalue()
+
+
+@router.get("/estimate/{fiscal_year}/export")
+def export_savings_estimate(
+    db: DbSession, user: CurrentUser, fiscal_year: int, format: str = "csv"
+):
+    """Export the savings-base estimate: summary + per-bracket breakdown as CSV."""
+    est = savings_estimate(db, user=user, fiscal_year=fiscal_year)
+    if format != "csv":
+        return est
+    filename = f"finview_estimacion_ahorro_{fiscal_year}.csv"
+    return StreamingResponse(
+        iter([_savings_estimate_csv(est)]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
