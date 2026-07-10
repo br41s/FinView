@@ -51,6 +51,8 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
         disability: profile.disability,
         descendants: profile.descendants,
         general_base: profile.general_base,
+        prior_rcm_loss: profile.prior_rcm_loss,
+        prior_gp_loss: profile.prior_gp_loss,
       });
       await refresh();
     } finally {
@@ -133,6 +135,35 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
               solo el resto reduce la base del ahorro. Si no tienes nómina, déjalo en 0.
             </p>
 
+            <Field label="Pérdidas patrimoniales de años anteriores (€)">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={profile.prior_gp_loss}
+                onChange={(e) =>
+                  setProfile({ ...profile, prior_gp_loss: e.target.value || "0" })
+                }
+                className="max-w-[180px]"
+              />
+            </Field>
+            <Field label="Pérdidas de RCM de años anteriores (€)">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={profile.prior_rcm_loss}
+                onChange={(e) =>
+                  setProfile({ ...profile, prior_rcm_loss: e.target.value || "0" })
+                }
+                className="max-w-[180px]"
+              />
+            </Field>
+            <p className="text-xs text-muted-foreground">
+              Saldos negativos pendientes de tus declaraciones de los 4 años anteriores.
+              Compensan las ganancias del mismo tipo de este año (art. 49).
+            </p>
+
             <Button onClick={saveProfile} disabled={saving} size="sm">
               {saving ? "Guardando…" : "Guardar y recalcular"}
             </Button>
@@ -155,6 +186,17 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
           <CardContent className="space-y-3 text-sm">
             <Row label="RCM (intereses + dividendos)" value={estimate.rcm_net} />
             <Row label="Ganancias / pérdidas netas" value={estimate.gp_net} />
+            {(Number(estimate.prior_gp_loss_applied) > 0 ||
+              Number(estimate.prior_rcm_loss_applied) > 0) && (
+              <Row
+                label="Pérdidas años anteriores aplicadas"
+                value={`-${(
+                  Number(estimate.prior_gp_loss_applied) +
+                  Number(estimate.prior_rcm_loss_applied)
+                ).toFixed(2)}`}
+                muted
+              />
+            )}
             <Row label="Base imponible del ahorro" value={estimate.savings_base} strong />
             <hr className="border-border" />
             <Row label="Mínimo personal y familiar" value={estimate.personal_minimum} muted />

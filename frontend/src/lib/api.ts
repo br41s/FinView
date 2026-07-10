@@ -472,6 +472,8 @@ export const api = {
       disability: "general" | "severe" | null;
       descendants: number;
       general_base: string;
+      prior_rcm_loss: string;
+      prior_gp_loss: string;
     },
   ) => {
     const headers = await authHeaders();

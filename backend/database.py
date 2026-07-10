@@ -51,6 +51,8 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("alt_investment_catalog", "data_date", "DATE"),
     ("import_records", "source_variant", "VARCHAR(20)"),
     ("tax_results", "import_id", "INTEGER"),
+    ("fiscal_profiles", "prior_rcm_loss", "NUMERIC(18, 2)"),
+    ("fiscal_profiles", "prior_gp_loss", "NUMERIC(18, 2)"),
 ]
 
 # Unique constraints that the model dropped but production tables may still

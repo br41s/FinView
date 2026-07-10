@@ -140,3 +140,50 @@ def test_estimate_with_loss_compensation():
 def test_estimate_rates_year_used_exposed():
     est = estimate_savings(SavingsInputs(rcm_net=D("100")), TaxpayerProfile(), 2030)
     assert est.rates_year_used == 2025  # falls back to latest encoded year
+
+
+def test_prior_gp_loss_offsets_current_gains():
+    # Prior G/P loss compensates current G/P gains (same-type), reducing the base.
+    est = estimate_savings(
+        SavingsInputs(rcm_net=D("10000"), gains=D("4000"), losses=D("0"),
+                      prior_gp_loss=D("3000"), withholdings=D("0")),
+        TaxpayerProfile(general_base=D("20000")),
+        2024,
+    )
+    assert est.prior_gp_loss_applied == D("3000")
+    # base = 10000 RCM + (4000 - 3000) G/P = 11000
+    assert est.savings_base == D("11000")
+
+
+def test_prior_loss_capped_at_current_positive_same_type():
+    # Prior G/P loss (5000) exceeds current G/P gains (2000): only 2000 applied,
+    # and it does NOT spill onto RCM (conservative same-type-only model).
+    est = estimate_savings(
+        SavingsInputs(rcm_net=D("10000"), gains=D("2000"),
+                      prior_gp_loss=D("5000")),
+        TaxpayerProfile(general_base=D("20000")),
+        2024,
+    )
+    assert est.prior_gp_loss_applied == D("2000")
+    assert est.savings_base == D("10000")  # RCM 10000 + G/P 0; RCM untouched
+
+
+def test_prior_loss_not_applied_when_same_type_negative():
+    # Current G/P is negative → no positive to absorb the prior G/P loss.
+    est = estimate_savings(
+        SavingsInputs(rcm_net=D("1000"), gains=D("0"), losses=D("-500"),
+                      prior_gp_loss=D("2000")),
+        TaxpayerProfile(general_base=D("20000")),
+        2024,
+    )
+    assert est.prior_gp_loss_applied == D("0")
+
+
+def test_prior_rcm_loss_offsets_current_rcm():
+    est = estimate_savings(
+        SavingsInputs(rcm_net=D("8000"), prior_rcm_loss=D("3000")),
+        TaxpayerProfile(general_base=D("20000")),
+        2024,
+    )
+    assert est.prior_rcm_loss_applied == D("3000")
+    assert est.savings_base == D("5000")

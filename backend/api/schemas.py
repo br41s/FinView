@@ -514,6 +514,8 @@ class FiscalProfileIn(BaseModel):
     disability: str | None = None  # None | "general" | "severe"
     descendants: int = 0
     general_base: Decimal = Decimal("0")
+    prior_rcm_loss: Decimal = Decimal("0")  # pending prior-year RCM losses (art. 49)
+    prior_gp_loss: Decimal = Decimal("0")   # pending prior-year G/P losses (art. 49)
 
 
 class FiscalProfileOut(FiscalProfileIn):
@@ -545,6 +547,8 @@ class SavingsEstimateOut(BaseModel):
     savings_base: Decimal
     rcm_carryforward: Decimal
     gp_carryforward: Decimal
+    prior_rcm_loss_applied: Decimal
+    prior_gp_loss_applied: Decimal
     personal_minimum: Decimal
     minimum_on_savings: Decimal
     gross_quota: Decimal
