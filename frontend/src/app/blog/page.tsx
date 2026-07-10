@@ -880,8 +880,44 @@ function ImgOpcionesIngresos() {
   );
 }
 
+function ImgMejoresEtfs() {
+  return (
+    <div className={styles.postImgMejoresEtfs}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">MEJORES ETFs DE DIVIDENDOS 2026</text>
+        {/* ETF cards */}
+        <rect x="10" y="26" width="85" height="80" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="52" y="44" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">VHYL</text>
+        <text x="52" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Global</text>
+        <text x="52" y="70" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">3,8%</text>
+        <text x="52" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">TER 0,29%</text>
+        <text x="52" y="94" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Distribución</text>
+        {/* Second ETF card */}
+        <rect x="105" y="26" width="85" height="80" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="147" y="44" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IQQY</text>
+        <text x="147" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Calidad</text>
+        <text x="147" y="70" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">3,2%</text>
+        <text x="147" y="82" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">TER 0,28%</text>
+        <text x="147" y="94" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Acumulación</text>
+        {/* Checkmark */}
+        <circle cx="52" cy="108" r="5" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <polyline points="49,108 51,110 55,106" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
-    {
+  {
+    slug: 'mejores-etfs-dividendos-espana-2026',
+    tag: 'Estrategia',
+    date: '11 jul 2026',
+    readTime: '13 min',
+    title: 'Los mejores ETFs de dividendos para invertir desde España en 2026',
+    excerpt: 'Guía práctica de los mejores ETFs de dividendos disponibles para inversores españoles: VHYL, FUSD, IQQY, SPDR Euro Dividend Aristocrats. TERs, yields, domicilios, fiscalidad y cómo elegir según tu perfil.',
+    Image: ImgMejoresEtfs,
+  },
+  {
     slug: 'dividendos-hacienda-foral-navarra-euskadi',
     tag: 'Fiscal',
     date: '10 jul 2026',
