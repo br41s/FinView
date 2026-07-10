@@ -489,7 +489,7 @@ export const api = {
   manualIncome: (year: number) => fetchJSON(`/fiscal/manual-income/${year}`),
   addManualIncome: async (body: {
     fiscal_year: number;
-    category: "RCM" | "GAIN" | "LOSS";
+    category: "INTEREST" | "DIVIDEND" | "GAIN" | "LOSS";
     label: string;
     amount_eur: string;
     withholding_eur: string;

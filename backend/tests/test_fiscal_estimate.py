@@ -12,7 +12,14 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.api.fiscal import _aggregate_savings_inputs, _savings_estimate_csv
+from types import SimpleNamespace
+
+from backend.api.fiscal import (
+    _aggregate_savings_inputs,
+    _manual_casillas,
+    _savings_estimate_csv,
+    list_casillas,
+)
 from backend.api.schemas import SavingsEstimateOut
 from backend.models import (
     Account,
@@ -151,3 +158,66 @@ def test_estimate_csv_warns_on_rates_year_mismatch():
     csv_text = _savings_estimate_csv(_sample_estimate(year=2030, rates_year=2025))
     assert "Aviso: sin tablas fiscales para 2030" in csv_text
     assert "se usaron las de 2025" in csv_text
+
+
+# ── Casilla coherence: manual entries flow into the casilla-level views ──────
+def _user(uid=1):
+    return SimpleNamespace(id=uid)
+
+
+def test_manual_casillas_maps_categories_to_boxes(db):
+    db.add_all([
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="INTEREST",
+                            amount_eur=D("500"), withholding_eur=D("50")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="DIVIDEND",
+                            amount_eur=D("300"), withholding_eur=D("30")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="RCM",
+                            amount_eur=D("100")),  # legacy → 29
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="GAIN",
+                            amount_eur=D("800")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="LOSS",
+                            amount_eur=D("200")),
+    ])
+    db.commit()
+    cas, whg = _manual_casillas(db, 1, 2024)
+    assert cas[27] == D("500")               # interest → 27
+    assert cas[29] == D("400")               # 300 dividend + 100 legacy RCM → 29
+    assert cas[332] == D("800")
+    assert cas[337] == D("-200")             # loss stored negative
+    assert whg[27] == D("50") and whg[29] == D("30")
+
+
+def test_list_casillas_folds_manual_as_source(db):
+    db.add_all([
+        _casilla(1, 2024, 29, "1000"),       # broker dividends
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="DIVIDEND",
+                            amount_eur=D("300")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="INTEREST",
+                            amount_eur=D("500")),  # manual-only box (27)
+    ])
+    db.commit()
+    by_box = {r.casilla: r for r in list_casillas(db, user=_user(1), fiscal_year=2024)}
+    # broker 1000 + manual 300 = 1300, with a MANUAL source line
+    assert by_box[29].amount_eur == D("1300")
+    assert any(b.broker == "MANUAL" and b.amount_eur == D("300") for b in by_box[29].brokers)
+    # casilla that exists only from manual data still appears
+    assert by_box[27].amount_eur == D("500")
+    assert by_box[27].brokers[0].broker == "MANUAL"
+
+
+def test_casillas_and_estimate_agree(db):
+    db.add_all([
+        _casilla(1, 2024, 29, "2000"),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="DIVIDEND",
+                            amount_eur=D("1000")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="INTEREST",
+                            amount_eur=D("400")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="GAIN",
+                            amount_eur=D("500")),
+    ])
+    db.commit()
+    by_box = {r.casilla: r.amount_eur for r in list_casillas(db, user=_user(1), fiscal_year=2024)}
+    inputs, _ = _aggregate_savings_inputs(db, 1, 2024)
+    # The estimate's RCM equals c27 + c29 shown in Casillas fiscales; gains = c332.
+    assert inputs.rcm_net == by_box.get(27, D("0")) + by_box.get(29, D("0"))
+    assert inputs.gains == by_box.get(332, D("0"))

@@ -79,19 +79,30 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
             elif adj.adjustment_eur < 0:
                 fifo_adj_by_casilla[337] = fifo_adj_by_casilla.get(337, Decimal("0")) + adj.adjustment_eur
 
+    # Manual savings entries (per-year) mapped to their casillas, folded in as a
+    # "MANUAL" source so the boxes match Mi declaración. Only when a year is set.
+    man_cas: dict[int, Decimal] = {}
+    if fiscal_year:
+        man_cas, _ = _manual_casillas(db, user.id, fiscal_year)
+
     result = []
     for (modelo, casilla), items in sorted(grouped.items()):
-        total = sum(i.amount_eur for i in items)
+        broker_total = sum(i.amount_eur for i in items)
+        manual_amt = man_cas.get(casilla, Decimal("0")) if modelo == 100 else Decimal("0")
+        total = broker_total + manual_amt
         desc = items[0].description
         brokers = [
             {"broker": i.broker, "amount_eur": i.amount_eur}
             for i in items
         ]
+        if manual_amt:
+            brokers.append({"broker": "MANUAL", "amount_eur": manual_amt})
         adj_val = fifo_adj_by_casilla.get(casilla)
 
         # TR validation: sum TR broker reference amounts for this casilla. A
         # migration year has two TR reports (pre/post), so the combined
         # cross-broker total must be compared against their summed reference.
+        # Validate the BROKER total only — manual entries have no TR reference.
         tr_refs = [
             i.tr_reference_amount
             for i in items
@@ -101,7 +112,7 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         validation = None
         if tr_refs:
             tr_ref = sum(tr_refs)
-            validation = "match" if abs(total - tr_ref) < Decimal("0.02") else "mismatch"
+            validation = "match" if abs(broker_total - tr_ref) < Decimal("0.02") else "mismatch"
 
         result.append(AggregatedCasillaOut(
             modelo=modelo,
@@ -113,6 +124,20 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
             tr_reference_amount=tr_ref,
             validation_status=validation,
         ))
+
+    # Casillas that exist only from manual entries (no broker rows this year).
+    for casilla, amt in man_cas.items():
+        if (100, casilla) in grouped:
+            continue
+        result.append(AggregatedCasillaOut(
+            modelo=100,
+            casilla=casilla,
+            description=_MANUAL_CASILLA_DESC.get(casilla, ""),
+            amount_eur=amt,
+            brokers=[{"broker": "MANUAL", "amount_eur": amt}],
+        ))
+
+    result.sort(key=lambda c: (c.modelo, c.casilla))
     return result
 
 
@@ -132,8 +157,12 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
         )
         return val or Decimal("0")
 
-    # Dividends — from TaxResult (casilla 29) for gross, Transaction for net/withholdings
-    div_gross = _sum_casilla(29)
+    # Manual savings entries mapped to casillas — folded into every total below
+    # so the summary matches Casillas fiscales and Mi declaración.
+    man_cas, man_whg = _manual_casillas(db, user.id, fiscal_year)
+
+    # Dividends — casilla 29 (broker + manual) for gross; Transaction for net/whg.
+    div_gross = _sum_casilla(29) + man_cas.get(29, Decimal("0"))
     div_detail = (
         db.query(
             func.coalesce(func.sum(Transaction.net_amount_eur), 0).label("net"),
@@ -147,42 +176,22 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
         )
         .one()
     )
+    # Manual dividend net = manual dividend gross − its withholding.
+    manual_div_net = man_cas.get(29, Decimal("0")) - man_whg.get(29, Decimal("0"))
+    manual_whg_total = sum(man_whg.values(), Decimal("0"))
 
-    gains_total = _sum_casilla(332)
-    losses_total = _sum_casilla(337)
+    gains_total = _sum_casilla(332) + man_cas.get(332, Decimal("0"))
+    losses_total = _sum_casilla(337) + man_cas.get(337, Decimal("0"))
 
-    # Aggregate casillas across brokers
-    casilla_rows = (
-        db.query(TaxResult)
-        .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == fiscal_year)
-        .order_by(TaxResult.modelo, TaxResult.casilla)
-        .all()
-    )
-    grouped: dict[tuple[int, int], list[TaxResult]] = {}
-    for r in casilla_rows:
-        key = (r.modelo, r.casilla)
-        grouped.setdefault(key, []).append(r)
-
-    aggregated_casillas = []
-    for (modelo, casilla), items in sorted(grouped.items()):
-        total = sum(i.amount_eur for i in items)
-        brokers = [
-            {"broker": i.broker, "amount_eur": i.amount_eur}
-            for i in items
-        ]
-        aggregated_casillas.append(AggregatedCasillaOut(
-            modelo=modelo,
-            casilla=casilla,
-            description=items[0].description,
-            amount_eur=total,
-            brokers=brokers,
-        ))
+    # Reuse list_casillas so the summary's casillas are byte-identical to the
+    # Casillas fiscales view (broker + manual, same sources, same boxes).
+    aggregated_casillas = list_casillas(db, user=user, fiscal_year=fiscal_year)
 
     return FiscalSummary(
         fiscal_year=fiscal_year,
         total_dividends_gross=div_gross,
-        total_dividends_net=div_detail.net,
-        total_withholdings=div_detail.whg,
+        total_dividends_net=div_detail.net + manual_div_net,
+        total_withholdings=div_detail.whg + manual_whg_total,
         total_gains=gains_total,
         total_losses=losses_total,
         net_capital_gains=gains_total + losses_total,
@@ -506,6 +515,52 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
 _SAVINGS_CASILLAS = (27, 29, 332, 337)
 
 
+# Manual savings entries map to real Modelo 100 boxes so every casilla-level
+# view (Casillas fiscales, IRPF summary, Mi declaración) agrees. Legacy "RCM"
+# rows (before the interest/dividend split) fall back to dividends (c29).
+_MANUAL_CATEGORY_CASILLA = {
+    "INTEREST": 27,
+    "DIVIDEND": 29,
+    "RCM": 29,       # legacy generic RCM
+    "GAIN": 332,
+    "LOSS": 337,
+}
+_MANUAL_CATEGORIES = ("INTEREST", "DIVIDEND", "GAIN", "LOSS")
+_MANUAL_CASILLA_DESC = {
+    27: "Intereses y otros rendimientos del capital mobiliario",
+    29: "Dividendos y demás rendimientos",
+    332: "Ganancias patrimoniales",
+    337: "Pérdidas patrimoniales",
+}
+
+
+def _manual_casillas(db, user_id: int, year: int) -> tuple[dict[int, Decimal], dict[int, Decimal]]:
+    """Manual savings entries mapped to Modelo 100 casillas.
+
+    Returns (amount_by_casilla {LOSS negative}, withholding_by_casilla). Single
+    source used by list_casillas, fiscal_summary and the estimate so the
+    manually-entered income shows up identically everywhere.
+    """
+    rows = (
+        db.query(ManualSavingsIncome)
+        .filter(
+            ManualSavingsIncome.user_id == user_id,
+            ManualSavingsIncome.fiscal_year == year,
+        )
+        .all()
+    )
+    cas: dict[int, Decimal] = {}
+    whg: dict[int, Decimal] = {}
+    for m in rows:
+        box = _MANUAL_CATEGORY_CASILLA.get(m.category)
+        if box is None:
+            continue
+        amt = -m.amount_eur if m.category == "LOSS" else m.amount_eur
+        cas[box] = cas.get(box, Decimal("0")) + amt
+        whg[box] = whg.get(box, Decimal("0")) + (m.withholding_eur or Decimal("0"))
+    return cas, whg
+
+
 def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInputs, dict]:
     """Sum savings components from broker casillas + manual entries + withholdings."""
     rows = (
@@ -520,11 +575,18 @@ def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInput
         .all()
     )
     cas = {c: (a or Decimal("0")) for c, a in rows}
+
+    # Fold in manual entries mapped to the same casillas (shared helper).
+    man_cas, man_whg = _manual_casillas(db, user_id, year)
+    for box, amt in man_cas.items():
+        cas[box] = cas.get(box, Decimal("0")) + amt
+    man_whg_total = sum(man_whg.values(), Decimal("0"))
+
     rcm = cas.get(27, Decimal("0")) + cas.get(29, Decimal("0"))
     gains = cas.get(332, Decimal("0"))
     losses = cas.get(337, Decimal("0"))  # stored ≤ 0
 
-    # Withholdings on savings income (dividends + interest)
+    # Withholdings on savings income: broker transactions + manual entries.
     whg = (
         db.query(func.coalesce(func.sum(Transaction.withholding_tax), Decimal("0")))
         .join(Account, Account.id == Transaction.account_id)
@@ -537,24 +599,7 @@ def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInput
         )
         .scalar()
     ) or Decimal("0")
-
-    # Manual entries (outside broker imports)
-    manual = (
-        db.query(ManualSavingsIncome)
-        .filter(
-            ManualSavingsIncome.user_id == user_id,
-            ManualSavingsIncome.fiscal_year == year,
-        )
-        .all()
-    )
-    for m in manual:
-        if m.category == "RCM":
-            rcm += m.amount_eur
-        elif m.category == "GAIN":
-            gains += m.amount_eur
-        elif m.category == "LOSS":
-            losses -= m.amount_eur  # amount is a positive magnitude
-        whg += m.withholding_eur or Decimal("0")
+    whg += man_whg_total
 
     casillas = {"rcm": rcm, "gains": gains, "losses": losses, "withholdings": whg}
     return SavingsInputs(rcm_net=rcm, gains=gains, losses=losses, withholdings=whg), casillas
@@ -634,8 +679,10 @@ def list_manual_income(db: DbSession, user: CurrentUser, fiscal_year: int):
 
 @router.post("/manual-income", response_model=ManualSavingsIncomeOut)
 def create_manual_income(db: DbSession, user: CurrentUser, body: ManualSavingsIncomeIn):
-    if body.category not in ("RCM", "GAIN", "LOSS"):
-        raise HTTPException(422, "category must be 'RCM', 'GAIN' or 'LOSS'")
+    if body.category not in _MANUAL_CATEGORIES:
+        raise HTTPException(
+            422, "category must be 'INTEREST', 'DIVIDEND', 'GAIN' or 'LOSS'"
+        )
     if body.amount_eur < 0 or body.withholding_eur < 0:
         raise HTTPException(422, "amount_eur and withholding_eur must be ≥ 0")
     m = ManualSavingsIncome(
