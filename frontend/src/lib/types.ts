@@ -272,10 +272,12 @@ export interface FiscalProfile {
   updated_at?: string | null;
 }
 
+export type ManualCategory = "INTEREST" | "DIVIDEND" | "GAIN" | "LOSS" | "RCM";
+
 export interface ManualSavingsIncome {
   id: number;
   fiscal_year: number;
-  category: "RCM" | "GAIN" | "LOSS";
+  category: ManualCategory; // RCM is legacy (pre interest/dividend split)
   label: string;
   amount_eur: string;
   withholding_eur: string;

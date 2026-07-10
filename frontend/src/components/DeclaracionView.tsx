@@ -14,9 +14,11 @@ import type {
 } from "@/lib/types";
 
 const CATEGORY_LABEL: Record<ManualSavingsIncome["category"], string> = {
-  RCM: "Intereses / dividendos",
+  INTEREST: "Intereses (casilla 0027)",
+  DIVIDEND: "Dividendos (casilla 0029)",
   GAIN: "Ganancia patrimonial",
   LOSS: "Pérdida patrimonial",
+  RCM: "Intereses / dividendos", // legacy entries
 };
 
 export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
@@ -281,7 +283,8 @@ function ManualIncomeCard({
   manual: ManualSavingsIncome[];
   onChanged: () => Promise<void>;
 }) {
-  const [category, setCategory] = useState<ManualSavingsIncome["category"]>("RCM");
+  const [category, setCategory] =
+    useState<Exclude<ManualSavingsIncome["category"], "RCM">>("DIVIDEND");
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
   const [withholding, setWithholding] = useState("");
@@ -352,10 +355,15 @@ function ManualIncomeCard({
         <div className="flex flex-wrap items-end gap-2">
           <select
             value={category}
-            onChange={(e) => setCategory(e.target.value as ManualSavingsIncome["category"])}
+            onChange={(e) =>
+              setCategory(
+                e.target.value as Exclude<ManualSavingsIncome["category"], "RCM">,
+              )
+            }
             className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
           >
-            <option value="RCM">Intereses / dividendos</option>
+            <option value="INTEREST">Intereses (0027)</option>
+            <option value="DIVIDEND">Dividendos (0029)</option>
             <option value="GAIN">Ganancia patrimonial</option>
             <option value="LOSS">Pérdida patrimonial</option>
           </select>

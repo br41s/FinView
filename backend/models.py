@@ -1003,7 +1003,9 @@ class ManualSavingsIncome(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    category: Mapped[str] = mapped_column(String(8), nullable=False)  # RCM | GAIN | LOSS
+    # INTEREST→c27 · DIVIDEND→c29 · GAIN→c332 · LOSS→c337. Legacy "RCM" rows
+    # (pre-split) fall back to c29. See _MANUAL_CATEGORY_CASILLA in api/fiscal.py.
+    category: Mapped[str] = mapped_column(String(8), nullable=False)
     label: Mapped[str] = mapped_column(String(120), default="")
     amount_eur: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     withholding_eur: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
