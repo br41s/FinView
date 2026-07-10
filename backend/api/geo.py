@@ -35,11 +35,13 @@ def _ev(value) -> str:
     return value.value if hasattr(value, "value") else value
 
 
-def _matched_rules(db: Session, signal: GeoSignal) -> list[GeoRuleOut]:
+def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[GeoRuleOut]:
     """Matched rules with their learned (not just base) confidence.
 
     effective_confidence = base_confidence + auditor-learned confidence_mod, so
-    the "why triggered" panel reflects the rule's actual track record.
+    the "why triggered" panel reflects the rule's actual track record. `stats`
+    is batch-loaded once by the caller (see `_load_rule_stats`) to avoid a
+    GeoRuleStat query per signal.
     """
     if not signal.matched_rule_ids:
         return []
@@ -48,12 +50,6 @@ def _matched_rules(db: Session, signal: GeoSignal) -> list[GeoRuleOut]:
     except ValueError:
         return []
     valid_ids = [rid for rid in rule_ids if rid in RULES_BY_ID]
-    if not valid_ids:
-        return []
-    stats = {
-        s.rule_id: s
-        for s in db.query(GeoRuleStat).filter(GeoRuleStat.rule_id.in_(valid_ids)).all()
-    }
     return [
         GeoRuleOut(
             id=rid,
@@ -65,7 +61,25 @@ def _matched_rules(db: Session, signal: GeoSignal) -> list[GeoRuleOut]:
     ]
 
 
-def _serialize(db: Session, signal: GeoSignal) -> GeoSignalOut:
+def _load_rule_stats(db: Session, signals: list[GeoSignal]) -> dict[str, GeoRuleStat]:
+    """Batch-load GeoRuleStat rows for every rule referenced across `signals`."""
+    rule_ids: set[str] = set()
+    for s in signals:
+        if not s.matched_rule_ids:
+            continue
+        try:
+            rule_ids.update(json.loads(s.matched_rule_ids))
+        except ValueError:
+            continue
+    if not rule_ids:
+        return {}
+    return {
+        row.rule_id: row
+        for row in db.query(GeoRuleStat).filter(GeoRuleStat.rule_id.in_(rule_ids)).all()
+    }
+
+
+def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut:
     checkpoints = sorted(signal.checkpoints, key=lambda c: c.target_at)
     return GeoSignalOut(
         id=str(signal.id),
@@ -87,7 +101,7 @@ def _serialize(db: Session, signal: GeoSignal) -> GeoSignalOut:
             )
             for t in signal.tickers
         ],
-        rules=_matched_rules(db, signal),
+        rules=_matched_rules(signal, stats),
         checkpoints=[
             GeoCheckpointOut(
                 horizon=_ev(c.horizon),
@@ -116,7 +130,8 @@ def list_signals(
     if status != "all":
         q = q.filter(GeoSignal.status == status)
     signals = q.order_by(GeoSignal.created_at.desc()).limit(limit).all()
-    return [_serialize(db, s) for s in signals]
+    stats = _load_rule_stats(db, signals)
+    return [_serialize(s, stats) for s in signals]
 
 
 @router.get("/signals/{signal_id}", response_model=GeoSignalOut, responses=_404)
@@ -129,7 +144,7 @@ def get_signal(signal_id: int, db: DbSession, user: CurrentUser):
     )
     if signal is None:
         raise HTTPException(status_code=404, detail="Signal not found")
-    return _serialize(db, signal)
+    return _serialize(signal, _load_rule_stats(db, [signal]))
 
 
 @router.post("/run", response_model=GeoRunResult)
