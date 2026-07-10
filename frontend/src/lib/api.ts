@@ -512,6 +512,21 @@ export const api = {
   },
   savingsEstimate: (year: number): Promise<SavingsEstimate> =>
     fetchCached(`/fiscal/estimate/${year}`),
+  exportSavingsEstimate: async (year: number) => {
+    const headers = await authHeaders();
+    const res = await fetch(`${BASE}/fiscal/estimate/${year}/export?format=csv`, {
+      cache: "no-store",
+      headers,
+    });
+    if (!res.ok) throw new Error(`Export error: ${await res.text()}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `finview_estimacion_ahorro_${year}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   transactions: (params?: Record<string, string>) => {
     const qstr = params ? "?" + new URLSearchParams(params).toString() : "";
     return fetchJSON(`/transactions/${qstr}`);

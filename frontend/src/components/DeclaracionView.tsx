@@ -165,6 +165,39 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
             <hr className="border-border" />
             <ResultRow result={estimate.result} />
 
+            {Number(estimate.savings_base) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Tipo efectivo sobre la base del ahorro:{" "}
+                {(
+                  (Number(estimate.quota) / Number(estimate.savings_base)) *
+                  100
+                ).toLocaleString("es-ES", { maximumFractionDigits: 2 })}
+                %
+              </p>
+            )}
+
+            {estimate.brackets.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground">
+                  Desglose por tramos
+                </summary>
+                <ul className="mt-1 space-y-0.5">
+                  {estimate.brackets.map((b, i) => (
+                    <li key={i} className="flex justify-between gap-2 tabular-nums">
+                      <span className="text-muted-foreground">
+                        {formatEur(b.from)}–{formatEur(b.to)} ·{" "}
+                        {(Number(b.rate) * 100).toLocaleString("es-ES", {
+                          maximumFractionDigits: 1,
+                        })}
+                        %
+                      </span>
+                      <span className="fv-sensitive">{formatEur(b.tax)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
             {Number(estimate.gp_carryforward) < 0 && (
               <p className="text-xs text-muted-foreground">
                 Pérdidas a compensar en ejercicios futuros:{" "}
@@ -182,6 +215,14 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
               Estimación orientativa de la base del ahorro. No es asesoramiento
               fiscal ni incluye la base general (trabajo, inmuebles…).
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => api.exportSavingsEstimate(fiscalYear)}
+            >
+              Descargar resumen (CSV)
+            </Button>
           </CardContent>
         </Card>
       </div>
