@@ -976,6 +976,11 @@ class FiscalProfile(Base):
     # first; only the remainder lands on the savings base. 0 → full minimum on savings.
     general_base: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
 
+    # Pending savings-base losses carried from prior years (art. 49, 4-year window).
+    # Positive magnitudes; compensate current same-type positive balances.
+    prior_rcm_loss: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    prior_gp_loss: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

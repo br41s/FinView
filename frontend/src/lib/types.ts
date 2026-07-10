@@ -267,6 +267,8 @@ export interface FiscalProfile {
   disability: "general" | "severe" | null;
   descendants: number;
   general_base: string;
+  prior_rcm_loss: string;
+  prior_gp_loss: string;
   updated_at?: string | null;
 }
 
@@ -287,6 +289,8 @@ export interface SavingsEstimate {
   savings_base: string;
   rcm_carryforward: string;
   gp_carryforward: string;
+  prior_rcm_loss_applied: string;
+  prior_gp_loss_applied: string;
   personal_minimum: string;
   minimum_on_savings: string;
   gross_quota: string;

@@ -122,6 +122,10 @@ class SavingsInputs:
     gains: Decimal = Decimal("0")        # casilla 332 — ganancias por transmisión (≥0)
     losses: Decimal = Decimal("0")       # casilla 337 — pérdidas (≤0)
     withholdings: Decimal = Decimal("0")  # retenciones del ahorro (≥0)
+    # Pending savings losses carried from prior years (art. 49). Positive
+    # magnitudes; each compensates the current same-type positive balance.
+    prior_rcm_loss: Decimal = Decimal("0")
+    prior_gp_loss: Decimal = Decimal("0")
 
 
 @dataclass
@@ -144,6 +148,8 @@ class SavingsEstimate:
     savings_base: Decimal
     rcm_carryforward: Decimal            # negative balance carried 4 years
     gp_carryforward: Decimal
+    prior_rcm_loss_applied: Decimal      # prior-year RCM loss used this year
+    prior_gp_loss_applied: Decimal       # prior-year G/P loss used this year
     personal_minimum: Decimal
     minimum_on_savings: Decimal
     gross_quota: Decimal                 # cuota íntegra del ahorro (pre-minimum)
@@ -226,7 +232,15 @@ def estimate_savings(inputs: SavingsInputs, profile: TaxpayerProfile, year: int)
     rcm_net = inputs.rcm_net
     gp_net = inputs.gains + inputs.losses        # losses are ≤ 0
 
-    base, rcm_cf, gp_cf = compensate(rcm_net, gp_net, year)
+    # Prior-year pending losses compensate the current SAME-TYPE positive balance
+    # first (art. 49). Conservative: the leftover's cross-compensation against the
+    # other component (25%) is not modelled, so a large prior loss may stay unused.
+    prior_rcm_applied = min(max(rcm_net, Decimal("0")), max(inputs.prior_rcm_loss, Decimal("0")))
+    prior_gp_applied = min(max(gp_net, Decimal("0")), max(inputs.prior_gp_loss, Decimal("0")))
+    rcm_after = rcm_net - prior_rcm_applied
+    gp_after = gp_net - prior_gp_applied
+
+    base, rcm_cf, gp_cf = compensate(rcm_after, gp_after, year)
 
     minimum = personal_minimum(profile, year)
     # Minimum hits the general base first; only the remainder lands on savings.
@@ -247,6 +261,8 @@ def estimate_savings(inputs: SavingsInputs, profile: TaxpayerProfile, year: int)
         savings_base=q(base),
         rcm_carryforward=q(rcm_cf),
         gp_carryforward=q(gp_cf),
+        prior_rcm_loss_applied=q(prior_rcm_applied),
+        prior_gp_loss_applied=q(prior_gp_applied),
         personal_minimum=q(minimum),
         minimum_on_savings=q(minimum_on_savings),
         gross_quota=q(gross_quota),

@@ -122,6 +122,7 @@ def _sample_estimate(year=2024, rates_year=2024):
         fiscal_year=year, rates_year_used=rates_year,
         rcm_net=D("12500"), gp_net=D("0"), savings_base=D("12500"),
         rcm_carryforward=D("0"), gp_carryforward=D("0"),
+        prior_rcm_loss_applied=D("0"), prior_gp_loss_applied=D("0"),
         personal_minimum=D("6700"), minimum_on_savings=D("6700"),
         gross_quota=D("2505"), quota=D("1218"), withholdings=D("2200"),
         result=D("-982"),

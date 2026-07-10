@@ -576,6 +576,8 @@ def get_fiscal_profile(db: DbSession, user: CurrentUser, fiscal_year: int):
         disability=p.disability,
         descendants=p.descendants,
         general_base=p.general_base,
+        prior_rcm_loss=p.prior_rcm_loss,
+        prior_gp_loss=p.prior_gp_loss,
         updated_at=p.updated_at,
     )
 
@@ -587,6 +589,8 @@ def upsert_fiscal_profile(
     """Create or update the taxpayer profile for the year."""
     if body.disability not in (None, "general", "severe"):
         raise HTTPException(422, "disability must be null, 'general' or 'severe'")
+    if body.prior_rcm_loss < 0 or body.prior_gp_loss < 0:
+        raise HTTPException(422, "prior losses must be ≥ 0 (enter as positive magnitudes)")
     p = (
         db.query(FiscalProfile)
         .filter(FiscalProfile.user_id == user.id, FiscalProfile.fiscal_year == fiscal_year)
@@ -599,6 +603,8 @@ def upsert_fiscal_profile(
     p.disability = body.disability
     p.descendants = max(body.descendants, 0)
     p.general_base = body.general_base
+    p.prior_rcm_loss = body.prior_rcm_loss
+    p.prior_gp_loss = body.prior_gp_loss
     db.commit()
     db.refresh(p)
     return FiscalProfileOut(
@@ -607,6 +613,8 @@ def upsert_fiscal_profile(
         disability=p.disability,
         descendants=p.descendants,
         general_base=p.general_base,
+        prior_rcm_loss=p.prior_rcm_loss,
+        prior_gp_loss=p.prior_gp_loss,
         updated_at=p.updated_at,
     )
 
@@ -674,6 +682,9 @@ def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
         descendants=p.descendants if p else 0,
         general_base=p.general_base if p else Decimal("0"),
     )
+    if p:
+        inputs.prior_rcm_loss = p.prior_rcm_loss or Decimal("0")
+        inputs.prior_gp_loss = p.prior_gp_loss or Decimal("0")
 
     est = estimate_savings(inputs, profile, fiscal_year)
     return SavingsEstimateOut(
@@ -684,6 +695,8 @@ def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
         savings_base=est.savings_base,
         rcm_carryforward=est.rcm_carryforward,
         gp_carryforward=est.gp_carryforward,
+        prior_rcm_loss_applied=est.prior_rcm_loss_applied,
+        prior_gp_loss_applied=est.prior_gp_loss_applied,
         personal_minimum=est.personal_minimum,
         minimum_on_savings=est.minimum_on_savings,
         gross_quota=est.gross_quota,
@@ -705,6 +718,8 @@ def _savings_estimate_csv(est: SavingsEstimateOut) -> str:
     for label, val in [
         ("RCM neto (intereses + dividendos)", est.rcm_net),
         ("Ganancias/pérdidas netas", est.gp_net),
+        ("Pérdidas RCM años anteriores aplicadas", est.prior_rcm_loss_applied),
+        ("Pérdidas patrimoniales años anteriores aplicadas", est.prior_gp_loss_applied),
         ("Base imponible del ahorro", est.savings_base),
         ("Mínimo personal y familiar", est.personal_minimum),
         ("Mínimo aplicado al ahorro", est.minimum_on_savings),
