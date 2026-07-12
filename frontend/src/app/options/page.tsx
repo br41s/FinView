@@ -99,6 +99,7 @@ interface Alert {
   message: string;
   severity: string;
   acknowledged: boolean;
+  regime_alignment?: string | null;
 }
 
 interface Unusual {
@@ -144,6 +145,7 @@ interface BacktestStats {
   evaluated: number;
   by_horizon: Record<string, BacktestHorizonStats>;
   by_signal_type: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
+  by_alignment?: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
 }
 
 interface AgentStatus {
@@ -1003,6 +1005,7 @@ export default function OptionsPage() {
                                 </span>
                                 <Badge variant="outline" className="text-xs">{a.alert_type}</Badge>
                                 <Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"} className="text-xs">{a.severity}</Badge>
+                                <AlignmentTag alignment={a.regime_alignment} />
                                 <span className="ml-auto text-xs text-muted-foreground">
                                   {new Date(a.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                                 </span>
@@ -1033,7 +1036,7 @@ export default function OptionsPage() {
                                 <TableCell className="font-medium cursor-pointer text-primary hover:underline" title="Ver opciones" onClick={() => openInstrument(a.ticker, { tab: "opciones" })}>{a.ticker}</TableCell>
                                 <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
                                 <TableCell>{a.message}</TableCell>
-                                <TableCell><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge></TableCell>
+                                <TableCell><div className="flex items-center gap-1"><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge><AlignmentTag alignment={a.regime_alignment} /></div></TableCell>
                                 <TableCell className="text-right">
                                   {!a.acknowledged && <Button variant="ghost" size="sm" onClick={() => handleAckAlert(a.id)}>Ack</Button>}
                                 </TableCell>
@@ -1237,6 +1240,54 @@ export default function OptionsPage() {
                 </Card>
                 );
               })()}
+
+              {/* Aligned vs counter accuracy (Phase 2b) */}
+              {backtestStats.by_alignment &&
+                Object.keys(backtestStats.by_alignment).length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Precisión por régimen macro (7D)</CardTitle>
+                    <CardDescription>
+                      ¿Las señales a favor del régimen aciertan más que las que van en contra?
+                      Instrumentación — no altera qué alertas se emiten.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Alineación</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right">Correctas</TableHead>
+                            <TableHead className="text-right">Precisión</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(["aligned", "counter", "neutral"] as const)
+                            .filter((k) => backtestStats.by_alignment?.[k])
+                            .map((k) => {
+                              const v = backtestStats.by_alignment![k];
+                              const acc = v.accuracy_pct;
+                              const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                              const label = k === "aligned" ? "A favor (aligned)" : k === "counter" ? "En contra (counter)" : "Neutral";
+                              return (
+                                <TableRow key={k}>
+                                  <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{label}</Badge></TableCell>
+                                  <TableCell className="text-right">{v.total}</TableCell>
+                                  <TableCell className="text-right">{v.correct}</TableCell>
+                                  <TableCell className={`text-right font-semibold ${color}`}>
+                                    {acc != null ? `${acc}%` : "—"}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Signals table */}
               <Card>
@@ -1529,6 +1580,28 @@ function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {
       Macro: {label}
       <span className="text-muted-foreground font-normal">VIX {fmt(macro.vix)}</span>
     </span>
+  );
+}
+
+/** Macro-regime alignment tag for an alert (Phase 2b, informational only). */
+function AlignmentTag({ alignment }: { alignment?: string | null }) {
+  if (!alignment || alignment === "neutral") return null;
+  const aligned = alignment === "aligned";
+  const color = aligned
+    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+    : "bg-amber-500/10 text-amber-600 border-amber-500/20";
+  return (
+    <Badge
+      variant="outline"
+      className={`text-xs ${color}`}
+      title={
+        aligned
+          ? "A favor del régimen macro (informativo — no cambia la señal)"
+          : "En contra del régimen macro (informativo — no cambia la señal)"
+      }
+    >
+      {aligned ? "macro ✓" : "macro ✗"}
+    </Badge>
   );
 }
 
