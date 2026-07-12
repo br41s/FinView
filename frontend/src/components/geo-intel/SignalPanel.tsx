@@ -1,5 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 import type { GeoSignal } from "@/lib/geo";
+import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
 import { ListSkeleton } from "./MapStates";
 
 const DIR_COLORS = {
@@ -165,6 +166,7 @@ function checkpointLabel(horizon: string) {
 }
 
 function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void }) {
+  const { openInstrument } = useInstrumentDrawer();
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[rgba(31,27,22,0.14)] px-5 py-3">
@@ -243,14 +245,16 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 const color = DIR_COLORS[t.direction];
                 const arrow = t.direction === "bullish" ? "↑" : t.direction === "bearish" ? "↓" : "•";
                 return (
-                  <span
+                  <button
                     key={t.symbol}
+                    type="button"
                     title={
                       t.priceAtSignal != null
-                        ? `Price at signal: $${t.priceAtSignal.toFixed(2)}`
-                        : undefined
+                        ? `Price at signal: $${t.priceAtSignal.toFixed(2)} · Ver instrumento`
+                        : "Ver instrumento"
                     }
-                    className="rounded-full px-2.5 py-1 text-[11px]"
+                    onClick={() => openInstrument(t.symbol, { tab: "precio" })}
+                    className="rounded-full px-2.5 py-1 text-[11px] transition-opacity hover:opacity-70"
                     style={{
                       fontFamily: "var(--fv-font-jetbrains), monospace",
                       color,
@@ -258,7 +262,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                     }}
                   >
                     {arrow} {t.symbol}
-                  </span>
+                  </button>
                 );
               })
             )}
