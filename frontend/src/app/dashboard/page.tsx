@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api } from "@/lib/api";
+import { signOut } from "next-auth/react";
+import { api, clearAuthToken, invalidateCache } from "@/lib/api";
 import type {
   DashboardStats,
   Casilla,
@@ -20,17 +21,11 @@ import type {
   CompanyDividendsYearly,
   YearlyMetrics,
 } from "@/lib/types";
-import {
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
-import { AppSidebar, type View } from "@/components/app-sidebar";
 import { FileUpload } from "@/components/FileUpload";
 import { ImportedFilesList } from "@/components/ImportedFilesList";
 import { StatsCards } from "@/components/StatsCards";
@@ -51,6 +46,8 @@ import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart
 import { QuickNav } from "@/components/QuickNav";
 import {
   Upload as UploadIcon,
+  BarChart3,
+  Calculator,
   TrendingUp,
   Coins,
   FileText,
@@ -60,6 +57,8 @@ import {
   Info,
   Eye,
   EyeOff,
+  CreditCard,
+  LogOut,
 } from "lucide-react";
 import {
   Card,
@@ -151,16 +150,15 @@ function IrpfSummary({ casillas }: Readonly<{ casillas: Casilla[] }>) {
   );
 }
 
-const viewTitles: Record<View, string> = {
-  graficas: "Dashboard",
-  rendimiento: "Rendimiento",
-  casillas: "Casillas fiscales",
-  declaracion: "Mi declaración",
-  dividendos: "Dividendos",
-  ganancias: "Ganancias de capital",
-  comparativa: "Comparativa anual",
-  importar: "Importar datos",
-};
+type View =
+  | "graficas"
+  | "rendimiento"
+  | "casillas"
+  | "declaracion"
+  | "dividendos"
+  | "ganancias"
+  | "comparativa"
+  | "importar";
 
 export default function Home() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -343,62 +341,144 @@ export default function Home() {
   // Clear country filter when year changes
   useEffect(() => { setFilterCountry(null); }, [selectedYear]);
 
-  const counts = {
-    rendimiento: dividendYield.filter(
-      (d) => Number.parseFloat(d.yield_on_cost) > 0,
-    ).length,
-    casillas: casillas.length,
-    dividendos: dividends.length,
-    ganancias: gains.length,
-  };
-
   const hasData = stats && stats.total_transactions > 0;
 
-  return (
-    <SidebarProvider>
-      <AppSidebar
-        currentView={view}
-        onViewChange={setView}
-        selectedYear={selectedYear}
-        onYearChange={setSelectedYear}
-        fiscalYears={stats?.fiscal_years ?? []}
-        counts={hasData ? counts : undefined}
-      />
-      <SidebarInset>
-        {/* Header */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4!" />
-          <h1 className="text-sm font-medium">{viewTitles[view]}</h1>
-          <div className="ml-auto flex items-center gap-2">
-            {selectedYear && (
-              <span className="text-xs text-muted-foreground">
-                Año fiscal {selectedYear}
-              </span>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={togglePrivacy}
-              aria-pressed={privacy}
-              title={privacy ? "Mostrar importes" : "Ocultar importes"}
-              aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
-            >
-              {privacy ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-            <QuickNav current="/dashboard" />
-          </div>
-        </header>
+  const fiscalYears = stats?.fiscal_years ?? [];
 
-        {/* Content */}
-        <main
-          className="flex-1 overflow-auto p-3 sm:p-6"
-          data-privacy={privacy ? "true" : "false"}
-        >
+  return (
+    <div className="space-y-6 p-3 sm:p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <BarChart3 className="h-6 w-6" />
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground">
+            Resumen fiscal y de dividendos de tu cartera
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {fiscalYears.length > 0 && (
+            <select
+              aria-label="Seleccionar año fiscal"
+              value={selectedYear ?? ""}
+              onChange={(e) => {
+                const year = e.target.value ? Number(e.target.value) : null;
+                // Sync reset: fiscal tabs unmount with the year, so leave them
+                // before paint instead of waiting for the effect below.
+                if (
+                  year === null &&
+                  (view === "casillas" || view === "ganancias" || view === "declaracion")
+                ) {
+                  setView("graficas");
+                }
+                setSelectedYear(year);
+              }}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">Todos los años</option>
+              {fiscalYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={togglePrivacy}
+            aria-pressed={privacy}
+            title={privacy ? "Mostrar importes" : "Ocultar importes"}
+            aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
+          >
+            {privacy ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => (window.location.href = "/billing")}
+            title="Facturación"
+            aria-label="Facturación"
+          >
+            <CreditCard className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              clearAuthToken();
+              invalidateCache();
+              signOut({ callbackUrl: "/login" });
+            }}
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+          <QuickNav current="/dashboard" />
+        </div>
+      </div>
+
+      {/* View tabs — same pattern as /options */}
+      <Tabs value={view} onValueChange={(v) => setView(v as View)}>
+        <div className="w-full overflow-x-auto">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="graficas" aria-label="Dashboard">
+              <BarChart3 className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </TabsTrigger>
+            <TabsTrigger value="rendimiento" aria-label="Rendimiento">
+              <TrendingUp className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Rendimiento</span>
+            </TabsTrigger>
+            <TabsTrigger value="dividendos" aria-label="Dividendos">
+              <Coins className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Dividendos</span>
+              {hasData && !loading && dividends.length > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 px-1.5 py-0.5 text-xs tabular-nums"
+                >
+                  {dividends.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            {showFiscal && (
+              <>
+                <TabsTrigger value="casillas" aria-label="Casillas fiscales">
+                  <FileText className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Casillas</span>
+                </TabsTrigger>
+                <TabsTrigger value="ganancias" aria-label="Ganancias de capital">
+                  <LineChart className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Ganancias</span>
+                </TabsTrigger>
+                <TabsTrigger value="declaracion" aria-label="Mi declaración">
+                  <Calculator className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Mi declaración</span>
+                </TabsTrigger>
+              </>
+            )}
+            <TabsTrigger value="comparativa" aria-label="Comparativa anual">
+              <CalendarRange className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Comparativa</span>
+            </TabsTrigger>
+            <TabsTrigger value="importar" aria-label="Importar datos">
+              <UploadIcon className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Importar</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+      </Tabs>
+
+      {/* Content */}
+      <main data-privacy={privacy ? "true" : "false"}>
           {/* Import view */}
           {view === "importar" && (
             <div className="max-w-3xl mx-auto space-y-6">
@@ -615,7 +695,6 @@ export default function Home() {
               />
             ))}
         </main>
-      </SidebarInset>
-    </SidebarProvider>
+    </div>
   );
 }
