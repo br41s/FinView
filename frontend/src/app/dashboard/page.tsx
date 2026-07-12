@@ -341,7 +341,9 @@ export default function Home() {
   // Clear country filter when year changes
   useEffect(() => { setFilterCountry(null); }, [selectedYear]);
 
-  const hasData = stats && stats.total_transactions > 0;
+  // !error: after a failed year-switch `stats` keeps the previous year's data;
+  // without this guard the stale charts would render under the ErrorState.
+  const hasData = !error && stats && stats.total_transactions > 0;
 
   const fiscalYears = stats?.fiscal_years ?? [];
 
@@ -510,7 +512,7 @@ export default function Home() {
           )}
 
           {/* No data state */}
-          {view !== "importar" && !loading && !hasData && (
+          {view !== "importar" && !loading && !error && !hasData && (
             <EmptyState
               icon={UploadIcon}
               title="No hay datos importados"
