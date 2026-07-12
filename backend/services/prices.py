@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
+from backend.services import exchange_rates
 
 logger = logging.getLogger(__name__)
 
@@ -192,14 +193,16 @@ def fetch_and_cache_prices(
         if ccy != "EUR":
             non_eur_currencies.add(ccy)
 
-    # Fetch forex rates for non-EUR currencies (e.g. EURUSD=X → 1 EUR = X USD)
-    fx_rates: dict[str, float] = {}
-    if non_eur_currencies:
-        forex_tickers = [f"EUR{ccy}=X" for ccy in non_eur_currencies]
-        fx_raw = _fetch_yahoo_prices(forex_tickers)
-        for ft, rate in fx_raw.items():
-            ccy = ft[3:6]  # e.g. "EURUSD=X" → "USD"
+    # Fetch forex rates for non-EUR currencies via the ECB service (DB-cached,
+    # ±7d fallback) rather than yfinance — a single failed/rate-limited yfinance
+    # forex call used to silently drop every non-EUR position from valuation.
+    fx_rates: dict[str, Decimal] = {}
+    for ccy in non_eur_currencies:
+        rate = exchange_rates.get_rate(ccy, today)
+        if rate is not None:
             fx_rates[ccy] = rate
+        else:
+            logger.warning("No ECB rate for %s", ccy)
 
     for ticker, price_val in prices.items():
         isin = ticker_to_isin.get(ticker)
@@ -213,11 +216,11 @@ def fetch_and_cache_prices(
         # Track original currency and price
         ccy = ticker_currencies.get(ticker, "EUR")
         orig_price = Decimal(str(round(price_val, 6)))
-        rate = Decimal(str(round(fx_rates[ccy], 6))) if ccy in fx_rates else None
+        rate = fx_rates.get(ccy)
 
         # Convert to EUR if needed
-        if ccy != "EUR" and ccy in fx_rates:
-            price_eur = price_val / fx_rates[ccy]
+        if ccy != "EUR" and rate is not None:
+            price_eur = price_val / float(rate)
         elif ccy != "EUR":
             logger.warning("No FX rate for %s, skipping %s", ccy, ticker)
             continue
