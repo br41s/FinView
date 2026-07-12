@@ -13,7 +13,7 @@ import { ArrowRight } from "lucide-react";
 
 import { api, type OhlcBar } from "@/lib/api";
 import { PriceChart } from "@/components/charts/PriceChart";
-import { CHART_SCOPES, sliceOhlc, type ChartScope } from "@/lib/chartMarkers";
+import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
 import {
   Sheet,
   SheetContent,
@@ -202,8 +202,9 @@ function PrecioTab({ symbol }: { symbol: string }) {
   useEffect(() => {
     let cancelled = false;
     setBars(null);
+    const { period, interval } = SCOPE_PARAMS[scope];
     api.charts
-      .priceHistory(symbol, "max")
+      .priceHistory(symbol, period, interval)
       .then((b) => {
         if (!cancelled) setBars(b);
       })
@@ -213,7 +214,7 @@ function PrecioTab({ symbol }: { symbol: string }) {
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, scope]);
 
   if (bars === null) return <Skeleton className="h-[360px] w-full" />;
   if (bars.length === 0) {
@@ -241,7 +242,7 @@ function PrecioTab({ symbol }: { symbol: string }) {
           </button>
         ))}
       </div>
-      <PriceChart data={sliceOhlc(bars, scope)} height={360} />
+      <PriceChart data={bars} height={360} />
     </div>
   );
 }

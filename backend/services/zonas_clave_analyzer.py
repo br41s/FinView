@@ -17,7 +17,11 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-_HISTORY_PERIOD = "10y"
+# "max" was tried and reverted: for long-listed tickers it pulls in decades-old,
+# split-adjusted penny-level prices that dominate zone detection with irrelevant
+# S/R levels (e.g. $0.30 "resistance" zones next to a $300 current price). 20y
+# still gives pivot detection much more history than before without that noise.
+_HISTORY_PERIOD = "20y"
 _HISTORY_INTERVAL = "1d"
 _PIVOT_WINDOW = 10          # bars each side for pivot detection
 _CLUSTER_THRESHOLD = 0.015  # 1.5% — pivots within this range merge into one zone
@@ -28,7 +32,7 @@ _MAX_ZONES = 8              # top N zones to return
 
 
 def fetch_history(ticker: str) -> pd.DataFrame | None:
-    """Download 5 years of daily OHLCV. Returns DataFrame with Close/High/Low/Volume or None."""
+    """Download up to 20 years of daily OHLCV. Returns DataFrame with Close/High/Low/Volume or None."""
     try:
         df = yf.download(
             ticker,

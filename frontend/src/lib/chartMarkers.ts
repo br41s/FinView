@@ -47,19 +47,37 @@ export type ChartScope = "1D" | "1W" | "1M" | "1A" | "5A" | "MAX";
 export const CHART_SCOPES: ChartScope[] = ["1D", "1W", "1M", "1A", "5A", "MAX"];
 
 /**
- * Client-side slice of OHLC bars by scope, anchored on the last bar. Data is
- * daily, so 1D shows the last few trading days rather than a single candle.
+ * yfinance (period, interval) to request per scope, passed straight through
+ * to GET /charts/price-history. Short scopes use intraday intervals — daily
+ * bars alone give 1D/1W/1M almost nothing to plot — capped at what yfinance
+ * actually allows for each interval (backend re-validates the same limits).
  */
-export function sliceOhlc(bars: OhlcBar[], scope: ChartScope): OhlcBar[] {
-  if (scope === "MAX" || bars.length === 0) return bars;
-  const last = new Date(bars[bars.length - 1].date + "T12:00:00");
-  const cutoff = new Date(last);
-  if (scope === "1D") cutoff.setDate(last.getDate() - 5);
-  else if (scope === "1W") cutoff.setDate(last.getDate() - 7);
-  else if (scope === "1M") cutoff.setMonth(last.getMonth() - 1);
-  else if (scope === "1A") cutoff.setFullYear(last.getFullYear() - 1);
-  else if (scope === "5A") cutoff.setFullYear(last.getFullYear() - 5);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  const filtered = bars.filter((b) => b.date >= cutoffStr);
-  return filtered.length >= 2 ? filtered : bars.slice(-5);
+export const SCOPE_PARAMS: Record<ChartScope, { period: string; interval: string }> = {
+  "1D": { period: "1d", interval: "5m" },
+  "1W": { period: "5d", interval: "15m" },
+  "1M": { period: "1mo", interval: "1h" },
+  "1A": { period: "1y", interval: "1d" },
+  "5A": { period: "5y", interval: "1d" },
+  MAX: { period: "max", interval: "1d" },
+};
+
+/**
+ * Snap day-keyed markers (buy/sell/dividend) onto the exact bar time of the
+ * fetched series. Needed because intraday series carry a per-bar timestamp,
+ * not a whole-day key — a marker whose day isn't in the fetched window (e.g.
+ * a 3-year-old trade viewed at 1D scope) is dropped, matching what's visible.
+ */
+export function alignMarkersToBars(markers: PriceMarker[], bars: OhlcBar[]): PriceMarker[] {
+  if (bars.length === 0) return [];
+  const firstBarOfDay = new Map<string, OhlcBar>();
+  for (const b of bars) {
+    if (!firstBarOfDay.has(b.date)) firstBarOfDay.set(b.date, b);
+  }
+  const aligned: PriceMarker[] = [];
+  for (const m of markers) {
+    const bar = firstBarOfDay.get(String(m.date).slice(0, 10));
+    if (!bar) continue;
+    aligned.push({ ...m, date: bar.time ?? bar.date });
+  }
+  return aligned;
 }

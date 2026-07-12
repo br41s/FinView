@@ -77,6 +77,10 @@ export interface ZcAnalysis {
 
 export interface OhlcBar {
   date: string;
+  // Epoch seconds — present only for intraday bars (interval !== "1d"),
+  // since lightweight-charts needs a precise timestamp rather than a
+  // whole-day key once more than one bar falls on the same calendar day.
+  time?: number;
   open: number;
   high: number;
   low: number;
@@ -624,8 +628,8 @@ export const api = {
       fetchCached(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
     dividendsByCompanyYearly: () =>
       fetchCached("/charts/dividends-by-company-yearly"),
-    priceHistory: (ticker: string, period = "2y") =>
-      fetchJSON<OhlcBar[]>(`/charts/price-history${qs({ ticker, period })}`),
+    priceHistory: (ticker: string, period = "2y", interval = "1d") =>
+      fetchJSON<OhlcBar[]>(`/charts/price-history${qs({ ticker, period, interval })}`),
   },
 
   // Options monitor

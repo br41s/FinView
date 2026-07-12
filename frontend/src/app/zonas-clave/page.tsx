@@ -13,7 +13,8 @@ import {
   Square,
   AlertCircle,
 } from "lucide-react";
-import { api, type ZcAnalysis, type ZcWatchlistItem } from "@/lib/api";
+import { api, type ZcAnalysis, type ZcWatchlistItem, type OhlcBar } from "@/lib/api";
+import { SCOPE_PARAMS } from "@/lib/chartMarkers";
 import { ZonasClaveChart } from "@/components/charts/ZonasClaveChart";
 import {
   Card,
@@ -61,19 +62,20 @@ function tickerLabel(item: ZcWatchlistItem): string {
   return item.ticker;
 }
 
-function filterByScope(history: { date: string; close: number; volume: number }[], scope: Scope) {
-  if (history.length === 0) return history;
-  if (scope === "MAX") return history;
+// Only ever called with "1Y" | "5Y" | "MAX" — 1D/1W/1M use a fresh intraday
+// fetch instead (see the intradayBars effect below).
+function filterByScope(
+  history: { date: string; close: number; volume: number }[],
+  scope: Extract<Scope, "1Y" | "5Y" | "MAX">,
+) {
+  if (history.length === 0 || scope === "MAX") return history;
 
   // Use the last available bar as reference so weekends/holidays always return data
   const lastDate = new Date(history[history.length - 1].date + "T12:00:00");
   const cutoff = new Date(lastDate);
 
-  if (scope === "1D") cutoff.setDate(lastDate.getDate() - 5);        // ~1 trading week
-  else if (scope === "1W") cutoff.setDate(lastDate.getDate() - 7);
-  else if (scope === "1M") cutoff.setMonth(lastDate.getMonth() - 1);
-  else if (scope === "1Y") cutoff.setFullYear(lastDate.getFullYear() - 1);
-  else if (scope === "5Y") cutoff.setFullYear(lastDate.getFullYear() - 5);
+  if (scope === "1Y") cutoff.setFullYear(lastDate.getFullYear() - 1);
+  else cutoff.setFullYear(lastDate.getFullYear() - 5);
 
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const filtered = history.filter((p) => p.date >= cutoffStr);
@@ -110,6 +112,7 @@ export default function ZonasClavePage() {
     { ticker: string; name: string; isin: string }[]
   >([]);
   const [searchInput, setSearchInput] = useState("");
+  const [intradayBars, setIntradayBars] = useState<OhlcBar[]>([]);
 
   // U1: load portfolio tickers for quick-add suggestions (non-blocking)
   useEffect(() => {
@@ -279,7 +282,8 @@ export default function ZonasClavePage() {
   const analysis = selectedTicker ? analyses[selectedTicker] : null;
   const isAnalyzing = selectedTicker ? analyzing.has(selectedTicker) : false;
 
-  // When 5Y/MAX is selected and stored data covers < 4 years, auto-refresh to get 10y data
+  // When 5Y/MAX is selected and stored data covers < 4 years, auto-refresh to
+  // pull the full 20y history the analyzer now fetches.
   useEffect(() => {
     if (!selectedTicker || !analysis || isAnalyzing) return;
     if (scope !== "5Y" && scope !== "MAX") return;
@@ -290,9 +294,35 @@ export default function ZonasClavePage() {
     if (yearsStored < 4) handleRefresh(selectedTicker);
   }, [scope, selectedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Chart data — filter by selected scope. lightweight-charts autoscales the price
-  // axis, so no manual Y domain is needed.
-  const priceHistory = filterByScope(analysis?.price_history ?? [], scope);
+  // 1D/1W/1M get real intraday candles from yfinance instead of slicing the
+  // stored daily analysis down to a handful of bars. S/R zone lines (from the
+  // daily analysis) stay overlaid regardless — they're a daily/weekly concept.
+  useEffect(() => {
+    if (!selectedTicker || (scope !== "1D" && scope !== "1W" && scope !== "1M")) {
+      setIntradayBars([]);
+      return;
+    }
+    let cancelled = false;
+    const { period, interval } = SCOPE_PARAMS[scope];
+    api.charts
+      .priceHistory(selectedTicker, period, interval)
+      .then((bars) => {
+        if (!cancelled) setIntradayBars(bars);
+      })
+      .catch(() => {
+        if (!cancelled) setIntradayBars([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTicker, scope]);
+
+  // Chart data — intraday fetch for 1D/1W/1M, daily analysis (scope-filtered)
+  // otherwise. lightweight-charts autoscales the price axis either way.
+  const priceHistory =
+    scope === "1D" || scope === "1W" || scope === "1M"
+      ? intradayBars
+      : filterByScope(analysis?.price_history ?? [], scope);
   const visibleZones = analysis?.zones ?? [];
 
   // Last close vs previous close, in points and percent — from the full (unscoped)

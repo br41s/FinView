@@ -25,7 +25,8 @@ import type { GeoSignal } from "@/lib/geo";
 import { PriceChart } from "@/components/charts/PriceChart";
 import {
   executionMarkers,
-  sliceOhlc,
+  alignMarkersToBars,
+  SCOPE_PARAMS,
   CHART_SCOPES,
   type ChartScope,
 } from "@/lib/chartMarkers";
@@ -125,17 +126,6 @@ function fmt(n: number | null | undefined, decimals = 2): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-}
-
-// Smallest whitelisted yfinance period that still covers the oldest transaction.
-function periodForOldest(oldest: string | undefined): string {
-  if (!oldest) return "2y";
-  const years =
-    (Date.now() - new Date(oldest).getTime()) / (365.25 * 24 * 3600 * 1000);
-  if (years <= 2) return "2y";
-  if (years <= 5) return "5y";
-  if (years <= 10) return "10y";
-  return "max";
 }
 
 const TX_LABELS: Record<string, string> = {
@@ -262,23 +252,24 @@ function PortfolioContent() {
     [expandedIsin, details],
   );
 
-  // Fetch OHLC for the expanded position once its detail (with ticker) is loaded.
-  // Cached per ISIN so re-expanding doesn't refetch. Best-effort → empty hides the chart.
+  // Fetch OHLC for the expanded position + selected scope. Cached per
+  // "isin:scope" so switching scope/re-expanding doesn't refetch. Best-effort
+  // → empty hides the chart.
   useEffect(() => {
     if (!expandedIsin) return;
     const detail = details.get(expandedIsin);
-    if (!detail?.ticker || ohlcByIsin.has(expandedIsin)) return;
-    const dates = detail.transactions.map((t) => t.date).filter(Boolean).sort();
-    const period = periodForOldest(dates[0]);
+    const cacheKey = `${expandedIsin}:${chartScope}`;
+    if (!detail?.ticker || ohlcByIsin.has(cacheKey)) return;
+    const { period, interval } = SCOPE_PARAMS[chartScope];
     api.charts
-      .priceHistory(detail.ticker, period)
+      .priceHistory(detail.ticker, period, interval)
       .then((bars) =>
-        setOhlcByIsin((prev) => new Map(prev).set(expandedIsin, bars)),
+        setOhlcByIsin((prev) => new Map(prev).set(cacheKey, bars)),
       )
       .catch(() =>
-        setOhlcByIsin((prev) => new Map(prev).set(expandedIsin, [])),
+        setOhlcByIsin((prev) => new Map(prev).set(cacheKey, [])),
       );
-  }, [expandedIsin, details, ohlcByIsin]);
+  }, [expandedIsin, chartScope, details, ohlcByIsin]);
 
   if (loading) {
     return (
@@ -774,7 +765,7 @@ function PortfolioContent() {
 
                                 {(() => {
                                   const bars =
-                                    ohlcByIsin.get(detail.isin) ?? [];
+                                    ohlcByIsin.get(`${detail.isin}:${chartScope}`) ?? [];
                                   if (!detail.ticker || bars.length === 0)
                                     return null;
                                   return (
@@ -803,16 +794,19 @@ function PortfolioContent() {
                                         </div>
                                       </div>
                                       <PriceChart
-                                        data={sliceOhlc(bars, chartScope)}
-                                        markers={executionMarkers([
-                                          ...detail.transactions,
-                                          ...(detail.dividend_events ?? []).map(
-                                            (d) => ({
-                                              type: "DIVIDEND",
-                                              date: d.date,
-                                            }),
-                                          ),
-                                        ])}
+                                        data={bars}
+                                        markers={alignMarkersToBars(
+                                          executionMarkers([
+                                            ...detail.transactions,
+                                            ...(detail.dividend_events ?? []).map(
+                                              (d) => ({
+                                                type: "DIVIDEND",
+                                                date: d.date,
+                                              }),
+                                            ),
+                                          ]),
+                                          bars,
+                                        )}
                                         height={360}
                                       />
                                     </div>

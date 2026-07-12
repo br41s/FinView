@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { api, clearAuthToken, invalidateCache } from "@/lib/api";
 import type {
@@ -161,6 +162,17 @@ type View =
   | "importar";
 
 export default function Home() {
+  // useSearchParams (in DashboardContent) requires a Suspense boundary at build
+  // time — same pattern as /billing and /pricing.
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
+  const searchParams = useSearchParams();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [casillas, setCasillas] = useState<Casilla[]>([]);
   const [dividends, setDividends] = useState<DividendSummary[]>([]);
@@ -318,13 +330,18 @@ export default function Home() {
     loadData(selectedYear);
   }, [loadData, selectedYear]);
 
-  // N2: navigate to #importar from QuickNav or external link
+  // N2: navigate to ?view=importar from QuickNav or external link.
+  // Search param (not hash): useSearchParams re-renders on router.push even when
+  // the page is already mounted; pushState never fires hashchange.
   useEffect(() => {
-    if (window.location.hash === "#importar") {
+    if (searchParams.get("view") === "importar") {
       setView("importar");
-      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      const params = new URLSearchParams(window.location.search);
+      params.delete("view");
+      const qs = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
     }
-  }, []);
+  }, [searchParams]);
 
   const showFiscal = selectedYear !== null;
 
@@ -341,7 +358,9 @@ export default function Home() {
   // Clear country filter when year changes
   useEffect(() => { setFilterCountry(null); }, [selectedYear]);
 
-  const hasData = stats && stats.total_transactions > 0;
+  // !error: after a failed year-switch `stats` keeps the previous year's data;
+  // without this guard the stale charts would render under the ErrorState.
+  const hasData = !error && stats && stats.total_transactions > 0;
 
   const fiscalYears = stats?.fiscal_years ?? [];
 
@@ -510,7 +529,7 @@ export default function Home() {
           )}
 
           {/* No data state */}
-          {view !== "importar" && !loading && !hasData && (
+          {view !== "importar" && !loading && !error && !hasData && (
             <EmptyState
               icon={UploadIcon}
               title="No hay datos importados"
