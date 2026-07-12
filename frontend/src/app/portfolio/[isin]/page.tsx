@@ -117,14 +117,24 @@ function PositionDetailContent() {
   }, [isin]);
 
   // Fetch price history for the ticker + selected scope. Best-effort: empty → card hidden.
+  // Cancellation guard: a fast response for a newer scope selection must not
+  // be overwritten by a slower one still in flight for the previous scope.
   const ticker = detail?.ticker ?? null;
   useEffect(() => {
     if (!ticker || !detail) return;
+    let cancelled = false;
     const { period, interval } = SCOPE_PARAMS[chartScope];
     api.charts
       .priceHistory(ticker, period, interval)
-      .then(setOhlc)
-      .catch(() => setOhlc([]));
+      .then((bars) => {
+        if (!cancelled) setOhlc(bars);
+      })
+      .catch(() => {
+        if (!cancelled) setOhlc([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [ticker, chartScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {

@@ -679,7 +679,7 @@ def price_history(
     if interval not in _VALID_PERIODS_BY_INTERVAL:
         interval = "1d"
     if period not in _VALID_PERIODS_BY_INTERVAL[interval]:
-        period = "2y" if interval == "1d" else next(iter(_VALID_PERIODS_BY_INTERVAL[interval]))
+        period = "2y" if interval == "1d" else min(_VALID_PERIODS_BY_INTERVAL[interval])
     t = ticker.strip().upper()
     if not t:
         return []
