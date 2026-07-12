@@ -293,6 +293,7 @@ class OptionsAlertOut(BaseModel):
     message: str
     severity: str
     acknowledged: bool
+    regime_alignment: str | None = None  # aligned/counter/neutral (Phase 2b)
 
     model_config = {"from_attributes": True}
 
@@ -396,6 +397,9 @@ class BacktestStatsOut(BaseModel):
     evaluated: int
     by_horizon: dict[str, BacktestHorizonStats]
     by_signal_type: dict[str, BacktestSignalTypeStats]
+    # aligned/counter/neutral → accuracy at 7d (Phase 2b). Empty until signals
+    # recorded with a regime have been evaluated.
+    by_alignment: dict[str, BacktestSignalTypeStats] = {}
 
 
 # ── Zonas Clave Schemas ──────────────────────────────────────────────

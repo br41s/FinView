@@ -53,6 +53,9 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("tax_results", "import_id", "INTEGER"),
     ("fiscal_profiles", "prior_rcm_loss", "NUMERIC(18, 2)"),
     ("fiscal_profiles", "prior_gp_loss", "NUMERIC(18, 2)"),
+    ("backtest_signals", "regime", "VARCHAR(12)"),
+    ("backtest_signals", "regime_alignment", "VARCHAR(10)"),
+    ("options_alerts", "regime_alignment", "VARCHAR(10)"),
 ]
 
 # Unique constraints that the model dropped but production tables may still

@@ -86,6 +86,39 @@ def _outcome(signal_direction: str, price_at_signal: float, price_later: float) 
     return BacktestOutcome.CORRECT.value if change_pct < 0 else BacktestOutcome.INCORRECT.value
 
 
+def alignment_for(direction: str, regime: str | None) -> str | None:
+    """Directional alignment of a signal with the macro regime (Phase 2b).
+
+        aligned  — signal direction agrees with the regime's risk tilt
+                   (risk_on + BULLISH, or risk_off + BEARISH)
+        counter  — signal direction opposes it
+        neutral  — regime has no tilt
+        None     — no regime available (FRED unconfigured / no data)
+
+    Instrumentation only: this label is recorded and surfaced, never used to
+    gate or reweight what fires.
+    """
+    if not regime:
+        return None
+    if regime == "neutral":
+        return "neutral"
+    bullish = direction.upper() == "BULLISH"
+    if regime == "risk_on":
+        return "aligned" if bullish else "counter"
+    if regime == "risk_off":
+        return "counter" if bullish else "aligned"
+    return None
+
+
+def alignment_for_alert(alert_type: str, message: str, regime: str | None) -> str | None:
+    """Alignment for a raw alert — derives direction first, then aligns.
+
+    Lets the OptionsAlert insert tag alignment identically to how record_signal
+    stores it (both go through _derive_direction), without duplicating logic.
+    """
+    return alignment_for(_derive_direction(alert_type, message), regime)
+
+
 def record_signal(
     db: Session,
     *,
@@ -94,10 +127,13 @@ def record_signal(
     alert_type: str,
     message: str,
     current_price: float,
+    regime: str | None = None,
 ) -> BacktestSignal | None:
     """Record one alert as a backtest signal. Returns the persisted object or None on error.
 
     Callers should NOT commit — they can batch-commit alongside other inserts.
+    `regime` is the macro regime frozen at record time (Phase 2b); the derived
+    alignment is stored alongside it for later aligned-vs-counter analysis.
     """
     try:
         direction = _derive_direction(alert_type, message)
@@ -108,6 +144,8 @@ def record_signal(
             direction=direction,
             price_at_signal=current_price,
             alert_message=message[:500],
+            regime=regime,
+            regime_alignment=alignment_for(direction, regime),
         )
         db.add(signal)
         return signal
@@ -201,6 +239,19 @@ def evaluate_pending(db: Session, user_id: int) -> int:
     return updated
 
 
+def _outcome_value(outcome) -> str | None:
+    """Normalize a stored outcome to its string value.
+
+    SQLAlchemy returns the BacktestOutcome *member* on read (e.g.
+    ``BacktestOutcome.CORRECT``), so comparing it directly against
+    ``BacktestOutcome.CORRECT.value`` ("CORRECT") is always False. Coerce to the
+    string value so accuracy counts actually work (member or raw string).
+    """
+    if outcome is None:
+        return None
+    return outcome.value if isinstance(outcome, BacktestOutcome) else outcome
+
+
 def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
     """Return accuracy statistics for completed signals.
 
@@ -225,10 +276,11 @@ def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
     evaluated = [s for s in signals if s.outcome_7d is not None]
 
     def _horizon_stats(outcome_attr: str) -> dict:
-        rows = [s for s in signals if getattr(s, outcome_attr) is not None]
-        correct = sum(1 for s in rows if getattr(s, outcome_attr) == BacktestOutcome.CORRECT.value)
-        incorrect = sum(1 for s in rows if getattr(s, outcome_attr) == BacktestOutcome.INCORRECT.value)
-        neutral = sum(1 for s in rows if getattr(s, outcome_attr) == BacktestOutcome.NEUTRAL.value)
+        rows = [_outcome_value(getattr(s, outcome_attr)) for s in signals]
+        rows = [o for o in rows if o is not None]
+        correct = sum(1 for o in rows if o == BacktestOutcome.CORRECT.value)
+        incorrect = sum(1 for o in rows if o == BacktestOutcome.INCORRECT.value)
+        neutral = sum(1 for o in rows if o == BacktestOutcome.NEUTRAL.value)
         acc = round(correct / len(rows) * 100, 1) if rows else None
         return {"evaluated": len(rows), "correct": correct, "incorrect": incorrect, "neutral": neutral, "accuracy_pct": acc}
 
@@ -238,9 +290,24 @@ def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
         if st not in by_signal:
             by_signal[st] = {"correct": 0, "total": 0}
         by_signal[st]["total"] += 1
-        if s.outcome_7d == BacktestOutcome.CORRECT.value:
+        if _outcome_value(s.outcome_7d) == BacktestOutcome.CORRECT.value:
             by_signal[st]["correct"] += 1
     for st, v in by_signal.items():
+        v["accuracy_pct"] = round(v["correct"] / v["total"] * 100, 1) if v["total"] else None
+
+    # Aligned-vs-counter breakdown (Phase 2b): does macro-regime alignment
+    # predict outcomes? 7d-based, mirrors by_signal_type. Only signals recorded
+    # with a regime contribute; pre-2b/None rows are excluded.
+    by_alignment: dict[str, dict] = {}
+    for s in evaluated:
+        key = s.regime_alignment
+        if key is None:
+            continue
+        bucket = by_alignment.setdefault(key, {"correct": 0, "total": 0})
+        bucket["total"] += 1
+        if _outcome_value(s.outcome_7d) == BacktestOutcome.CORRECT.value:
+            bucket["correct"] += 1
+    for v in by_alignment.values():
         v["accuracy_pct"] = round(v["correct"] / v["total"] * 100, 1) if v["total"] else None
 
     return {
@@ -252,4 +319,5 @@ def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
             "7d": _horizon_stats("outcome_7d"),
         },
         "by_signal_type": by_signal,
+        "by_alignment": by_alignment,
     }

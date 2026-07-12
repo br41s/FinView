@@ -21,10 +21,14 @@ from backend.models import (
     UnusualActivity,
     WatchlistItem,
 )
-from backend.services.backtest_service import evaluate_pending, record_signal
+from backend.services.backtest_service import (
+    alignment_for_alert,
+    evaluate_pending,
+    record_signal,
+)
 from backend.services.fred_rates import risk_free_rate_for_ticker
 from backend.services.greeks_calculator import enrich_options_with_greeks
-from backend.services.macro_context import macro_prompt_block
+from backend.services.macro_context import macro_context, macro_prompt_block
 from backend.services.notification_service import notify_alerts, notify_spike_telegram
 from backend.services.options_analyzer import analyze_ticker
 from backend.services.options_scraper import fetch_options
@@ -66,6 +70,12 @@ def run_cycle(user_id: int) -> dict:
 
         cycle_num = _cycle_counts.get(user_id, 0) + 1
         _cycle_counts[user_id] = cycle_num
+
+        # Macro regime frozen once per cycle (Phase 2b): the same regime tags
+        # every signal/alert recorded this cycle, so aligned-vs-counter backtest
+        # comparisons stay consistent. None when FRED macro data is unavailable.
+        macro = macro_context()
+        regime = macro["regime"] if macro else None
 
         all_alerts: list[dict] = []
         all_unusual: list[dict] = []
@@ -126,12 +136,15 @@ def run_cycle(user_id: int) -> dict:
 
             # Record backtest signals for HIGH/MEDIUM alerts
             for alert in alerts:
+                align = alignment_for_alert(alert["type"], alert["message"], regime)
+                alert["regime_alignment"] = align  # surfaced to the Claude prompt
                 db.add(OptionsAlert(
                     user_id=user_id,
                     ticker=alert["ticker"],
                     alert_type=alert["type"],
                     message=alert["message"],
                     severity=alert["severity"],
+                    regime_alignment=align,
                 ))
                 if alert.get("severity") in ("HIGH", "MEDIUM"):
                     record_signal(
@@ -141,6 +154,7 @@ def run_cycle(user_id: int) -> dict:
                         alert_type=alert["type"],
                         message=alert["message"],
                         current_price=float(summary["current_price"]),
+                        regime=regime,
                     )
 
             for ua in unusual:
@@ -274,7 +288,9 @@ Delta y Gamma de posiciones con mayor actividad. Theta decay relevant si hay pos
 [Máximo 3 tickers. Para cada uno: nombre, tesis en 1-2 frases, nivel de riesgo (ALTO/MEDIO/BAJO).]
 
 ## 5. Alertas Clave
-[Lista las alertas HIGH primero, luego MEDIUM. Para cada una: ticker — tipo — razonamiento breve.]
+[Lista las alertas HIGH primero, luego MEDIUM. Para cada una: ticker — tipo — razonamiento breve. \
+Si la alerta trae `regime_alignment`, señala si va "aligned" (a favor) o "counter" (en contra) \
+del régimen macro — es informativo, NO cambia la severidad ni la señal.]
 
 ## 6. Contexto MEFF
 [Solo si hay tickers .MC. Diferenciales bid/ask, liquidez, ciclos de vencimiento MEFF vs CBOE.]

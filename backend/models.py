@@ -476,6 +476,9 @@ class OptionsAlert(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(Enum(AlertSeverity), default=AlertSeverity.MEDIUM.value)
     acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Macro-regime alignment tag (Phase 2b, informational): aligned/counter/neutral.
+    # NULL on pre-2b rows and whenever FRED macro data is unavailable.
+    regime_alignment: Mapped[str | None] = mapped_column(String(10))
 
     __table_args__ = (
         Index("ix_opt_alert_user", "user_id", "timestamp"),
@@ -621,6 +624,12 @@ class BacktestSignal(Base):
     outcome_1d: Mapped[str | None] = mapped_column(Enum(BacktestOutcome))
     outcome_3d: Mapped[str | None] = mapped_column(Enum(BacktestOutcome))
     outcome_7d: Mapped[str | None] = mapped_column(Enum(BacktestOutcome))
+
+    # Macro-regime context frozen at record time (Phase 2b, instrumentation only).
+    # regime: risk_on/neutral/risk_off; regime_alignment: aligned/counter/neutral.
+    # NULL on pre-2b rows and whenever FRED macro data is unavailable.
+    regime: Mapped[str | None] = mapped_column(String(12))
+    regime_alignment: Mapped[str | None] = mapped_column(String(10))
 
     __table_args__ = (
         Index("ix_bt_user_ticker", "user_id", "ticker"),
