@@ -69,7 +69,15 @@ backend/
   api/geo.py             — Geo-Intel endpoints: signals, run, scheduler control, /geo/cron (external cron entry)
 
 frontend/
-  src/app/page.tsx                  — Main investment dashboard (5 tabs)
+  src/app/page.tsx                  — Public landing (FinviewIntro)
+  src/app/dashboard/page.tsx        — Fiscal dashboard: 8 views as horizontal tabs
+                                      (Dashboard/Rendimiento/Dividendos/Casillas/Ganancias/
+                                      Mi declaración/Comparativa/Importar; fiscal tabs only
+                                      when a year is selected). Header: year selector,
+                                      privacy toggle, billing + logout, QuickNav. The old
+                                      AppSidebar was removed (PR #124) — QuickNav is the
+                                      single global nav on every section; app-sidebar.tsx
+                                      is unused, pending deletion.
   src/app/options/page.tsx          — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
   src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
   src/components/                   — FileUpload, tables, stat cards
@@ -268,7 +276,7 @@ Search bar finds regulated Spanish funds by name or ISIN and pre-fills the add f
   PE metrics (DPI/TVPI/IRR/vintage/commitment/hurdle) aren't public — manual on positions.
 
 ### Frontend — /alt-investments
-Self-contained page (QuickNav, like /portfolio /zonas-clave — not the AppSidebar dashboard).
+Self-contained page (QuickNav, like every section since the sidebar removal in PR #124).
 Top search bar (debounced 300ms → `/search` → results dropdown → click pre-fills the form) +
 summary stat cards + allocation bars + positions table + inline add/edit form (native selects).
 
