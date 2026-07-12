@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ChevronDown,
+  Plus,
   RefreshCw,
   Target,
   TrendingDown,
@@ -95,7 +95,6 @@ function macdColor(signal: string | null) {
 // ── Component ────────────────────────────────────────────────────────
 
 export default function ZonasClavePage() {
-  const router = useRouter();
   const { openInstrument } = useInstrumentDrawer();
   const [watchlist, setWatchlist] = useState<ZcWatchlistItem[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
@@ -107,7 +106,10 @@ export default function ZonasClavePage() {
   const [schedulerRunning, setSchedulerRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [portfolioSuggestions, setPortfolioSuggestions] = useState<{ ticker: string; name: string }[]>([]);
+  const [portfolioSuggestions, setPortfolioSuggestions] = useState<
+    { ticker: string; name: string; isin: string }[]
+  >([]);
+  const [searchInput, setSearchInput] = useState("");
 
   // U1: load portfolio tickers for quick-add suggestions (non-blocking)
   useEffect(() => {
@@ -116,7 +118,9 @@ export default function ZonasClavePage() {
       .then((pos) => {
         const p = pos as { ticker: string | null; isin: string; name: string }[];
         setPortfolioSuggestions(
-          p.filter((x) => x.ticker).map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name })),
+          p
+            .filter((x) => x.ticker)
+            .map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name, isin: x.isin })),
         );
       })
       .catch(() => {});
@@ -238,6 +242,40 @@ export default function ZonasClavePage() {
     }
   }
 
+  // Search box — add any ticker (not just portfolio suggestions), ported from /markets.
+  async function addSpecific(ticker: string, name = "") {
+    const t = ticker.trim().toUpperCase();
+    if (!t) return;
+    setSearchInput("");
+    if (watchlist.some((w) => w.ticker.toUpperCase() === t)) {
+      setSelectedTicker(watchlist.find((w) => w.ticker.toUpperCase() === t)!.ticker);
+      return;
+    }
+    try {
+      const item = await api.zonasClav.addTicker(t, name);
+      setWatchlist((prev) => [...prev, item]);
+      setSelectedTicker(item.ticker);
+    } catch {
+      // 409 (already exists) or transient error — select it if it's somehow present
+      const existing = watchlist.find((w) => w.ticker.toUpperCase() === t);
+      if (existing) setSelectedTicker(existing.ticker);
+    }
+  }
+
+  // Match suggestions by ticker, name or ISIN; hide ones already in the watchlist.
+  const searchMatches = useMemo(() => {
+    const q = searchInput.trim().toUpperCase();
+    if (!q) return [];
+    const watchlistSet = new Set(watchlist.map((w) => w.ticker.toUpperCase()));
+    return portfolioSuggestions
+      .filter(
+        (s) =>
+          s.ticker.includes(q) || s.name.toUpperCase().includes(q) || s.isin.toUpperCase().includes(q),
+      )
+      .filter((s) => !watchlistSet.has(s.ticker))
+      .slice(0, 8);
+  }, [searchInput, portfolioSuggestions, watchlist]);
+
   const analysis = selectedTicker ? analyses[selectedTicker] : null;
   const isAnalyzing = selectedTicker ? analyzing.has(selectedTicker) : false;
 
@@ -256,6 +294,16 @@ export default function ZonasClavePage() {
   // axis, so no manual Y domain is needed.
   const priceHistory = filterByScope(analysis?.price_history ?? [], scope);
   const visibleZones = analysis?.zones ?? [];
+
+  // Last close vs previous close, in points and percent — from the full (unscoped)
+  // history so it always reflects the latest session regardless of the chart scope.
+  const priceChange = useMemo(() => {
+    const hist = analysis?.price_history;
+    if (!hist || hist.length < 2) return null;
+    const last = hist[hist.length - 1].close;
+    const prev = hist[hist.length - 2].close;
+    return { last, delta: last - prev, pct: ((last - prev) / prev) * 100 };
+  }, [analysis]);
 
   return (
     <div className="space-y-6 p-6">
@@ -309,22 +357,6 @@ export default function ZonasClavePage() {
             </Button>
           </CardContent>
         </Card>
-      ) : watchlist.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <Target className="mx-auto mb-4 h-10 w-10 opacity-30" />
-            <p className="text-sm">
-              No tienes valores en Zonas Clave. Añádelos desde la sección{" "}
-              <button
-                className="text-primary underline"
-                onClick={() => router.push("/portfolio")}
-              >
-                Cartera
-              </button>
-              .
-            </p>
-          </CardContent>
-        </Card>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
           {/* Left — ticker list */}
@@ -346,6 +378,42 @@ export default function ZonasClavePage() {
 
             <Card className={`h-fit ${sidebarOpen ? "" : "hidden"} lg:block`}>
             <CardContent className="p-2 pt-3">
+              <div className="relative mb-2 px-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addSpecific(searchInput)}
+                    placeholder="Ticker, nombre o ISIN…"
+                    className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <Button
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => addSpecific(searchInput)}
+                    title="Añadir"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {searchMatches.length > 0 && (
+                  <div className="absolute left-1 right-1 top-full z-10 mt-1 overflow-hidden rounded-md border bg-popover shadow-md">
+                    {searchMatches.map((s) => (
+                      <button
+                        key={s.isin}
+                        onClick={() => void addSpecific(s.ticker, s.name)}
+                        className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-muted"
+                      >
+                        <span className="text-sm font-medium">{s.ticker}</span>
+                        <span className="w-full truncate text-xs text-muted-foreground">
+                          {s.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/70">{s.isin}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {(() => {
                 const analyzedItems = watchlist.filter((w) => analyses[w.ticker]);
                 const unanalyzedItems = watchlist.filter((w) => !analyses[w.ticker]);
@@ -568,8 +636,24 @@ export default function ZonasClavePage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">
+                      <CardTitle className="flex items-center gap-3 text-sm font-medium">
                         Gráfico de precio y zonas clave
+                        {priceChange && (
+                          <span
+                            className={`flex items-center gap-1 text-xs font-normal ${
+                              priceChange.pct >= 0 ? "text-emerald-600" : "text-red-600"
+                            }`}
+                          >
+                            {priceChange.pct >= 0 ? (
+                              <TrendingUp className="h-3.5 w-3.5" />
+                            ) : (
+                              <TrendingDown className="h-3.5 w-3.5" />
+                            )}
+                            {priceChange.delta >= 0 ? "+" : ""}
+                            {fmt(priceChange.delta)} ({priceChange.pct >= 0 ? "+" : ""}
+                            {fmt(priceChange.pct)}%)
+                          </span>
+                        )}
                       </CardTitle>
                       <div className="flex items-center gap-0.5">
                         {SCOPES.map((s) => (
@@ -657,7 +741,16 @@ export default function ZonasClavePage() {
                   </Card>
                 )}
               </>
-            ) : null}
+            ) : (
+              <Card>
+                <CardContent className="py-16 text-center text-muted-foreground">
+                  <Target className="mx-auto mb-4 h-10 w-10 opacity-30" />
+                  <p className="text-sm">
+                    Añade un valor con el buscador de la izquierda para empezar.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       )}

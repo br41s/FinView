@@ -49,7 +49,7 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 backend/
   app.py              — FastAPI entry point
   models.py           — ORM models
-  api/                — Endpoints: imports, transactions, fiscal, charts, options, markets
+  api/                — Endpoints: imports, transactions, fiscal, charts, options
   importers/          — One file per broker: tr.py (+ tr_v2.py, tr_csv.py), dg.py, ibkr.py, ing.py, bbva.py, etoro.py
   services/
     fifo_engine.py         — Cross-broker FIFO engine — most critical, touch carefully
@@ -83,8 +83,10 @@ frontend/
   src/components/                   — FileUpload, tables, stat cards
   src/components/charts/            — 8 Recharts components + PriceChart + ZonasClaveChart (lightweight-charts)
   src/lib/                          — API client + TypeScript types; chartMarkers.ts (execution markers + scope slicing)
-  src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (scope buttons, auto-poll, chart)
-  src/app/markets/page.tsx          — Markets: DB-backed watchlist (markets_watchlist) + candlestick viewer (suggestions from portfolio)
+  src/app/zonas-clave/page.tsx      — Zonas Clave dashboard (ticker search box, scope buttons,
+                                      auto-poll, chart). Absorbed the standalone /markets page
+                                      (PR #125) — its candlestick-viewer search box and
+                                      last-close change readout were ported in, /markets removed.
   src/app/geo-intel/page.tsx        — Geo-Intel dashboard (map + signal feed; components in src/components/geo-intel/)
 
 ---
@@ -107,13 +109,19 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 ### Add-ticker flow
 - `POST /zonas-clave/watchlist` → persists item → fires `_analyze_single_in_background(item_id, ticker)` in a background thread (only that ticker, not all)
 - `POST /zonas-clave/analyze-all` → fires `run_analysis_for_user(user_id)` for all tickers
+- Two entry points into the same `addTicker`/watchlist state: portfolio quick-add chips
+  ("Sin analizar" section, positions-only) and a free-text search box (ticker/name/ISIN,
+  ported from the old `/markets` page) that can add any ticker, not just held ones. The
+  search box lives in the left panel and renders even with an empty watchlist.
 
 ### Frontend — /zonas-clave
-- Left panel: ticker list with trend bias %; clicking selects ticker
+- Left panel: search box (add any ticker) + ticker list with trend bias %; clicking selects ticker
 - Right panel: trend card (RSI, MACD, price) + candlestick chart + zones table.
   Chart is `components/charts/ZonasClaveChart.tsx` (TradingView lightweight-charts v5,
   candlesticks + S/R as `createPriceLine` overlays; line-series fallback for pre-OHLC
   stored analyses). Attribution logo on (Apache-2.0). Other charts stay on Recharts.
+  Chart header shows a last-close change readout (points + %, colored, ↑/↓ icon) computed
+  client-side from the last two `price_history` closes.
 - Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
 - Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
 - Scheduler: APScheduler every 24h; start/stop via UI
@@ -143,8 +151,6 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
   - Instrument drawer Opciones tab: underlying candles + spot (solid) + near-money
     strikes (3 below, 3 above, dashed) from the selected expiry's chain. (Was the
     `/options` Cartera inline expansion; moved into the drawer in phase 5.)
-  - `/markets`: DB-backed watchlist (`markets_watchlist` table, `/markets/watchlist`
-    API; separate from options/zonas lists); OHLC fetched `max` once, sliced client-side.
 
 ---
 

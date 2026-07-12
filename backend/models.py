@@ -408,28 +408,6 @@ class WatchlistItem(Base):
     )
 
 
-class MarketsWatchlistItem(Base):
-    """Tickers the user follows in the /markets candlestick viewer.
-
-    Separate list from the options and zonas-clave watchlists by design:
-    markets is a casual price-viewing list, not a monitoring or analysis scope.
-    """
-
-    __tablename__ = "markets_watchlist"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
-    name: Mapped[str] = mapped_column(String(200), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    user: Mapped["User"] = relationship()
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "ticker"),
-    )
-
-
 class OptionsSnapshot(Base):
     """Point-in-time options chain metrics for a ticker."""
 

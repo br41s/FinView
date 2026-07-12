@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { BarChart3, Briefcase, Activity, Target, Globe, Landmark, Upload, CandlestickChart } from "lucide-react";
+import { BarChart3, Briefcase, Activity, Target, Globe, Landmark, Upload } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { href: "/portfolio", label: "Cartera", Icon: Briefcase },
   { href: "/options", label: "Derivados", Icon: Activity },
   { href: "/zonas-clave", label: "Técnico", Icon: Target },
-  { href: "/markets", label: "Mercados", Icon: CandlestickChart },
   { href: "/geo-intel", label: "Geo-Intel", Icon: Globe },
   { href: "/alt-investments", label: "Inversiones Alt.", Icon: Landmark },
 ] as const;
