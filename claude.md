@@ -208,12 +208,19 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
 - `record_signal()`: stores every HIGH/MEDIUM alert as a `BacktestSignal` with direction (BULLISH/BEARISH derived from alert type)
 - `evaluate_pending()`: fetches current price via yfinance, fills `price_at_1d/3d/7d`, marks CORRECT/NEUTRAL/INCORRECT per horizon (threshold ±0.5%)
 - UI shows accuracy % per horizon and per signal type in the Backtest tab
+- **Enum-comparison gotcha:** SQLAlchemy returns `outcome_*` as the `BacktestOutcome`
+  *member* on read, so `outcome == BacktestOutcome.CORRECT.value` is always False.
+  `get_stats` normalizes via `_outcome_value()` before comparing — do the same anywhere
+  you compare a stored outcome, or accuracy silently reads 0%.
+- **Regime alignment (Phase 2b):** each signal freezes the macro `regime` at record time
+  and stores `regime_alignment` (aligned/counter/neutral). `get_stats` adds a `by_alignment`
+  breakdown (aligned-vs-counter accuracy at 7d). Instrumentation only — see the FRED section.
 
 ### Frontend — /options (6 tabs)
 - **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker. Underlying `PriceChart` above the chain (spot + near-money strikes; see "Price charts").
 - **Watchlist**: add/remove tickers; stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color
-- **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW)
-- **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown
+- **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW); `macro ✓/✗` alignment tag per alert (Phase 2b, informational)
+- **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown; "Precisión por régimen macro" aligned-vs-counter table (Phase 2b)
 - **Análisis**: calls `GET /options/agent/last-analysis`; parses `## N.` Markdown sections via `parseAnalysisSections()`; renders each section as a Card; shows cycle metadata header (timestamp, tickers, alerts, sentiment)
 - **Agente**: scheduler status, cycle metrics, chat input → `POST /options/agent/chat`
 
@@ -363,8 +370,18 @@ The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never to
   in `GET /options/agent/last-analysis`, no per-cycle persistence, no schema change.
 - Surfaced in the VolatilityEdge Claude prompt (`macro_prompt_block()`, "contextualize, don't
   change signals") and the Análisis-tab `MacroBadge`. **Does NOT touch scoring/gating.**
-- **Phase 2b (deferred):** weight signal confidence by regime (would persist regime per signal
-  for backtesting) — only after the badge proves out.
+### Macro regime (Phase 2b — alignment instrumentation, DONE)
+- Freezes the regime once per agent cycle and tags each signal/alert with directional
+  **alignment**: `risk_on+BULLISH` or `risk_off+BEARISH` → `aligned`; the crosses → `counter`;
+  neutral regime → `neutral`. `alignment_for()` / `alignment_for_alert()` in `backtest_service.py`.
+- Persisted: `BacktestSignal.regime` + `.regime_alignment`, `OptionsAlert.regime_alignment`
+  (additive columns in `database._ADDITIVE_COLUMNS`). `get_stats` → `by_alignment` breakdown.
+- Surfaced: VolatilityEdge prompt (per-alert tag), `AlignmentTag` on alerts, and the
+  "Precisión por régimen macro" table in the Backtest tab.
+- **Instrument + surface only — does NOT change severity, gating, or notifications.** Every
+  signal is still recorded, just labeled, so aligned-vs-counter stays unbiased.
+- **Phase 2c (deferred):** let regime alignment actually modulate severity/notifications —
+  only after `by_alignment` shows aligned signals outperform over a week+ of evaluated data.
 
 ---
 
