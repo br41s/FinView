@@ -635,11 +635,24 @@ def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
     return result
 
 
-# OHLC history cache: key "TICKER:period" → (rows, fetched_at). Daily bars only
-# change once per session close, so a short TTL kills repeat yfinance downloads
-# (every drawer/chart open re-fetched up to 10y of bars) without staleness risk.
+# OHLC history cache: key "TICKER:period:interval" → (rows, fetched_at). Daily
+# bars only change once per session close, so a short TTL kills repeat yfinance
+# downloads (every drawer/chart open re-fetched up to 10y of bars) without
+# staleness risk. Intraday bars go stale faster but 15min is an acceptable
+# trade-off against re-hitting yfinance on every scope click.
 _PRICE_HISTORY_CACHE: dict[str, tuple[list, float]] = {}
 _PRICE_HISTORY_TTL = 900.0  # seconds
+
+# yfinance caps how far back each interval can be requested. Only pairs the
+# frontend actually asks for (chartMarkers.ts SCOPE_PARAMS) are allowed —
+# anything else silently falls back to a safe daily default rather than
+# risking an oversized or empty intraday request.
+_VALID_PERIODS_BY_INTERVAL: dict[str, set[str]] = {
+    "1d": {"1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "10y", "max"},
+    "1h": {"1mo", "3mo", "6mo"},
+    "15m": {"5d", "1mo"},
+    "5m": {"1d", "5d"},
+}
 
 
 @router.get("/price-history")
@@ -647,29 +660,35 @@ def price_history(
     ticker: str,
     user: CurrentUser,
     period: str = Query("2y"),
+    interval: str = Query("1d"),
 ):
-    """Daily OHLC history for a ticker (yfinance), for position price charts.
+    """OHLC history for a ticker (yfinance), for position price charts.
 
     Read-only and best-effort: any failure or unknown ticker returns []
-    so the frontend simply hides the chart. period is whitelisted.
+    so the frontend simply hides the chart. period/interval are whitelisted
+    together since yfinance caps how far back intraday intervals can go.
+    Intraday rows also carry a "time" (epoch seconds) field for the chart's
+    x-axis; daily rows rely on "date" alone (lightweight-charts business-day
+    format, which handles weekend gaps natively).
     """
     import time
 
     import pandas as pd
     import yfinance as yf
 
-    allowed = {"6mo", "1y", "2y", "5y", "10y", "max"}
-    if period not in allowed:
-        period = "2y"
+    if interval not in _VALID_PERIODS_BY_INTERVAL:
+        interval = "1d"
+    if period not in _VALID_PERIODS_BY_INTERVAL[interval]:
+        period = "2y" if interval == "1d" else min(_VALID_PERIODS_BY_INTERVAL[interval])
     t = ticker.strip().upper()
     if not t:
         return []
-    cache_key = f"{t}:{period}"
+    cache_key = f"{t}:{period}:{interval}"
     cached = _PRICE_HISTORY_CACHE.get(cache_key)
     if cached and time.time() - cached[1] < _PRICE_HISTORY_TTL:
         return cached[0]
     try:
-        df = yf.download(t, period=period, interval="1d", auto_adjust=True, progress=False)
+        df = yf.download(t, period=period, interval=interval, auto_adjust=True, progress=False)
         if df is None or df.empty:
             return []
         if isinstance(df.columns, pd.MultiIndex):
@@ -678,6 +697,7 @@ def price_history(
         rows = [
             {
                 "date": str(idx.date()) if hasattr(idx, "date") else str(idx)[:10],
+                **({"time": int(idx.timestamp())} if interval != "1d" else {}),
                 "open": round(float(row["Open"]), 4),
                 "high": round(float(row["High"]), 4),
                 "low": round(float(row["Low"]), 4),
@@ -691,5 +711,5 @@ def price_history(
         _PRICE_HISTORY_CACHE[cache_key] = (rows, time.time())
         return rows
     except Exception:
-        logger.exception("price_history failed for %s", t)
+        logger.exception("price_history failed for %s (period=%s interval=%s)", t, period, interval)
         return []

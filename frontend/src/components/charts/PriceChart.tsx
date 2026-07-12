@@ -21,6 +21,9 @@ import {
 // Minimal OHLC point. open/high/low optional → falls back to a line series.
 export interface PricePoint {
   date: string;
+  // Epoch seconds — when present (intraday bars), used as the chart's time
+  // key instead of `date` since multiple bars can share the same day.
+  time?: number;
   close: number;
   open?: number;
   high?: number;
@@ -36,7 +39,9 @@ export interface PriceLine {
 }
 
 export interface PriceMarker {
-  date: string;
+  // Epoch seconds for intraday series, "YYYY-MM-DD" for daily series — must
+  // match a `time`/`date` value actually present in the chart's data.
+  date: string | number;
   position: "aboveBar" | "belowBar";
   color: string;
   shape: "arrowUp" | "arrowDown" | "circle";
@@ -90,8 +95,8 @@ export function PriceChart({
         resolvedTheme,
         height,
         data.length,
-        data[0]?.date,
-        data[data.length - 1]?.date,
+        data[0]?.time ?? data[0]?.date,
+        data[data.length - 1]?.time ?? data[data.length - 1]?.date,
         priceLines.map((l) => `${l.price}:${l.strength ?? ""}:${l.color}`).join("|"),
         markers.map((m) => `${m.date}:${m.shape}`).join("|"),
       ].join("~"),
@@ -119,8 +124,12 @@ export function PriceChart({
       },
       rightPriceScale: { borderVisible: false },
       // maxBarSpacing caps candle width so short ranges (few bars) don't stretch
-      // across the whole pane. Edges left unpinned so the cap can take effect.
-      timeScale: { borderVisible: false, maxBarSpacing: 24 },
+      // across the whole pane. minBarSpacing's default (0.5px) silently caps
+      // fitContent() to ~2x the pane's pixel width in bars — for MAX on an old
+      // ticker (tens of thousands of daily bars) that truncates to the most
+      // recent few years without any error. Lowered so decades of history can
+      // actually be fit on-screen (compressed, but zoomable via +/-).
+      timeScale: { borderVisible: false, maxBarSpacing: 24, minBarSpacing: 0.01 },
       crosshair: { horzLine: { labelVisible: true }, vertLine: { labelVisible: true } },
     });
     chartApiRef.current = chart;
@@ -139,7 +148,7 @@ export function PriceChart({
       series.setData(
         data.map(
           (p): CandlestickData => ({
-            time: p.date as Time,
+            time: (p.time ?? p.date) as Time,
             open: p.open!,
             high: p.high!,
             low: p.low!,
@@ -150,7 +159,7 @@ export function PriceChart({
     } else {
       series = chart.addSeries(LineSeries, { color: c.line, lineWidth: 2 });
       series.setData(
-        data.map((p): LineData => ({ time: p.date as Time, value: p.close })),
+        data.map((p): LineData => ({ time: (p.time ?? p.date) as Time, value: p.close })),
       );
     }
 

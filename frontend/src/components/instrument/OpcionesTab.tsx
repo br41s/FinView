@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 
 import { api, type TickerAnalysis, type OhlcBar } from "@/lib/api";
 import { PriceChart, type PriceLine } from "@/components/charts/PriceChart";
-import { CHART_SCOPES, sliceOhlc, type ChartScope } from "@/lib/chartMarkers";
+import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -117,8 +117,9 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
   useEffect(() => {
     let cancelled = false;
     setOhlc(null);
+    const { period, interval } = SCOPE_PARAMS[scope];
     api.charts
-      .priceHistory(symbol, "max")
+      .priceHistory(symbol, period, interval)
       .then((b) => {
         if (!cancelled) setOhlc(b);
       })
@@ -128,7 +129,7 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, scope]);
 
   async function runAi() {
     setAiLoading(true);
@@ -250,7 +251,7 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
               </button>
             ))}
           </div>
-          <PriceChart data={sliceOhlc(ohlc, scope)} priceLines={priceLines} height={280} />
+          <PriceChart data={ohlc} priceLines={priceLines} height={280} />
         </div>
       )}
 

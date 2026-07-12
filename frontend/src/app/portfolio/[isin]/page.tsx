@@ -13,7 +13,8 @@ import { api, type OhlcBar } from "@/lib/api";
 import { PriceChart } from "@/components/charts/PriceChart";
 import {
   executionMarkers,
-  sliceOhlc,
+  alignMarkersToBars,
+  SCOPE_PARAMS,
   CHART_SCOPES,
   type ChartScope,
 } from "@/lib/chartMarkers";
@@ -74,17 +75,6 @@ function fmt(n: number | null | undefined, decimals = 2): string {
   });
 }
 
-// Smallest whitelisted yfinance period that still covers the oldest transaction.
-function periodForOldest(oldest: string | undefined): string {
-  if (!oldest) return "2y";
-  const years =
-    (Date.now() - new Date(oldest).getTime()) / (365.25 * 24 * 3600 * 1000);
-  if (years <= 2) return "2y";
-  if (years <= 5) return "5y";
-  if (years <= 10) return "10y";
-  return "max";
-}
-
 const TX_LABELS: Record<string, string> = {
   BUY: "Compra",
   SELL: "Venta",
@@ -126,18 +116,26 @@ function PositionDetailContent() {
     load();
   }, [isin]);
 
-  // Fetch price history once the ticker is known. Window covers the oldest
-  // transaction so all buy/sell markers land on-chart. Best-effort: empty → card hidden.
+  // Fetch price history for the ticker + selected scope. Best-effort: empty → card hidden.
+  // Cancellation guard: a fast response for a newer scope selection must not
+  // be overwritten by a slower one still in flight for the previous scope.
   const ticker = detail?.ticker ?? null;
   useEffect(() => {
     if (!ticker || !detail) return;
-    const dates = detail.transactions.map((t) => t.date).filter(Boolean).sort();
-    const period = periodForOldest(dates[0]);
+    let cancelled = false;
+    const { period, interval } = SCOPE_PARAMS[chartScope];
     api.charts
-      .priceHistory(ticker, period)
-      .then(setOhlc)
-      .catch(() => setOhlc([]));
-  }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
+      .priceHistory(ticker, period, interval)
+      .then((bars) => {
+        if (!cancelled) setOhlc(bars);
+      })
+      .catch(() => {
+        if (!cancelled) setOhlc([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker, chartScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -307,14 +305,17 @@ function PositionDetailContent() {
           </CardHeader>
           <CardContent>
             <PriceChart
-              data={sliceOhlc(ohlc, chartScope)}
-              markers={executionMarkers([
-                ...detail.transactions,
-                ...(detail.dividend_events ?? []).map((d) => ({
-                  type: "DIVIDEND",
-                  date: d.date,
-                })),
-              ])}
+              data={ohlc}
+              markers={alignMarkersToBars(
+                executionMarkers([
+                  ...detail.transactions,
+                  ...(detail.dividend_events ?? []).map((d) => ({
+                    type: "DIVIDEND",
+                    date: d.date,
+                  })),
+                ]),
+                ohlc,
+              )}
               height={380}
             />
           </CardContent>

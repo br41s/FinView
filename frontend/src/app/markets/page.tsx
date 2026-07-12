@@ -5,7 +5,7 @@ import { CandlestickChart, Plus, X, TrendingUp, TrendingDown } from "lucide-reac
 
 import { api, type OhlcBar } from "@/lib/api";
 import { PriceChart } from "@/components/charts/PriceChart";
-import { CHART_SCOPES, sliceOhlc, type ChartScope } from "@/lib/chartMarkers";
+import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,22 +76,26 @@ export default function MarketsPage() {
       .catch(() => {});
   }, []);
 
-  // Fetch full history for the selected ticker once; scopes slice it client-side.
+  // Fetch history for the selected ticker + scope. Cached per "ticker:scope"
+  // key since each scope needs its own (period, interval) from yfinance.
   useEffect(() => {
-    if (!selected || ohlcByTicker[selected] !== undefined) return;
-    setLoading((prev) => new Set(prev).add(selected));
+    if (!selected) return;
+    const cacheKey = `${selected}:${scope}`;
+    if (ohlcByTicker[cacheKey] !== undefined) return;
+    setLoading((prev) => new Set(prev).add(cacheKey));
+    const { period, interval } = SCOPE_PARAMS[scope];
     api.charts
-      .priceHistory(selected, "max")
-      .then((bars) => setOhlcByTicker((prev) => ({ ...prev, [selected]: bars })))
-      .catch(() => setOhlcByTicker((prev) => ({ ...prev, [selected]: [] })))
+      .priceHistory(selected, period, interval)
+      .then((bars) => setOhlcByTicker((prev) => ({ ...prev, [cacheKey]: bars })))
+      .catch(() => setOhlcByTicker((prev) => ({ ...prev, [cacheKey]: [] })))
       .finally(() =>
         setLoading((prev) => {
           const next = new Set(prev);
-          next.delete(selected);
+          next.delete(cacheKey);
           return next;
         }),
       );
-  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addSpecific(ticker: string) {
     const t = ticker.trim().toUpperCase();
@@ -146,8 +150,8 @@ export default function MarketsPage() {
     if (id != null) api.markets.removeTicker(id).catch(() => {});
   }
 
-  const bars = selected ? (ohlcByTicker[selected] ?? []) : [];
-  const isLoading = selected ? loading.has(selected) : false;
+  const bars = selected ? (ohlcByTicker[`${selected}:${scope}`] ?? []) : [];
+  const isLoading = selected ? loading.has(`${selected}:${scope}`) : false;
 
   // Last close + change vs previous close, for the header readout.
   const change = useMemo(() => {
@@ -298,7 +302,7 @@ export default function MarketsPage() {
                 </Button>
               </div>
             ) : (
-              <PriceChart data={sliceOhlc(bars, scope)} height={420} />
+              <PriceChart data={bars} height={420} />
             )}
           </CardContent>
         </Card>
