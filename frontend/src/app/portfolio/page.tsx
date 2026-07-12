@@ -16,10 +16,12 @@ import {
   Target,
   Loader2,
   AlertCircle,
+  AlertTriangle,
 } from "lucide-react";
 
 import { toast } from "sonner";
 import { api, type OhlcBar } from "@/lib/api";
+import type { GeoSignal } from "@/lib/geo";
 import { PriceChart } from "@/components/charts/PriceChart";
 import {
   executionMarkers,
@@ -169,11 +171,33 @@ function PortfolioContent() {
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const [zcWatchlist, setZcWatchlist] = useState<Set<string>>(new Set());
   const [zcAdding, setZcAdding] = useState<Set<string>>(new Set());
+  const [geoByTicker, setGeoByTicker] = useState<Map<string, GeoSignal>>(new Map());
 
   useEffect(() => {
     api.zonasClav
       .watchlist()
       .then((items) => setZcWatchlist(new Set(items.map((i) => i.ticker))))
+      .catch(() => {});
+  }, []);
+
+  // Keep only the highest-importance active signal per ticker so the badge
+  // reflects the most relevant geopolitical risk on that position.
+  useEffect(() => {
+    api.geo
+      .signals("active")
+      .then((signals) => {
+        const byTicker = new Map<string, GeoSignal>();
+        for (const s of signals) {
+          for (const t of s.tickers) {
+            const key = t.symbol.toUpperCase();
+            const existing = byTicker.get(key);
+            if (!existing || s.importance > existing.importance) {
+              byTicker.set(key, s);
+            }
+          }
+        }
+        setGeoByTicker(byTicker);
+      })
       .catch(() => {});
   }, []);
 
@@ -454,13 +478,34 @@ function PortfolioContent() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {p.ticker || p.isin}
-                            </span>
-                            <span className="text-xs text-muted-foreground truncate max-w-50">
-                              {p.name}
-                            </span>
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex flex-col">
+                              <span className="font-medium">
+                                {p.ticker || p.isin}
+                              </span>
+                              <span className="text-xs text-muted-foreground truncate max-w-50">
+                                {p.name}
+                              </span>
+                            </div>
+                            {(() => {
+                              const signal = geoByTicker.get(
+                                (p.ticker ?? p.isin).toUpperCase(),
+                              );
+                              if (!signal) return null;
+                              return (
+                                <button
+                                  type="button"
+                                  title={`Señal geo activa: ${signal.headline} (importancia ${signal.importance})`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push("/geo-intel");
+                                  }}
+                                  className="shrink-0 rounded-full p-1 text-amber-600 hover:bg-amber-50"
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                </button>
+                              );
+                            })()}
                           </div>
                           <Badge variant="outline" className="text-[10px] mt-1">
                             {p.broker}
