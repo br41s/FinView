@@ -39,6 +39,13 @@ _MAX_ZONES = 8              # top N zones to return
 
 # ── Data fetching ────────────────────────────────────────────────────
 
+# Minimum bars needed for detect_pivots to find at least one pivot (a bar
+# needs `_PIVOT_WINDOW` neighbors on each side). Below this there's truly
+# nothing to detect; above it we analyze with whatever history exists
+# instead of demanding a fixed lookback that recently-listed tickers can't
+# have (e.g. a stock that IPO'd a few months ago).
+_MIN_BARS = 2 * _PIVOT_WINDOW + 1
+
 
 def fetch_history(ticker: str) -> pd.DataFrame | None:
     """Download up to 20 years of daily OHLCV. Returns DataFrame with Close/High/Low/Volume or None."""
@@ -57,7 +64,7 @@ def fetch_history(ticker: str) -> pd.DataFrame | None:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df = df.dropna(subset=["Close"])
-        return df if len(df) >= 50 else None
+        return df if len(df) >= _MIN_BARS else None
     except Exception:
         logger.exception("fetch_history failed for %s", ticker)
         return None
@@ -69,6 +76,38 @@ def _safe_series(df: pd.DataFrame, col: str) -> pd.Series:
     if isinstance(s, pd.DataFrame):
         s = s.iloc[:, 0]
     return s.astype(float)
+
+
+# ── Ticker search ────────────────────────────────────────────────────
+
+_SEARCHABLE_QUOTE_TYPES = {"EQUITY", "ETF", "INDEX"}
+
+
+def search_tickers(query: str, max_results: int = 8) -> list[dict]:
+    """Live global ticker search via Yahoo Finance (no local catalog to maintain).
+
+    Returns [{ticker, name, exchange}], filtered to equities/ETFs/indices only.
+    Best-effort: any failure (timeout, malformed response) returns [].
+    """
+    query = query.strip()
+    if len(query) < 2:
+        return []
+    try:
+        results = yf.Search(query, max_results=max_results, news_count=0, timeout=5).quotes
+    except Exception:
+        logger.warning("search_tickers failed for %r", query, exc_info=True)
+        return []
+    out = []
+    for r in results:
+        symbol = r.get("symbol")
+        if not symbol or r.get("quoteType") not in _SEARCHABLE_QUOTE_TYPES:
+            continue
+        out.append({
+            "ticker": symbol,
+            "name": r.get("longname") or r.get("shortname") or symbol,
+            "exchange": r.get("exchDisp") or "",
+        })
+    return out
 
 
 # ── Pivot detection ──────────────────────────────────────────────────
