@@ -720,7 +720,37 @@ export default function ZonasClavePage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                      <Table>
+                      {/* Mobile */}
+                      <div className="divide-y sm:hidden">
+                        {analysis.zones.map((z, i) => (
+                          <div key={i} className="flex items-center justify-between gap-2 p-3">
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={z.zone_type === "support" ? "default" : "destructive"}
+                                className="text-[10px]"
+                              >
+                                {z.zone_type === "support" ? "Soporte" : "Resistencia"}
+                              </Badge>
+                              <span className="font-medium tabular-nums">{fmt(z.level, 2)}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <div className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
+                                  <div
+                                    className={`h-full rounded-full ${z.zone_type === "support" ? "bg-emerald-500" : "bg-red-500"}`}
+                                    style={{ width: `${z.strength * 100}%` }}
+                                  />
+                                </div>
+                                <span>{(z.strength * 100).toFixed(0)}%</span>
+                              </div>
+                              <span>{z.touches} toques</span>
+                              <span>{fmt(z.volume_score, 2)}x</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Desktop */}
+                      <Table className="hidden sm:table">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Tipo</TableHead>
