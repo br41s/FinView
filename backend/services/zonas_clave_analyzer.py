@@ -8,6 +8,7 @@ Pipeline per ticker:
 
 import json
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -16,6 +17,14 @@ import pandas as pd
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
+
+# yf.download() has internal shared state that isn't thread-safe: calling it
+# concurrently for two different tickers (e.g. add_ticker spawns one
+# background thread per watchlist add) can return one ticker's data for the
+# other, silently persisting the wrong price/zones. Serializing the download
+# itself is cheap (yfinance's own HTTP call already dominates latency) and
+# closes the race without touching the calling threads' architecture.
+_YF_DOWNLOAD_LOCK = threading.Lock()
 
 # "max" was tried and reverted: for long-listed tickers it pulls in decades-old,
 # split-adjusted penny-level prices that dominate zone detection with irrelevant
@@ -34,13 +43,14 @@ _MAX_ZONES = 8              # top N zones to return
 def fetch_history(ticker: str) -> pd.DataFrame | None:
     """Download up to 20 years of daily OHLCV. Returns DataFrame with Close/High/Low/Volume or None."""
     try:
-        df = yf.download(
-            ticker,
-            period=_HISTORY_PERIOD,
-            interval=_HISTORY_INTERVAL,
-            auto_adjust=True,
-            progress=False,
-        )
+        with _YF_DOWNLOAD_LOCK:
+            df = yf.download(
+                ticker,
+                period=_HISTORY_PERIOD,
+                interval=_HISTORY_INTERVAL,
+                auto_adjust=True,
+                progress=False,
+            )
         if df is None or df.empty:
             return None
         # Flatten MultiIndex columns (yfinance sometimes returns them for single tickers)
@@ -157,19 +167,30 @@ def cluster_pivots(
     return zones
 
 
+_PROXIMITY_HALF_LIFE = 0.10  # score halves every 10% of relative distance from current price
+
+
 def compute_zone_strength(
-    zones: list[dict], median_volume: float
+    zones: list[dict], median_volume: float, current_price: float
 ) -> list[dict]:
     """
-    Score zones by touches × volume_score, normalize to [0, 1], keep top N.
+    Score zones by touches × volume_score × proximity_weight, normalize to
+    [0, 1], keep top N.
     volume_score = avg_volume / median_volume (clamped to [0, 3]).
+    proximity_weight decays zones the further their level sits from the
+    current price — a level a stock hasn't traded near in years can still
+    have the most historical touches (more calendar time to accumulate
+    them), which without this would out-rank levels near the current price
+    that are actually actionable. See _PROXIMITY_HALF_LIFE.
     """
     if not zones:
         return []
 
     for z in zones:
         vol_score = min(z["avg_volume"] / median_volume, 3.0) if median_volume > 0 else 1.0
-        z["raw_score"] = z["touches"] * vol_score
+        rel_distance = abs(z["level"] - current_price) / current_price if current_price > 0 else 0.0
+        proximity_weight = 0.5 ** (rel_distance / _PROXIMITY_HALF_LIFE)
+        z["raw_score"] = z["touches"] * vol_score * proximity_weight
         z["volume_score"] = round(vol_score, 4)
 
     max_score = max(z["raw_score"] for z in zones) or 1.0
@@ -301,7 +322,9 @@ def analyze_ticker(ticker: str) -> dict | None:
         support_zones = cluster_pivots(pl_prices, pl_vols, "support")
 
         # Score and select top zones
-        all_zones = compute_zone_strength(resistance_zones + support_zones, median_volume)
+        all_zones = compute_zone_strength(
+            resistance_zones + support_zones, median_volume, current_price
+        )
 
         # Technical indicators
         rsi = compute_rsi(close)
