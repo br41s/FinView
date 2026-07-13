@@ -11,9 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
-import { api, type OhlcBar } from "@/lib/api";
-import { PriceChart } from "@/components/charts/PriceChart";
-import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
+import { api } from "@/lib/api";
 import {
   Sheet,
   SheetContent,
@@ -24,11 +22,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 import { ZonasTab } from "@/components/instrument/ZonasTab";
 import { FiscalTab } from "@/components/instrument/FiscalTab";
 import { DividendosTab } from "@/components/instrument/DividendosTab";
+import { PrecioTab } from "@/components/instrument/PrecioTab";
 
 // Which lens to open the drawer on. "precio" is the only one wired in Phase 2;
 // "opciones"/"zonas" are placeholders until Phase 3 fills them in place.
@@ -192,58 +190,6 @@ export function InstrumentDrawerProvider({ children }: { children: React.ReactNo
         </SheetContent>
       </Sheet>
     </InstrumentDrawerContext.Provider>
-  );
-}
-
-function PrecioTab({ symbol }: { symbol: string }) {
-  const [bars, setBars] = useState<OhlcBar[] | null>(null);
-  const [scope, setScope] = useState<ChartScope>("1A");
-
-  useEffect(() => {
-    let cancelled = false;
-    setBars(null);
-    const { period, interval } = SCOPE_PARAMS[scope];
-    api.charts
-      .priceHistory(symbol, period, interval)
-      .then((b) => {
-        if (!cancelled) setBars(b);
-      })
-      .catch(() => {
-        if (!cancelled) setBars([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [symbol, scope]);
-
-  if (bars === null) return <Skeleton className="h-[360px] w-full" />;
-  if (bars.length === 0) {
-    return (
-      <div className="flex h-[360px] items-center justify-center text-sm text-muted-foreground">
-        Sin datos de precio para {symbol}.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-end gap-0.5">
-        {CHART_SCOPES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setScope(s)}
-            className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-              scope === s
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-      <PriceChart data={bars} height={360} />
-    </div>
   );
 }
 
