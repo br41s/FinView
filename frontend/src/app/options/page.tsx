@@ -336,9 +336,10 @@ export default function OptionsPage() {
     const watchlistSet = new Set(watchlist.map((w) => w.ticker));
     const toAdd = new Map(
       positions
-        .map((p) => ({ ticker: (p.ticker || p.isin).toUpperCase(), name: p.name }))
+        .map((p) => ({ ticker: (p.ticker || p.isin || "").toUpperCase(), name: p.name }))
         .filter(
           ({ ticker }) =>
+            ticker !== "" &&
             !hiddenTickers.has(ticker) &&
             !noOptionsTickers.has(ticker) &&
             !watchlistSet.has(ticker),
@@ -346,17 +347,23 @@ export default function OptionsPage() {
         .map((t) => [t.ticker, t]),
     );
     if (toAdd.size === 0) return;
+    let cancelled = false;
     (async () => {
       for (const { ticker, name } of toAdd.values()) {
+        if (cancelled) return;
         try {
           await api.options.addToWatchlist(ticker, name);
         } catch {
           // ignore — e.g. already added by a concurrent sync, will settle next pass
         }
       }
+      if (cancelled) return;
       const wl = (await api.options.watchlist()) as WatchlistItem[];
-      setWatchlist(wl);
+      if (!cancelled) setWatchlist(wl);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [availabilityChecked, loadingOptions, positions, watchlist, hiddenTickers, noOptionsTickers]);
 
   async function reloadOptions() {
@@ -709,7 +716,7 @@ export default function OptionsPage() {
                 {/* Mobile */}
                 <div className="divide-y sm:hidden">
                   {mainPositions.map((p) => {
-                    const ticker = (p.ticker || p.isin).toUpperCase();
+                    const ticker = (p.ticker || p.isin || "").toUpperCase();
                     const tickerAlerts = getTickerAlerts(ticker);
                     const snap = latestByTicker.get(ticker);
                     const sentiment = sentimentLabel(snap);
@@ -803,7 +810,7 @@ export default function OptionsPage() {
                   </TableHeader>
                   <TableBody>
                     {mainPositions.map((p) => {
-                      const ticker = (p.ticker || p.isin).toUpperCase();
+                      const ticker = (p.ticker || p.isin || "").toUpperCase();
                       const tickerAlerts = getTickerAlerts(ticker);
                       const snap = latestByTicker.get(ticker);
                       const sentiment = sentimentLabel(snap);
