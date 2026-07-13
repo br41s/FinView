@@ -59,6 +59,7 @@ import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
 import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
+import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -844,14 +845,9 @@ export default function OptionsPage() {
                                 ))}
                               </div>
                             )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full"
-                              onClick={() => openInstrument(ticker, { tab: "opciones", name: p.name })}
-                            >
-                              Ver precio y cadena de opciones →
-                            </Button>
+                            {/* Same price chart + options chain the drawer shows —
+                                inline instead of a button that navigates away. */}
+                            <OpcionesTab symbol={ticker} />
                           </div>
                         )}
                       </div>
