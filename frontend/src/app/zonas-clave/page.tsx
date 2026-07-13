@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
-import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
+import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 import {
   Table,
   TableBody,
@@ -97,7 +97,6 @@ function macdColor(signal: string | null) {
 // ── Component ────────────────────────────────────────────────────────
 
 export default function ZonasClavePage() {
-  const { openInstrument } = useInstrumentDrawer();
   const [watchlist, setWatchlist] = useState<ZcWatchlistItem[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
@@ -487,18 +486,6 @@ export default function ZonasClavePage() {
                           className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
                             isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                           }`}
-                          title="Ver opciones"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openInstrument(item.ticker, { tab: "opciones", name: item.name });
-                          }}
-                        >
-                          <Activity className="h-3 w-3" />
-                        </button>
-                        <button
-                          className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
-                            isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                          }`}
                           title="Actualizar"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -797,6 +784,20 @@ export default function ZonasClavePage() {
                           ))}
                         </TableBody>
                       </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Opciones — inline instead of the old drawer shortcut */}
+                {selectedTicker && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        Opciones — {selectedTicker}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <OpcionesTab symbol={selectedTicker} />
                     </CardContent>
                   </Card>
                 )}
