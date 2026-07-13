@@ -367,80 +367,84 @@ function DashboardContent() {
   return (
     <div className="space-y-6 p-3 sm:p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <BarChart3 className="h-6 w-6" />
             Dashboard
           </h1>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={togglePrivacy}
+              aria-pressed={privacy}
+              title={privacy ? "Mostrar importes" : "Ocultar importes"}
+              aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
+            >
+              {privacy ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => (window.location.href = "/billing")}
+              title="Facturación"
+              aria-label="Facturación"
+            >
+              <CreditCard className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                clearAuthToken();
+                invalidateCache();
+                signOut({ callbackUrl: "/login" });
+              }}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Resumen fiscal y de dividendos de tu cartera
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {fiscalYears.length > 0 && (
-            <select
-              aria-label="Seleccionar año fiscal"
-              value={selectedYear ?? ""}
-              onChange={(e) => {
-                const year = e.target.value ? Number(e.target.value) : null;
-                // Sync reset: fiscal tabs unmount with the year, so leave them
-                // before paint instead of waiting for the effect below.
-                if (
-                  year === null &&
-                  (view === "casillas" || view === "ganancias" || view === "declaracion")
-                ) {
-                  setView("graficas");
-                }
-                setSelectedYear(year);
-              }}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Todos los años</option>
-              {fiscalYears.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={togglePrivacy}
-            aria-pressed={privacy}
-            title={privacy ? "Mostrar importes" : "Ocultar importes"}
-            aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
-          >
-            {privacy ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
+          <div className="flex flex-wrap items-center gap-2">
+            {fiscalYears.length > 0 && (
+              <select
+                aria-label="Seleccionar año fiscal"
+                value={selectedYear ?? ""}
+                onChange={(e) => {
+                  const year = e.target.value ? Number(e.target.value) : null;
+                  // Sync reset: fiscal tabs unmount with the year, so leave them
+                  // before paint instead of waiting for the effect below.
+                  if (
+                    year === null &&
+                    (view === "casillas" || view === "ganancias" || view === "declaracion")
+                  ) {
+                    setView("graficas");
+                  }
+                  setSelectedYear(year);
+                }}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">Años</option>
+                {fiscalYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => (window.location.href = "/billing")}
-            title="Facturación"
-            aria-label="Facturación"
-          >
-            <CreditCard className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              clearAuthToken();
-              invalidateCache();
-              signOut({ callbackUrl: "/login" });
-            }}
-            title="Cerrar sesión"
-            aria-label="Cerrar sesión"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
-          <QuickNav current="/dashboard" />
+            <QuickNav current="/dashboard" />
+          </div>
         </div>
       </div>
 
