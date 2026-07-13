@@ -178,7 +178,10 @@ export function DividendYieldTable({
                     className="py-2 text-foreground max-w-48 truncate"
                     title={d.name}
                   >
-                    {d.name}
+                    <span className="sm:hidden font-medium">
+                      {(d.ticker ?? d.name).slice(0, 5)}
+                    </span>
+                    <span className="hidden sm:inline">{d.name}</span>
                   </td>
                   <td className="py-2 text-muted-foreground text-sm hidden md:table-cell">
                     {d.country ?? "—"}

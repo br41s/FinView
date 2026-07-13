@@ -179,6 +179,7 @@ export interface PatrimonioComposition {
 export interface DividendYield {
   isin: string;
   name: string;
+  ticker: string | null;
   country: string;
   total_dividends: string;
   total_invested: string;
