@@ -246,6 +246,7 @@ export default function OptionsPage() {
   const [newTicker, setNewTicker] = useState("");
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
+  const [availabilityChecked, setAvailabilityChecked] = useState(false);
   const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
   const [backtestStats, setBacktestStats] = useState<BacktestStats | null>(null);
   const [loadingBacktest, setLoadingBacktest] = useState(false);
@@ -292,7 +293,10 @@ export default function OptionsPage() {
         console.error("Failed to load positions:", e);
         setErrorPositions("No se pudieron cargar las posiciones de cartera.");
       })
-      .finally(() => setLoadingPositions(false));
+      .finally(() => {
+        setLoadingPositions(false);
+        setAvailabilityChecked(true);
+      });
   }, [retryPositions]);
 
   // Load options data in parallel (independent of positions)
@@ -320,6 +324,40 @@ export default function OptionsPage() {
       })
       .finally(() => setLoadingOptions(false));
   }, [retryOptions]);
+
+  // Auto-sync: portfolio positions get added to the options watchlist so
+  // Sentimiento/P-C Ratio/IV vs HV populate without a manual click. Waits for
+  // the availability check (so we skip tickers with no options chain) and for
+  // the watchlist itself to be loaded (so we don't re-add what's already
+  // there). Re-fetching the watchlist after adding converges this to a no-op
+  // once everything is synced — no infinite loop.
+  useEffect(() => {
+    if (!availabilityChecked || loadingOptions || positions.length === 0) return;
+    const watchlistSet = new Set(watchlist.map((w) => w.ticker));
+    const toAdd = new Map(
+      positions
+        .map((p) => ({ ticker: (p.ticker || p.isin).toUpperCase(), name: p.name }))
+        .filter(
+          ({ ticker }) =>
+            !hiddenTickers.has(ticker) &&
+            !noOptionsTickers.has(ticker) &&
+            !watchlistSet.has(ticker),
+        )
+        .map((t) => [t.ticker, t]),
+    );
+    if (toAdd.size === 0) return;
+    (async () => {
+      for (const { ticker, name } of toAdd.values()) {
+        try {
+          await api.options.addToWatchlist(ticker, name);
+        } catch {
+          // ignore — e.g. already added by a concurrent sync, will settle next pass
+        }
+      }
+      const wl = (await api.options.watchlist()) as WatchlistItem[];
+      setWatchlist(wl);
+    })();
+  }, [availabilityChecked, loadingOptions, positions, watchlist, hiddenTickers, noOptionsTickers]);
 
   async function reloadOptions() {
     const [snaps, alts, unu, wl, status, hidden] = await Promise.all([
@@ -668,7 +706,91 @@ export default function OptionsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
+                {/* Mobile */}
+                <div className="divide-y sm:hidden">
+                  {mainPositions.map((p) => {
+                    const ticker = (p.ticker || p.isin).toUpperCase();
+                    const tickerAlerts = getTickerAlerts(ticker);
+                    const snap = latestByTicker.get(ticker);
+                    const sentiment = sentimentLabel(snap);
+                    const ivHv = ivHvLabel(snap);
+                    return (
+                      <div
+                        key={`${p.isin}-${p.broker}-card`}
+                        className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-muted/50"
+                        onClick={() => openInstrument(ticker, { tab: "opciones", name: p.name })}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{ticker}</span>
+                            {tickerAlerts.length > 0 && (
+                              <Badge variant="destructive" className="px-1 py-0 text-[10px]">
+                                {tickerAlerts.length}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            {watchlistTickers.has(ticker) ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                title="Eliminar de watchlist"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveFromCartera(ticker);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                title="Añadir a watchlist"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddPositionToWatchlist(ticker, p.name);
+                                }}
+                              >
+                                <Eye className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              title="Ocultar del monitor de opciones"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleHidePosition(ticker);
+                              }}
+                            >
+                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                          <span>
+                            Sentimiento <strong className={sentiment.className}>{sentiment.label}</strong>
+                          </span>
+                          <span>
+                            P/C{" "}
+                            <strong className="text-foreground">
+                              {snap?.put_call_ratio_volume != null ? fmt(snap.put_call_ratio_volume) : "—"}
+                            </strong>
+                          </span>
+                          <span className="flex items-center gap-1">
+                            IV/HV <Badge variant={ivHv.variant} className="text-[10px]">{ivHv.label}</Badge>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Desktop */}
+                <Table className="hidden sm:table">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-8" />
@@ -681,7 +803,7 @@ export default function OptionsPage() {
                   </TableHeader>
                   <TableBody>
                     {mainPositions.map((p) => {
-                      const ticker = p.ticker || p.isin;
+                      const ticker = (p.ticker || p.isin).toUpperCase();
                       const tickerAlerts = getTickerAlerts(ticker);
                       const snap = latestByTicker.get(ticker);
                       const sentiment = sentimentLabel(snap);
@@ -862,7 +984,63 @@ export default function OptionsPage() {
                   </p>
                 </div>
 
-                <Table>
+                {/* Mobile */}
+                <div className="divide-y sm:hidden">
+                  {watchlist.length === 0 ? (
+                    <p className="p-4 text-center text-sm text-muted-foreground">
+                      Sin tickers en la watchlist
+                    </p>
+                  ) : (
+                    watchlist.map((w) => (
+                      <div key={w.id} className="flex flex-col gap-2 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="font-medium">{w.ticker}</span>
+                            <span className="ml-2 text-sm text-muted-foreground">
+                              {w.name || "—"}
+                            </span>
+                          </div>
+                          <Badge variant={w.enabled ? "default" : "secondary"}>
+                            {w.enabled ? "Activo" : "Pausado"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Añadido {new Date(w.created_at).toLocaleDateString("es-ES")}</span>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() =>
+                                api.options.toggleWatchlistItem(w.id).then(() =>
+                                  setWatchlist((prev) =>
+                                    prev.map((item) =>
+                                      item.id === w.id
+                                        ? { ...item, enabled: !item.enabled }
+                                        : item,
+                                    ),
+                                  ),
+                                )
+                              }
+                            >
+                              {w.enabled ? "Pausar" : "Activar"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-destructive"
+                              onClick={() => handleRemoveTicker(w.id, w.ticker)}
+                            >
+                              Eliminar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Desktop */}
+                <Table className="hidden sm:table">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Ticker</TableHead>
@@ -1221,7 +1399,26 @@ export default function OptionsPage() {
                     </ResponsiveContainer>
                   </CardContent>
                   <CardContent className="p-0">
-                    <div className="overflow-x-auto">
+                    {/* Mobile */}
+                    <div className="divide-y sm:hidden">
+                      {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
+                        const acc = v.accuracy_pct;
+                        const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                        return (
+                          <div key={type} className="flex items-center justify-between p-3 text-sm">
+                            <Badge variant="outline" className="text-[10px] whitespace-nowrap">{type}</Badge>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span>{v.correct}/{v.total}</span>
+                              <span className={`font-semibold ${color}`}>
+                                {acc != null ? `${acc}%` : "—"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Desktop */}
+                    <div className="hidden overflow-x-auto sm:block">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -1266,7 +1463,30 @@ export default function OptionsPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <div className="overflow-x-auto">
+                    {/* Mobile */}
+                    <div className="divide-y sm:hidden">
+                      {(["aligned", "counter", "neutral"] as const)
+                        .filter((k) => backtestStats.by_alignment?.[k])
+                        .map((k) => {
+                          const v = backtestStats.by_alignment![k];
+                          const acc = v.accuracy_pct;
+                          const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
+                          const label = k === "aligned" ? "A favor (aligned)" : k === "counter" ? "En contra (counter)" : "Neutral";
+                          return (
+                            <div key={k} className="flex items-center justify-between p-3 text-sm">
+                              <Badge variant="outline" className="text-[10px] whitespace-nowrap">{label}</Badge>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span>{v.correct}/{v.total}</span>
+                                <span className={`font-semibold ${color}`}>
+                                  {acc != null ? `${acc}%` : "—"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                    {/* Desktop */}
+                    <div className="hidden overflow-x-auto sm:block">
                       <Table>
                         <TableHeader>
                           <TableRow>
