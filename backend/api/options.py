@@ -407,6 +407,7 @@ def check_options_availability(body: _TickerListIn, user: CurrentUser):
 
 _scheduler_running = False
 _cycles_in_progress: set[int] = set()
+_cycle_lock = threading.Lock()
 
 
 @router.post("/agent/run", response_model=AgentCycleResult)
@@ -418,16 +419,25 @@ def trigger_cycle(user: CurrentUser):
     otherwise block (and likely time out) this HTTP request. The frontend
     polls GET /agent/status (total_cycles) to detect completion.
     """
-    if user.id in _cycles_in_progress:
-        return AgentCycleResult(status="already_running")
-
-    _cycles_in_progress.add(user.id)
+    # FastAPI runs sync def endpoints in a thread pool, so two concurrent
+    # requests for the same user could both pass the membership check before
+    # either adds to the set (TOCTOU race) without this lock.
+    with _cycle_lock:
+        if user.id in _cycles_in_progress:
+            return AgentCycleResult(status="already_running")
+        _cycles_in_progress.add(user.id)
 
     def _run_in_background(user_id: int) -> None:
         try:
             run_cycle(user_id)
+        except Exception:
+            # run_cycle already catches and logs its own errors internally;
+            # this is only a safety net so the in-progress flag can never get
+            # stuck if that ever stops being true.
+            pass
         finally:
-            _cycles_in_progress.discard(user_id)
+            with _cycle_lock:
+                _cycles_in_progress.discard(user_id)
 
     threading.Thread(target=_run_in_background, args=(user.id,), daemon=True).start()
     return AgentCycleResult(status="started")
