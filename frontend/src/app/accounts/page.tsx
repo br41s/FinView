@@ -265,7 +265,43 @@ function AccountsContent() {
             <CardTitle>Tus cuentas ({accounts.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
+            {/* Mobile */}
+            <div className="divide-y sm:hidden">
+              {accounts.map((acct) => (
+                <div key={acct.id} className="flex items-start justify-between gap-2 p-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{acct.broker}</Badge>
+                      <span className="font-mono text-sm text-muted-foreground">
+                        {acct.account_id}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm">{acct.name || "—"}</p>
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      <span>{acct.currency}</span>
+                      <span>{acct.transaction_count} transacciones</span>
+                      <span>{acct.import_count} imports</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => startEdit(acct)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(acct)}
+                      title="Eliminar cuenta"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop */}
+            <Table className="hidden sm:table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Broker</TableHead>

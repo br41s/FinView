@@ -550,8 +550,74 @@ export default function AltInvestmentsPage() {
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
+            <>
+              {/* Mobile */}
+              <div className="divide-y sm:hidden">
+                {items.map((inv) => (
+                  <div key={inv.id} className="flex flex-col gap-2 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium">{inv.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {[inv.manager, inv.vintage_year, inv.geography]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px]">
+                            {TYPE_LABELS[inv.type]}
+                          </Badge>
+                          {inv.status === "REALIZED" && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              Realizada
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(inv)}
+                          aria-label="Editar"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(inv)}
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Comprometido</p>
+                        <p className="tabular-nums">{formatEur(inv.committed_capital)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Called</p>
+                        <p className="tabular-nums">{formatEur(inv.called_capital)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">NAV</p>
+                        <p className="tabular-nums">{formatEur(inv.current_nav)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">TVPI / DPI</p>
+                        <p className="tabular-nums">
+                          {fmtMultiple(inv.tvpi)} / {fmtMultiple(inv.dpi)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop */}
+              <Table className="hidden sm:table">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
@@ -622,7 +688,7 @@ export default function AltInvestmentsPage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>

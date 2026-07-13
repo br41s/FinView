@@ -146,8 +146,74 @@ export function YearlyComparisonView({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+          {/* Mobile */}
+          <div className="divide-y sm:hidden">
+            {sorted.map((y) => (
+              <div key={y.fiscal_year} className="flex flex-col gap-2 p-3">
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`font-semibold ${onYearSelect ? "cursor-pointer text-primary hover:underline" : ""}`}
+                    onClick={() => onYearSelect?.(y.fiscal_year)}
+                  >
+                    {y.fiscal_year}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="secondary">{y.brokers} brokers</Badge>
+                    <Badge variant="outline">{y.positions} pos.</Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Dividendos brutos</p>
+                    <p className="font-mono text-green-400">{formatEur(y.dividends_gross)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Ganancias</p>
+                    <p className={`font-mono ${plColor(y.gains)}`}>{formatEur(y.gains)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Pérdidas</p>
+                    <p className={`font-mono ${plColor(y.losses)}`}>{formatEur(y.losses)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Neto capital</p>
+                    <p className={`font-mono ${plColor(y.net_capital)}`}>{formatEur(y.net_capital)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Retenciones</p>
+                    <p className="font-mono text-amber-400">{formatEur(y.withholdings)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="flex flex-col gap-2 bg-muted/30 p-3 font-semibold">
+              <span>Total</span>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <p className="text-xs font-normal text-muted-foreground">Dividendos brutos</p>
+                  <p className="font-mono text-green-400">{formatEur(totals.dividends)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-normal text-muted-foreground">Ganancias</p>
+                  <p className={`font-mono ${plColor(totals.gains)}`}>{formatEur(totals.gains)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-normal text-muted-foreground">Pérdidas</p>
+                  <p className={`font-mono ${plColor(totals.losses)}`}>{formatEur(totals.losses)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-normal text-muted-foreground">Neto capital</p>
+                  <p className={`font-mono ${plColor(totals.net)}`}>{formatEur(totals.net)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-normal text-muted-foreground">Retenciones</p>
+                  <p className="font-mono text-amber-400">{formatEur(totals.withholdings)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Desktop */}
+            <Table className="hidden sm:table">
               <TableHeader>
                 <TableRow>
                   {(
@@ -241,7 +307,6 @@ export function YearlyComparisonView({
                 </TableRow>
               </TableFooter>
             </Table>
-          </div>
         </CardContent>
       </Card>
     </div>
