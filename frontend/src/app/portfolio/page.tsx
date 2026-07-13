@@ -633,8 +633,7 @@ function PortfolioContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="hidden md:block">
-            <Table>
+            <Table className="hidden sm:table">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8" />
@@ -850,10 +849,9 @@ function PortfolioContent() {
                 })}
               </TableBody>
             </Table>
-            </div>
 
             {/* Mobile: stacked cards instead of a horizontally-scrolling table */}
-            <div className="divide-y divide-border md:hidden">
+            <div className="divide-y sm:hidden">
               {positions.map((p) => {
                 const key = `${p.isin}-${p.broker}`;
                 const isExpanded = expandedIsin === p.isin;
