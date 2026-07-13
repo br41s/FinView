@@ -58,7 +58,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
-import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
 import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -236,7 +235,6 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
-  const { openInstrument } = useInstrumentDrawer();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -287,7 +285,7 @@ export default function OptionsPage() {
         if (initialTickerRef.current) {
           const hint = initialTickerRef.current.toUpperCase();
           initialTickerRef.current = null;
-          if (tickers.includes(hint)) openInstrument(hint, { tab: "opciones" });
+          if (tickers.includes(hint)) setExpandedOptionsTicker(hint);
         }
         try {
           const { no_options } = await api.options.checkAvailability(tickers);
@@ -873,17 +871,22 @@ export default function OptionsPage() {
                       const snap = latestByTicker.get(ticker);
                       const sentiment = sentimentLabel(snap);
                       const ivHv = ivHvLabel(snap);
+                      const isExpandedDesktop = expandedOptionsTicker === ticker;
 
                       return (
                         <Fragment key={`${p.isin}-${p.broker}`}>
                           <TableRow
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() =>
-                              openInstrument(ticker, { tab: "opciones", name: p.name })
+                              setExpandedOptionsTicker(isExpandedDesktop ? null : ticker)
                             }
                           >
                             <TableCell className="w-8 pr-0">
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              {isExpandedDesktop ? (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              )}
                             </TableCell>
                             <TableCell className="font-medium">
                               {ticker}
@@ -953,7 +956,13 @@ export default function OptionsPage() {
                               </div>
                             </TableCell>
                           </TableRow>
-
+                          {isExpandedDesktop && (
+                            <TableRow>
+                              <TableCell colSpan={6} className="bg-muted/30 p-4">
+                                <OpcionesTab symbol={ticker} />
+                              </TableCell>
+                            </TableRow>
+                          )}
                         </Fragment>
                       );
                     })}
@@ -1250,28 +1259,39 @@ export default function OptionsPage() {
                       <>
                         {/* Mobile */}
                         <div className="divide-y sm:hidden">
-                          {alerts.map((a) => (
-                            <div key={a.id} className={`flex flex-col gap-1 p-3 ${a.acknowledged ? "opacity-50" : ""}`}>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className="font-medium cursor-pointer text-primary hover:underline"
-                                  onClick={() => openInstrument(a.ticker, { tab: "opciones" })}
-                                >
-                                  {a.ticker}
-                                </span>
-                                <Badge variant="outline" className="text-xs">{a.alert_type}</Badge>
-                                <Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"} className="text-xs">{a.severity}</Badge>
-                                <AlignmentTag alignment={a.regime_alignment} />
-                                <span className="ml-auto text-xs text-muted-foreground">
-                                  {new Date(a.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                                </span>
+                          {alerts.map((a) => {
+                            const tickerUp = a.ticker.toUpperCase();
+                            const isAlertExpanded = expandedOptionsTicker === tickerUp;
+                            return (
+                              <div key={a.id} className={`flex flex-col gap-1 p-3 ${a.acknowledged ? "opacity-50" : ""}`}>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span
+                                    className="font-medium cursor-pointer text-primary hover:underline"
+                                    onClick={() =>
+                                      setExpandedOptionsTicker(isAlertExpanded ? null : tickerUp)
+                                    }
+                                  >
+                                    {a.ticker}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">{a.alert_type}</Badge>
+                                  <Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"} className="text-xs">{a.severity}</Badge>
+                                  <AlignmentTag alignment={a.regime_alignment} />
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    {new Date(a.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{a.message}</p>
+                                {!a.acknowledged && (
+                                  <Button variant="ghost" size="sm" className="self-end h-7 text-xs" onClick={() => handleAckAlert(a.id)}>Ack</Button>
+                                )}
+                                {isAlertExpanded && (
+                                  <div className="mt-2 border-t pt-2">
+                                    <OpcionesTab symbol={tickerUp} />
+                                  </div>
+                                )}
                               </div>
-                              <p className="text-sm text-muted-foreground">{a.message}</p>
-                              {!a.acknowledged && (
-                                <Button variant="ghost" size="sm" className="self-end h-7 text-xs" onClick={() => handleAckAlert(a.id)}>Ack</Button>
-                              )}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         {/* Desktop */}
                         <Table className="hidden sm:table">
@@ -1286,18 +1306,39 @@ export default function OptionsPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {alerts.map((a) => (
-                              <TableRow key={a.id} className={a.acknowledged ? "opacity-50" : ""}>
-                                <TableCell className="text-xs">{new Date(a.timestamp).toLocaleString("es-ES")}</TableCell>
-                                <TableCell className="font-medium cursor-pointer text-primary hover:underline" title="Ver opciones" onClick={() => openInstrument(a.ticker, { tab: "opciones" })}>{a.ticker}</TableCell>
-                                <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
-                                <TableCell>{a.message}</TableCell>
-                                <TableCell><div className="flex items-center gap-1"><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge><AlignmentTag alignment={a.regime_alignment} /></div></TableCell>
-                                <TableCell className="text-right">
-                                  {!a.acknowledged && <Button variant="ghost" size="sm" onClick={() => handleAckAlert(a.id)}>Ack</Button>}
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                            {alerts.map((a) => {
+                              const tickerUp = a.ticker.toUpperCase();
+                              const isAlertExpanded = expandedOptionsTicker === tickerUp;
+                              return (
+                                <Fragment key={a.id}>
+                                  <TableRow className={a.acknowledged ? "opacity-50" : ""}>
+                                    <TableCell className="text-xs">{new Date(a.timestamp).toLocaleString("es-ES")}</TableCell>
+                                    <TableCell
+                                      className="font-medium cursor-pointer text-primary hover:underline"
+                                      title="Ver opciones"
+                                      onClick={() =>
+                                        setExpandedOptionsTicker(isAlertExpanded ? null : tickerUp)
+                                      }
+                                    >
+                                      {a.ticker}
+                                    </TableCell>
+                                    <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
+                                    <TableCell>{a.message}</TableCell>
+                                    <TableCell><div className="flex items-center gap-1"><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge><AlignmentTag alignment={a.regime_alignment} /></div></TableCell>
+                                    <TableCell className="text-right">
+                                      {!a.acknowledged && <Button variant="ghost" size="sm" onClick={() => handleAckAlert(a.id)}>Ack</Button>}
+                                    </TableCell>
+                                  </TableRow>
+                                  {isAlertExpanded && (
+                                    <TableRow>
+                                      <TableCell colSpan={6} className="bg-muted/30 p-4">
+                                        <OpcionesTab symbol={tickerUp} />
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       </>
