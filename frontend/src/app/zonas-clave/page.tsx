@@ -13,7 +13,13 @@ import {
   Square,
   AlertCircle,
 } from "lucide-react";
-import { api, type ZcAnalysis, type ZcWatchlistItem, type OhlcBar } from "@/lib/api";
+import {
+  api,
+  type ZcAnalysis,
+  type ZcWatchlistItem,
+  type ZcTickerSearchResult,
+  type OhlcBar,
+} from "@/lib/api";
 import { SCOPE_PARAMS } from "@/lib/chartMarkers";
 import { ZonasClaveChart } from "@/components/charts/ZonasClaveChart";
 import {
@@ -111,6 +117,7 @@ export default function ZonasClavePage() {
     { ticker: string; name: string; isin: string }[]
   >([]);
   const [searchInput, setSearchInput] = useState("");
+  const [remoteMatches, setRemoteMatches] = useState<ZcTickerSearchResult[]>([]);
   const [intradayBars, setIntradayBars] = useState<OhlcBar[]>([]);
 
   // U1: load portfolio tickers for quick-add suggestions (non-blocking)
@@ -264,19 +271,43 @@ export default function ZonasClavePage() {
     }
   }
 
-  // Match suggestions by ticker, name or ISIN; hide ones already in the watchlist.
+  // Debounced live search against Yahoo Finance (any ticker worldwide, not just
+  // portfolio holdings) — mirrors the alt-investments CNMV search box pattern.
+  useEffect(() => {
+    const q = searchInput.trim();
+    if (q.length < 2) {
+      setRemoteMatches([]);
+      return;
+    }
+    const handle = setTimeout(() => {
+      api.zonasClav.search(q).then(setRemoteMatches).catch(() => setRemoteMatches([]));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  // Portfolio holdings match instantly (no network round-trip); remote results
+  // fill in everything else. Merge and dedupe by ticker, portfolio first.
   const searchMatches = useMemo(() => {
     const q = searchInput.trim().toUpperCase();
     if (!q) return [];
     const watchlistSet = new Set(watchlist.map((w) => w.ticker.toUpperCase()));
-    return portfolioSuggestions
+    const portfolioMatches = portfolioSuggestions
       .filter(
         (s) =>
           s.ticker.includes(q) || s.name.toUpperCase().includes(q) || s.isin.toUpperCase().includes(q),
       )
       .filter((s) => !watchlistSet.has(s.ticker))
-      .slice(0, 8);
-  }, [searchInput, portfolioSuggestions, watchlist]);
+      .map((s) => ({ ticker: s.ticker, name: s.name, sublabel: s.isin }));
+    const seen = new Set(portfolioMatches.map((s) => s.ticker));
+    const combined = [...portfolioMatches];
+    for (const r of remoteMatches) {
+      const ticker = r.ticker.toUpperCase();
+      if (seen.has(ticker) || watchlistSet.has(ticker)) continue;
+      seen.add(ticker);
+      combined.push({ ticker, name: r.name, sublabel: r.exchange });
+    }
+    return combined.slice(0, 8);
+  }, [searchInput, portfolioSuggestions, watchlist, remoteMatches]);
 
   const analysis = selectedTicker ? analyses[selectedTicker] : null;
   const isAnalyzing = selectedTicker ? analyzing.has(selectedTicker) : false;
@@ -429,7 +460,7 @@ export default function ZonasClavePage() {
                   <div className="absolute left-1 right-1 top-full z-10 mt-1 overflow-hidden rounded-md border bg-popover shadow-md">
                     {searchMatches.map((s) => (
                       <button
-                        key={s.isin}
+                        key={s.ticker}
                         onClick={() => void addSpecific(s.ticker, s.name)}
                         className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-muted"
                       >
@@ -437,7 +468,7 @@ export default function ZonasClavePage() {
                         <span className="w-full truncate text-xs text-muted-foreground">
                           {s.name}
                         </span>
-                        <span className="text-[10px] text-muted-foreground/70">{s.isin}</span>
+                        <span className="text-[10px] text-muted-foreground/70">{s.sublabel}</span>
                       </button>
                     ))}
                   </div>

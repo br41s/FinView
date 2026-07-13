@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func
 
 from backend.api.auth import CurrentUser
@@ -21,6 +22,12 @@ from backend.models import ZonasClaveAnalysis, ZonasClaveWatchlistItem
 router = APIRouter(prefix="/zonas-clave", tags=["zonas-clave"])
 
 _404 = {404: {"description": "Not found"}}
+
+
+class ZcTickerSearchResult(BaseModel):
+    ticker: str
+    name: str
+    exchange: str
 
 
 def _analyze_single_in_background(item_id: int, ticker: str) -> None:
@@ -126,6 +133,14 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
     ).start()
 
     return item
+
+
+@router.get("/search", response_model=list[ZcTickerSearchResult])
+def search_tickers(q: str, user: CurrentUser):
+    """Live global ticker search (Yahoo Finance) for the add-ticker search box."""
+    from backend.services.zonas_clave_analyzer import search_tickers as _search
+
+    return _search(q)
 
 
 @router.delete("/watchlist/{item_id}", status_code=204, responses=_404)

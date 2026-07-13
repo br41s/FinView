@@ -42,6 +42,12 @@ export interface ZcWatchlistItem {
   added_at: string;
 }
 
+export interface ZcTickerSearchResult {
+  ticker: string;
+  name: string;
+  exchange: string;
+}
+
 export interface ZcZone {
   level: number;
   zone_type: "support" | "resistance";
@@ -844,6 +850,9 @@ export const api = {
   // Zonas Clave
   zonasClav: {
     watchlist: () => fetchJSON<ZcWatchlistItem[]>("/zonas-clave/watchlist"),
+
+    search: (q: string) =>
+      fetchJSON<ZcTickerSearchResult[]>(`/zonas-clave/search?q=${encodeURIComponent(q)}`),
 
     addTicker: async (ticker: string, name = "") => {
       const headers = await authHeaders();
