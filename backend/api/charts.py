@@ -277,6 +277,7 @@ def _compute_isin_yield(
         "isin": isin,
         "name": d.name,
         "country": d.country,
+        "ticker": d.ticker,
         "total_dividends": str(total_div),
         "total_invested": str(round(cost_basis, 2)),
         "qty_remaining": str(qty_remaining),
@@ -346,6 +347,7 @@ def _merge_same_ticker_rows(rows: list[dict]) -> list[dict]:
             if price > canonical[key]["_price"]:
                 canonical[key].update(
                     isin=isin,
+                    ticker=row["ticker"],
                     latest_price=row["latest_price"],
                     currency=row["currency"],
                     original_price=row["original_price"],
@@ -387,6 +389,7 @@ def dividend_yield(
         Transaction.isin,
         func.max(Transaction.name).label("name"),
         func.max(Transaction.country).label("country"),
+        func.max(Transaction.ticker).label("ticker"),
         func.sum(Transaction.gross_amount).label("total_dividends"),
         func.count().label("payment_count"),
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
