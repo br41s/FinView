@@ -25,6 +25,15 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  async redirects() {
+    return [
+      {
+        source: "/blog/socimis-dividendos-irpf-espana",
+        destination: "/blog/socimi-dividendos-irpf-espana",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return {
       // NextAuth routes (/api/auth/*) are NOT rewritten — handled by Next.js

@@ -1089,15 +1089,6 @@ const POSTS: Post[] = [
     Image: ImgTasaTobin,
   },
   {
-    slug: 'socimis-dividendos-irpf-espana',
-    tag: 'Fiscal',
-    date: '17 jun 2026',
-    readTime: '15 min',
-    title: 'SOCIMIs en España: guía completa de fiscalidad para el inversor en dividendos',
-    excerpt: 'Todo sobre las SOCIMIs: qué son, requisitos, el régimen al 0% en Sociedades, cómo tributan los dividendos en tu IRPF, las principales SOCIMIs del mercado, errores frecuentes y cómo encajan en una cartera DGI.',
-    Image: ImgSocimi,
-  },
-  {
     slug: 'planes-pensiones-irpf',
     tag: 'Fiscal',
     date: '17 jun 2026',
