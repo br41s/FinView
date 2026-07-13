@@ -125,6 +125,9 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 - Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
 - Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
 - Scheduler: APScheduler every 24h; start/stop via UI
+- Right panel also has an "Opciones" card (`components/instrument/OpcionesTab.tsx`,
+  same component the Options Cartera row expand uses) for the selected ticker —
+  replaced the old per-row "ver opciones" shortcut that opened the instrument drawer.
 
 ### Trend bias weights
 RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/bearish %
@@ -148,49 +151,57 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
   - `/portfolio` list expansion + `/portfolio/[isin]`: candles + buy/sell/dividend markers.
     Dividends come from `position_detail`'s `dividend_events` (kept out of `transactions`
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
-  - Instrument drawer Opciones tab: underlying candles + spot (solid) + near-money
-    strikes (3 below, 3 above, dashed) from the selected expiry's chain. (Was the
-    `/options` Cartera inline expansion; moved into the drawer in phase 5.)
+  - `OpcionesTab` (`components/instrument/OpcionesTab.tsx`): underlying candles +
+    spot (solid) + near-money strikes (3 below, 3 above, dashed) from the selected
+    expiry's chain. Embedded inline wherever an Opciones view is needed — Options
+    Cartera row expand (mobile + desktop) and Zonas Clave's ticker detail panel.
 
 ---
 
-## Instrument drawer — cross-section hub
+## Instrument tab components — inline everywhere, no global drawer
 
-`components/InstrumentDrawer.tsx` — global, ticker-keyed slide-over mounted in
-`app/layout.tsx`. Any section calls `openInstrument(symbol, { isin?, name?, tab? })`
-(via `useInstrumentDrawer()`) to open it. Tabs are self-contained `{ symbol }`
-components (page-ready for a future `/ticker/[symbol]` view):
-- **Precio** — `PriceChart` + `/charts/price-history` + scope buttons (inline in InstrumentDrawer).
-- **Opciones** (`components/instrument/OpcionesTab.tsx`) — on-demand per-ticker AI report
-  (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section VolatilityEdge
-  prompt, runs regardless of alerts, AI failure still returns rule summary) + compact chain.
-- **Zonas** (`components/instrument/ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y
-  analizar" CTA when the ticker isn't in `zonas_clave_watchlist`.
-- **Fiscal / Dividendos** (`components/instrument/{FiscalTab,DividendosTab}.tsx`) — cost
-  basis / P&L / per-broker breakdown and dividends-by-year, both from
-  `GET /portfolio/positions/{isin}` via the shared `usePositionDetail` hook (ISIN-keyed
-  session cache → one fetch for both). ISIN resolved in the provider from holdings;
-  non-held tickers show an empty state.
-Header shows an "En cartera" badge from lazily-loaded holdings. Cross-links
-(options "ZC", zonas "ver opciones") open the drawer instead of navigating.
-The options Cartera tab is now a row→drawer launcher (no inline chain); the
-near-money strikes overlay lives in the drawer's Opciones tab.
+There used to be a global `InstrumentDrawer` slide-over mounted in
+`app/layout.tsx`; it was removed in favor of inline expandable cards scoped to
+whatever each page already cares about (matching `/portfolio`'s inline-expand
+Posiciones rows). The 5 former "drawer tabs" are still self-contained
+`{ symbol }` (+ `{ isin }` where noted) components under
+`components/instrument/`, just assembled directly into each page instead of a
+shared panel:
+- **Precio** (`PrecioTab.tsx`) — `PriceChart` + `/charts/price-history` + scope
+  buttons. Embedded under the ticker chips in Geo-Intel's signal detail panel
+  (`components/geo-intel/SignalPanel.tsx`).
+- **Opciones** (`OpcionesTab.tsx`) — on-demand per-ticker AI report
+  (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section
+  VolatilityEdge prompt, runs regardless of alerts, AI failure still returns
+  rule summary) + compact chain. Embedded in the Options Cartera row expand
+  (mobile card and desktop table row alike) and in Zonas Clave's ticker detail
+  panel.
+- **Zonas** (`ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y analizar"
+  CTA when the ticker isn't in `zonas_clave_watchlist`. Not currently embedded
+  outside Zonas Clave itself (which has its own native view).
+- **Fiscal / Dividendos** (`{FiscalTab,DividendosTab}.tsx`) — cost basis / P&L
+  / per-broker breakdown and dividends-by-year, both from
+  `GET /portfolio/positions/{isin}` via the shared `usePositionDetail` hook
+  (ISIN-keyed session cache → one fetch for both, portable outside any
+  particular page/component tree). Not currently embedded outside `/portfolio`
+  (which has the ISIN on hand per row already).
 
-### Promotion to `/ticker/[symbol]` (roadmap B, deferred)
-The drawer is the staging ground for a future standalone instrument page. The
-tab components were built page-ready, so promotion is mechanical:
-1. Add `app/ticker/[symbol]/page.tsx`; resolve `isin` from holdings the way the
-   provider does (ticker→isin map from `/portfolio/positions`).
-2. Render the tab components verbatim as page sections — `OpcionesTab`,
-   `ZonasTab`, `FiscalTab`, `DividendosTab` take `{ symbol }` (+ `{ isin }` for
-   fiscal/dividendos); the Precio chart is inline in InstrumentDrawer and would
-   be extracted to a `PrecioTab`. No component changes needed.
-3. Point `openInstrument()` call sites at `router.push('/ticker/'+symbol)`, or
-   keep the drawer for quick-peek and the page for shareable/deep-linked views.
-4. Promote owned/watched from the provider's derived state to an explicit field
-   only if SSR/SEO needs it.
-The shared `usePositionDetail` hook and the per-section APIs already work outside
-the drawer context, so there's no data-layer change.
+Each page shows only the facet(s) relevant to it — Options doesn't surface
+Fiscal/Dividendos, Zonas Clave doesn't surface Precio/Fiscal, etc. — so seeing
+every facet of one ticker still means visiting Cartera/Options/Zonas Clave
+individually; there's no more single cross-section hub. Geo-Intel's expanded
+Precio card links out to `/options?ticker=` and `/zonas-clave?ticker=` (both
+pages read `?ticker=` for deep-linking) since it has no native Opciones/Zonas
+view of its own.
+
+### Future `/ticker/[symbol]` page (still straightforward)
+Nothing above prevents assembling `OpcionesTab`/`ZonasTab`/`FiscalTab`/
+`DividendosTab`/`PrecioTab` into a single `app/ticker/[symbol]/page.tsx` later
+— they're still self-contained and drawer-independent (the `usePositionDetail`
+hook and per-section APIs never depended on the drawer's React tree). Building
+that page is now the *only* way to get a cross-section view again; it would
+resolve `isin` from holdings the same way the old drawer provider did
+(ticker→isin map from `/portfolio/positions`).
 
 ## Options monitor — architecture
 
@@ -231,7 +242,17 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
   breakdown (aligned-vs-counter accuracy at 7d). Instrumentation only — see the FRED section.
 
 ### Frontend — /options (6 tabs)
-- **Cartera**: positions accordion with P&L; expiry navigator (‹ YYYY-MM-DD › n/total) — expanding a ticker fetches dates only (`GET /options/expirations/{ticker}`); navigating to a date lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`); cached client-side. IV/HV badge ("IV cara" >+5 / "IV barata" <-5 / "IV normal"), sentiment per ticker. Underlying `PriceChart` above the chain (spot + near-money strikes; see "Price charts").
+- **Cartera**: positions table (desktop) / cards (mobile), each row/card showing
+  Sentimiento, P/C Ratio, and an IV/HV badge ("IV cara" >+5 / "IV barata" <-5 /
+  "IV normal") sourced from the already-loaded snapshot — no per-row fetch.
+  Clicking/tapping a row expands `OpcionesTab` inline (same pattern on both
+  breakpoints): AI report on demand, underlying `PriceChart` (spot + near-money
+  strikes), and the expiry navigator (‹ YYYY-MM-DD › n/total) — expanding fetches
+  dates only (`GET /options/expirations/{ticker}`), navigating to a date
+  lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`),
+  cached client-side. Portfolio positions (not hidden, not option-less)
+  auto-sync into the watchlist once the availability check settles, so these
+  columns populate without a manual "add to watchlist" click.
 - **Watchlist**: add/remove tickers; stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color
 - **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW); `macro ✓/✗` alignment tag per alert (Phase 2b, informational)
 - **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown; "Precisión por régimen macro" aligned-vs-counter table (Phase 2b)
@@ -328,7 +349,10 @@ can be reclaimed after the response.
 Map (react-simple-maps) + signal feed + detail panel. Header: "Run cycle" (manual,
 polls until signals land), "Monitor" toggle (in-process scheduler — dev convenience,
 not the prod mechanism), Active/Tracked/Regions/Last-signal stats. Signals silently
-re-fetch every 60s.
+re-fetch every 60s. In the detail panel (`components/geo-intel/SignalPanel.tsx`),
+tapping an "Affected tickers" chip expands `PrecioTab` inline below it, plus two
+links out to `/options?ticker=` and `/zonas-clave?ticker=` — Geo-Intel has no
+native Opciones/Zonas view of its own.
 
 ### Env keys (Cloud Run)
 Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KEY`,
