@@ -1,6 +1,7 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
 import json
+import threading
 import time
 
 import httpx
@@ -405,13 +406,31 @@ def check_options_availability(body: _TickerListIn, user: CurrentUser):
 # ── Agent Control ────────────────────────────────────────────────────
 
 _scheduler_running = False
+_cycles_in_progress: set[int] = set()
 
 
 @router.post("/agent/run", response_model=AgentCycleResult)
 def trigger_cycle(user: CurrentUser):
-    """Manually trigger one monitoring cycle."""
-    result = run_cycle(user.id)
-    return AgentCycleResult(**result)
+    """Manually trigger one monitoring cycle.
+
+    Runs in a background thread — a large watchlist means fetching every
+    ticker's options chain sequentially, which can take minutes and would
+    otherwise block (and likely time out) this HTTP request. The frontend
+    polls GET /agent/status (total_cycles) to detect completion.
+    """
+    if user.id in _cycles_in_progress:
+        return AgentCycleResult(status="already_running")
+
+    _cycles_in_progress.add(user.id)
+
+    def _run_in_background(user_id: int) -> None:
+        try:
+            run_cycle(user_id)
+        finally:
+            _cycles_in_progress.discard(user_id)
+
+    threading.Thread(target=_run_in_background, args=(user.id,), daemon=True).start()
+    return AgentCycleResult(status="started")
 
 
 @router.post("/agent/analyze-ticker", responses=_404)
