@@ -907,7 +907,44 @@ function ImgMejoresEtfs() {
   );
 }
 
+function ImgAnalisisSectorial() {
+  const sectors = ['Banca', 'Energía', 'Utilities', 'Infra.', 'Consumo'];
+  const yields = [8, 18, 14, 10, 6];
+  const maxH = Math.max(...yields);
+  const sectorColors = ['rgba(154,107,31,0.25)', 'var(--fv-ochre)', 'rgba(154,107,31,0.35)', 'rgba(154,107,31,0.20)', 'rgba(154,107,31,0.15)'];
+  return (
+    <div className={styles.postImgAnalisisSectorial}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">RENTABILIDAD POR SECTOR — 2026</text>
+        {sectors.map((s, i) => {
+          const x = 20 + i * 36;
+          const h = Math.round((yields[i] / maxH) * 60);
+          return (
+            <g key={s}>
+              <rect x={x} y={105 - h} width="22" height={h} rx="3" fill={sectorColors[i]} />
+              <text x={x + 11} y={116} fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">{s}</text>
+            </g>
+          );
+        })}
+        <circle cx="36" cy="64" r="12" fill="none" stroke="var(--fv-ochre)" strokeWidth="1" opacity="0.4" />
+        <circle cx="108" cy="64" r="12" fill="none" stroke="var(--fv-ochre)" strokeWidth="1" opacity="0.4" />
+        <line x1="8" y1="45" x2="192" y2="45" stroke="var(--fv-ink-15)" strokeWidth="0.8" strokeDasharray="2 3" />
+        <text x="100" y="42" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">visibilidad media</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'analisis-sectorial-dividendos-espana-2026',
+    tag: 'Estrategia',
+    date: '13 jul 2026',
+    readTime: '12 min',
+    title: 'Dónde invertir para dividendos en 2026: análisis sectorial completo',
+    excerpt: 'La banca ya no es la reina del dividendo español. 26.399 M€ pagados en el primer semestre de 2026, pero el dinero está fluyendo hacia energía, utilities e infraestructuras. Análisis sectorial con datos reales y una propuesta práctica de asignación.',
+    Image: ImgAnalisisSectorial,
+  },
   {
     slug: 'mejores-etfs-dividendos-espana-2026',
     tag: 'Estrategia',
