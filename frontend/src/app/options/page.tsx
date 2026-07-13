@@ -35,6 +35,7 @@ import {
   Cell,
 } from "recharts";
 import { api } from "@/lib/api";
+import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
 import {
   Card,
   CardContent,
@@ -327,24 +328,25 @@ export default function OptionsPage() {
 
   // Auto-sync: portfolio positions get added to the options watchlist so
   // Sentimiento/P-C Ratio/IV vs HV populate without a manual click. Waits for
-  // the availability check (so we skip tickers with no options chain) and for
-  // the watchlist itself to be loaded (so we don't re-add what's already
-  // there). Re-fetching the watchlist after adding converges this to a no-op
-  // once everything is synced — no infinite loop.
+  // the availability check (so we skip tickers with no options chain).
+  // `watchlist` is intentionally NOT a dependency: it changes every time this
+  // effect adds something (and whenever the user removes a ticker via the
+  // Trash2 button), which would otherwise immediately re-add anything the
+  // user just removed. Instead, `syncedTickersRef` remembers every ticker
+  // this effect has ever seen on the watchlist (added by it or already
+  // there), so a manual removal sticks — the effect only re-fires when the
+  // portfolio itself changes.
+  const syncedTickersRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!availabilityChecked || loadingOptions || positions.length === 0) return;
     const watchlistSet = new Set(watchlist.map((w) => w.ticker));
-    const toAdd = new Map(
-      positions
-        .map((p) => ({ ticker: (p.ticker || p.isin || "").toUpperCase(), name: p.name }))
-        .filter(
-          ({ ticker }) =>
-            ticker !== "" &&
-            !hiddenTickers.has(ticker) &&
-            !noOptionsTickers.has(ticker) &&
-            !watchlistSet.has(ticker),
-        )
-        .map((t) => [t.ticker, t]),
+    for (const ticker of watchlistSet) syncedTickersRef.current.add(ticker);
+    const toAdd = selectPositionsToSync(
+      positions,
+      watchlistSet,
+      hiddenTickers,
+      noOptionsTickers,
+      syncedTickersRef.current,
     );
     if (toAdd.size === 0) return;
     let cancelled = false;
@@ -353,6 +355,7 @@ export default function OptionsPage() {
         if (cancelled) return;
         try {
           await api.options.addToWatchlist(ticker, name);
+          syncedTickersRef.current.add(ticker);
         } catch {
           // ignore — e.g. already added by a concurrent sync, will settle next pass
         }
@@ -364,7 +367,7 @@ export default function OptionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [availabilityChecked, loadingOptions, positions, watchlist, hiddenTickers, noOptionsTickers]);
+  }, [availabilityChecked, loadingOptions, positions, hiddenTickers, noOptionsTickers]);
 
   async function reloadOptions() {
     const [snaps, alts, unu, wl, status, hidden] = await Promise.all([
