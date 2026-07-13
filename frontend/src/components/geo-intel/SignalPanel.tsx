@@ -1,6 +1,8 @@
+import { useState } from "react";
+import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type { GeoSignal } from "@/lib/geo";
-import { useInstrumentDrawer } from "@/components/InstrumentDrawer";
+import { PrecioTab } from "@/components/instrument/PrecioTab";
 import { ListSkeleton } from "./MapStates";
 
 const DIR_COLORS = {
@@ -166,7 +168,7 @@ function checkpointLabel(horizon: string) {
 }
 
 function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void }) {
-  const { openInstrument } = useInstrumentDrawer();
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[rgba(31,27,22,0.14)] px-5 py-3">
@@ -244,6 +246,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
               signal.tickers.map((t) => {
                 const color = DIR_COLORS[t.direction];
                 const arrow = t.direction === "bullish" ? "↑" : t.direction === "bearish" ? "↓" : "•";
+                const isExpanded = expandedSymbol === t.symbol;
                 return (
                   <button
                     key={t.symbol}
@@ -253,7 +256,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                         ? `Price at signal: $${t.priceAtSignal.toFixed(2)} · Ver instrumento`
                         : "Ver instrumento"
                     }
-                    onClick={() => openInstrument(t.symbol, { tab: "precio" })}
+                    onClick={() => setExpandedSymbol(isExpanded ? null : t.symbol)}
                     className="rounded-full px-2.5 py-1 text-[11px] transition-opacity hover:opacity-70"
                     style={{
                       fontFamily: "var(--fv-font-jetbrains), monospace",
@@ -267,6 +270,25 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
               })
             )}
           </div>
+          {expandedSymbol && (
+            <div className="mt-3 rounded-md border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] p-3">
+              <PrecioTab symbol={expandedSymbol} />
+              <div className="mt-2 flex gap-3 text-[11px]">
+                <Link
+                  href={`/options?ticker=${encodeURIComponent(expandedSymbol)}`}
+                  className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
+                >
+                  Ver en Opciones →
+                </Link>
+                <Link
+                  href={`/zonas-clave?ticker=${encodeURIComponent(expandedSymbol)}`}
+                  className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
+                >
+                  Ver en Zonas Clave →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-6">
