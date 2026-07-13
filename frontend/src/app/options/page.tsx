@@ -468,6 +468,30 @@ export default function OptionsPage() {
     return alerts.filter((a) => a.ticker === ticker && !a.acknowledged);
   }
 
+  // Sentiment/IV-HV badge for a position row — sourced from the already-loaded
+  // snapshot (latestByTicker), no extra fetch. Mirrors OpcionesTab.tsx's ivHvBadge
+  // threshold (diff > 5 → cara, < -5 → barata).
+  function sentimentLabel(s?: Snapshot) {
+    const sentiment = s?.market_sentiment;
+    if (!sentiment) return { label: "—", className: "text-muted-foreground" };
+    const lower = sentiment.toLowerCase();
+    const className =
+      lower === "alcista"
+        ? "text-emerald-600"
+        : lower === "bajista"
+          ? "text-red-600"
+          : "text-amber-500";
+    return { label: sentiment, className };
+  }
+
+  function ivHvLabel(s?: Snapshot): { label: string; variant: "destructive" | "secondary" | "outline" } {
+    if (!s?.avg_call_iv || !s?.historical_volatility) return { label: "—", variant: "outline" };
+    const diff = Number(s.avg_call_iv) - Number(s.historical_volatility);
+    if (diff > 5) return { label: "IV cara", variant: "destructive" };
+    if (diff < -5) return { label: "IV barata", variant: "secondary" };
+    return { label: "IV normal", variant: "outline" };
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -649,9 +673,9 @@ export default function OptionsPage() {
                     <TableRow>
                       <TableHead className="w-8" />
                       <TableHead>Ticker</TableHead>
-                      <TableHead className="text-right">Precio</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
-                      <TableHead className="text-right">P&L</TableHead>
+                      <TableHead className="text-right">Sentimiento</TableHead>
+                      <TableHead className="text-right">P/C Ratio</TableHead>
+                      <TableHead className="text-right">IV vs HV</TableHead>
                       <TableHead className="w-16" />
                     </TableRow>
                   </TableHeader>
@@ -659,11 +683,9 @@ export default function OptionsPage() {
                     {mainPositions.map((p) => {
                       const ticker = p.ticker || p.isin;
                       const tickerAlerts = getTickerAlerts(ticker);
-                      const plPositive =
-                        p.unrealized_pl_eur != null && p.unrealized_pl_eur >= 0;
-                      const plClass = plPositive
-                        ? "text-emerald-600"
-                        : "text-red-600";
+                      const snap = latestByTicker.get(ticker);
+                      const sentiment = sentimentLabel(snap);
+                      const ivHv = ivHvLabel(snap);
 
                       return (
                         <Fragment key={`${p.isin}-${p.broker}`}>
@@ -687,27 +709,18 @@ export default function OptionsPage() {
                                 </Badge>
                               )}
                             </TableCell>
+                            <TableCell className={`text-right font-medium ${sentiment.className}`}>
+                              {sentiment.label}
+                            </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {p.current_price_eur
-                                ? `${fmt(p.current_price_eur)} €`
+                              {snap?.put_call_ratio_volume != null
+                                ? fmt(snap.put_call_ratio_volume)
                                 : "—"}
                             </TableCell>
-                            <TableCell className="text-right tabular-nums font-medium">
-                              {p.market_value_eur
-                                ? `${fmt(p.market_value_eur)} €`
-                                : "—"}
-                            </TableCell>
-                            <TableCell
-                              className={`text-right tabular-nums ${plClass}`}
-                            >
-                              {p.unrealized_pl_eur != null ? (
-                                <span>
-                                  {plPositive ? "+" : ""}
-                                  {fmt(p.unrealized_pl_eur)} €
-                                </span>
-                              ) : (
-                                "—"
-                              )}
+                            <TableCell className="text-right">
+                              <Badge variant={ivHv.variant} className="text-[10px]">
+                                {ivHv.label}
+                              </Badge>
                             </TableCell>
                             <TableCell className="text-center">
                               <div className="flex items-center justify-center gap-0.5">
