@@ -95,22 +95,53 @@ export interface ZcSchedulerStatus {
 }
 
 // ── 5-minute client-side cache for read-heavy GET endpoints ──────────
-const _memCache = new Map<string, { data: unknown; ts: number }>();
+// Backed by sessionStorage (not a module-level Map) so it survives client-side
+// route navigation regardless of how the bundler chunks lib/api.ts, and even a
+// same-tab hard refresh — an in-memory Map only survives as long as the module
+// instance does, which is not guaranteed across navigations.
+const _CACHE_PREFIX = "fv_cache:";
 const _CACHE_TTL = 5 * 60 * 1000; // 5 min in ms
 
 function _getCached(key: string): unknown | null {
-  const entry = _memCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > _CACHE_TTL) { _memCache.delete(key); return null; }
-  return entry.data;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(_CACHE_PREFIX + key);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as { data: unknown; ts: number };
+    if (Date.now() - entry.ts > _CACHE_TTL) {
+      window.sessionStorage.removeItem(_CACHE_PREFIX + key);
+      return null;
+    }
+    return entry.data;
+  } catch {
+    return null;
+  }
 }
 function _setCached(key: string, data: unknown): void {
-  _memCache.set(key, { data, ts: Date.now() });
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      _CACHE_PREFIX + key,
+      JSON.stringify({ data, ts: Date.now() }),
+    );
+  } catch {
+    // Quota exceeded or storage unavailable (e.g. private mode) — degrade to
+    // no caching for this entry rather than breaking the request.
+  }
 }
 export function invalidateCache(prefix?: string): void {
-  if (!prefix) { _memCache.clear(); return; }
-  for (const key of _memCache.keys()) {
-    if (key.startsWith(prefix)) _memCache.delete(key);
+  if (typeof window === "undefined") return;
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (!key || !key.startsWith(_CACHE_PREFIX)) continue;
+      const path = key.slice(_CACHE_PREFIX.length);
+      if (!prefix || path.startsWith(prefix)) toRemove.push(key);
+    }
+    for (const key of toRemove) window.sessionStorage.removeItem(key);
+  } catch {
+    // ignore — nothing to invalidate if storage is unavailable
   }
 }
 
