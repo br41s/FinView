@@ -7,6 +7,7 @@ import {
   Bell,
   Bot,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
@@ -255,6 +256,10 @@ export default function OptionsPage() {
   const [analysisCycle, setAnalysisCycle] = useState(0);
   const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual">("alerts");
   const [activeTab, setActiveTab] = useState("portfolio");
+  // Mobile-only: tapping a Posiciones card expands inline (like Cartera)
+  // instead of opening the drawer; the drawer stays one tap away via its own
+  // button inside the expanded card.
+  const [expandedOptionsTicker, setExpandedOptionsTicker] = useState<string | null>(null);
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions, setRetryPositions] = useState(0);
@@ -389,7 +394,17 @@ export default function OptionsPage() {
   async function handleRunCycle() {
     setRunning(true);
     try {
+      const before = agentStatus?.total_cycles ?? 0;
       await api.options.runCycle();
+      // The cycle now runs in the background (can take minutes for a large
+      // watchlist) — poll status until total_cycles advances, or give up
+      // after ~5 min so a slow/stuck cycle doesn't spin the button forever.
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const status = (await api.options.agentStatus()) as AgentStatus;
+        setAgentStatus(status);
+        if (status.total_cycles > before) break;
+      }
       await reloadOptions();
       setAnalysisCycle((c) => c + 1);
     } finally {
@@ -724,77 +739,121 @@ export default function OptionsPage() {
                     const snap = latestByTicker.get(ticker);
                     const sentiment = sentimentLabel(snap);
                     const ivHv = ivHvLabel(snap);
+                    const isExpanded = expandedOptionsTicker === ticker;
                     return (
-                      <div
-                        key={`${p.isin}-${p.broker}-card`}
-                        className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-muted/50"
-                        onClick={() => openInstrument(ticker, { tab: "opciones", name: p.name })}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{ticker}</span>
-                            {tickerAlerts.length > 0 && (
-                              <Badge variant="destructive" className="px-1 py-0 text-[10px]">
-                                {tickerAlerts.length}
-                              </Badge>
-                            )}
+                      <div key={`${p.isin}-${p.broker}-card`}>
+                        <div
+                          className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-muted/50"
+                          onClick={() =>
+                            setExpandedOptionsTicker(isExpanded ? null : ticker)
+                          }
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <span className="font-medium">{ticker}</span>
+                              {tickerAlerts.length > 0 && (
+                                <Badge variant="destructive" className="px-1 py-0 text-[10px]">
+                                  {tickerAlerts.length}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              {watchlistTickers.has(ticker) ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  title="Eliminar de watchlist"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveFromCartera(ticker);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  title="Añadir a watchlist"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddPositionToWatchlist(ticker, p.name);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                title="Ocultar del monitor de opciones"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleHidePosition(ticker);
+                                }}
+                              >
+                                <EyeOff className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-0.5">
-                            {watchlistTickers.has(ticker) ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                title="Eliminar de watchlist"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRemoveFromCartera(ticker);
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                title="Añadir a watchlist"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddPositionToWatchlist(ticker, p.name);
-                                }}
-                              >
-                                <Eye className="h-4 w-4 text-muted-foreground" />
-                              </Button>
+                          <div className="flex flex-wrap gap-3 pl-6 text-xs text-muted-foreground">
+                            <span>
+                              Sentimiento <strong className={sentiment.className}>{sentiment.label}</strong>
+                            </span>
+                            <span>
+                              P/C{" "}
+                              <strong className="text-foreground">
+                                {snap?.put_call_ratio_volume != null ? fmt(snap.put_call_ratio_volume) : "—"}
+                              </strong>
+                            </span>
+                            <span className="flex items-center gap-1">
+                              IV/HV <Badge variant={ivHv.variant} className="text-[10px]">{ivHv.label}</Badge>
+                            </span>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="space-y-3 border-t bg-muted/30 p-3 pl-9 text-sm">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>{p.name}</span>
+                              <span>{p.broker}</span>
+                              <span>{fmt(p.quantity, 2)} uds</span>
+                              {p.avg_cost_eur != null && (
+                                <span>Coste medio {fmt(p.avg_cost_eur, 2)} €</span>
+                              )}
+                            </div>
+                            {tickerAlerts.length > 0 && (
+                              <div className="space-y-1.5">
+                                {tickerAlerts.map((a) => (
+                                  <div key={a.id} className="rounded-md border bg-background p-2 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline" className="text-[10px]">{a.alert_type}</Badge>
+                                      <span className="text-muted-foreground">
+                                        {new Date(a.timestamp).toLocaleString("es-ES")}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-foreground">{a.message}</p>
+                                  </div>
+                                ))}
+                              </div>
                             )}
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
-                              className="h-7 w-7 p-0"
-                              title="Ocultar del monitor de opciones"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleHidePosition(ticker);
-                              }}
+                              className="w-full"
+                              onClick={() => openInstrument(ticker, { tab: "opciones", name: p.name })}
                             >
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                              Ver precio y cadena de opciones →
                             </Button>
                           </div>
-                        </div>
-                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span>
-                            Sentimiento <strong className={sentiment.className}>{sentiment.label}</strong>
-                          </span>
-                          <span>
-                            P/C{" "}
-                            <strong className="text-foreground">
-                              {snap?.put_call_ratio_volume != null ? fmt(snap.put_call_ratio_volume) : "—"}
-                            </strong>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            IV/HV <Badge variant={ivHv.variant} className="text-[10px]">{ivHv.label}</Badge>
-                          </span>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
