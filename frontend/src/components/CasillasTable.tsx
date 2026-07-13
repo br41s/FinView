@@ -183,7 +183,72 @@ function CasillasSection({
               <h3 className="text-sm font-medium text-foreground mb-2">
                 {title}
               </h3>
-              <div className="overflow-x-auto">
+              {/* Mobile */}
+              <div className="divide-y divide-border/50 sm:hidden">
+                {items.map((c) => {
+                  const amount = selectedBroker
+                    ? (brokerAmount(c, selectedBroker) ?? c.amount_eur)
+                    : c.amount_eur;
+                  const showCrossBroker = !selectedBroker;
+                  const showBadge = !selectedBroker || selectedBroker === "TR";
+                  return (
+                    <div key={`${c.modelo}-${c.casilla}-card`} className="py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {c.casilla}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-medium">{formatEur(amount)}</span>
+                          {showBadge && c.validation_status === "match" && (
+                            <span
+                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
+                              className="text-green-400"
+                            >
+                              ✅
+                            </span>
+                          )}
+                          {showBadge && c.validation_status === "mismatch" && (
+                            <span
+                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
+                              className="text-amber-400"
+                            >
+                              ⚠️
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-foreground">{c.description}</p>
+                      {showCrossBroker && c.brokers && c.brokers.length > 1 && (
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {c.brokers
+                            .map((b) => `${b.broker}: ${formatEur(b.amount_eur)}`)
+                            .join(" · ")}
+                        </span>
+                      )}
+                      {showCrossBroker &&
+                        c.fifo_adjustment_eur &&
+                        Number(c.fifo_adjustment_eur) !== 0 && (
+                          <>
+                            <span className="mt-1 block text-xs text-amber-400">
+                              ⚠ Ajuste FIFO cruzado:{" "}
+                              {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
+                              {formatEur(c.fifo_adjustment_eur)} (diferencia entre FIFO
+                              global y broker)
+                            </span>
+                            <span className="mt-1 block font-mono text-xs text-amber-400">
+                              ⚠ Ajustado:{" "}
+                              {formatEur(
+                                Number(c.amount_eur) + Number(c.fifo_adjustment_eur),
+                              )}
+                            </span>
+                          </>
+                        )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Desktop */}
+              <div className="hidden overflow-x-auto sm:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground">

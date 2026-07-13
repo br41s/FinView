@@ -87,7 +87,31 @@ function CrossBrokerSection({
               <h4 className="text-xs font-medium text-amber-400 mb-2">
                 Lotes FIFO cruzado
               </h4>
-              <div className="overflow-x-auto">
+              {/* Mobile */}
+              <div className="divide-y divide-border/30 sm:hidden">
+                {lots.map((l) => (
+                  <div key={l.id} className="py-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-muted-foreground">{l.isin}</span>
+                      <span className={`font-medium ${plColor(l.realized_pl_eur)}`}>
+                        {formatEur(l.realized_pl_eur)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+                      <span>
+                        {l.buy_broker} → {l.sell_broker}
+                      </span>
+                      <span>{l.quantity} uds</span>
+                      <span>Coste {formatEur(l.cost_basis_eur)}</span>
+                      <span>Venta {formatEur(l.proceeds_eur)}</span>
+                      <span>{l.holding_period ?? "—"}</span>
+                      <span>Casilla {l.casilla}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop */}
+              <div className="hidden overflow-x-auto sm:block">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground">
