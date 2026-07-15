@@ -45,6 +45,21 @@ ensure_constraints()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # One-off data migration: legacy options/zonas watchlists → followed_instruments.
+    # Runs in lifespan (not at import) so merely importing backend.app — e.g. from
+    # tests — never mutates a real database. No-op after the first boot.
+    from backend.database import SessionLocal as _SessionLocal
+    from backend.services.watchlist_service import migrate_legacy_watchlists
+
+    try:
+        with _SessionLocal() as _db:
+            migrate_legacy_watchlists(_db)
+    except Exception:
+        # Concurrent cold-start race (two instances migrating at once) or a
+        # transient DB error: nothing was committed, so the migration simply
+        # retries on the next boot. Never take the instance down for this.
+        logger.warning("watchlist migration failed — will retry next boot", exc_info=True)
+
     # Preload Eurex RDF in background so the first European options request is fast
     import threading
     from backend.services.options_scraper import _load_eurex_rdf

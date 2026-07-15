@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
@@ -31,13 +32,14 @@ from backend.config import settings
 from backend.database import DbSession
 from backend.models import (
     BacktestSignal,
+    FollowedInstrument,
     OptionsAgentLog,
     OptionsAlert,
     OptionsHiddenPortfolioTicker,
     OptionsSnapshot,
     UnusualActivity,
-    WatchlistItem,
 )
+from backend.services import watchlist_service
 from backend.services.notification_service import send_telegram
 from backend.services.options_agent import run_cycle
 from backend.services.options_scraper import fetch_expirations, fetch_options, fetch_options_for_expiry
@@ -56,14 +58,41 @@ _now = lambda: datetime.now(timezone.utc)  # noqa: E731
 # ── Watchlist CRUD ───────────────────────────────────────────────────
 
 
+def _to_watchlist_out(item: FollowedInstrument) -> WatchlistItemOut:
+    # Legacy response shape: `enabled` means "the agent scans it".
+    return WatchlistItemOut(
+        id=item.id,
+        ticker=item.ticker,
+        name=item.name,
+        enabled=not item.options_paused,
+        created_at=item.created_at,
+    )
+
+
+def _get_options_item(db, user_id: int, item_id: int) -> FollowedInstrument | None:
+    return (
+        db.query(FollowedInstrument)
+        .filter(
+            FollowedInstrument.id == item_id,
+            FollowedInstrument.user_id == user_id,
+            FollowedInstrument.options_enabled.is_(True),
+        )
+        .first()
+    )
+
+
 @router.get("/watchlist", response_model=list[WatchlistItemOut])
 def list_watchlist(db: DbSession, user: CurrentUser):
-    return (
-        db.query(WatchlistItem)
-        .filter(WatchlistItem.user_id == user.id)
-        .order_by(WatchlistItem.created_at)
+    items = (
+        db.query(FollowedInstrument)
+        .filter(
+            FollowedInstrument.user_id == user.id,
+            FollowedInstrument.options_enabled.is_(True),
+        )
+        .order_by(FollowedInstrument.created_at, FollowedInstrument.id)
         .all()
     )
+    return [_to_watchlist_out(i) for i in items]
 
 
 @router.post(
@@ -73,46 +102,40 @@ def list_watchlist(db: DbSession, user: CurrentUser):
     responses={409: {"description": "Ticker already in watchlist"}},
 )
 def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
-    existing = (
-        db.query(WatchlistItem)
-        .filter(WatchlistItem.user_id == user.id, WatchlistItem.ticker == body.ticker.upper())
-        .first()
-    )
-    if existing:
+    existing = watchlist_service.get_followed(db, user.id, body.ticker)
+    if existing is not None and existing.options_enabled:
         raise HTTPException(status_code=409, detail="Ticker already in watchlist")
 
-    item = WatchlistItem(user_id=user.id, ticker=body.ticker.upper(), name=body.name)
-    db.add(item)
-    db.commit()
+    item = watchlist_service.enable_options(db, user.id, body.ticker, body.name)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Lost a concurrent insert race on (user, ticker) — e.g. the portfolio
+        # auto-sync and a manual add firing together. Same outcome as the
+        # pre-check: it's already followed.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ticker already in watchlist")
     db.refresh(item)
-    return item
+    return _to_watchlist_out(item)
 
 
 @router.patch("/watchlist/{item_id}", responses=_404)
 def toggle_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
-    item = (
-        db.query(WatchlistItem)
-        .filter(WatchlistItem.id == item_id, WatchlistItem.user_id == user.id)
-        .first()
-    )
+    item = _get_options_item(db, user.id, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    item.enabled = not item.enabled
+    item.options_paused = not item.options_paused
     db.commit()
-    return {"id": item.id, "enabled": item.enabled}
+    return {"id": item.id, "enabled": not item.options_paused}
 
 
 @router.delete("/watchlist/{item_id}", status_code=204, responses=_404)
 def remove_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
-    item = (
-        db.query(WatchlistItem)
-        .filter(WatchlistItem.id == item_id, WatchlistItem.user_id == user.id)
-        .first()
-    )
+    item = _get_options_item(db, user.id, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     ticker = item.ticker
-    db.delete(item)
+    watchlist_service.disable_options(db, item)
     db.query(OptionsAlert).filter(
         OptionsAlert.user_id == user.id, OptionsAlert.ticker == ticker
     ).delete(synchronize_session=False)

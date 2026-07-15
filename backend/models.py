@@ -389,8 +389,43 @@ class AlertSeverity(PyEnum):
     HIGH = "HIGH"
 
 
+class FollowedInstrument(Base):
+    """Canonical followed-instrument row — one per (user, ticker), with opt-in
+    per-section "lenses". Replaces the separate options/zonas watchlist
+    memberships (legacy tables migrated on first boot, see watchlist_service).
+
+    Lens semantics:
+    - options_enabled: shows in the options watchlist / agent scope.
+    - options_paused:  stays in the options list but the agent skips it
+      (maps the legacy WatchlistItem.enabled=False state).
+    - zonas_enabled:   has a synced ZonasClaveWatchlistItem child row, which
+      still parents ZonasClaveAnalysis via its own FK (kept internal on
+      purpose — no FK surgery in prod).
+    A row with no lens enabled is pruned.
+    """
+
+    __tablename__ = "followed_instruments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    options_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    options_paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    zonas_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship()
+
+    __table_args__ = (UniqueConstraint("user_id", "ticker"),)
+
+
 class WatchlistItem(Base):
-    """Tickers the user wants to monitor for options activity."""
+    """Tickers the user wants to monitor for options activity.
+
+    LEGACY — membership now lives in FollowedInstrument (options lens); this
+    table is only read once by the first-boot migration. Drop in B3.
+    """
 
     __tablename__ = "watchlist_items"
 
