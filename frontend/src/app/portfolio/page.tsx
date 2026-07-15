@@ -50,6 +50,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
 interface Position {
   isin: string;
@@ -146,6 +148,7 @@ const TX_COLORS: Record<string, string> = {
 
 function PortfolioContent() {
   const router = useRouter();
+  const { privacy, togglePrivacy } = usePrivacyToggle();
   const [positions, setPositions] = useState<Position[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -518,6 +521,7 @@ function PortfolioContent() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
           <QuickNav current="/portfolio" />
           <Button variant="outline" size="sm" onClick={() => router.push("/accounts")}>
             Cuentas

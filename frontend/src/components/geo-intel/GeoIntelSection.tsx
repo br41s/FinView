@@ -8,8 +8,11 @@ import { type GeoSignal } from "@/lib/geo";
 import { api, type GeoSchedulerStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
 export function GeoIntelSection() {
+  const { privacy, togglePrivacy } = usePrivacyToggle();
   const [signals, setSignals] = useState<GeoSignal[]>([]);
   const [selected, setSelected] = useState<GeoSignal | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -138,6 +141,7 @@ export function GeoIntelSection() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
           <QuickNav current="/geo-intel" />
           <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
             {running ? "Running…" : "Run cycle"}

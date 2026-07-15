@@ -26,6 +26,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
 const BROKERS = ["BBVA", "DEGIRO", "ETORO", "IBKR", "ING", "TR"];
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF"];
@@ -41,6 +43,7 @@ interface AccountItem {
 }
 
 function AccountsContent() {
+  const { privacy, togglePrivacy } = usePrivacyToggle();
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -152,6 +155,7 @@ function AccountsContent() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
           <QuickNav current="/portfolio" />
           {!showForm && (
             <Button onClick={() => setShowForm(true)}>

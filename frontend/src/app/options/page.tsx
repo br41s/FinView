@@ -58,6 +58,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -235,6 +237,7 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 // ── Component ───────────────────────────────────────────────────────
 
 export default function OptionsPage() {
+  const { privacy, togglePrivacy } = usePrivacyToggle();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -568,6 +571,7 @@ export default function OptionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
           <QuickNav current="/options" />
           <Button variant="outline" size="sm" onClick={handleRunCycle} disabled={running} title="Run Cycle">
             <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />

@@ -46,6 +46,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
 const TYPE_LABELS: Record<AltInvestmentType, string> = {
   PRIVATE_EQUITY: "Private Equity",
@@ -86,6 +88,7 @@ function fmtCompactEur(v: number | null): string {
 }
 
 export default function AltInvestmentsPage() {
+  const { privacy, togglePrivacy } = usePrivacyToggle();
   const [items, setItems] = useState<AltInvestment[]>([]);
   const [summary, setSummary] = useState<AltSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -250,6 +253,7 @@ export default function AltInvestmentsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
           <QuickNav current="/alt-investments" />
           <Button size="sm" onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> Añadir

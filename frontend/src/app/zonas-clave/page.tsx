@@ -32,6 +32,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 import {
   Table,
@@ -103,6 +105,7 @@ function macdColor(signal: string | null) {
 // ── Component ────────────────────────────────────────────────────────
 
 export default function ZonasClavePage() {
+  const { privacy, togglePrivacy } = usePrivacyToggle();
   const [watchlist, setWatchlist] = useState<ZcWatchlistItem[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, ZcAnalysis>>({});
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
@@ -379,6 +382,7 @@ export default function ZonasClavePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
           <QuickNav current="/zonas-clave" />
           <Button
             variant="default"
