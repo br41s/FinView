@@ -2,8 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { signOut } from "next-auth/react";
-import { api, clearAuthToken, invalidateCache } from "@/lib/api";
+import { api } from "@/lib/api";
 import type {
   DashboardStats,
   Casilla,
@@ -45,6 +44,8 @@ import { WithholdingsChart } from "@/components/charts/WithholdingsChart";
 import { GrossDividendsByCountryChart } from "@/components/charts/GrossDividendsByCountryChart";
 import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart";
 import { QuickNav } from "@/components/QuickNav";
+import { HeaderActions } from "@/components/HeaderActions";
+import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import {
   Upload as UploadIcon,
   BarChart3,
@@ -56,10 +57,6 @@ import {
   CalendarRange,
   AlertCircle,
   Info,
-  Eye,
-  EyeOff,
-  CreditCard,
-  LogOut,
 } from "lucide-react";
 import {
   Card,
@@ -207,19 +204,7 @@ function DashboardContent() {
   >([]);
   const [yearlyComparison, setYearlyComparison] = useState<YearlyMetrics[]>([]);
 
-  // Privacy mode: blurs sensitive monetary values. Persisted in localStorage so
-  // the choice survives reloads. Starts hidden=false to avoid a flash of blur.
-  const [privacy, setPrivacy] = useState(false);
-  useEffect(() => {
-    setPrivacy(localStorage.getItem("fv-privacy") === "1");
-  }, []);
-  const togglePrivacy = useCallback(() => {
-    setPrivacy((prev) => {
-      const next = !prev;
-      localStorage.setItem("fv-privacy", next ? "1" : "0");
-      return next;
-    });
-  }, []);
+  const { privacy, togglePrivacy } = usePrivacyToggle();
 
   // Guards against stale responses: a rapid year switch can leave an older
   // (slow) request in flight; only the latest load is allowed to set state.
@@ -373,44 +358,7 @@ function DashboardContent() {
             <BarChart3 className="h-6 w-6" />
             Dashboard
           </h1>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={togglePrivacy}
-              aria-pressed={privacy}
-              title={privacy ? "Mostrar importes" : "Ocultar importes"}
-              aria-label={privacy ? "Mostrar importes" : "Ocultar importes"}
-            >
-              {privacy ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => (window.location.href = "/billing")}
-              title="Facturación"
-              aria-label="Facturación"
-            >
-              <CreditCard className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                clearAuthToken();
-                invalidateCache();
-                signOut({ callbackUrl: "/login" });
-              }}
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
