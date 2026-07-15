@@ -240,7 +240,7 @@ export default function AltInvestmentsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6" data-privacy={privacy ? "true" : "false"}>
       {/* Header */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -376,6 +376,7 @@ export default function AltInvestmentsPage() {
             label="TVPI / DPI"
             value={`${fmtMultiple(summary.overall_tvpi)} / ${fmtMultiple(summary.overall_dpi)}`}
             sub={`RVPI: ${fmtMultiple(summary.overall_rvpi)}`}
+            sensitive={false}
           />
         </div>
       ) : null}
@@ -394,7 +395,7 @@ export default function AltInvestmentsPage() {
                     {TYPE_LABELS[slice.label as AltInvestmentType] ?? slice.label}
                   </span>
                   <span className="tabular-nums text-muted-foreground">
-                    {formatEur(slice.value)} · {slice.pct.toFixed(1)}%
+                    <span className="fv-sensitive">{formatEur(slice.value)}</span> · {slice.pct.toFixed(1)}%
                   </span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -602,15 +603,15 @@ export default function AltInvestmentsPage() {
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <p className="text-xs text-muted-foreground">Comprometido</p>
-                        <p className="tabular-nums">{formatEur(inv.committed_capital)}</p>
+                        <p className="tabular-nums fv-sensitive">{formatEur(inv.committed_capital)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Called</p>
-                        <p className="tabular-nums">{formatEur(inv.called_capital)}</p>
+                        <p className="tabular-nums fv-sensitive">{formatEur(inv.called_capital)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">NAV</p>
-                        <p className="tabular-nums">{formatEur(inv.current_nav)}</p>
+                        <p className="tabular-nums fv-sensitive">{formatEur(inv.current_nav)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">TVPI / DPI</p>
@@ -655,13 +656,13 @@ export default function AltInvestmentsPage() {
                       <TableCell>
                         <Badge variant="outline">{TYPE_LABELS[inv.type]}</Badge>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right tabular-nums fv-sensitive">
                         {formatEur(inv.committed_capital)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right tabular-nums fv-sensitive">
                         {formatEur(inv.called_capital)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right tabular-nums fv-sensitive">
                         {formatEur(inv.current_nav)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
@@ -707,11 +708,13 @@ function StatCard({
   label,
   value,
   sub,
+  sensitive = true,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   sub?: string;
+  sensitive?: boolean;
 }) {
   return (
     <Card>
@@ -720,8 +723,14 @@ function StatCard({
           {icon}
           {label}
         </div>
-        <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
-        {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+        <div className={`mt-2 text-2xl font-bold tabular-nums ${sensitive ? "fv-sensitive" : ""}`}>
+          {value}
+        </div>
+        {sub && (
+          <div className={`mt-1 text-xs text-muted-foreground ${sensitive ? "fv-sensitive" : ""}`}>
+            {sub}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
