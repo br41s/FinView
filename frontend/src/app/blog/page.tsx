@@ -318,6 +318,33 @@ function ImgDividendosHaciendaForal() {
   );
 }
 
+function ImgRebalanceo() {
+  return (
+    <div className={styles.postImgRebalanceo}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DERIVA DE CARTERA — REBALANCEO</text>
+        {/* Left pan - overweight */}
+        <rect x="7" y="32" width="55" height="55" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="34" y="50" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Peso</text>
+        <text x="34" y="64" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">14%</text>
+        <text x="34" y="76" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">objetivo 5%</text>
+        {/* Beam */}
+        <line x1="40" y1="87" x2="155" y2="56" stroke="var(--fv-ink-30)" strokeWidth="2" strokeLinecap="round"/>
+        {/* Fulcrum */}
+        <polygon points="97,88 103,88 100,52" fill="var(--fv-ink-20)"/>
+        {/* Right pan - underweight */}
+        <rect x="145" y="22" width="48" height="34" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="169" y="36" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Peso</text>
+        <text x="169" y="48" fontSize="9" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">2%</text>
+        {/* Arrow down to overweight */}
+        <text x="34" y="102" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">sobreponderado</text>
+        {/* Arrow right side */}
+        <text x="169" y="68" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">infra-ponderado</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -967,6 +994,15 @@ function ImgImpuestoPatrimonio() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'rebalanceo-cartera-dividendos',
+    tag: 'Estrategia',
+    date: '16 jul 2026',
+    readTime: '7 min',
+    title: 'Rebalancear tu cartera de dividendos sin disparar a Hacienda',
+    excerpt: 'Cómo corregir la deriva de tu cartera de dividendos con bandas de tolerancia y dinero nuevo, sin pagar más IRPF del necesario por vender.',
+    Image: ImgRebalanceo,
+  },
   {
     slug: 'impuesto-patrimonio-inversores-espana',
     tag: 'Fiscal',
