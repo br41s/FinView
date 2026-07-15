@@ -935,7 +935,47 @@ function ImgAnalisisSectorial() {
   );
 }
 
+function ImgImpuestoPatrimonio() {
+  return (
+    <div className={styles.postImgImpuestoPatrimonio}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">IMPUESTO PATRIMONIO — MODELO 714</text>
+        {/* 700K exento */}
+        <rect x="10" y="28" width="80" height="70" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="50" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Exento</text>
+        <text x="50" y="60" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">700.000€</text>
+        <text x="50" y="74" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">mínimo</text>
+        {/* Flecha a cartera */}
+        <line x1="90" y1="63" x2="108" y2="63" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <polygon points="106,59 112,63 106,67" fill="var(--fv-ochre)"/>
+        {/* Cartera invertida */}
+        <rect x="112" y="28" width="78" height="70" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="151" y="46" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Cartera</text>
+        <text x="151" y="60" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">1.000.000€</text>
+        <text x="151" y="74" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">paga IP</text>
+        {/* Flecha de salida */}
+        <line x1="151" y1="98" x2="151" y2="108" stroke="var(--fv-ochre)" strokeWidth="1" markerEnd="url(#ipArrow)"/>
+        <text x="165" y="108" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">tipo 0,2-3,5%</text>
+        <defs>
+          <marker id="ipArrow" markerWidth="6" markerHeight="6" refX="3" refY="5" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'impuesto-patrimonio-inversores-espana',
+    tag: 'Fiscal',
+    date: '15 jul 2026',
+    readTime: '12 min',
+    title: 'Impuesto de Patrimonio 2026 para inversores: lo que pagas por tu cartera (y cómo minimizarlo)',
+    excerpt: 'Guía práctica del Impuesto de Patrimonio para inversores en España: mínimo exento, valoración de acciones, fondos y ETFs, diferencias por Comunidad Autónoma, cómo declarar tu cartera en el Modelo 714 y estrategias legales para reducir lo que pagas.',
+    Image: ImgImpuestoPatrimonio,
+  },
   {
     slug: 'analisis-sectorial-dividendos-espana-2026',
     tag: 'Estrategia',
