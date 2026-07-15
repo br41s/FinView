@@ -371,36 +371,38 @@ export default function ZonasClavePage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Target className="h-6 w-6" />
             Zonas Clave
           </h1>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Soportes, resistencias y tendencia algorítmica
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-          <QuickNav current="/zonas-clave" />
-          <Button
-            variant="default"
-            size="icon"
-            onClick={handleRefreshAll}
-            disabled={watchlist.length === 0 || analyzing.size > 0}
-            title="Actualizar todos"
-          >
-            <RefreshCw className={`h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
-          </Button>
-          <Button
-            variant={schedulerRunning ? "destructive" : "default"}
-            size="icon"
-            onClick={handleToggleScheduler}
-            title={schedulerRunning ? "Parar actualización automática" : "Activar actualización automática (24h)"}
-          >
-            {schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-3">
+            <QuickNav current="/zonas-clave" />
+            <Button
+              variant="default"
+              size="icon"
+              onClick={handleRefreshAll}
+              disabled={watchlist.length === 0 || analyzing.size > 0}
+              title="Actualizar todos"
+            >
+              <RefreshCw className={`h-4 w-4 ${analyzing.size > 0 ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              variant={schedulerRunning ? "destructive" : "default"}
+              size="icon"
+              onClick={handleToggleScheduler}
+              title={schedulerRunning ? "Parar actualización automática" : "Activar actualización automática (24h)"}
+            >
+              {schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
       </div>
 

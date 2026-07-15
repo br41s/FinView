@@ -560,30 +560,32 @@ export default function OptionsPage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Activity className="h-6 w-6" />
             Options Monitor
           </h1>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Análisis de opciones en tiempo real sobre tu cartera
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-          <QuickNav current="/options" />
-          <Button variant="outline" size="sm" onClick={handleRunCycle} disabled={running} title="Run Cycle">
-            <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
-          </Button>
-          <Button
-            variant={agentStatus?.running ? "destructive" : "default"}
-            size="sm"
-            onClick={handleToggleAgent}
-            title={agentStatus?.running ? "Stop Auto" : "Auto"}
-          >
-            {agentStatus?.running ? <Square className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-3">
+            <QuickNav current="/options" />
+            <Button variant="outline" size="sm" onClick={handleRunCycle} disabled={running} title="Run Cycle">
+              <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              variant={agentStatus?.running ? "destructive" : "default"}
+              size="sm"
+              onClick={handleToggleAgent}
+              title={agentStatus?.running ? "Stop Auto" : "Auto"}
+            >
+              {agentStatus?.running ? <Square className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
       </div>
 

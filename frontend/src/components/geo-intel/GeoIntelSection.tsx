@@ -130,37 +130,39 @@ export function GeoIntelSection() {
 
   return (
     <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 lg:px-8 lg:py-5">
-        <div>
+      <header className="space-y-3 border-b border-border px-4 py-4 lg:px-8 lg:py-5">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Globe className="h-6 w-6" />
             Geo-Intel
           </h1>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Geopolitical & natural events, plotted as financial signals.
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-          <QuickNav current="/geo-intel" />
-          <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
-            {running ? "Running…" : "Run cycle"}
-          </Button>
-          <Button
-            variant={monitor?.running ? "default" : "outline"}
-            size="sm"
-            onClick={toggleMonitor}
-            disabled={togglingMonitor || monitor === null}
-          >
-            {monitor?.running
-              ? `Monitor ON · ${monitor.interval_minutes}m`
-              : "Start monitor"}
-          </Button>
-          <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground lg:gap-6">
-            <Stat label="Active" value={String(active)} />
-            <Stat label="Tracked" value={String(filtered.length)} />
-            <Stat label="Regions" value={String(regions)} />
-            <Stat label="Last signal" value={lastSignal} />
+          <div className="flex flex-wrap items-center gap-3">
+            <QuickNav current="/geo-intel" />
+            <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
+              {running ? "Running…" : "Run cycle"}
+            </Button>
+            <Button
+              variant={monitor?.running ? "default" : "outline"}
+              size="sm"
+              onClick={toggleMonitor}
+              disabled={togglingMonitor || monitor === null}
+            >
+              {monitor?.running
+                ? `Monitor ON · ${monitor.interval_minutes}m`
+                : "Start monitor"}
+            </Button>
+            <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground lg:gap-6">
+              <Stat label="Active" value={String(active)} />
+              <Stat label="Tracked" value={String(filtered.length)} />
+              <Stat label="Regions" value={String(regions)} />
+              <Stat label="Last signal" value={lastSignal} />
+            </div>
           </div>
         </div>
       </header>

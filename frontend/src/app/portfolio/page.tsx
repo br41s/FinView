@@ -510,22 +510,24 @@ function PortfolioContent() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Briefcase className="h-6 w-6" />
             Cartera
           </h1>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Posiciones abiertas con precios en tiempo real
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-          <QuickNav current="/portfolio" />
-          <Button variant="outline" size="sm" onClick={() => router.push("/accounts")}>
-            Cuentas
-          </Button>
+          <div className="flex items-center gap-3">
+            <QuickNav current="/portfolio" />
+            <Button variant="outline" size="sm" onClick={() => router.push("/accounts")}>
+              Cuentas
+            </Button>
+          </div>
         </div>
       </div>
 
