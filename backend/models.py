@@ -420,27 +420,9 @@ class FollowedInstrument(Base):
     __table_args__ = (UniqueConstraint("user_id", "ticker"),)
 
 
-class WatchlistItem(Base):
-    """Tickers the user wants to monitor for options activity.
-
-    LEGACY — membership now lives in FollowedInstrument (options lens); this
-    table is only read once by the first-boot migration. Drop in B3.
-    """
-
-    __tablename__ = "watchlist_items"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
-    name: Mapped[str] = mapped_column(String(200), default="")
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    user: Mapped["User"] = relationship()
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "ticker"),
-    )
+# NOTE: the legacy `watchlist_items` table (options membership pre-Fase B) has no
+# model anymore — watchlist_service.migrate_legacy_watchlists() reads any remaining
+# rows via raw SQL and drops the table (B3).
 
 
 class OptionsSnapshot(Base):

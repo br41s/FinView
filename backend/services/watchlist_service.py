@@ -14,12 +14,13 @@ restarts never resurrect rows the user later removed.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from backend.models import (
     FollowedInstrument,
-    WatchlistItem,
     ZonasClaveWatchlistItem,
 )
 
@@ -106,41 +107,75 @@ def disable_zonas(db: Session, user_id: int, child: ZonasClaveWatchlistItem) -> 
 # ── One-off legacy migration ──────────────────────────────────────────
 
 
-def migrate_legacy_watchlists(db: Session) -> int:
-    """Move legacy options/zonas watchlist memberships into followed_instruments.
+def _parse_dt(value) -> datetime | None:
+    """Raw-SQL datetime values arrive as datetime on Postgres but as ISO
+    strings on SQLite — normalize both."""
+    if value is None or isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 
-    Move, not copy: legacy WatchlistItem rows are deleted in the same
-    transaction, so a later restart finds nothing to migrate and can never
-    resurrect rows the user removed from the canonical table. Zonas child
-    rows are kept (ZonasClaveAnalysis still hangs off them) — only their
-    membership is lifted into the canonical row. Guarded on the canonical
-    table being empty. Returns the number of rows created.
+
+def migrate_legacy_watchlists(db: Session) -> int:
+    """Move legacy watchlist memberships into followed_instruments, then drop
+    the legacy `watchlist_items` table (B3 — it has no ORM model anymore, so
+    it is read via raw SQL and never recreated by create_all).
+
+    Behavior by state:
+    - legacy table absent → nothing to do (fresh DBs post-B3).
+    - canonical empty → migrate legacy options rows + lift zonas memberships,
+      then drop the legacy table.
+    - canonical populated + legacy empty → just drop the legacy table
+      (prod path: the Fase-B move already emptied it).
+    - canonical populated + legacy has rows → stranded writes from an old
+      revision: warn and keep the table for manual reconciliation. Never
+      silently destroy data.
+
+    Zonas child rows are kept (ZonasClaveAnalysis still hangs off them) —
+    only their membership is lifted. Returns the number of rows created.
     """
-    if db.query(FollowedInstrument.id).first() is not None:
-        if db.query(WatchlistItem.id).first() is not None:
+    bind = db.get_bind()
+    legacy_exists = inspect(bind).has_table("watchlist_items")
+    canonical_empty = db.query(FollowedInstrument.id).first() is None
+
+    legacy_rows: list = []
+    if legacy_exists:
+        legacy_rows = db.execute(
+            text("SELECT user_id, ticker, name, enabled, created_at FROM watchlist_items")
+        ).all()
+
+    if not canonical_empty:
+        if legacy_rows:
             # Rolling-deploy stranding: an old revision wrote legacy rows after
             # this table was populated. Surface it — those rows are invisible.
             logger.warning(
-                "watchlist migration skipped but legacy watchlist_items is non-empty — "
-                "stranded rows from an old revision, reconcile manually before B3 drop"
+                "watchlist migration skipped but legacy watchlist_items has %d rows — "
+                "stranded writes from an old revision, reconcile manually (table kept)",
+                len(legacy_rows),
             )
+        elif legacy_exists:
+            db.execute(text("DROP TABLE watchlist_items"))
+            db.commit()
+            logger.info("watchlist migration: dropped empty legacy watchlist_items table")
         return 0
 
     merged: dict[tuple[int, str], FollowedInstrument] = {}
 
-    legacy_options = db.query(WatchlistItem).all()
-    for legacy in legacy_options:
-        key = (legacy.user_id, legacy.ticker.upper())
+    for row in legacy_rows:
+        key = (row.user_id, row.ticker.upper())
         item = merged.get(key) or FollowedInstrument(
-            user_id=legacy.user_id,
-            ticker=legacy.ticker.upper(),
-            name=legacy.name or "",
-            created_at=legacy.created_at,
+            user_id=row.user_id,
+            ticker=row.ticker.upper(),
+            name=row.name or "",
+            created_at=_parse_dt(row.created_at),
         )
         item.options_enabled = True
-        item.options_paused = not legacy.enabled
+        # NULL enabled (raw insert without the column) maps to the legacy
+        # Python-side default (active), not to paused.
+        item.options_paused = row.enabled is not None and not bool(row.enabled)
         merged[key] = item
-        db.delete(legacy)
 
     for legacy in db.query(ZonasClaveWatchlistItem).all():
         key = (legacy.user_id, legacy.ticker.upper())
@@ -157,6 +192,11 @@ def migrate_legacy_watchlists(db: Session) -> int:
 
     db.add_all(merged.values())
     db.commit()
+    if legacy_exists:
+        # Data is committed; the legacy table is now fully superseded.
+        db.execute(text("DROP TABLE watchlist_items"))
+        db.commit()
+        logger.info("watchlist migration: dropped legacy watchlist_items table")
     if merged:
         logger.info("watchlist migration: created %d followed_instruments rows", len(merged))
     return len(merged)
