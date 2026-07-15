@@ -242,22 +242,24 @@ export default function AltInvestmentsPage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Landmark className="h-6 w-6" />
             Inversiones Alternativas
           </h1>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Private equity, venture capital y real estate de banca privada
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-          <QuickNav current="/alt-investments" />
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> Añadir
-          </Button>
+          <div className="flex items-center gap-3">
+            <QuickNav current="/alt-investments" />
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" /> Añadir
+            </Button>
+          </div>
         </div>
       </div>
 

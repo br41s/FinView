@@ -144,25 +144,27 @@ function AccountsContent() {
   return (
     <div className="space-y-6 p-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Building2 className="h-6 w-6" />
             Cuentas
           </h1>
+          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
             Gestiona tus cuentas de broker
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-          <QuickNav current="/portfolio" />
-          {!showForm && (
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nueva cuenta
-            </Button>
-          )}
+          <div className="flex items-center gap-3">
+            <QuickNav current="/portfolio" />
+            {!showForm && (
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Nueva cuenta
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
