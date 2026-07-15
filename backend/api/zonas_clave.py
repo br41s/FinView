@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
@@ -18,6 +19,7 @@ from backend.api.schemas import (
 )
 from backend.database import DbSession
 from backend.models import ZonasClaveAnalysis, ZonasClaveWatchlistItem
+from backend.services import watchlist_service
 
 router = APIRouter(prefix="/zonas-clave", tags=["zonas-clave"])
 
@@ -118,13 +120,15 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
     if existing:
         raise HTTPException(status_code=409, detail="Ticker already in Zonas Clave watchlist")
 
-    item = ZonasClaveWatchlistItem(
-        user_id=user.id,
-        ticker=body.ticker.upper(),
-        name=body.name,
-    )
-    db.add(item)
-    db.commit()
+    _, item = watchlist_service.enable_zonas(db, user.id, body.ticker, body.name)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Lost a concurrent insert race on the canonical (user, ticker) row —
+        # e.g. the options auto-sync following the same new ticker. Treat as
+        # already-followed, same as the pre-check.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ticker already in Zonas Clave watchlist")
     db.refresh(item)
 
     # Kick off analysis for this ticker only in background
@@ -155,7 +159,7 @@ def remove_ticker(item_id: int, db: DbSession, user: CurrentUser):
     )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    db.delete(item)
+    watchlist_service.disable_zonas(db, user.id, item)
     db.commit()
 
 

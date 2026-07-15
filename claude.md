@@ -55,6 +55,7 @@ backend/
     fifo_engine.py         — Cross-broker FIFO engine — most critical, touch carefully
     import_service.py      — Import logic + deduplication
     prices.py              — Yahoo Finance price cache
+    watchlist_service.py   — Canonical followed-instruments model (see "Watchlist unificada")
     options_scraper.py     — Yahoo Finance + MEFF (30 .MC tickers) + Eurex RDF scraper
     options_agent.py       — Monitor agent: Observe→Greeks→Analyze→Store→Notify→Claude cycle
     options_analyzer.py    — Rule-based analysis: IV, P/C ratio, IV skew, unusual volume
@@ -88,6 +89,27 @@ frontend/
                                       (PR #125) — its candlestick-viewer search box and
                                       last-close change readout were ported in, /markets removed.
   src/app/geo-intel/page.tsx        — Geo-Intel dashboard (map + signal feed; components in src/components/geo-intel/)
+
+---
+
+## Watchlist unificada — followed_instruments (Fase B, PR #142)
+
+One canonical row per (user, ticker) in `followed_instruments`, with **opt-in
+per-section lenses** — membership has per-section cost, so nothing auto-subscribes:
+- `options_enabled` — in the options watchlist / agent scope; `options_paused`
+  keeps it listed but the agent skips it (maps the legacy `enabled=False`).
+- `zonas_enabled` — has a synced `zonas_clave_watchlist` child row. That child is
+  an internal detail kept ON PURPOSE: `ZonasClaveAnalysis` cascades off its FK and
+  we do no DDL surgery in prod. Never create/delete child rows directly — go
+  through `services/watchlist_service.py` (`enable_zonas`/`disable_zonas`).
+- A row with no lens on is pruned. Removing a ticker from one section only turns
+  off that lens.
+- Legacy `watchlist_items` is migrated (MOVED, delete-on-copy) by a one-off
+  lifespan migration guarded on the canonical table being empty; wrapped in
+  try/except so concurrent boots / transient DB errors never kill the instance.
+  The empty legacy table stays until B3 (drop + maybe re-point analyses FK).
+- API response shapes are unchanged — the frontend doesn't know about lenses yet
+  (cross-section lens-toggle UI = B3 candidate).
 
 ---
 

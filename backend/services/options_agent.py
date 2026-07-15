@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.database import SessionLocal
 from backend.models import (
+    FollowedInstrument,
     OptionsAlert,
     OptionsAgentLog,
     OptionsSnapshot,
     UnusualActivity,
-    WatchlistItem,
 )
 from backend.services.backtest_service import (
     alignment_for_alert,
@@ -58,10 +58,14 @@ def run_cycle(user_id: int) -> dict:
     start = time.time()
     db: Session = SessionLocal()
     try:
-        # 1. Get user's enabled watchlist
+        # 1. Get user's watchlist (options lens on, not paused)
         items = (
-            db.query(WatchlistItem)
-            .filter(WatchlistItem.user_id == user_id, WatchlistItem.enabled.is_(True))
+            db.query(FollowedInstrument)
+            .filter(
+                FollowedInstrument.user_id == user_id,
+                FollowedInstrument.options_enabled.is_(True),
+                FollowedInstrument.options_paused.is_(False),
+            )
             .all()
         )
         tickers = [item.ticker for item in items]
