@@ -558,7 +558,7 @@ export default function OptionsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6" data-privacy={privacy ? "true" : "false"}>
       {/* Header */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -831,7 +831,7 @@ export default function OptionsPage() {
                               <span>{p.broker}</span>
                               <span>{fmt(p.quantity, 2)} uds</span>
                               {p.avg_cost_eur != null && (
-                                <span>Coste medio {fmt(p.avg_cost_eur, 2)} €</span>
+                                <span className="fv-sensitive">Coste medio {fmt(p.avg_cost_eur, 2)} €</span>
                               )}
                             </div>
                             {tickerAlerts.length > 0 && (

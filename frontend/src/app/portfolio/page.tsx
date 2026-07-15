@@ -330,7 +330,7 @@ function PortfolioContent() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Valor actual</p>
-            <p className="font-medium">
+            <p className="font-medium fv-sensitive">
               {p.market_value_eur != null ? `${fmt(p.market_value_eur)} €` : "—"}
             </p>
           </div>
@@ -367,7 +367,7 @@ function PortfolioContent() {
                     {a.broker}
                   </Badge>
                   <p className="mt-1 text-sm">{fmt(a.quantity)} uds</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground fv-sensitive">
                     {a.value_eur
                       ? `${fmt(a.value_eur)} €`
                       : `${fmt(a.cost_eur)} € (coste)`}
@@ -394,10 +394,10 @@ function PortfolioContent() {
                 {detail.dividends_by_year.map((d) => (
                   <TableRow key={d.year}>
                     <TableCell className="font-medium">{d.year}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right tabular-nums fv-sensitive">
                       {fmt(d.gross_eur)} €
                     </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium text-blue-700">
+                    <TableCell className="text-right tabular-nums font-medium text-blue-700 fv-sensitive">
                       {fmt(d.net_eur)} €
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">
@@ -494,7 +494,7 @@ function PortfolioContent() {
                     <TableCell className="text-right tabular-nums">
                       {fmt(tx.price)} {tx.currency}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
+                    <TableCell className="text-right tabular-nums font-medium fv-sensitive">
                       {fmt(tx.net_eur)} €
                     </TableCell>
                   </TableRow>
@@ -508,7 +508,7 @@ function PortfolioContent() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6" data-privacy={privacy ? "true" : "false"}>
       {/* Header */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -544,11 +544,11 @@ function PortfolioContent() {
             <CardContent>
               {pricesLoaded ? (
                 <>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold fv-sensitive">
                     {fmt(summary.total_market_value)} €
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Invertido: {fmt(summary.total_invested)} €
+                    Invertido: <span className="fv-sensitive">{fmt(summary.total_invested)} €</span>
                   </p>
                 </>
               ) : (
@@ -571,7 +571,7 @@ function PortfolioContent() {
             <CardContent>
               {pricesLoaded ? (
                 <>
-                  <div className={`text-2xl font-bold ${plColor}`}>
+                  <div className={`text-2xl font-bold fv-sensitive ${plColor}`}>
                     {summary.unrealized_pl >= 0 ? "+" : ""}
                     {fmt(summary.unrealized_pl)} €
                   </div>
@@ -609,7 +609,7 @@ function PortfolioContent() {
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-2xl font-bold fv-sensitive">
                 {fmt(summary.total_invested)} €
               </div>
               <p className="text-xs text-muted-foreground">Coste base total</p>
@@ -714,7 +714,7 @@ function PortfolioContent() {
                         <TableCell className="text-right tabular-nums">
                           {fmt(p.quantity, 2)}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
+                        <TableCell className="text-right tabular-nums fv-sensitive">
                           {p.avg_cost_eur != null ? `${fmt(p.avg_cost_eur, 2)} €` : "—"}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
@@ -734,7 +734,7 @@ function PortfolioContent() {
                             "—"
                           )}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">
+                        <TableCell className="text-right tabular-nums font-medium fv-sensitive">
                           {!pricesLoaded ? (
                             <span className="inline-flex gap-0.5 text-muted-foreground">
                               <span className="animate-pulse">·</span>
@@ -766,7 +766,7 @@ function PortfolioContent() {
                             </span>
                           ) : p.unrealized_pl_eur != null ? (
                             <div>
-                              <div>
+                              <div className="fv-sensitive">
                                 {plPositive ? "+" : ""}
                                 {fmt(p.unrealized_pl_eur)} €
                               </div>
@@ -907,7 +907,7 @@ function PortfolioContent() {
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="font-medium tabular-nums">
+                        <p className="font-medium tabular-nums fv-sensitive">
                           {!pricesLoaded ? (
                             <span className="inline-flex gap-0.5 text-muted-foreground">
                               <span className="animate-pulse">·</span>
@@ -921,7 +921,7 @@ function PortfolioContent() {
                           )}
                         </p>
                         <p
-                          className={`text-xs tabular-nums ${pricesLoaded ? plClass : "text-muted-foreground"}`}
+                          className={`text-xs tabular-nums fv-sensitive ${pricesLoaded ? plClass : "text-muted-foreground"}`}
                         >
                           {pricesLoaded && p.unrealized_pl_eur != null
                             ? `${plPositive ? "+" : ""}${fmt(p.unrealized_pl_eur)} € (${plPositive ? "+" : ""}${fmt(p.unrealized_pl_pct)}%)`
@@ -935,7 +935,9 @@ function PortfolioContent() {
                     <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                       <span>
                         {fmt(p.quantity, 2)} uds
-                        {p.avg_cost_eur != null && ` · coste ${fmt(p.avg_cost_eur, 2)} €`}
+                        {p.avg_cost_eur != null && (
+                          <span className="fv-sensitive"> · coste {fmt(p.avg_cost_eur, 2)} €</span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         <span>Peso {p.weight_pct ? `${fmt(p.weight_pct, 1)}%` : "—"}</span>
