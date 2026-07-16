@@ -20,7 +20,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | Backend | Python 3.12 · FastAPI · SQLAlchemy (create_all + ensure_columns, no Alembic) |
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
-| AI | anthropic SDK — claude-haiku-4-5-20251001 (options analysis) |
+| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, default `deepseek/deepseek-v4-flash`. One shared model for options analysis + geo analyst. |
 | Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
@@ -156,9 +156,10 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 - Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
 - Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
 - Scheduler: APScheduler every 24h; start/stop via UI
-- Right panel also has an "Opciones" card (`components/instrument/OpcionesTab.tsx`,
-  same component the Options Cartera row expand uses) for the selected ticker —
-  replaced the old per-row "ver opciones" shortcut that opened the instrument drawer.
+- **No options content here, on purpose.** The right panel used to carry an "Opciones"
+  card (`OpcionesTab`); it was dropped so each page owns one layer: Zonas Clave =
+  technical trigger, Options Monitor = PUT/CALL execution, Ideas = investment thesis.
+  The D2-A cross-section lens toggles stay — a toggle is subscription, not content.
 
 ### Trend bias weights
 RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/bearish %
@@ -184,8 +185,8 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
   - `OpcionesTab` (`components/instrument/OpcionesTab.tsx`): underlying candles +
     spot (solid) + near-money strikes (3 below, 3 above, dashed) from the selected
-    expiry's chain. Embedded inline wherever an Opciones view is needed — Options
-    Cartera row expand (mobile + desktop) and Zonas Clave's ticker detail panel.
+    expiry's chain. Embedded in the Options Cartera row expand (mobile + desktop)
+    — and **only** there: options content is confined to the Options Monitor page.
 
 ---
 
@@ -205,8 +206,9 @@ shared panel:
   (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section
   VolatilityEdge prompt, runs regardless of alerts, AI failure still returns
   rule summary) + compact chain. Embedded in the Options Cartera row expand
-  (mobile card and desktop table row alike) and in Zonas Clave's ticker detail
-  panel.
+  (mobile card and desktop table row alike) — and **only** there. It used to also
+  sit in Zonas Clave's ticker detail panel; dropped to keep options content on
+  the Options Monitor page.
 - **Zonas** (`ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y analizar"
   CTA when the ticker isn't in `zonas_clave_watchlist`. Not currently embedded
   outside Zonas Clave itself (which has its own native view).
@@ -247,13 +249,31 @@ resolve `isin` from holdings the same way the old drawer provider did
 1. Fetch watchlist tickers for the user
 2. For each ticker: fetch chain → enrich with Greeks → rule analysis → premium spike detection → store snapshot + alerts + unusual activity → record backtest signals (HIGH/MEDIUM)
 3. evaluate_pending() resolves outcomes from previous cycles
-4. If `ANTHROPIC_API_KEY` set and alerts exist → Claude analysis (7-section Markdown)
+4. If `FINVIEW_OPENROUTER_API_KEY` set and alerts exist → AI analysis (7-section Markdown)
 5. notify_alerts() → ntfy.sh + email; notify_spike_telegram() → Telegram for PREMIUM_SPIKE
+
+### Scheduling — prod runs on external cron, NOT APScheduler
+Same rule as Geo-Intel: `options_scheduler.py` (APScheduler, the "Agente" tab's start/stop)
+only survives while the instance is alive and dies on scale-to-zero with `--min-instances=0`.
+**Prod periodicity = Cloud Scheduler → `POST /api/options/agent/cron`**, authenticated by header
+`X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret disables the endpoint).
+Runs one cycle per user synchronously — don't convert it to fire-and-forget threads, the instance
+can be reclaimed after the response.
+- Unlike geo's cron, this one honours the `_cycles_in_progress` guard it shares with the manual
+  `POST /agent/run`: a cron tick landing on a manual run would otherwise double-fetch every chain
+  and write duplicate snapshots. Skipped users are reported as `skipped` in the response.
+- `run_cycle()` swallows its own errors and returns `{"status": "error"}` — it never raises and
+  never returns None, so `cycles_ok` keys off the status. Geo's `is not None` idiom would count
+  failures as successes here.
+- **Without this cron the Monitor tab reads empty**: `/options/alerts` only returns the last 7
+  days, so with no cycles running the UI has nothing to show.
+- `zonas_clave_scheduler.py` still has the un-fixed version of this defect. It doesn't bite yet
+  because the technical analysis emits no signals; it will the moment it does.
 
 ### Claude analysis prompt
 Agent persona: *VolatilityEdge* (quant analyst, senior). Spanish only. Structured as exactly 7 sections:
 `## 1. Resumen Ejecutivo` / `## 2. Smart Money` / `## 3. Señales Greeks` / `## 4. Top Picks` / `## 5. Catalizadores` / `## 6. Contexto MEFF` (only if .MC tickers present) / `## 7. Gestión de Riesgo`
-Model: claude-haiku-4-5-20251001 · max_tokens: 1500 · max 750 words in output.
+Model: `settings.openrouter_model` via OpenRouter · max_tokens: 1500 · max 750 words in output.
 Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
 
 ### Premium spike detector
@@ -390,7 +410,8 @@ Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KE
 `FINVIEW_ACLED_EMAIL/KEY`, `FINVIEW_OPENSKY_USERNAME/PASSWORD` (all optional).
 Notifications: `FINVIEW_NTFY_TOPIC`, `FINVIEW_TELEGRAM_BOT_TOKEN/CHAT_ID`,
 `FINVIEW_NOTIFY_EMAIL_FROM/TO/PASSWORD` — unset = channel silently no-ops.
-Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header).
+Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header). One secret, shared by
+both cron entries — `/api/geo/cron` and `/api/options/agent/cron`.
 
 ---
 
@@ -539,7 +560,7 @@ replace each other:
 - options_scraper.py cache TTL (5 min) must not be removed — MEFF rate-limits scraping.
 - Premium spike baselines are in-memory only. Do not try to persist them to DB.
 - Claude analysis is fire-and-forget; non-availability must never break the agent cycle.
-  Always guard: `if _ANTHROPIC_AVAILABLE and settings.anthropic_api_key and all_alerts`.
+  Always guard: `if settings.openrouter_api_key and all_alerts`.
 - Blog/MDX: in `.mdx` prose always escape `<` as `&lt;` — MDX parses `<1` (e.g. "FCF <1,2x")
   as a JSX tag start and breaks the whole Vercel build (see PR #101 → #105).
   Quick check: `grep -rn '<[0-9]' frontend/src/app/blog/*/page.mdx` must return nothing.

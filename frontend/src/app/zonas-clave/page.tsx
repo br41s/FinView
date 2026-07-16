@@ -34,7 +34,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
-import { OpcionesTab } from "@/components/instrument/OpcionesTab";
 import {
   Table,
   TableBody,
@@ -886,20 +885,6 @@ export default function ZonasClavePage() {
                           ))}
                         </TableBody>
                       </Table>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Opciones — inline instead of the old drawer shortcut */}
-                {selectedTicker && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        Opciones — {selectedTicker}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <OpcionesTab symbol={selectedTicker} />
                     </CardContent>
                   </Card>
                 )}

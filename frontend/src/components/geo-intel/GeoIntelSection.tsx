@@ -134,7 +134,7 @@ export function GeoIntelSection() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Globe className="h-6 w-6" />
-            Geo-Intel
+            Ideas
           </h1>
           <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
         </div>

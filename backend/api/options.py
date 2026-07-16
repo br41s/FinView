@@ -1,5 +1,6 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
+import hmac
 import json
 import threading
 import time
@@ -8,7 +9,7 @@ import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +39,7 @@ from backend.models import (
     OptionsHiddenPortfolioTicker,
     OptionsSnapshot,
     UnusualActivity,
+    User,
 )
 from backend.services import watchlist_service
 from backend.services.notification_service import send_telegram
@@ -464,6 +466,44 @@ def trigger_cycle(user: CurrentUser):
 
     threading.Thread(target=_run_in_background, args=(user.id,), daemon=True).start()
     return AgentCycleResult(status="started")
+
+
+@router.post("/agent/cron", include_in_schema=False)
+def cron_run(request: Request, db: DbSession):
+    """External-cron entry (Cloud Scheduler / any cron): one cycle per user.
+
+    The in-process APScheduler dies whenever Cloud Run scales to zero, so prod
+    periodicity comes from an external scheduler hitting this endpoint. Auth is
+    a shared secret (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables
+    the endpoint. Runs synchronously so the instance stays alive for the cycle.
+
+    Mirrors /api/geo/cron, but honours the same _cycles_in_progress guard as the
+    manual /agent/run: a cron tick landing on top of a manual run would other-
+    wise double-fetch every chain and write duplicate snapshots.
+    """
+    secret = settings.cron_secret
+    provided = request.headers.get("x-cron-key", "")
+    if not secret or not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user_ids = [uid for (uid,) in db.query(User.id).all()]
+    ok = skipped = 0
+    for uid in user_ids:
+        with _cycle_lock:
+            if uid in _cycles_in_progress:
+                skipped += 1
+                continue
+            _cycles_in_progress.add(uid)
+        try:
+            # run_cycle swallows its own errors and returns {"status": "error"};
+            # it never raises and never returns None.
+            if run_cycle(uid).get("status") == "ok":
+                ok += 1
+        finally:
+            with _cycle_lock:
+                _cycles_in_progress.discard(uid)
+
+    return {"status": "done", "users": len(user_ids), "cycles_ok": ok, "skipped": skipped}
 
 
 @router.post("/agent/analyze-ticker", responses=_404)
