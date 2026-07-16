@@ -156,9 +156,10 @@ Pure technical analysis engine for support/resistance detection. No AI calls.
 - Scope buttons (1D / 1W / 1M / 1Y / 5Y / MAX) filter `price_history` client-side; default 1Y
 - Auto-polls every 3s when selected ticker has no analysis yet; stops when data arrives
 - Scheduler: APScheduler every 24h; start/stop via UI
-- Right panel also has an "Opciones" card (`components/instrument/OpcionesTab.tsx`,
-  same component the Options Cartera row expand uses) for the selected ticker —
-  replaced the old per-row "ver opciones" shortcut that opened the instrument drawer.
+- **No options content here, on purpose.** The right panel used to carry an "Opciones"
+  card (`OpcionesTab`); it was dropped so each page owns one layer: Zonas Clave =
+  technical trigger, Options Monitor = PUT/CALL execution, Ideas = investment thesis.
+  The D2-A cross-section lens toggles stay — a toggle is subscription, not content.
 
 ### Trend bias weights
 RSI 30% + MACD 30% + MA50/MA200 avg 40% → composite [-1, +1] → bullish/bearish %
@@ -184,8 +185,8 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
   - `OpcionesTab` (`components/instrument/OpcionesTab.tsx`): underlying candles +
     spot (solid) + near-money strikes (3 below, 3 above, dashed) from the selected
-    expiry's chain. Embedded inline wherever an Opciones view is needed — Options
-    Cartera row expand (mobile + desktop) and Zonas Clave's ticker detail panel.
+    expiry's chain. Embedded in the Options Cartera row expand (mobile + desktop)
+    — and **only** there: options content is confined to the Options Monitor page.
 
 ---
 
@@ -205,8 +206,9 @@ shared panel:
   (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section
   VolatilityEdge prompt, runs regardless of alerts, AI failure still returns
   rule summary) + compact chain. Embedded in the Options Cartera row expand
-  (mobile card and desktop table row alike) and in Zonas Clave's ticker detail
-  panel.
+  (mobile card and desktop table row alike) — and **only** there. It used to also
+  sit in Zonas Clave's ticker detail panel; dropped to keep options content on
+  the Options Monitor page.
 - **Zonas** (`ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y analizar"
   CTA when the ticker isn't in `zonas_clave_watchlist`. Not currently embedded
   outside Zonas Clave itself (which has its own native view).

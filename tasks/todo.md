@@ -545,9 +545,13 @@ Options **no tiene endpoint de cron**; geo sí ([geo.py:161](backend/api/geo.py:
       de nada: el Monitor sigue vacío.
 - [ ] Verificar en prod que el Monitor se puebla sin tocar el botón manual.
 
-### Slice 1 — Zonas Clave: quitar Opciones
-- [ ] Eliminar la card `OpcionesTab` de [zonas-clave/page.tsx:893](frontend/src/app/zonas-clave/page.tsx:893).
-- [ ] Los toggles de lente cruzada (D2-A) **se quedan** — son navegación/suscripción, no contenido.
+### Slice 1 — Zonas Clave: quitar Opciones ✅
+- [x] Eliminada la card `OpcionesTab` del panel de detalle de ticker + el import huérfano
+      ([zonas-clave/page.tsx](frontend/src/app/zonas-clave/page.tsx)).
+- [x] `OpcionesTab` **no se borra**: sigue usada en 5 puntos de `options/page.tsx`.
+- [x] Los toggles de lente cruzada (D2-A) **se quedan** — son navegación/suscripción, no contenido.
+- [x] Verificado: build verde (50 páginas), cero referencias huérfanas a `OpcionesTab` en zonas.
+      **No verificado visualmente** — `/zonas-clave` está tras login y no introduzco credenciales.
 
 ### Slice 2 — Options Monitor: fusionar Cartera + Watchlist
 - [ ] Una sola lista. Las tarjetas llevan Sentimiento, P/C Ratio e IV/HV (ya en el snapshot cargado).
