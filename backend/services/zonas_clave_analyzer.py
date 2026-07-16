@@ -26,12 +26,26 @@ logger = logging.getLogger(__name__)
 # closes the race without touching the calling threads' architecture.
 _YF_DOWNLOAD_LOCK = threading.Lock()
 
-# "max" was tried and reverted: for long-listed tickers it pulls in decades-old,
-# split-adjusted penny-level prices that dominate zone detection with irrelevant
-# S/R levels (e.g. $0.30 "resistance" zones next to a $300 current price). 20y
-# still gives pivot detection much more history than before without that noise.
+# Download window. Feeds `price_history`, i.e. the chart's MAX scope — that's why
+# it's 20y and not less (see a2bc58e, which also lowered lightweight-charts'
+# minBarSpacing so decades actually render). "max" was tried and reverted: for
+# long-listed tickers it pulls in split-adjusted 1980s penny prices.
+#
+# This is NOT the zone-detection window. Charting wants as much history as will
+# render; pivot detection wants only levels that still act as S/R. Those are
+# different questions, so they get different windows off the same download —
+# see _ZONE_LOOKBACK_YEARS. Don't collapse them back into one constant.
 _HISTORY_PERIOD = "20y"
 _HISTORY_INTERVAL = "1d"
+
+# Pivot-detection window. A level last touched 15 years ago is not support today:
+# price has no memory of it, and the touches it accumulated (older levels have had
+# more calendar time to collect them) would out-rank genuinely recent structure.
+# compute_zone_strength's proximity decay already punishes far-away levels, but it
+# can't tell an *old* level from a *distant* one — a stock back in a range it last
+# traded in 2008 gets stale pivots weighted as if they were current.
+_ZONE_LOOKBACK_YEARS = 10
+
 _PIVOT_WINDOW = 10          # bars each side for pivot detection
 _CLUSTER_THRESHOLD = 0.015  # 1.5% — pivots within this range merge into one zone
 _MAX_ZONES = 8              # top N zones to return
@@ -68,6 +82,24 @@ def fetch_history(ticker: str) -> pd.DataFrame | None:
     except Exception:
         logger.exception("fetch_history failed for %s", ticker)
         return None
+
+
+def zone_window(df: pd.DataFrame, years: int = _ZONE_LOOKBACK_YEARS) -> pd.DataFrame:
+    """Trailing `years` of bars, for pivot detection only.
+
+    The full frame still feeds the chart; this is the slice zones are built from.
+    Falls back to the whole frame when there's less history than asked for (a
+    recent IPO), and when the index isn't a DatetimeIndex — an unexpected index
+    shape should degrade to today's behaviour, not drop every bar.
+    """
+    if df is None or df.empty or years <= 0:
+        return df
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return df
+    cutoff = df.index.max() - pd.DateOffset(years=years)
+    trimmed = df[df.index >= cutoff]
+    # Never trim below what pivot detection needs — better stale levels than none.
+    return trimmed if len(trimmed) >= _MIN_BARS else df
 
 
 def _safe_series(df: pd.DataFrame, col: str) -> pd.Series:
@@ -351,10 +383,17 @@ def analyze_ticker(ticker: str) -> dict | None:
 
         close = _safe_series(df, "Close")
         current_price = float(close.iloc[-1])
-        median_volume = float(_safe_series(df, "Volume").median())
+
+        # Zones come from the trailing _ZONE_LOOKBACK_YEARS, not the whole
+        # download: the extra history exists for the chart's MAX scope, and
+        # levels that old no longer act as S/R. The median volume that scores
+        # zones is measured over the same window, so a decade-old volume regime
+        # doesn't skew today's zone strengths.
+        zone_df = zone_window(df)
+        median_volume = float(_safe_series(zone_df, "Volume").median())
 
         # Pivot detection
-        ph_prices, ph_vols, pl_prices, pl_vols = detect_pivots(df)
+        ph_prices, ph_vols, pl_prices, pl_vols = detect_pivots(zone_df)
 
         # Cluster into zones
         resistance_zones = cluster_pivots(ph_prices, ph_vols, "resistance")

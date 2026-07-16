@@ -623,8 +623,17 @@ zonas_clave_analyzer, tras calcular zonas + indicadores:
       precio ya superó es un nivel volteado que actúa como soporte: fiarse de la etiqueta
       histórica invierte la dirección en cada nivel volteado.
 - [x] Suite: 213 pass / 131 skip (24 tests nuevos), ruff limpio.
-- [ ] **4b pendiente**: superficie en el Monitor + chips. Y decidir si las señales técnicas
-      alertan por ntfy/Telegram como las de opciones (hoy solo se persisten).
+- [x] **Ventana de zonas → 10y (CEO, 2026-07-16), desacoplada de la de descarga.**
+      El `20y` venía de `a2bc58e`, un commit de **gráficos**: existe para el scope MAX del
+      chart, no por calidad de zonas. Bajar la constante habría recortado el gráfico en
+      silencio. Ahora: descarga 20y (gráfico intacto) + `zone_window()` recorta a 10y solo
+      para pivotes y mediana de volumen. Misma descarga, cero coste. 9 tests.
+      Efecto no anticipado: la mediana de volumen es el **denominador** de `vol_score`;
+      medirla a 20y infravaloraba todas las zonas actuales (SAN.MC: 62.5M vs 43.5M).
+- [x] **Notificaciones: NO por ahora (CEO, 2026-07-16).** Las señales técnicas solo se
+      persisten. Se activarán cuando haya datos de outcome que digan si el 70 significa
+      algo — no antes de que suene el móvil por un número sin calibrar.
+- [ ] **4b pendiente**: superficie en el Monitor + chips.
 - [ ] **Registrar todos, alertar >70.** El 70 es un corte sin calibrar — un "73%" de un LLM
       no es una probabilidad. Guardando también los <70 se puede comprobar en semanas si
       los >70 rompen más que los <70, y mover el número con datos. Mismo patrón que

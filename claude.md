@@ -176,11 +176,23 @@ This was latent until Slice 4: before the analysis emitted signals, a missed
 cycle cost nothing because nobody was waiting on the output.
 
 ### Pipeline per ticker
-`fetch_history (20y daily) → detect_pivots → cluster_pivots → compute_zone_strength → RSI → MACD → MAs → trend_bias → store ZonasClaveAnalysis → emit technical signals`
+`fetch_history (20y daily) → zone_window (trailing 10y) → detect_pivots → cluster_pivots → compute_zone_strength → RSI → MACD → MAs → trend_bias → store ZonasClaveAnalysis → emit technical signals`
 
 ### Key constants (zonas_clave_analyzer.py)
-- `_HISTORY_PERIOD = "20y"` — yfinance download window ("max" was tried and reverted:
-  decades-old split-adjusted penny prices dominated zone detection with junk levels)
+- **Two windows, on purpose — don't collapse them into one constant:**
+  - `_HISTORY_PERIOD = "20y"` — download window. Exists for `price_history`, i.e. the
+    chart's MAX scope (a2bc58e also lowered lightweight-charts' `minBarSpacing` so
+    decades actually render). "max" was tried and reverted: split-adjusted 1980s
+    penny prices.
+  - `_ZONE_LOOKBACK_YEARS = 10` — pivot detection + the median volume that scores
+    zones (`zone_window()`). A level last touched 15 years ago isn't support today,
+    and older levels accumulate touches purely from having had more calendar time.
+    Charting wants all the history it can render; zones want only live structure.
+  - Trimming the volume median matters as much as trimming the pivots: it's the
+    denominator of `vol_score`, so measuring it over 20y scored current zones
+    against a decade-old volume regime (SAN.MC: 62.5M over 20y vs 43.5M over 10y).
+  - `zone_window()` falls back to the full frame when trimming would leave fewer
+    than `_MIN_BARS` (thin tickers, recent IPOs) — stale levels beat no levels.
 - `_PIVOT_WINDOW = 10` — bars each side for pivot detection
 - `_CLUSTER_THRESHOLD = 0.015` — 1.5% merge radius for zone clustering
 - `_MAX_ZONES = 8` — top zones returned (scored by touches × volume)
