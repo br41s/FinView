@@ -428,6 +428,27 @@ class ZonasClaveAnalysisOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TechnicalSignalOut(BaseModel):
+    id: int
+    created_at: datetime
+    ticker: str
+    zone_level: float
+    zone_type: str
+    zone_strength: float | None
+    zone_touches: int | None
+    price_at_signal: float
+    distance_pct: float
+    approach: str
+    direction: str
+    # None when the LLM was unavailable — not a low probability. Consumers must
+    # render it as "sin puntuar", never as 0.
+    break_probability: int | None
+    rationale: str | None
+    alerted: bool
+
+    model_config = {"from_attributes": True}
+
+
 class ZonasClaveSchedulerStatus(BaseModel):
     running: bool
     last_run: datetime | None = None

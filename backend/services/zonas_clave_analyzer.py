@@ -420,9 +420,12 @@ def run_analysis_for_user(user_id: int) -> dict:
     """
     from backend.database import SessionLocal
     from backend.models import ZonasClaveAnalysis, ZonasClaveWatchlistItem
+    from backend.services.technical_signals import emit_for_analysis
 
     analyzed = 0
     failed = 0
+    signals = 0
+    alerts = 0
     tickers: list[str] = []
 
     with SessionLocal() as db:
@@ -431,6 +434,10 @@ def run_analysis_for_user(user_id: int) -> dict:
             .filter(ZonasClaveWatchlistItem.user_id == user_id)
             .all()
         )
+
+    # Frozen once per cycle so every signal in it is tagged against the same
+    # regime, mirroring how the options agent does it (Phase 2b).
+    regime = _cycle_regime()
 
     for item in items:
         tickers.append(item.ticker)
@@ -453,6 +460,11 @@ def run_analysis_for_user(user_id: int) -> dict:
         )
         with SessionLocal() as db:
             db.add(row)
+            # Signal emission shares the analysis transaction: the zones and the
+            # signals derived from them land together or not at all.
+            emitted = emit_for_analysis(db, user_id=user_id, analysis=result, regime=regime)
+            signals += len(emitted)
+            alerts += sum(1 for s in emitted if s.alerted)
             db.commit()
 
         analyzed += 1
@@ -460,7 +472,28 @@ def run_analysis_for_user(user_id: int) -> dict:
         time.sleep(1)
 
     logger.info(
-        "Zonas Clave analysis for user %d: %d analyzed, %d failed",
-        user_id, analyzed, failed,
+        "Zonas Clave analysis for user %d: %d analyzed, %d failed, %d signals (%d alerting)",
+        user_id, analyzed, failed, signals, alerts,
     )
-    return {"analyzed": analyzed, "failed": failed, "tickers": tickers}
+    return {
+        "analyzed": analyzed,
+        "failed": failed,
+        "signals": signals,
+        "alerts": alerts,
+        "tickers": tickers,
+    }
+
+
+def _cycle_regime() -> str | None:
+    """Macro regime for this cycle, or None if FRED isn't configured/reachable.
+
+    Best-effort: the regime is an annotation on signals, never a gate, so losing
+    it must not stop the cycle.
+    """
+    try:
+        from backend.services.macro_context import macro_context
+
+        return (macro_context() or {}).get("regime")
+    except Exception:
+        logger.warning("macro regime unavailable for zonas cycle", exc_info=True)
+        return None

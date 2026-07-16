@@ -610,8 +610,21 @@ zonas_clave_analyzer, tras calcular zonas + indicadores:
   4. ALERTAR: solo break_probability > 70
 ```
 
-- [ ] **Umbral de proximidad = 2.0%.** Racional: `_CLUSTER_THRESHOLD` ya es 1.5% (radio de
+**4a (backend) ✅ — el Slice 4 se partió en dos: 4a backend, 4b superficie en Monitor.**
+
+- [x] **Umbral de proximidad = 2.0%.** Racional: `_CLUSTER_THRESHOLD` ya es 1.5% (radio de
       fusión de zonas); por debajo de eso estás *dentro* de la zona, no cerca de ella.
+- [x] `services/zone_proximity.py` — puerta determinista, pura, 12 tests.
+- [x] `services/zone_scorer.py` — scorer LLM + caché (ticker, nivel 2dp, día UTC).
+- [x] `services/technical_signals.py` — une puerta+scorer+persistencia, 12 tests.
+- [x] `models.TechnicalSignal` — tabla nueva (create_all la crea sola, sin DDL manual).
+- [x] `POST /api/zonas-clave/cron` + `GET /api/zonas-clave/signals`.
+- [x] **Dirección derivada del lado del precio, NO de `zone_type`.** Una "resistencia" que el
+      precio ya superó es un nivel volteado que actúa como soporte: fiarse de la etiqueta
+      histórica invierte la dirección en cada nivel volteado.
+- [x] Suite: 213 pass / 131 skip (24 tests nuevos), ruff limpio.
+- [ ] **4b pendiente**: superficie en el Monitor + chips. Y decidir si las señales técnicas
+      alertan por ntfy/Telegram como las de opciones (hoy solo se persisten).
 - [ ] **Registrar todos, alertar >70.** El 70 es un corte sin calibrar — un "73%" de un LLM
       no es una probabilidad. Guardando también los <70 se puede comprobar en semanas si
       los >70 rompen más que los <70, y mover el número con datos. Mismo patrón que
