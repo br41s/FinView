@@ -119,6 +119,9 @@ export default function ZonasClavePage() {
   const [portfolioSuggestions, setPortfolioSuggestions] = useState<
     { ticker: string; name: string; isin: string }[]
   >([]);
+  // Options lens state for cross-section toggles: ticker → options watchlist id
+  const [optionsMap, setOptionsMap] = useState<Map<string, number>>(new Map());
+  const [optionsBusy, setOptionsBusy] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState("");
   const [remoteMatches, setRemoteMatches] = useState<ZcTickerSearchResult[]>([]);
   const [intradayBars, setIntradayBars] = useState<OhlcBar[]>([]);
@@ -135,6 +138,13 @@ export default function ZonasClavePage() {
             .map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name, isin: x.isin })),
         );
       })
+      .catch(() => {});
+  }, []);
+
+  // Options lens info for the per-row "Opciones" toggles — best-effort
+  useEffect(() => {
+    (api.options.watchlist() as Promise<{ id: number; ticker: string }[]>)
+      .then((wl) => setOptionsMap(new Map(wl.map((w) => [w.ticker, w.id]))))
       .catch(() => {});
   }, []);
 
@@ -189,6 +199,30 @@ export default function ZonasClavePage() {
     }, 3000);
     return () => clearInterval(interval);
   }, [selectedTicker, hasAnalysis]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Options lens — cross-section toggle from the zonas list ────────
+  async function toggleOptionsLens(item: ZcWatchlistItem) {
+    if (optionsBusy.has(item.ticker)) return;
+    setOptionsBusy((prev) => new Set(prev).add(item.ticker));
+    try {
+      const id = optionsMap.get(item.ticker);
+      if (id != null) {
+        await api.options.removeFromWatchlist(id);
+      } else {
+        await api.options.addToWatchlist(item.ticker, item.name ?? "");
+      }
+      const wl = (await api.options.watchlist()) as { id: number; ticker: string }[];
+      setOptionsMap(new Map(wl.map((w) => [w.ticker, w.id])));
+    } catch (e) {
+      console.error("options lens toggle:", e);
+    } finally {
+      setOptionsBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(item.ticker);
+        return next;
+      });
+    }
+  }
 
   async function handleRemove(item: ZcWatchlistItem) {
     await api.zonasClav.removeTicker(item.id);
@@ -519,6 +553,37 @@ export default function ZonasClavePage() {
                         {isPending && (
                           <RefreshCw className="h-3 w-3 animate-spin opacity-60" />
                         )}
+                        {(() => {
+                          const inOptions = optionsMap.has(item.ticker);
+                          const busy = optionsBusy.has(item.ticker);
+                          return (
+                            <button
+                              className={`transition-opacity text-xs ${
+                                inOptions
+                                  ? isSelected
+                                    ? "text-primary-foreground"
+                                    : "text-primary"
+                                  : `opacity-0 group-hover:opacity-100 ${
+                                      isSelected
+                                        ? "text-primary-foreground/70 hover:text-primary-foreground"
+                                        : "text-muted-foreground hover:text-foreground"
+                                    }`
+                              } ${busy ? "opacity-50 cursor-wait" : ""}`}
+                              title={
+                                inOptions
+                                  ? "Quitar del monitor de opciones"
+                                  : "Seguir en el monitor de opciones"
+                              }
+                              disabled={busy}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleOptionsLens(item);
+                              }}
+                            >
+                              <Activity className="h-3 w-3" />
+                            </button>
+                          );
+                        })()}
                         <button
                           className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
                             isSelected ? "text-primary-foreground/70 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"

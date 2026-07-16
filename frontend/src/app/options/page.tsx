@@ -243,6 +243,9 @@ export default function OptionsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [unusual, setUnusual] = useState<Unusual[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  // Zonas (técnico) lens state for cross-section toggles: ticker → zonas item id
+  const [zonasMap, setZonasMap] = useState<Map<string, number>>(new Map());
+  const [zonasBusy, setZonasBusy] = useState<Set<string>>(new Set());
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [loadingPositions, setLoadingPositions] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -272,6 +275,14 @@ export default function OptionsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     initialTickerRef.current = params.get("ticker");
+  }, []);
+
+  // Zonas lens info for the watchlist's "Técnico" toggles — best-effort
+  useEffect(() => {
+    api.zonasClav
+      .watchlist()
+      .then((items) => setZonasMap(new Map(items.map((i) => [i.ticker, i.id]))))
+      .catch(() => {});
   }, []);
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
@@ -461,6 +472,58 @@ export default function OptionsPage() {
     const wl = (await api.options.watchlist()) as WatchlistItem[];
     setWatchlist(wl);
   }
+
+  // ── Zonas (técnico) lens — cross-section toggle from the watchlist ──
+  async function toggleZonasLens(ticker: string, name: string) {
+    if (zonasBusy.has(ticker)) return;
+    setZonasBusy((prev) => new Set(prev).add(ticker));
+    try {
+      const id = zonasMap.get(ticker);
+      if (id != null) {
+        await api.zonasClav.removeTicker(id);
+      } else {
+        // Same semantics as adding from /zonas-clave: fires the S/R analysis.
+        await api.zonasClav.addTicker(ticker, name);
+      }
+      const items = await api.zonasClav.watchlist();
+      setZonasMap(new Map(items.map((i) => [i.ticker, i.id])));
+    } catch (e) {
+      console.error("zonas lens toggle:", e);
+    } finally {
+      setZonasBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(ticker);
+        return next;
+      });
+    }
+  }
+
+  const renderZonasChip = (w: WatchlistItem) => {
+    const active = zonasMap.has(w.ticker);
+    const busy = zonasBusy.has(w.ticker);
+    return (
+      <button
+        title={
+          active
+            ? "Quitar del análisis técnico (Zonas Clave)"
+            : "Analizar en Zonas Clave (soportes/resistencias)"
+        }
+        disabled={busy}
+        onClick={() => toggleZonasLens(w.ticker, w.name)}
+        className={[
+          "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+          busy ? "opacity-50 cursor-wait" : "cursor-pointer",
+          active
+            ? "border-transparent bg-primary/10 text-primary"
+            : "border-border bg-background text-muted-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary",
+        ].join(" ")}
+      >
+        <Target className="h-3 w-3" />
+        Técnico
+        {active && <CheckCircle2 className="h-3 w-3" />}
+      </button>
+    );
+  };
 
   async function handleAckAlert(id: number) {
     await api.options.ackAlert(id);
@@ -1086,7 +1149,8 @@ export default function OptionsPage() {
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>Añadido {new Date(w.created_at).toLocaleDateString("es-ES")}</span>
-                          <div className="flex gap-1">
+                          <div className="flex items-center gap-1">
+                            {renderZonasChip(w)}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1126,6 +1190,7 @@ export default function OptionsPage() {
                       <TableHead>Ticker</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Técnico</TableHead>
                       <TableHead>Añadido</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -1134,7 +1199,7 @@ export default function OptionsPage() {
                     {watchlist.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={5}
+                          colSpan={6}
                           className="text-center text-muted-foreground"
                         >
                           Sin tickers en la watchlist
@@ -1154,6 +1219,7 @@ export default function OptionsPage() {
                               {w.enabled ? "Activo" : "Pausado"}
                             </Badge>
                           </TableCell>
+                          <TableCell>{renderZonasChip(w)}</TableCell>
                           <TableCell>
                             {new Date(w.created_at).toLocaleDateString("es-ES")}
                           </TableCell>
