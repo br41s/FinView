@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { href: "/portfolio", label: "Cartera", Icon: Briefcase },
   { href: "/options", label: "Derivados", Icon: Activity },
   { href: "/zonas-clave", label: "Técnico", Icon: Target },
-  { href: "/geo-intel", label: "Geo-Intel", Icon: Globe },
+  { href: "/geo-intel", label: "Ideas", Icon: Globe },
   { href: "/alt-investments", label: "Inversiones Alt.", Icon: Landmark },
 ] as const;
 

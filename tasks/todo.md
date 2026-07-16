@@ -477,3 +477,136 @@ Se copiarán a `FinView/data/` (gitignored) para desarrollo.
 | IX. Modelo 714 | 41 | Patrimonio casillas | C05, C06, C08, C09 |
 
 **Clave**: TR ya calcula FIFO según normativa española (sección 5.4 notas). Usamos sus resultados como ground truth para validar nuestro motor.
+
+---
+
+## Arquitectura de señales — trigger / execution / thesis — 2026-07-16
+
+**Origen:** sesión de planificación con CEO. Problema: las señales no están cableadas
+entre secciones; cada página mezcla conceptos que no le tocan.
+
+### Diagnóstico
+
+Fuentes que HOY emiten señal:
+- `options_analyzer.py` — IV alta, P/C ratio, IV skew, volumen inusual → `OptionsAlert`
+- `premium_spike.py` — EMA en memoria → `PREMIUM_SPIKE` HIGH
+- `geo/rules.py` — 89 reglas → `GeoSignal` (silo cerrado: tabla, tickers y auditor propios)
+
+Fuentes que NO emiten:
+- `zonas_clave_analyzer.py` — RSI/MACD/MAs/S-R son **puro display**, no disparan nada
+- `macro_context.py` (FRED) — solo anota (Fase 2b), por diseño
+- Fundamentales — **no existen en el código**
+
+**Está invertido:** lo que debe disparar (técnico + geo) no dispara; lo único que
+dispara es microestructura de opciones.
+
+**Monitor vacío = bug, no arquitectura:** `/options/alerts` filtra a 7 días
+([options.py:227](backend/api/options.py:227)) y el ciclo solo corre por botón manual o por
+`options_scheduler.py` (APScheduler en proceso, muere con `--min-instances=0`).
+Options **no tiene endpoint de cron**; geo sí ([geo.py:161](backend/api/geo.py:161)).
+
+### Modelo objetivo
+
+| Capa | Página | Responsabilidad | Prohibido |
+|------|--------|-----------------|-----------|
+| **Trigger** | Zonas Clave | Análisis técnico; emite señales | Nada de opciones |
+| **Execution** | Options Monitor | PUT/CALL y estrategias sobre triggers | Fundamentales, tesis especulativa |
+| **Thesis** | Geo-Intel (mesa de ideas) | Oportunidad: dirección, fundamentales, macro, IA, backtest | Nada de opciones (salvo enlace de navegación) |
+
+### Decisiones cerradas (CEO, 2026-07-16)
+- [x] **Geo-Intel = mesa de ideas**, no feed de eventos. Ideas nacidas solo del técnico
+      también aterrizan ahí. Rechazado: geo-solo-eventos (condena al técnico a mero
+      disparador) y página nueva de ideas (fragmenta la nav).
+- [x] **Fundamentales vía `yfinance .info`**. Gratis, ya es dependencia, cero llaves.
+      Rechazado: FMP/pago (coste + servicio nuevo) y diferirlos (vacía la mesa de ideas).
+- [x] **Se mantiene el enlace Geo-Intel → `/options?ticker=`**. Un enlace es navegación,
+      no contenido de opciones.
+- [x] **NO unificar `GeoSignal` + `OptionsAlert` + `BacktestSignal` en una tabla `Signal`.**
+      Ciclos de vida distintos (geo: 5 checkpoints con basket scoring; options: 3 horizontes
+      en columnas), no hay Alembic, sería DDL en prod. Si hace falta vista unificada →
+      read-model fino de solo lectura sobre las tres tablas.
+
+### Slice 0 — Cron de options (bug, se envía solo y primero) ✅ código
+- [x] `POST /api/options/agent/cron` ([options.py](backend/api/options.py)): header `X-Cron-Key` ==
+      `FINVIEW_CRON_SECRET`, compare en tiempo constante, un ciclo por usuario **síncrono**
+      (Cloud Run puede reclamar la instancia tras responder — no hilos fire-and-forget).
+- [x] **No es copiar-pegar de geo**, dos diferencias reales:
+      - Honra el guard `_cycles_in_progress` que comparte con el `/agent/run` manual — un tick
+        de cron encima de una ejecución manual re-descargaría todas las cadenas y duplicaría
+        snapshots. Los usuarios saltados se reportan como `skipped`.
+      - `run_cycle()` devuelve `{"status": "error"}` y nunca lanza ni devuelve None, así que
+        `cycles_ok` mira el status. El idiom `is not None` de geo contaría fallos como éxitos.
+- [x] 7 tests nuevos en [test_options_agent_trigger.py](backend/tests/test_options_agent_trigger.py)
+      (auth ×3, ciclo por usuario, solo-ok, guard, liberación del guard). Suite: 189 pass / 131 skip.
+- [x] Verificado por HTTP con TestClient: ruta registrada como `/api/options/agent/cron` junto a
+      `/api/geo/cron`; 403 sin secreto / con clave mala / sin header; 200 con la buena.
+- [ ] **Pendiente CEO — job en Cloud Scheduler** (no lo toco sin permiso: es infra de prod).
+      Reusar `FINVIEW_CRON_SECRET`, mismo patrón que el job de geo. Sin esto el código no sirve
+      de nada: el Monitor sigue vacío.
+- [ ] Verificar en prod que el Monitor se puebla sin tocar el botón manual.
+
+### Slice 1 — Zonas Clave: quitar Opciones
+- [ ] Eliminar la card `OpcionesTab` de [zonas-clave/page.tsx:893](frontend/src/app/zonas-clave/page.tsx:893).
+- [ ] Los toggles de lente cruzada (D2-A) **se quedan** — son navegación/suscripción, no contenido.
+
+### Slice 2 — Options Monitor: fusionar Cartera + Watchlist
+- [ ] Una sola lista. Las tarjetas llevan Sentimiento, P/C Ratio e IV/HV (ya en el snapshot cargado).
+- [ ] Expandir tarjeta → `OpcionesTab` (gráfica + cadena + navegador de vencimientos).
+- [ ] Eliminar tab Cartera. El auto-sync de posiciones deja de ser interacción rara y pasa
+      a ser el comportamiento deseado; "Ocultar del monitor" es el único off para posiciones.
+- [ ] Riesgo: `options/page.tsx` son 2180 líneas. Extraer la lista a componente propio.
+
+### Slice 3 — Monitor tab = hub de alertas
+- [ ] Alertas del ciclo con chips de ticker enlazados a la sección relevante (Zonas Clave / Geo-Intel).
+- [ ] Solo alertas de opciones + triggers técnicos. Nada de tesis especulativa.
+
+### Slice 4 — El técnico emite señales (plumbing nuevo, el núcleo del cambio)
+
+**Diseño cerrado (CEO, 2026-07-16): proximidad determinista como puerta, IA como scorer.**
+
+```
+zonas_clave_analyzer, tras calcular zonas + indicadores:
+  1. GATE (barato, sin IA): para cada zona, distance_pct = |price - zone.center| / price
+     distance_pct <= _PROXIMITY_THRESHOLD (2.0%) → candidato
+  2. SCORE (IA, solo candidatos): OpenRouter → break_probability 0-100 + rationale
+     Contexto del prompt: fuerza de zona, toques, volumen, RSI, MACD, MA50/200,
+     trend_bias, distance_pct, dirección (soporte vs resistencia)
+  3. REGISTRAR: todos los candidatos puntuados, con su %
+  4. ALERTAR: solo break_probability > 70
+```
+
+- [ ] **Umbral de proximidad = 2.0%.** Racional: `_CLUSTER_THRESHOLD` ya es 1.5% (radio de
+      fusión de zonas); por debajo de eso estás *dentro* de la zona, no cerca de ella.
+- [ ] **Registrar todos, alertar >70.** El 70 es un corte sin calibrar — un "73%" de un LLM
+      no es una probabilidad. Guardando también los <70 se puede comprobar en semanas si
+      los >70 rompen más que los <70, y mover el número con datos. Mismo patrón que
+      Fase 2b (instrumentar y mostrar, sin que el dato toque el gating hasta validarlo).
+- [ ] **Token gating (lección de `geo/analyst.py`)**: la proximidad persiste días. Cachear
+      por (ticker, zona, día) y re-puntuar solo al *entrar* en proximidad desde fuera o si
+      `distance_pct` se mueve materialmente. Sin esto, cada ciclo re-paga el mismo scoring.
+- [ ] IA reutiliza `settings.openrouter_model` — sin llave ni proveedor nuevos.
+      Fallo de IA nunca rompe el ciclo de análisis (guardar como best-effort).
+- [ ] Backtest: `backtest_service.record_signal()`. Ojo con el gotcha de enums
+      (`_outcome_value()`), no comparar contra `.value` directamente.
+- [ ] Ruta: trigger técnico → Options Monitor (ejecución) **y** → Ideas (tesis).
+- [ ] **Deuda que esto destapa**: `zonas_clave_scheduler.py` tiene el mismo defecto que
+      options (APScheduler en proceso, muere con `--min-instances=0`). Hoy no duele porque
+      el técnico no dispara nada. Con el Slice 4 dolerá → necesita cron como el Slice 0.
+- [ ] Backtest: reutilizar `backtest_service.record_signal()`. Ojo con el gotcha de enums
+      (`_outcome_value()`), no comparar contra `.value` directamente.
+
+### Slice 5 — Geo-Intel: mesa de ideas
+- [ ] Más info por señal: rationale, dirección por ticker, régimen macro.
+- [ ] Superficie de backtest (`GeoCheckpoint`, 5 horizontes) + explicación de recomendaciones.
+- [ ] Fundamentales vía yfinance `.info` (best-effort, fallo = se omite la sección).
+- [ ] Botón "Añadir a Zonas Clave" en los tickers recomendados (usa `enable_zonas` del
+      `watchlist_service`, nunca tocar filas hijas directamente).
+- [x] **Renombrado → "Ideas" (CEO, 2026-07-16).** Solo la etiqueta de cara al usuario:
+      [QuickNav.tsx:17](frontend/src/components/QuickNav.tsx:17) y
+      [GeoIntelSection.tsx:137](frontend/src/components/geo-intel/GeoIntelSection.tsx:137).
+      Ruta `/geo-intel`, tabla `geo_signals`, prefijo de API e identificadores de código
+      **se quedan**: renombrar la ruta rompe deep links y renombrar tablas es DDL en prod
+      sin Alembic. Churn sin valor para el usuario.
+- [ ] Subtítulo (`GeoIntelSection.tsx:143`, "Geopolitical & natural events, plotted as
+      financial signals") **pendiente hasta este slice**: hoy la página sigue siendo solo
+      eventos geo; cambiarlo antes de que el técnico la alimente la haría mentir.

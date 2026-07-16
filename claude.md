@@ -20,7 +20,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | Backend | Python 3.12 · FastAPI · SQLAlchemy (create_all + ensure_columns, no Alembic) |
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
-| AI | anthropic SDK — claude-haiku-4-5-20251001 (options analysis) |
+| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, default `deepseek/deepseek-v4-flash`. One shared model for options analysis + geo analyst. |
 | Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
@@ -247,13 +247,31 @@ resolve `isin` from holdings the same way the old drawer provider did
 1. Fetch watchlist tickers for the user
 2. For each ticker: fetch chain → enrich with Greeks → rule analysis → premium spike detection → store snapshot + alerts + unusual activity → record backtest signals (HIGH/MEDIUM)
 3. evaluate_pending() resolves outcomes from previous cycles
-4. If `ANTHROPIC_API_KEY` set and alerts exist → Claude analysis (7-section Markdown)
+4. If `FINVIEW_OPENROUTER_API_KEY` set and alerts exist → AI analysis (7-section Markdown)
 5. notify_alerts() → ntfy.sh + email; notify_spike_telegram() → Telegram for PREMIUM_SPIKE
+
+### Scheduling — prod runs on external cron, NOT APScheduler
+Same rule as Geo-Intel: `options_scheduler.py` (APScheduler, the "Agente" tab's start/stop)
+only survives while the instance is alive and dies on scale-to-zero with `--min-instances=0`.
+**Prod periodicity = Cloud Scheduler → `POST /api/options/agent/cron`**, authenticated by header
+`X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret disables the endpoint).
+Runs one cycle per user synchronously — don't convert it to fire-and-forget threads, the instance
+can be reclaimed after the response.
+- Unlike geo's cron, this one honours the `_cycles_in_progress` guard it shares with the manual
+  `POST /agent/run`: a cron tick landing on a manual run would otherwise double-fetch every chain
+  and write duplicate snapshots. Skipped users are reported as `skipped` in the response.
+- `run_cycle()` swallows its own errors and returns `{"status": "error"}` — it never raises and
+  never returns None, so `cycles_ok` keys off the status. Geo's `is not None` idiom would count
+  failures as successes here.
+- **Without this cron the Monitor tab reads empty**: `/options/alerts` only returns the last 7
+  days, so with no cycles running the UI has nothing to show.
+- `zonas_clave_scheduler.py` still has the un-fixed version of this defect. It doesn't bite yet
+  because the technical analysis emits no signals; it will the moment it does.
 
 ### Claude analysis prompt
 Agent persona: *VolatilityEdge* (quant analyst, senior). Spanish only. Structured as exactly 7 sections:
 `## 1. Resumen Ejecutivo` / `## 2. Smart Money` / `## 3. Señales Greeks` / `## 4. Top Picks` / `## 5. Catalizadores` / `## 6. Contexto MEFF` (only if .MC tickers present) / `## 7. Gestión de Riesgo`
-Model: claude-haiku-4-5-20251001 · max_tokens: 1500 · max 750 words in output.
+Model: `settings.openrouter_model` via OpenRouter · max_tokens: 1500 · max 750 words in output.
 Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
 
 ### Premium spike detector
@@ -390,7 +408,8 @@ Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KE
 `FINVIEW_ACLED_EMAIL/KEY`, `FINVIEW_OPENSKY_USERNAME/PASSWORD` (all optional).
 Notifications: `FINVIEW_NTFY_TOPIC`, `FINVIEW_TELEGRAM_BOT_TOKEN/CHAT_ID`,
 `FINVIEW_NOTIFY_EMAIL_FROM/TO/PASSWORD` — unset = channel silently no-ops.
-Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header).
+Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header). One secret, shared by
+both cron entries — `/api/geo/cron` and `/api/options/agent/cron`.
 
 ---
 
@@ -539,7 +558,7 @@ replace each other:
 - options_scraper.py cache TTL (5 min) must not be removed — MEFF rate-limits scraping.
 - Premium spike baselines are in-memory only. Do not try to persist them to DB.
 - Claude analysis is fire-and-forget; non-availability must never break the agent cycle.
-  Always guard: `if _ANTHROPIC_AVAILABLE and settings.anthropic_api_key and all_alerts`.
+  Always guard: `if settings.openrouter_api_key and all_alerts`.
 - Blog/MDX: in `.mdx` prose always escape `<` as `&lt;` — MDX parses `<1` (e.g. "FCF <1,2x")
   as a JSX tag start and breaks the whole Vercel build (see PR #101 → #105).
   Quick check: `grep -rn '<[0-9]' frontend/src/app/blog/*/page.mdx` must return nothing.
