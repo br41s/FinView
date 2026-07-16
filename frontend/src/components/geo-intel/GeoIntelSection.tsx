@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Globe } from "lucide-react";
 import { GeoMap } from "./GeoMap";
 import { SignalPanel } from "./SignalPanel";
@@ -49,6 +49,24 @@ export function GeoIntelSection() {
     load();
     loadMonitor();
   }, [load, loadMonitor]);
+
+  // Deep link: /geo-intel?ticker=X selects the newest signal affecting X. The
+  // Options Monitor only offers the link when a signal actually exists, but the
+  // URL can be stale or hand-typed, so an unmatched ticker is a silent no-op.
+  const tickerHintRef = useRef<string | null>(null);
+  useEffect(() => {
+    tickerHintRef.current = new URLSearchParams(window.location.search).get("ticker");
+  }, []);
+  useEffect(() => {
+    const hint = tickerHintRef.current;
+    if (!hint || signals.length === 0) return;
+    tickerHintRef.current = null;
+    const upper = hint.toUpperCase();
+    const match = signals.find((s) =>
+      s.tickers.some((t) => t.symbol.toUpperCase() === upper),
+    );
+    if (match) setSelected(match);
+  }, [signals]);
 
   // Silent refresh so new signals/alerts appear without user interaction.
   useEffect(() => {

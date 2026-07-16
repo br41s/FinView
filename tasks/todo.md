@@ -577,9 +577,23 @@ Options **no tiene endpoint de cron**; geo sí ([geo.py:161](backend/api/geo.py:
 - [ ] Pendiente: `options/page.tsx` sigue en ~1990 líneas. Si molesta, la extracción real
       es un hook/contexto, no un componente con 15 props. Commit aparte.
 
-### Slice 3 — Monitor tab = hub de alertas
-- [ ] Alertas del ciclo con chips de ticker enlazados a la sección relevante (Zonas Clave / Geo-Intel).
-- [ ] Solo alertas de opciones + triggers técnicos. Nada de tesis especulativa.
+### Slice 3 — Monitor tab = hub de alertas ✅
+- [x] **La tab ya mostraba alertas.** Lo que fallaba era que no había ciclos (Slice 0).
+      Lo que faltaba de verdad eran los enlaces.
+- [x] Chips por alerta: `Opciones` (expande `OpcionesTab` inline), `Técnico`
+      (→ `/zonas-clave?ticker=`), `Ideas` (→ `/geo-intel?ticker=`).
+- [x] **`Ideas` solo aparece si el ticker tiene señal geo activa.** Un enlace a una
+      página vacía es peor que no tener enlace. Options pide `/geo/signals?status=active`
+      best-effort solo para saber qué tickers califican — metadato de navegación, no
+      cruza contenido de tesis.
+- [x] **Ideas no leía `?ticker=`** (solo enlazaba hacia fuera) → el enlace habría sido
+      muerto. Añadido soporte en `GeoIntelSection`: selecciona la señal más reciente que
+      afecta al ticker; sin match, no-op silencioso.
+- [x] Smart Money sin chips a propósito: filas por contrato (ticker+strike+exp), varias
+      comparten ticker → los chips serían ruido en una tabla de 9 columnas.
+- [x] Nada de tesis ni fundamentales en Options: solo navegación.
+- [x] Verificado: build verde, 18/18 tests, colSpan de la expansión ajustado a la
+      columna nueva. **No verificado visualmente** (login).
 
 ### Slice 4 — El técnico emite señales (plumbing nuevo, el núcleo del cambio)
 

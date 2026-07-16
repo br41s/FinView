@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -12,6 +13,7 @@ import {
   Eye,
   EyeOff,
   FlaskConical,
+  Globe,
   MessageSquare,
   Pause,
   Play,
@@ -249,6 +251,8 @@ export default function OptionsPage() {
   // Zonas (técnico) lens state for cross-section toggles: ticker → zonas item id
   const [zonasMap, setZonasMap] = useState<Map<string, number>>(new Map());
   const [zonasBusy, setZonasBusy] = useState<Set<string>>(new Set());
+  // Tickers with an active geo signal — gates the per-alert "Ideas" link.
+  const [geoTickers, setGeoTickers] = useState<Set<string>>(new Set());
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [loadingPositions, setLoadingPositions] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -285,6 +289,22 @@ export default function OptionsPage() {
     api.zonasClav
       .watchlist()
       .then((items) => setZonasMap(new Map(items.map((i) => [i.ticker, i.id]))))
+      .catch(() => {});
+  }, []);
+
+  // Which tickers have an active geo signal — decides whether an alert offers an
+  // "Ideas" link at all. Navigation metadata only: no thesis content crosses into
+  // this page. Best-effort; without it the links just don't render.
+  useEffect(() => {
+    api.geo
+      .signals("active")
+      .then((sigs) => {
+        const withSignal = new Set<string>();
+        for (const s of sigs) {
+          for (const t of s.tickers) withSignal.add(t.symbol.toUpperCase());
+        }
+        setGeoTickers(withSignal);
+      })
       .catch(() => {});
   }, []);
 
@@ -556,6 +576,47 @@ export default function OptionsPage() {
       </button>
     );
   };
+
+  // Per-alert jump-offs. An options alert says "something moved here" — acting on
+  // it means seeing the chain (inline, this page) and the technical picture
+  // (Zonas Clave). Ideas only shows up when that ticker actually has an active
+  // geo signal: a link to an empty page is worse than no link. Links are
+  // navigation, not content — no thesis or fundamentals render here.
+  const renderTickerLinks = (ticker: string, expanded: boolean) => (
+    <div className="flex flex-wrap items-center gap-1">
+      <button
+        onClick={() => setExpandedOptionsTicker(expanded ? null : ticker)}
+        title={expanded ? "Ocultar la cadena de opciones" : "Ver la cadena de opciones aquí"}
+        className={[
+          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer",
+          expanded
+            ? "border-transparent bg-primary/10 text-primary"
+            : "border-border bg-background text-muted-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary",
+        ].join(" ")}
+      >
+        <Activity className="h-3 w-3" />
+        Opciones
+      </button>
+      <Link
+        href={`/zonas-clave?ticker=${encodeURIComponent(ticker)}`}
+        title="Ver soportes y resistencias en Zonas Clave"
+        className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+      >
+        <Target className="h-3 w-3" />
+        Técnico
+      </Link>
+      {geoTickers.has(ticker) && (
+        <Link
+          href={`/geo-intel?ticker=${encodeURIComponent(ticker)}`}
+          title="Este ticker tiene una señal activa en Ideas"
+          className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+        >
+          <Globe className="h-3 w-3" />
+          Ideas
+        </Link>
+      )}
+    </div>
+  );
 
   async function handleAckAlert(id: number) {
     await api.options.ackAlert(id);
@@ -1261,16 +1322,9 @@ export default function OptionsPage() {
                             const tickerUp = a.ticker.toUpperCase();
                             const isAlertExpanded = expandedOptionsTicker === tickerUp;
                             return (
-                              <div key={a.id} className={`flex flex-col gap-1 p-3 ${a.acknowledged ? "opacity-50" : ""}`}>
+                              <div key={a.id} className={`flex flex-col gap-1.5 p-3 ${a.acknowledged ? "opacity-50" : ""}`}>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span
-                                    className="font-medium cursor-pointer text-primary hover:underline"
-                                    onClick={() =>
-                                      setExpandedOptionsTicker(isAlertExpanded ? null : tickerUp)
-                                    }
-                                  >
-                                    {a.ticker}
-                                  </span>
+                                  <span className="font-medium">{a.ticker}</span>
                                   <Badge variant="outline" className="text-xs">{a.alert_type}</Badge>
                                   <Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"} className="text-xs">{a.severity}</Badge>
                                   <AlignmentTag alignment={a.regime_alignment} />
@@ -1279,9 +1333,12 @@ export default function OptionsPage() {
                                   </span>
                                 </div>
                                 <p className="text-sm text-muted-foreground">{a.message}</p>
-                                {!a.acknowledged && (
-                                  <Button variant="ghost" size="sm" className="self-end h-7 text-xs" onClick={() => handleAckAlert(a.id)}>Ack</Button>
-                                )}
+                                <div className="flex items-end justify-between gap-2">
+                                  {renderTickerLinks(tickerUp, isAlertExpanded)}
+                                  {!a.acknowledged && (
+                                    <Button variant="ghost" size="sm" className="h-7 shrink-0 text-xs" onClick={() => handleAckAlert(a.id)}>Ack</Button>
+                                  )}
+                                </div>
                                 {isAlertExpanded && (
                                   <div className="mt-2 border-t pt-2">
                                     <OpcionesTab symbol={tickerUp} />
@@ -1300,6 +1357,7 @@ export default function OptionsPage() {
                               <TableHead>Tipo</TableHead>
                               <TableHead>Mensaje</TableHead>
                               <TableHead>Severidad</TableHead>
+                              <TableHead>Ver en</TableHead>
                               <TableHead className="text-right">Acción</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -1311,25 +1369,18 @@ export default function OptionsPage() {
                                 <Fragment key={a.id}>
                                   <TableRow className={a.acknowledged ? "opacity-50" : ""}>
                                     <TableCell className="text-xs">{new Date(a.timestamp).toLocaleString("es-ES")}</TableCell>
-                                    <TableCell
-                                      className="font-medium cursor-pointer text-primary hover:underline"
-                                      title="Ver opciones"
-                                      onClick={() =>
-                                        setExpandedOptionsTicker(isAlertExpanded ? null : tickerUp)
-                                      }
-                                    >
-                                      {a.ticker}
-                                    </TableCell>
+                                    <TableCell className="font-medium">{a.ticker}</TableCell>
                                     <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
                                     <TableCell>{a.message}</TableCell>
                                     <TableCell><div className="flex items-center gap-1"><Badge variant={severityColor(a.severity) as "destructive" | "secondary" | "outline"}>{a.severity}</Badge><AlignmentTag alignment={a.regime_alignment} /></div></TableCell>
+                                    <TableCell>{renderTickerLinks(tickerUp, isAlertExpanded)}</TableCell>
                                     <TableCell className="text-right">
                                       {!a.acknowledged && <Button variant="ghost" size="sm" onClick={() => handleAckAlert(a.id)}>Ack</Button>}
                                     </TableCell>
                                   </TableRow>
                                   {isAlertExpanded && (
                                     <TableRow>
-                                      <TableCell colSpan={6} className="bg-muted/30 p-4">
+                                      <TableCell colSpan={7} className="bg-muted/30 p-4">
                                         <OpcionesTab symbol={tickerUp} />
                                       </TableCell>
                                     </TableRow>
