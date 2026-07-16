@@ -13,6 +13,8 @@ import {
   EyeOff,
   FlaskConical,
   MessageSquare,
+  Pause,
+  Play,
   Send,
   Sparkles,
   Square,
@@ -37,6 +39,7 @@ import {
 } from "recharts";
 import { api } from "@/lib/api";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
+import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
 import {
   Card,
   CardContent,
@@ -260,7 +263,7 @@ export default function OptionsPage() {
   const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
   const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual">("alerts");
-  const [activeTab, setActiveTab] = useState("portfolio");
+  const [activeTab, setActiveTab] = useState("watchlist");
   // Mobile-only: tapping a Posiciones card expands inline (like Cartera)
   // instead of opening the drawer; the drawer stays one tap away via its own
   // button inside the expanded card.
@@ -295,12 +298,6 @@ export default function OptionsPage() {
         setPositions(loaded);
         if (loaded.length === 0) return;
         const tickers = [...new Set(loaded.map((p) => (p.ticker || p.isin).toUpperCase()))];
-        // Auto-expand ticker from URL param if it exists in positions
-        if (initialTickerRef.current) {
-          const hint = initialTickerRef.current.toUpperCase();
-          initialTickerRef.current = null;
-          if (tickers.includes(hint)) setExpandedOptionsTicker(hint);
-        }
         try {
           const { no_options } = await api.options.checkAvailability(tickers);
           setNoOptionsTickers(new Set(no_options));
@@ -343,6 +340,17 @@ export default function OptionsPage() {
       })
       .finally(() => setLoadingOptions(false));
   }, [retryOptions]);
+
+  // Auto-expand the ticker from ?ticker= (Geo-Intel and Zonas Clave deep-link
+  // here). Keyed off the watchlist, not the portfolio: the list is watchlist-
+  // driven, and the tickers linked from elsewhere are often not held.
+  useEffect(() => {
+    const hint = initialTickerRef.current;
+    if (!hint || watchlist.length === 0) return;
+    initialTickerRef.current = null;
+    const upper = hint.toUpperCase();
+    if (watchlist.some((w) => w.ticker === upper)) setExpandedOptionsTicker(upper);
+  }, [watchlist]);
 
   // Auto-sync: portfolio positions get added to the options watchlist so
   // Sentimiento/P-C Ratio/IV vs HV populate without a manual click. Waits for
@@ -452,12 +460,6 @@ export default function OptionsPage() {
     }
   }
 
-  async function handleRemoveFromCartera(ticker: string) {
-    const item = watchlist.find((w) => w.ticker === ticker);
-    if (!item) return;
-    await handleRemoveTicker(item.id, ticker);
-  }
-
   async function handleHidePosition(ticker: string) {
     // Remove from watchlist if present
     const item = watchlist.find((w) => w.ticker === ticker);
@@ -467,11 +469,41 @@ export default function OptionsPage() {
     setHiddenTickers((prev) => new Set([...prev, ticker]));
   }
 
-  async function handleAddPositionToWatchlist(ticker: string, name: string) {
-    await api.options.addToWatchlist(ticker, name);
-    const wl = (await api.options.watchlist()) as WatchlistItem[];
-    setWatchlist(wl);
+  async function handleToggleWatchlistItem(id: number) {
+    await api.options.toggleWatchlistItem(id);
+    setWatchlist((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, enabled: !item.enabled } : item)),
+    );
   }
+
+  // Held tickers auto-sync back into the watchlist on the next load, so plain
+  // removal doesn't stick for them — "Ocultar" (which also persists the
+  // exclusion) is their only real off-switch. Non-held tickers have no such
+  // problem, so they keep a straight delete.
+  const renderRemoveButton = (w: WatchlistItem, held: boolean) =>
+    held ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground"
+        title="Ocultar del monitor de opciones"
+        onClick={() => handleHidePosition(w.ticker)}
+      >
+        <EyeOff className="mr-1 h-4 w-4" />
+        Ocultar
+      </Button>
+    ) : (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-destructive"
+        title="Eliminar de la watchlist"
+        onClick={() => handleRemoveTicker(w.id, w.ticker)}
+      >
+        <Trash2 className="mr-1 h-4 w-4" />
+        Eliminar
+      </Button>
+    );
 
   // ── Zonas (técnico) lens — cross-section toggle from the watchlist ──
   async function toggleZonasLens(ticker: string, name: string) {
@@ -586,10 +618,24 @@ export default function OptionsPage() {
     return { avg, label, color, count: ratios.length };
   })();
 
-  // Portfolio tab: split into positions with/without options (hidden excluded entirely)
-  const visiblePositions = positions.filter((p) => !hiddenTickers.has((p.ticker || p.isin).toUpperCase()));
-  const mainPositions = visiblePositions.filter((p) => !noOptionsTickers.has((p.ticker || p.isin).toUpperCase()));
-  const noOptPositions = visiblePositions.filter((p) => noOptionsTickers.has((p.ticker || p.isin).toUpperCase()));
+  // Portfolio tickers with no options chain — surfaced as a note so their
+  // absence from the list is explained rather than mysterious.
+  const noOptPositions = positions.filter(
+    (p) =>
+      !hiddenTickers.has((p.ticker || p.isin).toUpperCase()) &&
+      noOptionsTickers.has((p.ticker || p.isin).toUpperCase()),
+  );
+
+  // The unified list: one row per watchlist ticker, enriched with held lots and
+  // the latest snapshot's analytics. See lib/optionsWatchlistRows.ts.
+  const rows = buildWatchlistRows(watchlist, positions, hiddenTickers, noOptionsTickers).map(
+    (row) => ({
+      ...row,
+      snap: latestByTicker.get(row.item.ticker),
+      rowAlerts: getTickerAlerts(row.item.ticker),
+    }),
+  );
+  const heldCount = rows.filter((r) => r.lots.length > 0).length;
 
   // Get alerts/snapshots/unusual for a specific ticker
   function getTickerAlerts(ticker: string) {
@@ -739,10 +785,6 @@ export default function OptionsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="w-full overflow-x-auto">
         <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="portfolio">
-            <BarChart3 className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Cartera</span>
-          </TabsTrigger>
           <TabsTrigger value="watchlist">
             <Eye className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">Watchlist</span>
@@ -768,291 +810,7 @@ export default function OptionsPage() {
         </div>
 
         {/* ── Portfolio / Positions Tab ── */}
-        <TabsContent value="portfolio" className="space-y-4">
-          {loadingPositions ? (
-            <div className="flex min-h-[30vh] items-center justify-center">
-              <LoadingDots text="Obteniendo precios de mercado" />
-            </div>
-          ) : errorPositions ? (
-            <Card>
-              <CardContent className="py-10 text-center space-y-3">
-                <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
-                <p className="text-sm text-muted-foreground">{errorPositions}</p>
-                <Button variant="outline" size="sm" onClick={() => setRetryPositions((k) => k + 1)}>
-                  Reintentar
-                </Button>
-              </CardContent>
-            </Card>
-          ) : positions.length === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-center text-muted-foreground">
-                Sin posiciones en cartera. Importa datos desde el dashboard
-                fiscal.
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Posiciones ({mainPositions.length})</CardTitle>
-                <CardDescription>
-                  Pulsa en una posición para ver sus datos de opciones
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                {/* Mobile */}
-                <div className="divide-y sm:hidden">
-                  {mainPositions.map((p) => {
-                    const ticker = (p.ticker || p.isin || "").toUpperCase();
-                    const tickerAlerts = getTickerAlerts(ticker);
-                    const snap = latestByTicker.get(ticker);
-                    const sentiment = sentimentLabel(snap);
-                    const ivHv = ivHvLabel(snap);
-                    const isExpanded = expandedOptionsTicker === ticker;
-                    return (
-                      <div key={`${p.isin}-${p.broker}-card`}>
-                        <div
-                          className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-muted/50"
-                          onClick={() =>
-                            setExpandedOptionsTicker(isExpanded ? null : ticker)
-                          }
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              {isExpanded ? (
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <span className="font-medium">{ticker}</span>
-                              {tickerAlerts.length > 0 && (
-                                <Badge variant="destructive" className="px-1 py-0 text-[10px]">
-                                  {tickerAlerts.length}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-0.5">
-                              {watchlistTickers.has(ticker) ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0"
-                                  title="Eliminar de watchlist"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRemoveFromCartera(ticker);
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0"
-                                  title="Añadir a watchlist"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddPositionToWatchlist(ticker, p.name);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                title="Ocultar del monitor de opciones"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleHidePosition(ticker);
-                                }}
-                              >
-                                <EyeOff className="h-4 w-4 text-muted-foreground" />
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-3 pl-6 text-xs text-muted-foreground">
-                            <span>
-                              Sentimiento <strong className={sentiment.className}>{sentiment.label}</strong>
-                            </span>
-                            <span>
-                              P/C{" "}
-                              <strong className="text-foreground">
-                                {snap?.put_call_ratio_volume != null ? fmt(snap.put_call_ratio_volume) : "—"}
-                              </strong>
-                            </span>
-                            <span className="flex items-center gap-1">
-                              IV/HV <Badge variant={ivHv.variant} className="text-[10px]">{ivHv.label}</Badge>
-                            </span>
-                          </div>
-                        </div>
-                        {isExpanded && (
-                          <div className="space-y-3 border-t bg-muted/30 p-3 pl-9 text-sm">
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                              <span>{p.name}</span>
-                              <span>{p.broker}</span>
-                              <span>{fmt(p.quantity, 2)} uds</span>
-                              {p.avg_cost_eur != null && (
-                                <span className="fv-sensitive">Coste medio {fmt(p.avg_cost_eur, 2)} €</span>
-                              )}
-                            </div>
-                            {tickerAlerts.length > 0 && (
-                              <div className="space-y-1.5">
-                                {tickerAlerts.map((a) => (
-                                  <div key={a.id} className="rounded-md border bg-background p-2 text-xs">
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px]">{a.alert_type}</Badge>
-                                      <span className="text-muted-foreground">
-                                        {new Date(a.timestamp).toLocaleString("es-ES")}
-                                      </span>
-                                    </div>
-                                    <p className="mt-1 text-foreground">{a.message}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {/* Same price chart + options chain the drawer shows —
-                                inline instead of a button that navigates away. */}
-                            <OpcionesTab symbol={ticker} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {/* Desktop */}
-                <Table className="hidden sm:table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-8" />
-                      <TableHead>Ticker</TableHead>
-                      <TableHead className="text-right">Sentimiento</TableHead>
-                      <TableHead className="text-right">P/C Ratio</TableHead>
-                      <TableHead className="text-right">IV vs HV</TableHead>
-                      <TableHead className="w-16" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mainPositions.map((p) => {
-                      const ticker = (p.ticker || p.isin || "").toUpperCase();
-                      const tickerAlerts = getTickerAlerts(ticker);
-                      const snap = latestByTicker.get(ticker);
-                      const sentiment = sentimentLabel(snap);
-                      const ivHv = ivHvLabel(snap);
-                      const isExpandedDesktop = expandedOptionsTicker === ticker;
-
-                      return (
-                        <Fragment key={`${p.isin}-${p.broker}`}>
-                          <TableRow
-                            className="cursor-pointer hover:bg-muted/50"
-                            onClick={() =>
-                              setExpandedOptionsTicker(isExpandedDesktop ? null : ticker)
-                            }
-                          >
-                            <TableCell className="w-8 pr-0">
-                              {isExpandedDesktop ? (
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                              )}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {ticker}
-                              {tickerAlerts.length > 0 && (
-                                <Badge
-                                  variant="destructive"
-                                  className="ml-2 px-1 py-0 text-[10px]"
-                                >
-                                  {tickerAlerts.length}
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className={`text-right font-medium ${sentiment.className}`}>
-                              {sentiment.label}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {snap?.put_call_ratio_volume != null
-                                ? fmt(snap.put_call_ratio_volume)
-                                : "—"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Badge variant={ivHv.variant} className="text-[10px]">
-                                {ivHv.label}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-0.5">
-                                {watchlistTickers.has(ticker) ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0"
-                                    title="Eliminar de watchlist"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRemoveFromCartera(ticker);
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0"
-                                    title="Añadir a watchlist"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAddPositionToWatchlist(ticker, p.name);
-                                    }}
-                                  >
-                                    <Eye className="h-4 w-4 text-muted-foreground" />
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0"
-                                  title="Ocultar del monitor de opciones"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleHidePosition(ticker);
-                                  }}
-                                >
-                                  <EyeOff className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                          {isExpandedDesktop && (
-                            <TableRow>
-                              <TableCell colSpan={6} className="bg-muted/30 p-4">
-                                <OpcionesTab symbol={ticker} />
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-          {noOptPositions.length > 0 && (
-            <p className="px-1 text-sm text-muted-foreground">
-              Los siguientes tickers no se muestran en posiciones ya que no
-              tienen opciones disponibles en los mercados:{" "}
-              <span className="font-medium">
-                {noOptPositions.map((p) => p.ticker || p.isin).join(", ")}
-              </span>
-              .
-            </p>
-          )}
-        </TabsContent>
-
-        {/* ── Watchlist Tab ── */}
+        {/* ── Watchlist Tab (portfolio positions + manually tracked tickers) ── */}
         <TabsContent value="watchlist" className="space-y-4">
           {loadingOptions ? (
             <div className="flex min-h-[30vh] items-center justify-center">
@@ -1071,195 +829,363 @@ export default function OptionsPage() {
           ) : (
             <Card>
               <CardHeader>
-                <CardTitle>Gestionar Watchlist</CardTitle>
+                <CardTitle>
+                  Watchlist ({rows.length})
+                  {heldCount > 0 && (
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      {heldCount} en cartera
+                    </span>
+                  )}
+                </CardTitle>
                 <CardDescription>
-                  Añade tickers para monitorizar su actividad de opciones
+                  Tus posiciones se añaden solas. Pulsa en una fila para ver su
+                  gráfica y su cadena de opciones.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <input
-                    className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    placeholder="Ticker (ej. AAPL, ACX.MC)"
-                    value={newTicker}
-                    onChange={(e) => setNewTicker(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddTicker()}
-                  />
-                  <Button size="sm" onClick={handleAddTicker}>
-                    Añadir
-                  </Button>
-                </div>
-
-                {/* ── Spanish stocks quick-add (MEFF) ── */}
-                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Acciones Españolas — MEFF
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {MEFF_TICKERS.map(({ ticker, name }) => {
-                      const already = watchlistTickers.has(ticker);
-                      return (
-                        <button
-                          key={ticker}
-                          title={name}
-                          disabled={already}
-                          onClick={() =>
-                            api.options.addToWatchlist(ticker, name).then(async () => {
-                              const wl = (await api.options.watchlist()) as WatchlistItem[];
-                              setWatchlist(wl);
-                            })
-                          }
-                          className={[
-                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
-                            already
-                              ? "border-transparent bg-primary/10 text-primary cursor-default"
-                              : "border-border bg-background text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary cursor-pointer",
-                          ].join(" ")}
-                        >
-                          {already && <CheckCircle2 className="h-3 w-3" />}
-                          {ticker.replace(".MC", "")}
-                        </button>
-                      );
-                    })}
+              <CardContent className="space-y-4 p-0 sm:p-6 sm:pt-0">
+                <div className="space-y-4 p-4 pb-0 sm:p-0">
+                  <div className="flex gap-2">
+                    <input
+                      className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="Ticker (ej. AAPL, ACX.MC)"
+                      value={newTicker}
+                      onChange={(e) => setNewTicker(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddTicker()}
+                    />
+                    <Button size="sm" onClick={handleAddTicker}>
+                      Añadir
+                    </Button>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Pasa el cursor para ver el nombre. Los marcados ya están en tu watchlist.
-                  </p>
+
+                  {/* ── Spanish stocks quick-add (MEFF) ── */}
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Acciones Españolas — MEFF
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {MEFF_TICKERS.map(({ ticker, name }) => {
+                        const already = watchlistTickers.has(ticker);
+                        return (
+                          <button
+                            key={ticker}
+                            title={name}
+                            disabled={already}
+                            onClick={() =>
+                              api.options.addToWatchlist(ticker, name).then(async () => {
+                                const wl = (await api.options.watchlist()) as WatchlistItem[];
+                                setWatchlist(wl);
+                              })
+                            }
+                            className={[
+                              "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+                              already
+                                ? "border-transparent bg-primary/10 text-primary cursor-default"
+                                : "border-border bg-background text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary cursor-pointer",
+                            ].join(" ")}
+                          >
+                            {already && <CheckCircle2 className="h-3 w-3" />}
+                            {ticker.replace(".MC", "")}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Pasa el cursor para ver el nombre. Los marcados ya están en tu watchlist.
+                    </p>
+                  </div>
+
+                  {errorPositions && (
+                    <p className="text-xs text-muted-foreground">
+                      {errorPositions} La watchlist funciona igual, pero no se puede
+                      marcar qué tickers tienes en cartera.
+                    </p>
+                  )}
                 </div>
 
                 {/* Mobile */}
-                <div className="divide-y sm:hidden">
-                  {watchlist.length === 0 ? (
+                <div className="divide-y border-t sm:hidden">
+                  {rows.length === 0 ? (
                     <p className="p-4 text-center text-sm text-muted-foreground">
                       Sin tickers en la watchlist
                     </p>
                   ) : (
-                    watchlist.map((w) => (
-                      <div key={w.id} className="flex flex-col gap-2 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <span className="font-medium">{w.ticker}</span>
-                            <span className="ml-2 text-sm text-muted-foreground">
-                              {w.name || "—"}
-                            </span>
+                    rows.map(({ item: w, snap, lots, rowAlerts }) => {
+                      const sentiment = sentimentLabel(snap);
+                      const ivHv = ivHvLabel(snap);
+                      const held = lots.length > 0;
+                      const isExpanded = expandedOptionsTicker === w.ticker;
+                      return (
+                        <div key={w.id}>
+                          <div
+                            className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-muted/50"
+                            onClick={() =>
+                              setExpandedOptionsTicker(isExpanded ? null : w.ticker)
+                            }
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="font-medium">{w.ticker}</span>
+                                {held && (
+                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                                    Cartera
+                                  </Badge>
+                                )}
+                                {!w.enabled && (
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                                    Pausado
+                                  </Badge>
+                                )}
+                                {rowAlerts.length > 0 && (
+                                  <Badge variant="destructive" className="px-1 py-0 text-[10px]">
+                                    {rowAlerts.length}
+                                  </Badge>
+                                )}
+                              </div>
+                              {/* Actions live in the collapsed header, not the
+                                  expansion: expanding mounts OpcionesTab, which
+                                  fetches expirations + chain. Removing a row
+                                  shouldn't cost a network round-trip. */}
+                              <div
+                                className="flex shrink-0 items-center gap-0.5"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {renderZonasChip(w)}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  title={w.enabled ? "Pausar" : "Activar"}
+                                  onClick={() => handleToggleWatchlistItem(w.id)}
+                                >
+                                  {w.enabled ? (
+                                    <Pause className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <Play className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </Button>
+                                {held ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    title="Ocultar del monitor de opciones"
+                                    onClick={() => handleHidePosition(w.ticker)}
+                                  >
+                                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    title="Eliminar de la watchlist"
+                                    onClick={() => handleRemoveTicker(w.id, w.ticker)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-3 pl-6 text-xs text-muted-foreground">
+                              <span>
+                                Sentimiento{" "}
+                                <strong className={sentiment.className}>{sentiment.label}</strong>
+                              </span>
+                              <span>
+                                P/C{" "}
+                                <strong className="text-foreground">
+                                  {snap?.put_call_ratio_volume != null
+                                    ? fmt(snap.put_call_ratio_volume)
+                                    : "—"}
+                                </strong>
+                              </span>
+                              <span className="flex items-center gap-1">
+                                IV/HV{" "}
+                                <Badge variant={ivHv.variant} className="text-[10px]">
+                                  {ivHv.label}
+                                </Badge>
+                              </span>
+                            </div>
                           </div>
-                          <Badge variant={w.enabled ? "default" : "secondary"}>
-                            {w.enabled ? "Activo" : "Pausado"}
-                          </Badge>
+                          {isExpanded && (
+                            <div className="space-y-3 border-t bg-muted/30 p-3 pl-9 text-sm">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span>{w.name || "—"}</span>
+                                {lots.map((p) => (
+                                  <span key={`${p.isin}-${p.broker}`}>
+                                    {p.broker} · {fmt(p.quantity, 2)} uds
+                                    {p.avg_cost_eur != null && (
+                                      <span className="fv-sensitive">
+                                        {" "}
+                                        · coste medio {fmt(p.avg_cost_eur, 2)} €
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                              {rowAlerts.length > 0 && (
+                                <div className="space-y-1.5">
+                                  {rowAlerts.map((a) => (
+                                    <div key={a.id} className="rounded-md border bg-background p-2 text-xs">
+                                      <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {a.alert_type}
+                                        </Badge>
+                                        <span className="text-muted-foreground">
+                                          {new Date(a.timestamp).toLocaleString("es-ES")}
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 text-foreground">{a.message}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <OpcionesTab symbol={w.ticker} />
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Añadido {new Date(w.created_at).toLocaleDateString("es-ES")}</span>
-                          <div className="flex items-center gap-1">
-                            {renderZonasChip(w)}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() =>
-                                api.options.toggleWatchlistItem(w.id).then(() =>
-                                  setWatchlist((prev) =>
-                                    prev.map((item) =>
-                                      item.id === w.id
-                                        ? { ...item, enabled: !item.enabled }
-                                        : item,
-                                    ),
-                                  ),
-                                )
-                              }
-                            >
-                              {w.enabled ? "Pausar" : "Activar"}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs text-destructive"
-                              onClick={() => handleRemoveTicker(w.id, w.ticker)}
-                            >
-                              Eliminar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
+
                 {/* Desktop */}
                 <Table className="hidden sm:table">
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8" />
                       <TableHead>Ticker</TableHead>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Sentimiento</TableHead>
+                      <TableHead className="text-right">P/C Ratio</TableHead>
+                      <TableHead className="text-right">IV vs HV</TableHead>
                       <TableHead>Técnico</TableHead>
-                      <TableHead>Añadido</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {watchlist.length === 0 ? (
+                    {rows.length === 0 ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center text-muted-foreground"
-                        >
+                        <TableCell colSpan={8} className="text-center text-muted-foreground">
                           Sin tickers en la watchlist
                         </TableCell>
                       </TableRow>
                     ) : (
-                      watchlist.map((w) => (
-                        <TableRow key={w.id}>
-                          <TableCell className="font-medium">
-                            {w.ticker}
-                          </TableCell>
-                          <TableCell>{w.name || "—"}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={w.enabled ? "default" : "secondary"}
-                            >
-                              {w.enabled ? "Activo" : "Pausado"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{renderZonasChip(w)}</TableCell>
-                          <TableCell>
-                            {new Date(w.created_at).toLocaleDateString("es-ES")}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
+                      rows.map(({ item: w, snap, lots, rowAlerts }) => {
+                        const sentiment = sentimentLabel(snap);
+                        const ivHv = ivHvLabel(snap);
+                        const held = lots.length > 0;
+                        const isExpanded = expandedOptionsTicker === w.ticker;
+                        return (
+                          <Fragment key={w.id}>
+                            <TableRow
+                              className="cursor-pointer hover:bg-muted/50"
                               onClick={() =>
-                                api.options.toggleWatchlistItem(w.id).then(() =>
-                                  setWatchlist((prev) =>
-                                    prev.map((item) =>
-                                      item.id === w.id
-                                        ? {
-                                            ...item,
-                                            enabled: !item.enabled,
-                                          }
-                                        : item,
-                                    ),
-                                  ),
-                                )
+                                setExpandedOptionsTicker(isExpanded ? null : w.ticker)
                               }
                             >
-                              {w.enabled ? "Pausar" : "Activar"}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive"
-                              onClick={() => handleRemoveTicker(w.id, w.ticker)}
-                            >
-                              Eliminar
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                              <TableCell className="w-8 pr-0">
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                <span className="flex items-center gap-2">
+                                  {w.ticker}
+                                  {held && (
+                                    <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                                      Cartera
+                                    </Badge>
+                                  )}
+                                  {!w.enabled && (
+                                    <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                                      Pausado
+                                    </Badge>
+                                  )}
+                                  {rowAlerts.length > 0 && (
+                                    <Badge variant="destructive" className="px-1 py-0 text-[10px]">
+                                      {rowAlerts.length}
+                                    </Badge>
+                                  )}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{w.name || "—"}</TableCell>
+                              <TableCell className={`text-right font-medium ${sentiment.className}`}>
+                                {sentiment.label}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {snap?.put_call_ratio_volume != null
+                                  ? fmt(snap.put_call_ratio_volume)
+                                  : "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant={ivHv.variant} className="text-[10px]">
+                                  {ivHv.label}
+                                </Badge>
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                {renderZonasChip(w)}
+                              </TableCell>
+                              <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleToggleWatchlistItem(w.id)}
+                                >
+                                  {w.enabled ? "Pausar" : "Activar"}
+                                </Button>
+                                {renderRemoveButton(w, held)}
+                              </TableCell>
+                            </TableRow>
+                            {isExpanded && (
+                              <TableRow>
+                                <TableCell colSpan={8} className="bg-muted/30 p-4">
+                                  <div className="space-y-3">
+                                    {lots.length > 0 && (
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                        {lots.map((p) => (
+                                          <span key={`${p.isin}-${p.broker}`}>
+                                            {p.broker} · {fmt(p.quantity, 2)} uds
+                                            {p.avg_cost_eur != null && (
+                                              <span className="fv-sensitive">
+                                                {" "}
+                                                · coste medio {fmt(p.avg_cost_eur, 2)} €
+                                              </span>
+                                            )}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <OpcionesTab symbol={w.ticker} />
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
               </CardContent>
             </Card>
+          )}
+          {noOptPositions.length > 0 && (
+            <p className="px-1 text-sm text-muted-foreground">
+              Los siguientes tickers de tu cartera no aparecen porque no tienen
+              opciones disponibles en los mercados:{" "}
+              <span className="font-medium">
+                {noOptPositions.map((p) => p.ticker || p.isin).join(", ")}
+              </span>
+              .
+            </p>
           )}
         </TabsContent>
 

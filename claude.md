@@ -79,7 +79,7 @@ frontend/
                                       AppSidebar was removed (PR #124) — QuickNav is the
                                       single global nav on every section; app-sidebar.tsx
                                       is unused, pending deletion.
-  src/app/options/page.tsx          — Options monitor (6 tabs: Cartera, Watchlist, Alertas, Backtest, Análisis, Agente)
+  src/app/options/page.tsx          — Options monitor (5 tabs: Watchlist, Monitor, Backtesting, IA, Agente)
   src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
   src/components/                   — FileUpload, tables, stat cards
   src/components/charts/            — 8 Recharts components + PriceChart + ZonasClaveChart (lightweight-charts)
@@ -185,7 +185,7 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
   - `OpcionesTab` (`components/instrument/OpcionesTab.tsx`): underlying candles +
     spot (solid) + near-money strikes (3 below, 3 above, dashed) from the selected
-    expiry's chain. Embedded in the Options Cartera row expand (mobile + desktop)
+    expiry's chain. Embedded in the Options Watchlist row expand (mobile + desktop)
     — and **only** there: options content is confined to the Options Monitor page.
 
 ---
@@ -205,7 +205,7 @@ shared panel:
 - **Opciones** (`OpcionesTab.tsx`) — on-demand per-ticker AI report
   (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section
   VolatilityEdge prompt, runs regardless of alerts, AI failure still returns
-  rule summary) + compact chain. Embedded in the Options Cartera row expand
+  rule summary) + compact chain. Embedded in the Options Watchlist row expand
   (mobile card and desktop table row alike) — and **only** there. It used to also
   sit in Zonas Clave's ticker detail panel; dropped to keep options content on
   the Options Monitor page.
@@ -292,19 +292,31 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
   and stores `regime_alignment` (aligned/counter/neutral). `get_stats` adds a `by_alignment`
   breakdown (aligned-vs-counter accuracy at 7d). Instrumentation only — see the FRED section.
 
-### Frontend — /options (6 tabs)
-- **Cartera**: positions table (desktop) / cards (mobile), each row/card showing
-  Sentimiento, P/C Ratio, and an IV/HV badge ("IV cara" >+5 / "IV barata" <-5 /
-  "IV normal") sourced from the already-loaded snapshot — no per-row fetch.
-  Clicking/tapping a row expands `OpcionesTab` inline (same pattern on both
-  breakpoints): AI report on demand, underlying `PriceChart` (spot + near-money
-  strikes), and the expiry navigator (‹ YYYY-MM-DD › n/total) — expanding fetches
-  dates only (`GET /options/expirations/{ticker}`), navigating to a date
-  lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`),
-  cached client-side. Portfolio positions (not hidden, not option-less)
-  auto-sync into the watchlist once the availability check settles, so these
-  columns populate without a manual "add to watchlist" click.
-- **Watchlist**: add/remove tickers; stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color
+### Frontend — /options (5 tabs)
+- **Watchlist** (default tab): the one list — Cartera and Watchlist were separate
+  tabs until they merged, since portfolio positions auto-sync into the watchlist
+  anyway and the split showed the same tickers twice.
+  - **The watchlist is the spine**, positions enrich it: one row per watchlist
+    ticker, with the held lots (possibly several brokers) attached. Row building
+    lives in `lib/optionsWatchlistRows.ts` (`buildWatchlistRows`) — pure and unit
+    tested. **Group by ticker, never by lot**: the old Cartera keyed rows on
+    `(isin, broker)` and rendered one ticker twice when held at two brokers.
+  - Each row shows Sentimiento, P/C Ratio and an IV/HV badge ("IV cara" >+5 /
+    "IV barata" <-5 / "IV normal") from the already-loaded snapshot — no per-row
+    fetch. A "Cartera" badge marks held tickers.
+  - Clicking/tapping a row expands `OpcionesTab` inline (same on both
+    breakpoints): AI report on demand, underlying `PriceChart` (spot + near-money
+    strikes), and the expiry navigator (‹ YYYY-MM-DD › n/total) — expanding
+    fetches dates only (`GET /options/expirations/{ticker}`), navigating to a date
+    lazy-loads that expiry's chain (`GET /options/chain/{ticker}?expiration=`),
+    cached client-side. **Keep row actions out of the expansion** — expanding
+    costs those fetches, and removing a row shouldn't.
+  - **Removal is asymmetric on purpose**: held tickers get "Ocultar" (persists the
+    exclusion via `/portfolio/hidden`) because a plain delete is undone by the
+    auto-sync on the next load; only non-held tickers get a straight "Eliminar".
+  - Ordering is held-first then alphabetical, deliberately independent of
+    sentiment/alerts so a cycle landing mid-session can't reshuffle rows.
+  - Stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color.
 - **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW); `macro ✓/✗` alignment tag per alert (Phase 2b, informational)
 - **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown; "Precisión por régimen macro" aligned-vs-counter table (Phase 2b)
 - **Análisis**: calls `GET /options/agent/last-analysis`; parses `## N.` Markdown sections via `parseAnalysisSections()`; renders each section as a Card; shows cycle metadata header (timestamp, tickers, alerts, sentiment)
