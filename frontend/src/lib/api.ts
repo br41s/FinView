@@ -81,6 +81,28 @@ export interface ZcAnalysis {
   price_history: ZcPricePoint[];
 }
 
+export interface TechnicalSignal {
+  id: number;
+  created_at: string;
+  ticker: string;
+  zone_level: number;
+  zone_type: string;
+  zone_strength: number | null;
+  zone_touches: number | null;
+  price_at_signal: number;
+  distance_pct: number;
+  // Which side price is approaching the level from. Derived from price vs level,
+  // not from zone_type, which goes stale once a level flips.
+  approach: "from_below" | "from_above";
+  direction: "BULLISH" | "BEARISH";
+  // null = the LLM couldn't score it (no key, failure, bad answer). NOT a low
+  // probability — render as "sin puntuar", never as 0.
+  break_probability: number | null;
+  rationale: string | null;
+  // true when break_probability cleared the (uncalibrated) alert threshold.
+  alerted: boolean;
+}
+
 export interface OhlcBar {
   date: string;
   // Epoch seconds — present only for intraday bars (interval !== "1d"),
@@ -877,6 +899,9 @@ export const api = {
       fetchJSON<ZcAnalysis>(`/zonas-clave/analysis/${encodeURIComponent(ticker)}`),
 
     allAnalyses: () => fetchJSON<ZcAnalysis[]>("/zonas-clave/analysis"),
+
+    signals: (days = 7) =>
+      fetchJSON<TechnicalSignal[]>(`/zonas-clave/signals${qs({ days })}`),
 
     triggerAnalysis: async (ticker: string) => {
       const headers = await authHeaders();
