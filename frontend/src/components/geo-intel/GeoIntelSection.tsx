@@ -158,7 +158,8 @@ export function GeoIntelSection() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-muted-foreground">
-            Geopolitical & natural events, plotted as financial signals.
+            Oportunidades de inversión y especulación, disparadas por eventos
+            geopolíticos y naturales.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <QuickNav current="/geo-intel" />

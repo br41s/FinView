@@ -663,12 +663,19 @@ zonas_clave_analyzer, tras calcular zonas + indicadores:
 - [ ] Backtest: reutilizar `backtest_service.record_signal()`. Ojo con el gotcha de enums
       (`_outcome_value()`), no comparar contra `.value` directamente.
 
-### Slice 5 — Geo-Intel: mesa de ideas
-- [ ] Más info por señal: rationale, dirección por ticker, régimen macro.
-- [ ] Superficie de backtest (`GeoCheckpoint`, 5 horizontes) + explicación de recomendaciones.
-- [ ] Fundamentales vía yfinance `.info` (best-effort, fallo = se omite la sección).
-- [ ] Botón "Añadir a Zonas Clave" en los tickers recomendados (usa `enable_zonas` del
-      `watchlist_service`, nunca tocar filas hijas directamente).
+### Slice 5 — Ideas: mesa de ideas ✅ (parcial)
+- [x] **La mayor parte ya existía.** El panel ya tenía stats, "Why this was triggered" con
+      la regla + su tesis + confianza, tickers con dirección y precio al disparo, y los 5
+      checkpoints de backtest. Tercera vez en esta serie que lo pedido ya estaba a medias.
+- [x] Fundamentales vía yfinance `.info`: `GET /charts/fundamentals` (caché 6h) +
+      `FundamentalsCard`. Verificado con tickers reales: AAPL 14 campos, SAN.MC 13
+      (los europeos también), inexistente → `{}` sin romper.
+      **Contexto para la tesis, nunca entrada de señal/score/gate** — y la UI lo dice.
+- [x] Botón "Añadir a Zonas Clave" en el ticker expandido. Estado propio en vez de props:
+      el panel re-renderiza en cada poll de 60s y pasar add/busy/error de N tickers sería
+      prop drilling. Va por `/zonas-clave/watchlist` → `enable_zonas`, nunca filas hijas.
+- [x] Subtítulo actualizado — ya no miente: el técnico alimenta la página desde el Slice 4.
+- [ ] **Pendiente**: régimen macro en la página (existe `MacroBadge` en options, reutilizable).
 - [x] **Renombrado → "Ideas" (CEO, 2026-07-16).** Solo la etiqueta de cara al usuario:
       [QuickNav.tsx:17](frontend/src/components/QuickNav.tsx:17) y
       [GeoIntelSection.tsx:137](frontend/src/components/geo-intel/GeoIntelSection.tsx:137).

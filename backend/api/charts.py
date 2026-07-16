@@ -716,3 +716,79 @@ def price_history(
     except Exception:
         logger.exception("price_history failed for %s (period=%s interval=%s)", t, period, interval)
         return []
+
+
+# ── Fundamentals ─────────────────────────────────────────────────────
+
+# Fundamentals move on earnings, not intraday, so a long TTL costs nothing and
+# keeps a signal panel with several tickers from hammering yfinance.
+_FUNDAMENTALS_CACHE: dict[str, tuple[dict, float]] = {}
+_FUNDAMENTALS_TTL = 6 * 3600.0  # seconds
+
+# yfinance `.info` keys → our field names. Deliberately a small set: these are
+# context for a thesis, not a screener. Anything missing simply isn't rendered.
+_FUNDAMENTAL_FIELDS: list[tuple[str, str]] = [
+    ("sector", "sector"),
+    ("industry", "industry"),
+    ("marketCap", "market_cap"),
+    ("trailingPE", "trailing_pe"),
+    ("forwardPE", "forward_pe"),
+    ("priceToBook", "price_to_book"),
+    ("dividendYield", "dividend_yield"),
+    ("profitMargins", "profit_margins"),
+    ("debtToEquity", "debt_to_equity"),
+    ("returnOnEquity", "return_on_equity"),
+    ("revenueGrowth", "revenue_growth"),
+    ("beta", "beta"),
+    ("currency", "currency"),
+    ("longName", "name"),
+]
+
+
+@router.get("/fundamentals")
+def fundamentals(ticker: str, user: CurrentUser):
+    """Fundamental snapshot for a ticker (yfinance `.info`), for the Ideas desk.
+
+    Read-only and best-effort: any failure, unknown ticker, or field yfinance
+    doesn't carry returns `{}` / omits the key, and the caller hides the section.
+
+    `.info` has no stable contract — it's scraped, its keys come and go, and it
+    can return a mostly-empty dict for perfectly valid tickers (non-US listings
+    especially). Every field is therefore optional and nothing here is load-
+    bearing: this is colour for a thesis a human is reading, never an input to a
+    signal, a score, or a gate.
+    """
+    import time
+
+    import yfinance as yf
+
+    t = ticker.strip().upper()
+    if not t:
+        return {}
+
+    cached = _FUNDAMENTALS_CACHE.get(t)
+    if cached and time.time() - cached[1] < _FUNDAMENTALS_TTL:
+        return cached[0]
+
+    try:
+        info = yf.Ticker(t).info or {}
+        if not isinstance(info, dict):
+            return {}
+        out: dict = {}
+        for src, dest in _FUNDAMENTAL_FIELDS:
+            value = info.get(src)
+            if value is None or value == "":
+                continue
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                out[dest] = float(value)
+            elif isinstance(value, str):
+                out[dest] = value
+        # An info dict with nothing usable in it is a miss, not a result — don't
+        # cache it as if the ticker had no fundamentals.
+        if not out:
+            return {}
+        _FUNDAMENTALS_CACHE[t] = (out, time.time())
+        return out
+    except Exception:
+        logger.exception("fundamentals failed for %s", t)
+        return {}

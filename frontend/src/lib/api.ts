@@ -81,6 +81,29 @@ export interface ZcAnalysis {
   price_history: ZcPricePoint[];
 }
 
+/**
+ * Fundamental snapshot from yfinance `.info`. Every field is optional: `.info`
+ * is scraped, has no stable contract, and returns a mostly-empty dict for plenty
+ * of valid tickers. An empty object means "nothing to show", not "bad ticker" —
+ * render nothing rather than zeros.
+ */
+export interface Fundamentals {
+  name?: string;
+  sector?: string;
+  industry?: string;
+  currency?: string;
+  market_cap?: number;
+  trailing_pe?: number;
+  forward_pe?: number;
+  price_to_book?: number;
+  dividend_yield?: number;
+  profit_margins?: number;
+  debt_to_equity?: number;
+  return_on_equity?: number;
+  revenue_growth?: number;
+  beta?: number;
+}
+
 export interface TechnicalSignal {
   id: number;
   created_at: string;
@@ -689,6 +712,8 @@ export const api = {
       fetchCached("/charts/dividends-by-company-yearly"),
     priceHistory: (ticker: string, period = "2y", interval = "1d") =>
       fetchJSON<OhlcBar[]>(`/charts/price-history${qs({ ticker, period, interval })}`),
+    fundamentals: (ticker: string) =>
+      fetchJSON<Fundamentals>(`/charts/fundamentals${qs({ ticker })}`),
   },
 
   // Options monitor
