@@ -92,7 +92,7 @@ frontend/
 
 ---
 
-## Watchlist unificada — followed_instruments (Fase B, PR #142)
+## Watchlist unificada — followed_instruments (Fase B, PRs #142 · #145 · #146)
 
 One canonical row per (user, ticker) in `followed_instruments`, with **opt-in
 per-section lenses** — membership has per-section cost, so nothing auto-subscribes:
@@ -104,12 +104,21 @@ per-section lenses** — membership has per-section cost, so nothing auto-subscr
   through `services/watchlist_service.py` (`enable_zonas`/`disable_zonas`).
 - A row with no lens on is pruned. Removing a ticker from one section only turns
   off that lens.
-- Legacy `watchlist_items` is migrated (MOVED, delete-on-copy) by a one-off
-  lifespan migration guarded on the canonical table being empty; wrapped in
-  try/except so concurrent boots / transient DB errors never kill the instance.
-  The empty legacy table stays until B3 (drop + maybe re-point analyses FK).
-- API response shapes are unchanged — the frontend doesn't know about lenses yet
-  (cross-section lens-toggle UI = B3 candidate).
+- Legacy `watchlist_items` is GONE (B3, PR #145): no ORM model; the one-off
+  lifespan migration reads any remaining rows via raw SQL and drops the table
+  (stranded rows from an old revision keep it + warn). Wrapped in try/except so
+  concurrent boots / transient DB errors never kill the instance. Re-pointing
+  the analyses FK was evaluated and rejected (2026-07-16) — don't revisit
+  unless the synced child produces a real bug.
+- API response shapes are unchanged — sections talk to their own endpoints.
+- **Cross-section lens toggles (D2-A, PR #146)**: the options watchlist has a
+  "Técnico" chip column (toggles the zonas lens; enabling fires the S/R
+  analysis, exactly like adding from /zonas-clave) and each zonas list row has
+  an Activity toggle for the options lens. Frontend-only — both directions ride
+  the per-section endpoints; lens state loads best-effort on mount and is
+  re-fetched after each toggle. Known interaction: the options auto-sync
+  re-adds held positions on the next /options load, so for portfolio tickers
+  the definitive off-switch is "Ocultar del monitor" in Cartera.
 
 ---
 
