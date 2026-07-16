@@ -1,25 +1,31 @@
 """Zonas Clave API — watchlist CRUD, analysis retrieval, manual trigger, scheduler control."""
 
+import hmac
 import json
+import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
+    TechnicalSignalOut,
     ZcZoneOut,
     ZonasClaveAnalysisOut,
     ZonasClaveSchedulerStatus,
     ZonasClaveWatchlistItemIn,
     ZonasClaveWatchlistItemOut,
 )
+from backend.config import settings
 from backend.database import DbSession
-from backend.models import ZonasClaveAnalysis, ZonasClaveWatchlistItem
+from backend.models import TechnicalSignal, ZonasClaveAnalysis, ZonasClaveWatchlistItem
 from backend.services import watchlist_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/zonas-clave", tags=["zonas-clave"])
 
@@ -257,6 +263,80 @@ def trigger_all(user: CurrentUser):
         target=run_analysis_for_user, args=[user.id], daemon=True
     ).start()
     return {"status": "started"}
+
+
+@router.post("/cron", include_in_schema=False)
+def cron_run(request: Request, db: DbSession):
+    """External-cron entry (Cloud Scheduler / any cron): one analysis per user.
+
+    Third instance of the same rule as /api/geo/cron and /api/options/agent/cron:
+    the in-process APScheduler dies whenever Cloud Run scales to zero, so prod
+    periodicity comes from an external scheduler. Auth is the shared secret
+    (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables the endpoint. Runs
+    synchronously so the instance stays alive for the work.
+
+    This only started mattering once the technical analysis began emitting
+    signals — before that a missed cycle cost nothing, since nobody was waiting
+    on the output.
+    """
+    secret = settings.cron_secret
+    provided = request.headers.get("x-cron-key", "")
+    if not secret or not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from backend.models import User
+    from backend.services.zonas_clave_analyzer import run_analysis_for_user
+
+    user_ids = [uid for (uid,) in db.query(User.id).all()]
+    analyzed = signals = alerts = 0
+    for uid in user_ids:
+        try:
+            result = run_analysis_for_user(uid)
+        except Exception:
+            # run_analysis_for_user handles per-ticker failures itself; this
+            # guards the cycle so one user's blow-up doesn't skip the rest.
+            logger.exception("zonas cron cycle failed for user %d", uid)
+            continue
+        analyzed += result.get("analyzed", 0)
+        signals += result.get("signals", 0)
+        alerts += result.get("alerts", 0)
+
+    return {
+        "status": "done",
+        "users": len(user_ids),
+        "analyzed": analyzed,
+        "signals": signals,
+        "alerts": alerts,
+    }
+
+
+# ── Technical signals ────────────────────────────────────────────────
+
+
+@router.get("/signals", response_model=list[TechnicalSignalOut])
+def list_technical_signals(
+    db: DbSession,
+    user: CurrentUser,
+    ticker: str | None = None,
+    alerted_only: bool = False,
+    days: int = 7,
+    limit: int = 100,
+):
+    """Technical signals for the user, newest first.
+
+    Defaults to everything scored in the window, not just alerting rows:
+    `alerted_only=true` is what the Monitor asks for, while the unfiltered view
+    is what makes the threshold auditable (see TechnicalSignal's docstring).
+    """
+    q = db.query(TechnicalSignal).filter(
+        TechnicalSignal.user_id == user.id,
+        TechnicalSignal.created_at >= datetime.now(timezone.utc) - timedelta(days=days),
+    )
+    if ticker:
+        q = q.filter(TechnicalSignal.ticker == ticker.upper())
+    if alerted_only:
+        q = q.filter(TechnicalSignal.alerted.is_(True))
+    return q.order_by(TechnicalSignal.created_at.desc()).limit(limit).all()
 
 
 # ── Scheduler control ────────────────────────────────────────────────

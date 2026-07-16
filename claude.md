@@ -124,13 +124,75 @@ per-section lenses** — membership has per-section cost, so nothing auto-subscr
 
 ## Zonas Clave — architecture
 
-Pure technical analysis engine for support/resistance detection. No AI calls.
+Support/resistance engine. The **analysis** is pure TA with no AI
+(`zonas_clave_analyzer.py` must stay that way); the **signal emission** built on
+top of it does call an LLM — see "Technical signals" below.
+
+### Technical signals (Slice 4) — the trigger layer
+
+Zonas Clave is the trigger layer of the signal architecture: technical proximity
+fires, Options Monitor executes with PUT/CALL, Ideas carries the thesis.
+
+```
+zones (zonas_clave_analyzer)
+  → zone_proximity.detect_proximity_candidates   deterministic, free
+  → zone_scorer.score_break_probability          LLM, candidates only
+  → TechnicalSignal rows                          ALL scored candidates
+  → alerted=True + BacktestSignal                 only > ALERT_THRESHOLD (70)
+```
+
+- **The gate is what bounds token spend.** `PROXIMITY_THRESHOLD = 0.02` (2%);
+  its floor is `_CLUSTER_THRESHOLD` (1.5%) — closer than that and you're *inside*
+  the zone, not near it. Most tickers most days produce zero candidates, so the
+  LLM is never called.
+- **Break direction comes from which side price is on, NOT from `zone_type`.**
+  A level built from pivot highs is labelled "resistance" forever; once price
+  trades above it, it acts as support and the pending move is a breakdown.
+  Trusting the label inverts the direction on every flipped level.
+- **The 70 cut is uncalibrated and should be described that way.** An LLM's
+  "73%" is an opinion with a number attached. That's why *every* scored
+  candidate is persisted, sub-threshold included — it's the only way to ever
+  check whether >70 breaks more often than <70 and move the cut on evidence.
+  Same reasoning as Phase 2b regime instrumentation. `GET /zonas-clave/signals`
+  returns everything by default; `alerted_only=true` is the Monitor's view.
+- **`break_probability = NULL` means "no score"** (no API key, LLM failure,
+  unparseable answer). Never coerce it to 0 — that reads as "certainly won't
+  break" in any later calibration, and it must not alert either.
+- Scores are cached per (ticker, level rounded to 2dp, UTC day); proximity lasts
+  days, so without it every cycle re-pays the same call. `_already_open()` dedups
+  the *rows* separately, since a cache miss (restart, TTL) would still duplicate.
+- Signal emission shares the analysis transaction and never raises: the zones are
+  the product, signalling is a bonus on top.
+- Technical signals ride `BacktestSignal` as `signal_type="ZONE_BREAK"`, bypassing
+  `backtest_service.record_signal()` — that derives direction by keyword-matching
+  the message and has no ZONE_BREAK case. Direction is already known exactly here.
+
+### Scheduling — prod runs on external cron, NOT APScheduler
+Third instance of the same rule as geo and options: `zonas_clave_scheduler.py`
+(APScheduler, the UI's start/stop) dies on scale-to-zero with `--min-instances=0`.
+**Prod periodicity = Cloud Scheduler → `POST /api/zonas-clave/cron`**, same
+`X-Cron-Key == FINVIEW_CRON_SECRET` shared secret, synchronous per user.
+This was latent until Slice 4: before the analysis emitted signals, a missed
+cycle cost nothing because nobody was waiting on the output.
 
 ### Pipeline per ticker
-`fetch_history (10y daily) → detect_pivots → cluster_pivots → compute_zone_strength → RSI → MACD → MAs → trend_bias → store ZonasClaveAnalysis`
+`fetch_history (20y daily) → zone_window (trailing 10y) → detect_pivots → cluster_pivots → compute_zone_strength → RSI → MACD → MAs → trend_bias → store ZonasClaveAnalysis → emit technical signals`
 
 ### Key constants (zonas_clave_analyzer.py)
-- `_HISTORY_PERIOD = "10y"` — yfinance download window
+- **Two windows, on purpose — don't collapse them into one constant:**
+  - `_HISTORY_PERIOD = "20y"` — download window. Exists for `price_history`, i.e. the
+    chart's MAX scope (a2bc58e also lowered lightweight-charts' `minBarSpacing` so
+    decades actually render). "max" was tried and reverted: split-adjusted 1980s
+    penny prices.
+  - `_ZONE_LOOKBACK_YEARS = 10` — pivot detection + the median volume that scores
+    zones (`zone_window()`). A level last touched 15 years ago isn't support today,
+    and older levels accumulate touches purely from having had more calendar time.
+    Charting wants all the history it can render; zones want only live structure.
+  - Trimming the volume median matters as much as trimming the pivots: it's the
+    denominator of `vol_score`, so measuring it over 20y scored current zones
+    against a decade-old volume regime (SAN.MC: 62.5M over 20y vs 43.5M over 10y).
+  - `zone_window()` falls back to the full frame when trimming would leave fewer
+    than `_MIN_BARS` (thin tickers, recent IPOs) — stale levels beat no levels.
 - `_PIVOT_WINDOW = 10` — bars each side for pivot detection
 - `_CLUSTER_THRESHOLD = 0.015` — 1.5% merge radius for zone clustering
 - `_MAX_ZONES = 8` — top zones returned (scored by touches × volume)
@@ -272,8 +334,9 @@ can be reclaimed after the response.
   failures as successes here.
 - **Without this cron the Monitor tab reads empty**: `/options/alerts` only returns the last 7
   days, so with no cycles running the UI has nothing to show.
-- `zonas_clave_scheduler.py` still has the un-fixed version of this defect. It doesn't bite yet
-  because the technical analysis emits no signals; it will the moment it does.
+- All three pipelines now have a cron entry (geo, options, zonas-clave). If you add a fourth
+  scheduled thing, it needs one too — APScheduler alone is a dev convenience, never the prod
+  mechanism.
 
 ### Claude analysis prompt
 Agent persona: *VolatilityEdge* (quant analyst, senior). Spanish only. Structured as exactly 7 sections:
@@ -438,7 +501,9 @@ Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KE
 Notifications: `FINVIEW_NTFY_TOPIC`, `FINVIEW_TELEGRAM_BOT_TOKEN/CHAT_ID`,
 `FINVIEW_NOTIFY_EMAIL_FROM/TO/PASSWORD` — unset = channel silently no-ops.
 Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header). One secret, shared by
-both cron entries — `/api/geo/cron` and `/api/options/agent/cron`.
+all three cron entries — `/api/geo/cron`, `/api/options/agent/cron` and
+`/api/zonas-clave/cron`. Rotating it means updating Cloud Run **first**, then every job:
+miss one and it 403s silently.
 
 ---
 
