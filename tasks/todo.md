@@ -553,12 +553,29 @@ Options **no tiene endpoint de cron**; geo sí ([geo.py:161](backend/api/geo.py:
 - [x] Verificado: build verde (50 páginas), cero referencias huérfanas a `OpcionesTab` en zonas.
       **No verificado visualmente** — `/zonas-clave` está tras login y no introduzco credenciales.
 
-### Slice 2 — Options Monitor: fusionar Cartera + Watchlist
-- [ ] Una sola lista. Las tarjetas llevan Sentimiento, P/C Ratio e IV/HV (ya en el snapshot cargado).
-- [ ] Expandir tarjeta → `OpcionesTab` (gráfica + cadena + navegador de vencimientos).
-- [ ] Eliminar tab Cartera. El auto-sync de posiciones deja de ser interacción rara y pasa
-      a ser el comportamiento deseado; "Ocultar del monitor" es el único off para posiciones.
-- [ ] Riesgo: `options/page.tsx` son 2180 líneas. Extraer la lista a componente propio.
+### Slice 2 — Options Monitor: fusionar Cartera + Watchlist ✅
+- [x] Una sola lista guiada por la watchlist (las posiciones se auto-sincronizan → es
+      superset de lo poseído), enriquecida con lotes + snapshot. Tab Cartera eliminada,
+      6 tabs → 5. Default tab: `watchlist`.
+- [x] Expandir fila → `OpcionesTab` (gráfica + cadena + navegador de vencimientos).
+- [x] **Bug arreglado de paso**: la Cartera vieja iteraba `positions` con key
+      `(isin, broker)` → un ticker en dos brókeres = **dos filas idénticas**. Con FIFO
+      cross-broker esto pasaba de verdad. Ahora se agrupa por ticker.
+- [x] **Borrado asimétrico**: los tickers en cartera solo tienen "Ocultar" (el borrado
+      normal lo deshace el auto-sync al recargar); los no-poseídos tienen "Eliminar".
+      Resuelve la interacción rara que documentaba claude.md.
+- [x] Acciones fuera de la expansión (expandir cuesta fetch de vencimientos+cadena;
+      borrar una fila no debe costar red).
+- [x] Deep-link `?ticker=` re-cableado a la watchlist (antes solo miraba posiciones →
+      un ticker no-poseído enlazado desde Ideas no se expandía).
+- [x] **Extracción: reversada parcialmente.** El plan decía "extraer la lista a componente".
+      Habría necesitado ~15 props = props drilling, peor que inline. En su lugar se extrajo
+      solo la lógica **pura** a [lib/optionsWatchlistRows.ts](frontend/src/lib/optionsWatchlistRows.ts)
+      — motivo real: testabilidad. 9 tests nuevos (18 total en frontend).
+- [x] Verificado: build verde (50 páginas), 18/18 tests, typecheck limpio.
+      **No verificado visualmente** — `/options` está tras login.
+- [ ] Pendiente: `options/page.tsx` sigue en ~1990 líneas. Si molesta, la extracción real
+      es un hook/contexto, no un componente con 15 props. Commit aparte.
 
 ### Slice 3 — Monitor tab = hub de alertas
 - [ ] Alertas del ciclo con chips de ticker enlazados a la sección relevante (Zonas Clave / Geo-Intel).
