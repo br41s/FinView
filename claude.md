@@ -222,10 +222,15 @@ shared panel:
 Each page shows only the facet(s) relevant to it — Options doesn't surface
 Fiscal/Dividendos, Zonas Clave doesn't surface Precio/Fiscal, etc. — so seeing
 every facet of one ticker still means visiting Cartera/Options/Zonas Clave
-individually; there's no more single cross-section hub. Geo-Intel's expanded
-Precio card links out to `/options?ticker=` and `/zonas-clave?ticker=` (both
-pages read `?ticker=` for deep-linking) since it has no native Opciones/Zonas
-view of its own.
+individually; there's no more single cross-section hub. Ideas' expanded
+Precio card links out to `/options?ticker=` and `/zonas-clave?ticker=` since it
+has no native Opciones/Zonas view of its own, and the Options Monitor links back
+the other way.
+
+**All three pages read `?ticker=`**, so cross-section links always land focused:
+`/options` expands that watchlist row, `/zonas-clave` selects the ticker, and
+`/geo-intel` selects the newest signal affecting it. An unmatched ticker is a
+silent no-op everywhere (URLs go stale, and a thrown error would be worse).
 
 ### Future `/ticker/[symbol]` page (still straightforward)
 Nothing above prevents assembling `OpcionesTab`/`ZonasTab`/`FiscalTab`/
@@ -317,7 +322,17 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
   - Ordering is held-first then alphabetical, deliberately independent of
     sentiment/alerts so a cycle landing mid-session can't reshuffle rows.
   - Stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color.
-- **Alertas**: all cycle alerts filtered by severity (HIGH/MEDIUM/LOW); `macro ✓/✗` alignment tag per alert (Phase 2b, informational)
+- **Monitor**: the alert hub. All cycle alerts + a Smart Money (unusual activity)
+  view; `macro ✓/✗` alignment tag per alert (Phase 2b, informational).
+  - Each alert carries **jump-off chips**: `Opciones` (expands `OpcionesTab` inline,
+    same page), `Técnico` (→ `/zonas-clave?ticker=`), and `Ideas`
+    (→ `/geo-intel?ticker=`) — the last one **only when that ticker has an active
+    geo signal**, since a link to an empty page is worse than no link. The options
+    page fetches `/geo/signals?status=active` best-effort just to know which
+    tickers qualify: navigation metadata, no thesis content crosses over.
+  - Smart Money rows deliberately have no chips — they're per-contract
+    (ticker+strike+expiry), so several rows share a ticker and chips would be noise.
+  - **This tab reads empty without the Cloud Scheduler cron** (see Scheduling above).
 - **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown; "Precisión por régimen macro" aligned-vs-counter table (Phase 2b)
 - **Análisis**: calls `GET /options/agent/last-analysis`; parses `## N.` Markdown sections via `parseAnalysisSections()`; renders each section as a Card; shows cycle metadata header (timestamp, tickers, alerts, sentiment)
 - **Agente**: scheduler status, cycle metrics, chat input → `POST /options/agent/chat`
