@@ -496,14 +496,36 @@ disables the endpoint). The endpoint runs one cycle per user synchronously so Cl
 keeps CPU until it finishes. Don't convert it to fire-and-forget threads — the instance
 can be reclaimed after the response.
 
-### Frontend — /geo-intel
+### Frontend — /geo-intel (labelled "Ideas")
+**The thesis desk**, not an event feed: geopolitics is what seeds it today, but
+the page's job is the investment/speculation case. Route, table and API prefix
+keep the `geo` name — only the user-facing label changed (renaming the route
+breaks deep links; renaming tables is DDL in prod without Alembic).
+
 Map (react-simple-maps) + signal feed + detail panel. Header: "Run cycle" (manual,
 polls until signals land), "Monitor" toggle (in-process scheduler — dev convenience,
 not the prod mechanism), Active/Tracked/Regions/Last-signal stats. Signals silently
-re-fetch every 60s. In the detail panel (`components/geo-intel/SignalPanel.tsx`),
-tapping an "Affected tickers" chip expands `PrecioTab` inline below it, plus two
-links out to `/options?ticker=` and `/zonas-clave?ticker=` — Geo-Intel has no
-native Opciones/Zonas view of its own.
+re-fetch every 60s. Reads `?ticker=` to select the newest signal affecting it.
+
+In the detail panel (`components/geo-intel/SignalPanel.tsx`): stats
+(importance/confidence/risk/direction), **"Why this was triggered"** (the matched
+rules with their thesis and confidence), affected tickers with per-ticker
+direction, and the 5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
+expands `PrecioTab` + `FundamentalsCard` inline, with **"Añadir a Zonas Clave"**
+(one click to the technical desk — the panel re-renders on every poll, so the
+button owns its own state rather than taking props) and links out to
+`/zonas-clave?ticker=` and `/options?ticker=`.
+
+**No options content here** — links are navigation, not content.
+
+### Fundamentals — `GET /charts/fundamentals?ticker=`
+yfinance `.info`, cached 6h (fundamentals move on earnings, not intraday).
+**Colour for a thesis a human reads — never an input to a signal, score or gate**,
+and the UI says so. `.info` is scraped with no stable contract and returns a
+mostly-empty dict for plenty of valid tickers, so every field is optional, an
+empty result means "nothing to show" (not "bad ticker"), and the card hides itself
+rather than rendering a grid of dashes. An all-empty result is not cached — that's
+a miss, not a result.
 
 ### Env keys (Cloud Run)
 Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KEY`,

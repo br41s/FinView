@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, Target } from "lucide-react";
 import type { GeoSignal } from "@/lib/geo";
+import { api } from "@/lib/api";
 import { PrecioTab } from "@/components/instrument/PrecioTab";
+import { FundamentalsCard } from "./FundamentalsCard";
 import { ListSkeleton } from "./MapStates";
 
 const DIR_COLORS = {
@@ -10,6 +12,74 @@ const DIR_COLORS = {
   bearish: "#9B3D2C",
   neutral: "#9A6B1F",
 } as const;
+
+/**
+ * Sends a ticker to the technical desk. Ideas surfaces the thesis; Zonas Clave
+ * is where you check whether the chart agrees — so a recommended ticker needs a
+ * one-click way over, not just a link that leaves you to add it by hand.
+ *
+ * Owns its own state instead of taking props: the panel re-renders on every
+ * signal selection and poll, and threading add/busy/error for N tickers through
+ * it would be prop drilling. `enable_zonas` on the backend is idempotent-ish
+ * (409 when already followed), so a double click is harmless.
+ */
+function AddToZonasButton({ symbol }: { symbol: string }) {
+  const [state, setState] = useState<"idle" | "checking" | "busy" | "added" | "error">("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+    setState("checking");
+    api.zonasClav
+      .watchlist()
+      .then((items) => {
+        if (cancelled) return;
+        const already = items.some((i) => i.ticker.toUpperCase() === symbol.toUpperCase());
+        setState(already ? "added" : "idle");
+      })
+      // Can't tell whether it's already there — offer the button anyway. The
+      // backend 409s on a duplicate, which is a better failure than hiding it.
+      .catch(() => {
+        if (!cancelled) setState("idle");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
+
+  const add = useCallback(async () => {
+    setState("busy");
+    try {
+      await api.zonasClav.addTicker(symbol);
+      setState("added");
+    } catch {
+      setState("error");
+    }
+  }, [symbol]);
+
+  if (state === "checking") return null;
+
+  if (state === "added") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-[rgba(31,27,22,0.45)]">
+        <Check className="h-3 w-3" />
+        En Zonas Clave
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={add}
+      disabled={state === "busy"}
+      title="Añadir a Zonas Clave y lanzar el análisis de soportes/resistencias"
+      className="inline-flex items-center gap-1 text-[11px] text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16] disabled:opacity-50"
+    >
+      <Target className="h-3 w-3" />
+      {state === "busy" ? "Añadiendo…" : state === "error" ? "Error — reintentar" : "Añadir a Zonas Clave"}
+    </button>
+  );
+}
 
 function relTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -273,18 +343,20 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           {expandedSymbol && (
             <div className="mt-3 rounded-md border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] p-3">
               <PrecioTab symbol={expandedSymbol} />
-              <div className="mt-2 flex gap-3 text-[11px]">
-                <Link
-                  href={`/options?ticker=${encodeURIComponent(expandedSymbol)}`}
-                  className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
-                >
-                  Ver en Opciones →
-                </Link>
+              <FundamentalsCard symbol={expandedSymbol} />
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[rgba(31,27,22,0.12)] pt-3 text-[11px]">
+                <AddToZonasButton symbol={expandedSymbol} />
                 <Link
                   href={`/zonas-clave?ticker=${encodeURIComponent(expandedSymbol)}`}
                   className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
                 >
                   Ver en Zonas Clave →
+                </Link>
+                <Link
+                  href={`/options?ticker=${encodeURIComponent(expandedSymbol)}`}
+                  className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
+                >
+                  Ver en Opciones →
                 </Link>
               </div>
             </div>
