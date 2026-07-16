@@ -385,8 +385,18 @@ Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `c
   - Ordering is held-first then alphabetical, deliberately independent of
     sentiment/alerts so a cycle landing mid-session can't reshuffle rows.
   - Stats bar shows aggregated P/C ratio → Alcista/Neutral/Bajista with color.
-- **Monitor**: the alert hub. All cycle alerts + a Smart Money (unusual activity)
-  view; `macro ✓/✗` alignment tag per alert (Phase 2b, informational).
+- **Monitor**: the alert hub. Three views behind one filter row — **Alertas**
+  (options cycle alerts), **Smart Money** (unusual activity), **Técnico**
+  (zone-break signals from Zonas Clave, the trigger layer). `macro ✓/✗` alignment
+  tag per alert (Phase 2b, informational).
+  - The Técnico view shows **every scored candidate, not just the alerting ones**:
+    >70 is rare, so an alerted-only view would usually read empty (the exact
+    problem the cron fixed), and showing near-misses beside their scores makes the
+    threshold legible instead of magic. Alerting first, then by score; unscored
+    (`break_probability = null`) sorts last and renders as "sin puntuar" — never
+    as 0%, which would read as "certainly won't break".
+  - The view carries a standing caveat that the probability is model-estimated and
+    uncalibrated. Keep it until the backtest says otherwise.
   - Each alert carries **jump-off chips**: `Opciones` (expands `OpcionesTab` inline,
     same page), `Técnico` (→ `/zonas-clave?ticker=`), and `Ideas`
     (→ `/geo-intel?ticker=`) — the last one **only when that ticker has an active

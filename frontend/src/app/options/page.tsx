@@ -39,7 +39,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { api } from "@/lib/api";
+import { api, type TechnicalSignal } from "@/lib/api";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
 import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
 import {
@@ -266,7 +266,8 @@ export default function OptionsPage() {
   const [loadingBacktest, setLoadingBacktest] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
-  const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual">("alerts");
+  const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual" | "technical">("alerts");
+  const [techSignals, setTechSignals] = useState<TechnicalSignal[]>([]);
   const [activeTab, setActiveTab] = useState("watchlist");
   // Mobile-only: tapping a Posiciones card expands inline (like Cartera)
   // instead of opening the drawer; the drawer stays one tap away via its own
@@ -307,6 +308,16 @@ export default function OptionsPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Technical (zone-break) signals. These come from Zonas Clave, the trigger
+  // layer — they belong in the Monitor because acting on a trigger is what this
+  // page is for. Best-effort: the options alerts stand on their own without them.
+  useEffect(() => {
+    api.zonasClav
+      .signals()
+      .then(setTechSignals)
+      .catch(() => {});
+  }, [retryOptions]);
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
@@ -666,6 +677,18 @@ export default function OptionsPage() {
 
   const unreadAlerts = alerts.filter((a) => !a.acknowledged);
   const watchlistTickers = new Set(watchlist.map((w) => w.ticker));
+  const techAlerting = techSignals.filter((s) => s.alerted).length;
+
+  // Every scored candidate is shown, not just the alerting ones. Two reasons:
+  // >70 is rare, so an alerted-only view would usually read empty (the exact
+  // problem the cron just fixed); and showing the near-misses next to their
+  // scores makes the threshold legible instead of magic. Alerting first, then
+  // by score — an unscored signal (null) sorts last, since it's the least
+  // actionable thing here, not the safest.
+  const sortedTechSignals = [...techSignals].sort((a, b) => {
+    if (a.alerted !== b.alerted) return a.alerted ? -1 : 1;
+    return (b.break_probability ?? -1) - (a.break_probability ?? -1);
+  });
 
   // Global P/C sentiment — average put_call_ratio_volume across all latest snapshots
   const globalPC = (() => {
@@ -1295,6 +1318,19 @@ export default function OptionsPage() {
                       <span className="ml-1.5 text-xs opacity-70">{unusual.length}</span>
                     )}
                   </Button>
+                  <Button
+                    variant={monitorFilter === "technical" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMonitorFilter("technical")}
+                  >
+                    <Target className="mr-1.5 h-3.5 w-3.5" />
+                    Técnico
+                    {techAlerting > 0 && (
+                      <Badge variant="destructive" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                        {techAlerting}
+                      </Badge>
+                    )}
+                  </Button>
                 </div>
                 {monitorFilter === "alerts" && (
                   <Button
@@ -1456,6 +1492,122 @@ export default function OptionsPage() {
                             ))}
                           </TableBody>
                         </Table>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {monitorFilter === "technical" && (
+                <Card>
+                  <CardContent className="p-0">
+                    {sortedTechSignals.length === 0 ? (
+                      <p className="p-4 text-center text-sm text-muted-foreground">
+                        Sin señales técnicas. Se emiten cuando el precio de un ticker de
+                        Zonas Clave se acerca a menos del 2% de una zona.
+                      </p>
+                    ) : (
+                      <>
+                        {/* Mobile */}
+                        <div className="divide-y sm:hidden">
+                          {sortedTechSignals.map((s) => {
+                            const isExpanded = expandedOptionsTicker === s.ticker;
+                            return (
+                              <div key={s.id} className="flex flex-col gap-1.5 p-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium">{s.ticker}</span>
+                                  <DirBadge direction={s.direction} />
+                                  <BreakProbability signal={s} />
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    {new Date(s.created_at).toLocaleTimeString("es-ES", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  A {(s.distance_pct * 100).toFixed(2)}% de la zona{" "}
+                                  <strong className="text-foreground">{fmt(s.zone_level)}</strong>{" "}
+                                  ({s.approach === "from_below" ? "por debajo" : "por encima"})
+                                  {s.zone_touches != null && ` · ${s.zone_touches} toques`}
+                                </p>
+                                {s.rationale && (
+                                  <p className="text-xs italic text-muted-foreground">
+                                    {s.rationale}
+                                  </p>
+                                )}
+                                {renderTickerLinks(s.ticker, isExpanded)}
+                                {isExpanded && (
+                                  <div className="mt-2 border-t pt-2">
+                                    <OpcionesTab symbol={s.ticker} />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Desktop */}
+                        <Table className="hidden sm:table">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Hora</TableHead>
+                              <TableHead>Ticker</TableHead>
+                              <TableHead>Dirección</TableHead>
+                              <TableHead className="text-right">Zona</TableHead>
+                              <TableHead className="text-right">Distancia</TableHead>
+                              <TableHead className="text-right">P. ruptura</TableHead>
+                              <TableHead>Razón</TableHead>
+                              <TableHead>Ver en</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {sortedTechSignals.map((s) => {
+                              const isExpanded = expandedOptionsTicker === s.ticker;
+                              return (
+                                <Fragment key={s.id}>
+                                  <TableRow className={s.alerted ? "" : "opacity-60"}>
+                                    <TableCell className="text-xs">
+                                      {new Date(s.created_at).toLocaleString("es-ES")}
+                                    </TableCell>
+                                    <TableCell className="font-medium">{s.ticker}</TableCell>
+                                    <TableCell>
+                                      <DirBadge direction={s.direction} />
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                      {fmt(s.zone_level)}
+                                      <span className="ml-1 text-xs text-muted-foreground">
+                                        {s.approach === "from_below" ? "↑" : "↓"}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                      {(s.distance_pct * 100).toFixed(2)}%
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <BreakProbability signal={s} />
+                                    </TableCell>
+                                    <TableCell className="max-w-[22rem] text-xs text-muted-foreground">
+                                      {s.rationale || "—"}
+                                    </TableCell>
+                                    <TableCell>{renderTickerLinks(s.ticker, isExpanded)}</TableCell>
+                                  </TableRow>
+                                  {isExpanded && (
+                                    <TableRow>
+                                      <TableCell colSpan={8} className="bg-muted/30 p-4">
+                                        <OpcionesTab symbol={s.ticker} />
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                        <p className="border-t p-3 text-xs text-muted-foreground">
+                          Se muestran todos los candidatos puntuados, no solo los que alertan.
+                          La probabilidad la estima un modelo de lenguaje y{" "}
+                          <strong>no está calibrada</strong>: el corte en 70% es provisional
+                          hasta que el backtest diga si acierta.
+                        </p>
                       </>
                     )}
                   </CardContent>
@@ -1972,6 +2124,52 @@ function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {
 }
 
 /** Macro-regime alignment tag for an alert (Phase 2b, informational only). */
+function DirBadge({ direction }: { direction: "BULLISH" | "BEARISH" }) {
+  const bullish = direction === "BULLISH";
+  return (
+    <Badge
+      variant="outline"
+      className={`text-xs ${
+        bullish
+          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600"
+          : "border-red-500/20 bg-red-500/10 text-red-600"
+      }`}
+      title={
+        bullish
+          ? "El precio se acerca a la zona por debajo: romperla sería al alza"
+          : "El precio se acerca a la zona por encima: romperla sería a la baja"
+      }
+    >
+      {bullish ? "↑ Alcista" : "↓ Bajista"}
+    </Badge>
+  );
+}
+
+function BreakProbability({ signal }: { signal: TechnicalSignal }) {
+  // null means the model couldn't score it — never render that as 0%, which
+  // would read as "certainly won't break" rather than "we don't know".
+  if (signal.break_probability == null) {
+    return (
+      <Badge variant="outline" className="text-xs text-muted-foreground" title="El modelo no pudo puntuar esta señal">
+        sin puntuar
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant={signal.alerted ? "destructive" : "outline"}
+      className="text-xs tabular-nums"
+      title={
+        signal.alerted
+          ? "Supera el umbral de alerta (70%), que es provisional y no está calibrado"
+          : "Por debajo del umbral de alerta (70%). Se guarda igual, para poder calibrarlo"
+      }
+    >
+      {signal.break_probability}%
+    </Badge>
+  );
+}
+
 function AlignmentTag({ alignment }: { alignment?: string | null }) {
   if (!alignment || alignment === "neutral") return null;
   const aligned = alignment === "aligned";

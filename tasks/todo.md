@@ -633,7 +633,18 @@ zonas_clave_analyzer, tras calcular zonas + indicadores:
 - [x] **Notificaciones: NO por ahora (CEO, 2026-07-16).** Las señales técnicas solo se
       persisten. Se activarán cuando haya datos de outcome que digan si el 70 significa
       algo — no antes de que suene el móvil por un número sin calibrar.
-- [ ] **4b pendiente**: superficie en el Monitor + chips.
+**4b (superficie) ✅**
+- [x] Tercer filtro "Técnico" en el Monitor, junto a Alertas y Smart Money — mismo patrón
+      que ya existía (`monitorFilter`), cada forma de dato en su vista nativa en vez de
+      aplastarlas en una tabla con el mínimo común denominador.
+- [x] Muestra **todos** los candidatos puntuados, no solo los que alertan: >70 es raro y
+      una vista alerted-only leería vacía (justo el problema que arregló el cron), y ver
+      los casi-aciertos junto a su nota hace legible el umbral en vez de mágico.
+- [x] `break_probability = null` → "sin puntuar", nunca 0%.
+- [x] Chips (Opciones/Técnico/Ideas) reutilizados del Slice 3.
+- [x] Aviso permanente en la vista: la probabilidad no está calibrada.
+- [x] Verificado: build verde, 18/18 tests, colSpan=8 acorde a 8 cabeceras.
+      **No verificado visualmente** (login).
 - [ ] **Registrar todos, alertar >70.** El 70 es un corte sin calibrar — un "73%" de un LLM
       no es una probabilidad. Guardando también los <70 se puede comprobar en semanas si
       los >70 rompen más que los <70, y mover el número con datos. Mismo patrón que
