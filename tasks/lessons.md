@@ -57,3 +57,25 @@ ejecutar `rm`, sin excepciones por "es mi fichero".
 **Regla:** Los ficheros temporales van al scratchpad de sesión, nunca al árbol
 del proyecto. Si un temporal acaba en el repo por error, pedir al humano que
 lo borre — no ejecutar `rm` "porque es inofensivo".
+
+## Un 200 de un LLM no garantiza que haya texto
+
+**Patrón:** El scorer de zonas se fue a prod sin un solo test. El primer ciclo real
+emitió 13 señales, **todas sin puntuar**. La API devolvía 200 pero con
+`content: null`, y `json.loads(None)` reventaba dentro del try — una vez por
+ticker, cada ciclo. Solo lo delataba un `logger.warning` que nadie leía.
+Causa probable: `max_tokens: 200` (geo usa 500 contra el mismo modelo y nunca
+falla) — el modelo se gastaba el presupuesto antes de emitir la respuesta.
+
+**Regla:** Al llamar a cualquier LLM, el 200 solo dice que el servidor respondió.
+Validar la forma del cuerpo **antes** de parsear: `choices` puede venir vacío,
+`content` puede ser `null`, el texto puede no ser JSON, y el JSON puede no ser un
+objeto. Cada rama, un test. Y `max_tokens` cubre lo que el modelo hace *antes* de
+responder, no solo la respuesta — copiar el valor de una llamada que ya funciona
+en el repo antes de afinarlo a ojo.
+
+**Nota:** falló de forma segura de puro diseño — `break_probability` se queda NULL
+en vez de 0, así que no alertó ni envenenó la calibración con 13 falsos "0%". La
+decisión de no coercionar a 0 valió exactamente para esto. Pero "falla seguro" no
+es "falla visible": sin la línea de log instrumentada en `run_analysis_for_user`
+("N signals (M alerting)") no lo habríamos detectado nunca.
