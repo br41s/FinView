@@ -150,13 +150,34 @@ def test_failures_are_not_cached_so_a_transient_error_retries():
         assert post.call_count == 2
 
 
-def test_max_tokens_leaves_room_for_the_model_to_answer():
-    """At 200 prod returned 200-OK with content: null on every call. geo/analyst
-    uses 500 against the same model and has never failed."""
+def test_max_tokens_leaves_room_for_reasoning_plus_the_answer():
+    """The default model reasons before answering, and max_tokens covers both.
+
+    Prod at 200: content null. Prod at 500: content null again, with
+    finish_reason='length' and reasoning_tokens=500 — the whole budget went to
+    thinking. The answer is an int and a sentence; the budget is sized for what
+    happens before it.
+    """
     body = _ok_body(json.dumps({"break_probability": 50, "rationale": "x"}))
     with patch.object(zone_scorer.httpx, "post", return_value=_resp(body)) as post:
         score_break_probability("AAPL", candidate(), indicators())
-    assert post.call_args.kwargs["json"]["max_tokens"] >= 500
+    assert post.call_args.kwargs["json"]["max_tokens"] >= 1500
+
+
+def test_reasoning_model_burning_the_budget_returns_no_score():
+    """The exact prod response: reasoning ate every token, finish_reason=length,
+    content empty. Must be a clean 'no score', never a crash and never a 0."""
+    body = {
+        "choices": [
+            {
+                "message": {"content": "", "reasoning": "...", "role": "assistant"},
+                "finish_reason": "length",
+            }
+        ],
+        "usage": {"completion_tokens": 501, "completion_tokens_details": {"reasoning_tokens": 500}},
+    }
+    with patch.object(zone_scorer.httpx, "post", return_value=_resp(body)):
+        assert score_break_probability("AAPL", candidate(), indicators()) is None
 
 
 def test_alert_threshold_stays_uncalibrated_at_70():
