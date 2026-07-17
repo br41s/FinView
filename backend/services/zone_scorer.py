@@ -155,12 +155,16 @@ def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> d
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.2,
-                # 500, not 200: the answer itself is tiny (an int + one sentence),
-                # but the budget also has to cover whatever the model does before
-                # emitting it. At 200 prod came back 200-OK with content: null on
-                # every call. geo/analyst.py has always used 500 against the same
-                # model without a single failure — match it rather than shave it.
-                "max_tokens": 500,
+                # The default model is a REASONING model: max_tokens covers the
+                # chain-of-thought *and* the answer, and the thinking goes first.
+                # The answer here is tiny (an int + one sentence), but prod showed
+                # the model spending 500 reasoning tokens and hitting the cap with
+                # `finish_reason: length` and `content: null` — 200 and 500 both
+                # died that way, having produced nothing.
+                #
+                # Sized for reasoning headroom, not for the answer. If the model
+                # is ever swapped for a non-reasoning one this is simply generous.
+                "max_tokens": 2000,
             },
             timeout=20.0,
         )

@@ -100,14 +100,32 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.3,
-                "max_tokens": 500,
+                # Reasoning model: this budget covers the chain-of-thought before
+                # the answer. Prod measured 500 reasoning tokens alone, so 500
+                # total left nothing for the JSON. See zone_scorer for the full
+                # post-mortem.
+                "max_tokens": 2000,
             },
             timeout=20.0,
         )
         if resp.status_code != 200:
             logger.warning("geo LLM HTTP %s", resp.status_code)
             return None
-        content = resp.json()["choices"][0]["message"]["content"]
+        # A 200 doesn't guarantee text: the default model reasons first, and if
+        # max_tokens runs out mid-thought it returns `content: null` with
+        # `finish_reason: length`. json.loads(None) raises, which the outer
+        # except would swallow into a generic "geo LLM analysis failed" — the
+        # exact shape of bug that hid in zone_scorer for a full prod cycle.
+        body = resp.json()
+        choices = body.get("choices") or []
+        content = (choices[0].get("message") or {}).get("content") if choices else None
+        if not isinstance(content, str) or not content.strip():
+            logger.warning(
+                "geo LLM: 200 with no content — finish_reason=%r usage=%s",
+                choices[0].get("finish_reason") if choices else None,
+                body.get("usage"),
+            )
+            return None
         result = json.loads(content)
         # Cache only successes so transient failures retry next cycle.
         if len(_LLM_CACHE) > 500:
