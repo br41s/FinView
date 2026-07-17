@@ -12,7 +12,7 @@
 | CI/CD | Cloud Build (trigger automático en push a main) | Proyecto: finview-brais-2026 |
 | Auth | NextAuth 5.0 (JWT) | — |
 | Pagos | Stripe | — |
-| IA | Anthropic Claude API (claude-haiku-4-5) | — |
+| IA | OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`) | Un modelo compartido: análisis de opciones, analyst de Ideas, scorer de zonas |
 | Push | ntfy.sh | — |
 
 ### Notas críticas de producción
@@ -75,7 +75,10 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `FINVIEW_STRIPE_PRICE_PRO` | — | Price ID plan Pro |
 | `FINVIEW_STRIPE_PRICE_UNLIMITED` | — | Price ID plan Unlimited |
 | `FINVIEW_FRONTEND_URL` | `http://localhost:3000` | URL del frontend (para redirects Stripe) |
-| `FINVIEW_ANTHROPIC_API_KEY` | — | Claude API key (opcional — activa análisis IA en opciones) |
+| `FINVIEW_OPENROUTER_API_KEY` | — | Clave OpenRouter (opcional — activa el análisis IA de opciones, el analyst de Ideas y el scorer de zonas) |
+| `FINVIEW_OPENROUTER_MODEL` | `deepseek/deepseek-v4-flash` | Modelo compartido por los tres |
+| `FINVIEW_CRON_SECRET` | — | **Obligatoria en prod.** Secreto de Cloud Scheduler; sin ella los pipelines no corren |
+| `FINVIEW_FRED_API_KEY` | — | Tipo libre de riesgo por divisa + régimen macro (opcional, gratuita) |
 | `FINVIEW_NTFY_TOPIC` | — | Topic ntfy.sh para push notifications |
 | `FINVIEW_NOTIFY_EMAIL_TO` | — | Email destino de alertas |
 | `FINVIEW_NOTIFY_EMAIL_FROM` | — | Email origen (Gmail) |
@@ -208,7 +211,7 @@ WatchlistItem (DB)
     └─► enrich_options_with_greeks (Black-Scholes)
     └─► analyze_ticker (alertas, unusual activity, sentiment)
     └─► OptionsSnapshot, OptionsAlert, UnusualActivity (DB)
-    └─► _run_claude_analysis (opcional, claude-haiku-4-5-20251001)
+    └─► _run_claude_analysis (opcional, vía OpenRouter)
     └─► OptionsAgentLog (DB)
     └─► notify_alerts (ntfy.sh + email)
 ```
@@ -234,13 +237,15 @@ Parámetros por defecto: r = 5.3%, q = 1.3%, 252 días de trading.
 | `IV_PREMIUM_RATIO` | 1.5× | IV vs. volatilidad histórica |
 | `UNUSUAL_VOLUME_RATIO` | 3.0× | Volumen / Open Interest |
 
-### Análisis Claude
+### Análisis IA (persona *VolatilityEdge*)
 
-- Modelo: `claude-haiku-4-5-20251001`
-- Temperatura: 0.3 (analítico)
-- Max tokens: 1024
-- Activación: solo si `FINVIEW_ANTHROPIC_API_KEY` está configurado Y existen alertas en el ciclo
-- Output: texto narrativo en español, truncado a 5000 caracteres en DB
+- Proveedor: **OpenRouter** (httpx a mano, sin SDK). Modelo: `settings.openrouter_model`,
+  default `deepseek/deepseek-v4-flash`
+- Max tokens: 1500 · sin `temperature` explícita (se usa la del modelo)
+- Activación: solo si `FINVIEW_OPENROUTER_API_KEY` está configurado **Y** existen alertas
+  en el ciclo
+- Output: markdown en español, exactamente 7 secciones, truncado a 5000 caracteres en DB
+- **Fire-and-forget**: que la IA no esté disponible nunca puede romper el ciclo
 
 ### Endpoints de control
 
@@ -476,8 +481,16 @@ Comparar el FIFO cruzado (pestaña casillas) con el del broker individual. Los a
 **Frontend no conecta al backend**  
 Verificar `BACKEND_URL` en Vercel y que CORS en `backend/app.py` incluye el dominio del frontend.
 
-**Agente de opciones no genera análisis Claude**  
-Verificar que `FINVIEW_ANTHROPIC_API_KEY` está configurado en Cloud Run y que existe al menos un ticker en la watchlist con alertas activas.
+**El agente de opciones no genera análisis IA**  
+Verificar que `FINVIEW_OPENROUTER_API_KEY` está configurado en Cloud Run y que existe al
+menos un ticker en la watchlist con alertas activas (sin alertas no se llama al modelo, por
+diseño).
+
+**Una sección lee vacía y no hay ningún error**  
+Casi siempre es que falta el job de Cloud Scheduler, no un bug de la UI. El `APScheduler`
+de la interfaz muere al escalar a cero. Comparar los jobs
+(`gcloud scheduler jobs list --location=europe-west1`) con los endpoints `/cron` del
+código. Ver [deployment.md](deployment.md).
 
 **MEFF no devuelve datos**  
 El proxy `allorigins.win` puede estar caído. El agente hace fallback a Yahoo Finance para el precio y devuelve `None` para la cadena de opciones.

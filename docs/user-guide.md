@@ -13,7 +13,7 @@ Si no tienes cuenta, pulsa **Regístrate** y crea una con tu email y contraseña
 
 ## 2. Navegación rápida
 
-Todas las páginas tienen un grupo de **5 iconos de acceso rápido** en la esquina superior derecha de la cabecera:
+Todas las páginas tienen un grupo de **6 iconos de acceso rápido** en la esquina superior derecha de la cabecera:
 
 | Icono | Destino |
 |-------|---------|
@@ -21,6 +21,7 @@ Todas las páginas tienen un grupo de **5 iconos de acceso rápido** en la esqui
 | Maletín | Cartera |
 | Actividad | Derivados (Options Monitor) |
 | Diana | Técnico (Zonas Clave) |
+| Globo | Ideas |
 | Banco | Inversiones Alternativas |
 
 El icono de la página actual aparece en color sólido para indicar dónde estás.
@@ -146,12 +147,18 @@ La página **Derivados** permite monitorizar posiciones en opciones financieras.
 
 | Pestaña | Contenido |
 |---------|-----------|
-| **Cartera** | Posiciones de opciones detectadas en tus importaciones de IBKR, con cadena de opciones (top 20 por OI), badge HV vs IV y sentimiento por ticker |
-| **Watchlist** | Tickers añadidos manualmente; barra de estadísticas con P/C ratio global → Alcista / Neutral / Bajista |
-| **Alertas** | Señales generadas por el agente, filtradas por severidad (HIGH / MEDIUM / LOW) |
-| **Backtest** | Precisión de señales pasadas a +1d, +3d y +7d por tipo de señal |
-| **Análisis** | Último análisis Claude del agente, presentado en 7 secciones con metadatos del ciclo |
-| **Agente** | Estado del scheduler, métricas de ciclo y chat con el agente |
+| **Watchlist** | La lista única: tus posiciones de cartera se añaden solas, más los tickers que añadas a mano. Una fila por ticker con Sentimiento, P/C ratio y badge IV vs HV. Al pulsar una fila se despliega su gráfico y su cadena de opciones |
+| **Monitor** | Todo lo que ha disparado, en tres vistas: **Alertas** (del agente de opciones), **Smart Money** (actividad inusual) y **Técnico** (precios acercándose a una zona clave). Cada alerta lleva atajos a la sección relevante |
+| **Backtesting** | Precisión de señales pasadas a +1d, +3d y +7d, por tipo de señal y por régimen macro |
+| **IA** | Último informe del agente en 7 secciones, con metadatos del ciclo, y chat |
+| **Agente** | Estado del scheduler y métricas de ciclo |
+
+> **Cartera y Watchlist eran dos pestañas** hasta que se fusionaron: tus posiciones ya se
+> añadían solas a la watchlist, así que enseñaban los mismos tickers dos veces.
+
+> **Borrar es asimétrico a propósito.** Los tickers que tienes en cartera solo ofrecen
+> "Ocultar" — un borrado normal lo desharía la sincronización automática al recargar. Los
+> que añadiste a mano sí tienen "Eliminar".
 
 ### 7.2 Watchlist
 
@@ -241,7 +248,48 @@ Para cada ticker se calcula:
 
 ---
 
-## 9. Inversiones Alternativas
+## 9. Ideas
+
+La página **Ideas** es la mesa de tesis: dónde se plantea *por qué* algo podría ser una
+oportunidad. La siembran eventos geopolíticos y naturales (terremotos, conflictos,
+incendios, rutas marítimas, meteorología), que se cruzan con reglas para producir señales
+de mercado.
+
+Un mapa muestra dónde está pasando cada cosa; la lista lateral, las señales activas.
+
+### 9.1 Qué te dice una señal
+
+Al seleccionar una señal, el panel te da:
+
+| Bloque | Qué es |
+|--------|--------|
+| **Importancia / Confianza / Riesgo / Dirección** | Cómo de fuerte es la señal y hacia dónde apunta |
+| **Why this was triggered** | Las reglas que casaron, cada una con su tesis (por qué mueve mercados) y su confianza |
+| **Tickers afectados** | Con dirección propia por ticker — una misma señal puede ser alcista para uno y bajista para otro |
+| **Checkpoints** | El seguimiento del acierto a 1h, 6h, 1d, 3d y 7d. Se van rellenando con el tiempo |
+
+### 9.2 Qué puedes hacer
+
+Al pulsar un ticker se despliega su **gráfico de precio** y sus **fundamentales**
+(capitalización, PER, márgenes, deuda, ROE…), más:
+
+- **Añadir a Zonas Clave** — lo manda a la mesa técnica y lanza su análisis de
+  soportes/resistencias. Un clic.
+- Enlaces a **Zonas Clave** y **Derivados** ya centrados en ese ticker.
+
+> Los fundamentales son **contexto para que tú decidas**. No alimentan ninguna señal ni
+> puntuación: nada de lo que ves ahí cambia lo que el sistema te alerta.
+
+### 9.3 Por qué aquí no hay opciones
+
+Cada página tiene un trabajo: **Zonas Clave** dice *cuándo* mirar (el técnico), **Ideas**
+dice *por qué* (la tesis) y **Derivados** dice *cómo* ejecutarlo con PUT/CALL. Por eso no
+verás cadenas de opciones en Ideas ni tesis de inversión en Derivados — solo enlaces entre
+ellas.
+
+---
+
+## 10. Inversiones Alternativas
 
 La página **Inversiones Alternativas** (icono del banco) te permite hacer seguimiento manual de tus inversiones de banca privada que no encajan en los brokers tradicionales: private equity, venture capital, real estate, hedge funds, productos estructurados y otros.
 
@@ -293,7 +341,7 @@ En la parte superior de la página hay un **buscador**. Escribe el nombre de un 
 
 ---
 
-## 10. Preguntas frecuentes
+## 11. Preguntas frecuentes
 
 **¿Por qué las ganancias calculadas difieren de las del broker?**  
 Cada broker calcula su FIFO internamente. FinView recalcula el FIFO combinando todos los brokers cronológicamente, como exige Hacienda. La diferencia se muestra como "ajuste FIFO".

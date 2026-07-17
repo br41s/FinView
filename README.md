@@ -4,11 +4,11 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 
 ## Stack
 
-- **Backend:** FastAPI · SQLAlchemy · pdfplumber · openpyxl · yfinance · anthropic SDK
-- **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · NextAuth · shadcn/ui
+- **Backend:** FastAPI · SQLAlchemy · pdfplumber · openpyxl · yfinance · OpenRouter (httpx)
+- **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (151 tests)
+- **Tests:** pytest (369 backend) · vitest (18 frontend)
 
 ## Brokers soportados
 
@@ -79,7 +79,7 @@ FinView/
 ├── frontend/
 │   └── src/
 │       ├── app/page.tsx                 # Dashboard principal (5 tabs — inversiones)
-│       ├── app/options/page.tsx         # Monitor opciones (6 tabs)
+│       ├── app/options/page.tsx         # Monitor opciones (5 tabs)
 │       ├── app/alt-investments/page.tsx # Inversiones alternativas (banca privada)
 │       ├── components/                  # FileUpload, tablas, stats cards
 │       ├── components/charts/           # 8 componentes de gráficas
@@ -110,7 +110,7 @@ Módulo independiente accesible en `/options`. Funcionalidades implementadas:
 3. **Analyze** — reglas IV/P·C ratio/skew/volumen inusual (`options_analyzer.py`)
 4. **Premium Spike** — comparación contra baseline EMA in-memory; multiplier ≥ 2.5× → alerta HIGH
 5. **Store** — snapshot a DB + alertas + actividad inusual + señal de backtest (HIGH/MEDIUM)
-6. **Claude AI** — `claude-haiku-4-5-20251001`, análisis estructurado en 7 secciones (sólo si hay alertas y `ANTHROPIC_API_KEY` configurada)
+6. **Análisis IA** — vía OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`), estructurado en 7 secciones (sólo si hay alertas y `FINVIEW_OPENROUTER_API_KEY` configurada)
 7. **Notify** — ntfy.sh (push) + Email SMTP + Telegram Bot (spikes premium)
 8. **Backtest** — `evaluate_pending()` llena outcomes a +1d/+3d/+7d en el siguiente ciclo
 
@@ -127,21 +127,91 @@ El prompt `_CLAUDE_SYSTEM` define al agente *VolatilityEdge*. Responde siempre e
 ### HV para tickers MEFF
 `_fetch_meff()` calcula la volatilidad histórica vía `yf.Ticker(ticker).history(period="60d")` y `log(Close/Close.shift(1)).std() × √252 × 100`, rellenando el campo `historical_volatility` que MEFF no publica.
 
-### UI — página `/options` (6 tabs)
+### UI — página `/options` (5 tabs)
 | Tab | Contenido |
 |-----|-----------|
-| **Cartera** | Posiciones abiertas con P&L, métricas IV/HV, badge "IV cara/barata", chain desplegable (calls + puts) |
-| **Watchlist** | Gestión de tickers monitorizados; sentiment global P/C en stats bar |
-| **Alertas** | Todas las alertas del ciclo filtradas por severidad |
-| **Backtest** | Tasas de acierto por horizonte (+1d/+3d/+7d) y por tipo de señal |
-| **Análisis** | Último análisis Claude renderizado en 7 cards (una por sección), con metadatos del ciclo |
-| **Agente** | Estado del scheduler, métricas del último ciclo, chat con el agente |
+| **Watchlist** | La lista única. Cartera y Watchlist eran tabs separadas hasta que se fusionaron: las posiciones se auto-sincronizan en la watchlist, así que enseñaban los mismos tickers dos veces. Una fila **por ticker** (no por lote de bróker), con Sentimiento, P/C, badge IV/HV y los lotes dentro |
+| **Monitor** | El hub de alertas: **Alertas** (opciones), **Smart Money** (actividad inusual) y **Técnico** (rupturas de zona desde Zonas Clave). Cada alerta lleva chips a la sección relevante |
+| **Backtesting** | Tasas de acierto por horizonte (+1d/+3d/+7d), por tipo de señal y por régimen macro |
+| **IA** | Último informe del agente en cards (una por sección) + chat |
+| **Agente** | Estado del scheduler, métricas del último ciclo |
 
 ### Stats bar global
 Calcula P/C ratio (volumen) sobre todos los tickers del watchlist; muestra sentimiento agregado "Alcista / Neutral / Bajista" con color.
 
 ### HV vs IV — badge visual
 En el acordeón de cartera: compara `avg_call_iv` con `historical_volatility`; muestra badge "IV cara" (rojo), "IV barata" (verde) o "IV normal" (gris) con threshold ±5 puntos.
+
+## Arquitectura de señales — trigger / execution / thesis
+
+Las tres secciones de mercado tienen **una capa cada una**. Los enlaces cruzan la
+frontera; el contenido no.
+
+| Capa | Página | Responsabilidad | Prohibido |
+|------|--------|-----------------|-----------|
+| **Trigger** | Zonas Clave | Análisis técnico; emite señales de ruptura | Contenido de opciones |
+| **Execution** | Options Monitor | PUT/CALL y estrategias sobre los disparos | Fundamentales, tesis |
+| **Thesis** | Ideas | La oportunidad: dirección, fundamentales, macro, backtest | Contenido de opciones |
+
+Las tres leen `?ticker=` para que los enlaces cruzados aterricen enfocados.
+
+**Los tres pipelines corren en producción por Cloud Scheduler, no por el APScheduler
+de la UI** — ese muere al escalar a cero. Ver [docs/deployment.md](docs/deployment.md).
+
+## Zonas Clave — análisis técnico y capa de disparo
+
+Motor de soportes/resistencias. El **análisis** es TA puro sin IA; la **emisión de
+señales** construida encima sí llama a un LLM.
+
+**Pipeline:** `fetch_history (20y) → zone_window (10y) → detect_pivots → cluster_pivots →
+compute_zone_strength → RSI/MACD/MAs → trend_bias → ZonasClaveAnalysis → señales técnicas`
+
+**Dos ventanas a propósito:** se descargan 20 años (el scope MAX del gráfico los necesita)
+pero las zonas se detectan sobre los últimos **10** — un nivel tocado por última vez hace
+15 años no es soporte hoy, y los niveles viejos acumulan toques solo por haber tenido más
+tiempo. La mediana de volumen se mide en la misma ventana recortada: es el denominador de
+`vol_score`, y medirla a 20y infravaloraba las zonas actuales (SAN.MC: 62.5M vs 43.5M).
+
+### Señales técnicas
+
+```
+zonas → zone_proximity  (determinista, 2%, gratis)
+      → zone_scorer     (LLM, solo candidatos)
+      → TechnicalSignal (TODOS los candidatos puntuados)
+      → alerted + BacktestSignal (solo > 70)
+```
+
+- **La dirección sale de qué lado del nivel está el precio, no de `zone_type`.** Una
+  "resistencia" que el precio ya superó actúa como soporte: fiarse de la etiqueta
+  histórica invierte la dirección en cada nivel volteado.
+- **El corte del 70% no está calibrado** — un "73%" de un LLM es una opinión con un número
+  pegado. Por eso se guardan también los sub-umbral: es la única forma de comprobar luego
+  si >70 rompe más que <70. `GET /zonas-clave/signals` devuelve todo; `alerted_only=true`
+  es la vista del Monitor.
+- **`break_probability = NULL` significa "sin puntuar"**, no "no romperá". Nunca se
+  coerciona a 0.
+
+## Ideas (`/geo-intel`) — la mesa de tesis
+
+Puerto de WorldHawk: eventos geopolíticos y naturales → señales de mercado. 89 reglas /
+46 regiones, 8 fuentes de ingesta (cada clave opcional; una que falte degrada esa fuente
+a vacío).
+
+**La ruta, la tabla `geo_signals` y el prefijo de API mantienen el nombre `geo`** — solo
+cambió la etiqueta de UI. Renombrar la ruta rompe deep links; renombrar tablas es DDL en
+prod sin Alembic.
+
+**Pipeline:** `ingest → sentinel → analyst (LLM si importancia ≥60) → reglas compuestas →
+advisor (score + dedup + persist) → notify → auditor`
+
+El panel de señal muestra: importancia/confianza/riesgo/dirección, **"Why this was
+triggered"** (cada regla con su tesis y confianza), tickers afectados con dirección
+propia, los **5 checkpoints** de backtest (1h/6h/1d/3d/7d), y por ticker: gráfico de
+precio + **fundamentales** + botón "Añadir a Zonas Clave".
+
+**Los fundamentales son contexto para una tesis humana, jamás entrada de una señal, un
+score o un gate.** `yfinance .info` está scrapeado y sin contrato estable: todos los
+campos son opcionales y la tarjeta se esconde si no hay nada.
 
 ## Inversiones Alternativas
 
@@ -231,7 +301,17 @@ Base URL: `http://localhost:8000/api`
 pytest tests/ backend/tests/ -v
 ```
 
-151 tests, 35 skipped (los skipped requieren PDFs/CSVs reales en `files/`).
+**Backend:** 369 tests, ~131 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
+que no están en el repo).
+
+**Frontend:**
+
+```bash
+cd frontend && pnpm test
+```
+
+18 tests sobre la lógica pura de `src/lib/`. Requiere `pnpm install` — sin `vitest`
+instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
 
 ## Despliegue y CI/CD
 
@@ -243,12 +323,18 @@ En producción, `FINVIEW_ENV=production` activa la validación de secretos en st
 
 ### Variables de entorno — módulo opciones (nuevas)
 
+Todas llevan prefijo `FINVIEW_` (`env_prefix` en [backend/config.py](backend/config.py)).
+Sin prefijo **no se leen** y el módulo degrada en silencio.
+
 | Variable | Descripción |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Habilita análisis Claude (opcional — sin ella el ciclo sigue funcionando) |
-| `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram para notificaciones de spikes |
-| `TELEGRAM_CHAT_ID` | Chat ID destino de las notificaciones Telegram |
-| `NTFY_TOPIC` | Topic de ntfy.sh para push notifications |
-| `NOTIFY_EMAIL_FROM` | Cuenta Gmail origen para digest de alertas |
-| `NOTIFY_EMAIL_PASSWORD` | Contraseña de aplicación Gmail |
-| `NOTIFY_EMAIL_TO` | Destinatario del digest |
+| `FINVIEW_CRON_SECRET` | **Obligatoria en prod.** Secreto compartido con Cloud Scheduler. Sin ella los pipelines no corren — ver [docs/deployment.md](docs/deployment.md) |
+| `FINVIEW_OPENROUTER_API_KEY` | Habilita el análisis IA (opcional — sin ella el ciclo sigue, sin informe, y las señales técnicas se guardan sin puntuar) |
+| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido. Default `deepseek/deepseek-v4-flash` |
+| `FINVIEW_FRED_API_KEY` | Tipo libre de riesgo por divisa + régimen macro (opcional, gratuita) |
+| `FINVIEW_TELEGRAM_BOT_TOKEN` | Token del bot de Telegram para notificaciones de spikes |
+| `FINVIEW_TELEGRAM_CHAT_ID` | Chat ID destino de las notificaciones Telegram |
+| `FINVIEW_NTFY_TOPIC` | Topic de ntfy.sh para push notifications |
+| `FINVIEW_NOTIFY_EMAIL_FROM` | Cuenta Gmail origen para digest de alertas |
+| `FINVIEW_NOTIFY_EMAIL_PASSWORD` | Contraseña de aplicación Gmail |
+| `FINVIEW_NOTIFY_EMAIL_TO` | Destinatario del digest |
