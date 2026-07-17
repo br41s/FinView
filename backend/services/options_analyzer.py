@@ -31,6 +31,15 @@ UNUSUAL_VOLUME_RATIO = 3.0  # volume / open_interest
 # extreme near-expiry pricing while cutting the garbage by orders of magnitude.
 MAX_USABLE_IV = 10.0
 
+# Minimum total day volume (calls + puts) before a P/C-ratio alert is trusted.
+# The ratio is meaningless on thin options: 2 puts against 1 call is a ratio of
+# 2.0, which without a floor fires a HIGH "bearish" alert off pure noise. MEFF
+# and Eurex names are routinely this thin, so on a cold-start cycle ~100 tickers
+# tripped HIGH_PUT_CALL_RATIO at once — a flood, not a signal. 500 cuts the
+# illiquid noise while leaving liquid US names through; uncalibrated, revisit
+# once there's data on how many HIGH it lets through per day.
+MIN_PCR_ALERT_VOLUME = 500
+
 
 def _usable_ivs(options: list[dict]) -> list[float]:
     """Implied volatilities in percent, with unusable readings dropped.
@@ -130,20 +139,25 @@ def _generate_alerts(ticker: str, summary: dict, hv: float | None) -> list[dict]
             "severity": "MEDIUM",
         })
 
-    if pcr > HIGH_PCR_THRESHOLD:
-        alerts.append({
-            "type": "HIGH_PUT_CALL_RATIO",
-            "ticker": ticker,
-            "message": f"P/C ratio alto: {pcr:.2f} — sentimiento bajista",
-            "severity": "HIGH",
-        })
-    elif pcr < LOW_PCR_THRESHOLD and pcr > 0:
-        alerts.append({
-            "type": "LOW_PUT_CALL_RATIO",
-            "ticker": ticker,
-            "message": f"P/C ratio bajo: {pcr:.2f} — sentimiento alcista",
-            "severity": "MEDIUM",
-        })
+    # P/C-ratio alerts only when there's enough volume for the ratio to mean
+    # anything — see MIN_PCR_ALERT_VOLUME. The ratio and the sentiment label still
+    # surface everywhere; this only gates the alert.
+    pcr_volume = summary["call_volume"] + summary["put_volume"]
+    if pcr_volume >= MIN_PCR_ALERT_VOLUME:
+        if pcr > HIGH_PCR_THRESHOLD:
+            alerts.append({
+                "type": "HIGH_PUT_CALL_RATIO",
+                "ticker": ticker,
+                "message": f"P/C ratio alto: {pcr:.2f} — sentimiento bajista",
+                "severity": "HIGH",
+            })
+        elif pcr < LOW_PCR_THRESHOLD and pcr > 0:
+            alerts.append({
+                "type": "LOW_PUT_CALL_RATIO",
+                "ticker": ticker,
+                "message": f"P/C ratio bajo: {pcr:.2f} — sentimiento alcista",
+                "severity": "MEDIUM",
+            })
 
     if abs(skew) > IV_SKEW_THRESHOLD:
         direction = "puts más caras" if skew > 0 else "calls más caras"
