@@ -97,6 +97,37 @@ def _parse(payload: dict) -> dict | None:
     return {"break_probability": prob, "rationale": rationale}
 
 
+def _extract_content(body: dict) -> str | None:
+    """Pull the message text out of an OpenRouter chat completion.
+
+    A 200 does NOT guarantee text. Models can come back with `content: null`
+    (e.g. the whole token budget went to reasoning, or the provider put the
+    answer somewhere else), and the response shape varies by provider. Treat a
+    contentless 200 as "no score" and log enough to diagnose it, rather than
+    letting json.loads(None) raise — which is exactly what it did in prod, once
+    per ticker per cycle, silently producing unscored signals.
+    """
+    try:
+        choices = body.get("choices") or []
+        if not choices:
+            logger.warning("zone scorer: 200 with no choices — keys=%s", sorted(body))
+            return None
+        message = choices[0].get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content
+        logger.warning(
+            "zone scorer: 200 with empty content — finish_reason=%r message_keys=%s usage=%s",
+            choices[0].get("finish_reason"),
+            sorted(message),
+            body.get("usage"),
+        )
+        return None
+    except Exception:
+        logger.warning("zone scorer: unparseable response envelope", exc_info=True)
+        return None
+
+
 def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> dict | None:
     """Score one proximity candidate. Returns {break_probability, rationale} or None.
 
@@ -124,14 +155,30 @@ def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> d
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.2,
-                "max_tokens": 200,
+                # 500, not 200: the answer itself is tiny (an int + one sentence),
+                # but the budget also has to cover whatever the model does before
+                # emitting it. At 200 prod came back 200-OK with content: null on
+                # every call. geo/analyst.py has always used 500 against the same
+                # model without a single failure — match it rather than shave it.
+                "max_tokens": 500,
             },
             timeout=20.0,
         )
         if resp.status_code != 200:
             logger.warning("zone scorer HTTP %s for %s", resp.status_code, ticker)
             return None
-        result = _parse(json.loads(resp.json()["choices"][0]["message"]["content"]))
+        content = _extract_content(resp.json())
+        if content is None:
+            return None
+        try:
+            payload = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("zone scorer: content is not JSON for %s: %r", ticker, content[:200])
+            return None
+        if not isinstance(payload, dict):
+            logger.warning("zone scorer: JSON is not an object for %s: %r", ticker, payload)
+            return None
+        result = _parse(payload)
         if result is None:
             return None
         # Cache successes only, so a transient failure retries next cycle.
