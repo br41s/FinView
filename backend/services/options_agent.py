@@ -29,7 +29,7 @@ from backend.services.backtest_service import (
 from backend.services.fred_rates import risk_free_rate_for_ticker
 from backend.services.greeks_calculator import enrich_options_with_greeks
 from backend.services.macro_context import macro_context, macro_prompt_block
-from backend.services.notification_service import notify_alerts, notify_spike_telegram
+from backend.services.notification_service import notify_alerts
 from backend.services.options_analyzer import analyze_ticker
 from backend.services.options_scraper import fetch_options
 from backend.services.premium_spike import detect_spikes
@@ -208,18 +208,15 @@ def run_cycle(user_id: int) -> dict:
         db.add(log_entry)
         db.commit()
 
-        # Phase 6: Notify
-        spike_alerts = [a for a in all_alerts if a.get("type") == "PREMIUM_SPIKE"]
+        # Phase 6: Notify. One entry point: notify_alerts gates to HIGH, dedups
+        # across cycles, and fans out to every channel (spikes included, with
+        # their own format). The old split — a second notify_spike_telegram pass —
+        # double-sent spikes on Telegram and had no dedup at all.
         if all_alerts:
             try:
                 notify_alerts(all_alerts)
             except Exception:
                 logger.exception("Notification failed")
-        if spike_alerts:
-            try:
-                notify_spike_telegram(spike_alerts)
-            except Exception:
-                logger.exception("Telegram spike notification failed")
 
         return {
             "status": "ok",
