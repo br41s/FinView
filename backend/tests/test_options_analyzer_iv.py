@@ -81,3 +81,43 @@ def test_a_chain_of_pure_garbage_yields_zero_not_an_explosion():
 def test_empty_chain_is_still_handled():
     result = analyze_ticker({"ticker": "X", "calls": [], "puts": [], "current_price": 10.0})
     assert result["summary"]["avg_call_iv"] == 0
+
+
+# ── P/C-ratio alert volume floor ─────────────────────────────────────
+
+from backend.services.options_analyzer import MIN_PCR_ALERT_VOLUME  # noqa: E402
+
+
+def _chain(call_vol, put_vol):
+    calls = [{"impliedVolatility": 0.3, "strike": 100, "volume": call_vol, "openInterest": 10}]
+    puts = [{"impliedVolatility": 0.3, "strike": 100, "volume": put_vol, "openInterest": 10}]
+    return {"ticker": "TEST", "calls": calls, "puts": puts, "current_price": 100.0}
+
+
+def _alert_types(result):
+    return {a["type"] for a in result["alerts"]}
+
+
+def test_high_pcr_does_not_fire_on_thin_volume():
+    """2 puts vs 1 call is ratio 2.0 — HIGH without a floor, silence with one."""
+    result = analyze_ticker(_chain(call_vol=1, put_vol=2))
+    assert "HIGH_PUT_CALL_RATIO" not in _alert_types(result)
+    assert result["summary"]["put_call_ratio_volume"] == 2.0  # ratio still surfaced
+
+
+def test_high_pcr_fires_when_volume_clears_the_floor():
+    result = analyze_ticker(_chain(call_vol=450, put_vol=900))  # ratio 2.0, total 1350
+    assert "HIGH_PUT_CALL_RATIO" in _alert_types(result)
+
+
+def test_the_floor_boundary():
+    below = analyze_ticker(_chain(call_vol=100, put_vol=MIN_PCR_ALERT_VOLUME - 101))
+    assert "HIGH_PUT_CALL_RATIO" not in _alert_types(below)
+    at = analyze_ticker(_chain(call_vol=101, put_vol=MIN_PCR_ALERT_VOLUME - 101))
+    assert at["summary"]["call_volume"] + at["summary"]["put_volume"] == MIN_PCR_ALERT_VOLUME
+    assert "HIGH_PUT_CALL_RATIO" in _alert_types(at)
+
+
+def test_low_pcr_alert_also_respects_the_floor():
+    result = analyze_ticker(_chain(call_vol=10, put_vol=1))  # bullish ratio, thin
+    assert "LOW_PUT_CALL_RATIO" not in _alert_types(result)
