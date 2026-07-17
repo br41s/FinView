@@ -70,11 +70,17 @@ def send_email(subject: str, html_body: str) -> bool:
         return False
 
 
-def send_telegram(text: str, parse_mode: str | None = "Markdown") -> bool:
+def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread: bool = True) -> bool:
     """Send a message via Telegram Bot API.
 
     Uses only stdlib urllib — no python-telegram-bot dependency needed.
     Returns True on success, False if unconfigured or on error.
+
+    `parse_mode` and `include_thread` are both dropped on the 400 retry: the two
+    optional niceties (Markdown formatting, forum-topic routing) are exactly what
+    a 400 rejects, and delivering the alert plainly to the main chat beats not
+    delivering it. A stale thread_id (e.g. left over after moving from a forum
+    group to a private DM) thus self-heals to "delivered".
     """
     token = settings.telegram_bot_token
     chat_id = settings.telegram_chat_id
@@ -89,9 +95,11 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown") -> bool:
         }
         if parse_mode:
             body["parse_mode"] = parse_mode
-        # Forum groups: route into the app's topic instead of General.
+        # Forum groups: route into the app's topic instead of General. Only valid
+        # for forum supergroups — a private chat has no threads, so a stray
+        # thread_id there is a 400 ("message thread not found").
         thread_id = settings.telegram_thread_id.strip()
-        if thread_id.isdigit():
+        if include_thread and thread_id.isdigit():
             body["message_thread_id"] = int(thread_id)
         payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
@@ -114,14 +122,14 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown") -> bool:
         except Exception:
             pass
         logger.error("Telegram send failed: HTTP %s — %s", e.code, detail)
-        # A 400 on a formatted message is usually the formatting: Telegram's
-        # legacy Markdown rejects the whole message over one stray `*` or `_`,
-        # and alert text carries tickers and free-form reasons we don't control.
-        # The content matters more than the bold, so retry once as plain text.
-        # Guarded by `parse_mode` so the retry can't recurse.
+        # A 400 is almost always one of the two optional extras: Markdown
+        # formatting (a stray `*`/`_` in alert text) or forum-topic routing (a
+        # thread_id that doesn't exist for this chat). Retry once stripping both
+        # — the content matters more than the formatting or the topic. Guarded by
+        # `parse_mode` so the retry can't recurse.
         if e.code == 400 and parse_mode:
-            logger.info("Telegram: retrying without Markdown")
-            return send_telegram(text, parse_mode=None)
+            logger.info("Telegram: retrying as plain text, no thread")
+            return send_telegram(text, parse_mode=None, include_thread=False)
         return False
     except Exception:
         logger.exception("Telegram send failed")
