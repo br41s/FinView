@@ -4,6 +4,78 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Signal architecture (PRs #148–#156)
+
+Cada sección de mercado pasa a tener **una capa**: Zonas Clave dispara (técnico),
+Options Monitor ejecuta (PUT/CALL), Ideas razona (tesis). Los enlaces cruzan la
+frontera; el contenido no.
+
+#### Fixed
+- **Los ciclos del agente de opciones no corrían en producción** (#148). El
+  `APScheduler` en proceso muere en cada scale-to-zero de Cloud Run, así que el
+  agente solo se ejecutaba al pulsar el botón manual. Con `/options/alerts`
+  filtrando a 7 días, el tab Monitor llevaba tiempo leyendo vacío sin ningún
+  error visible. Nuevo `POST /api/options/agent/cron` + job de Cloud Scheduler.
+- **Un ticker en dos brókeres renderizaba dos filas idénticas** en la Cartera de
+  opciones (#149): las filas se indexaban por `(isin, broker)` en vez de por
+  ticker. Con FIFO cross-broker era alcanzable de verdad.
+- **`/geo-intel` ignoraba `?ticker=`** (#150) pese a que los enlaces entrantes lo
+  asumían.
+- **El scorer de zonas fallaba en todas las llamadas** (#156). El LLM devolvía 200
+  con `content: null` y `json.loads(None)` lanzaba. Falló seguro
+  (`break_probability` NULL, sin alertas, sin datos falsos) pero en silencio.
+
+#### Added
+- **Señales técnicas** (#153, #154) — Zonas Clave emite por fin. Puerta de
+  proximidad determinista (2%) → scorer LLM solo sobre candidatos →
+  `TechnicalSignal`. Se persisten **todos** los candidatos puntuados; solo alertan
+  los >70. Ese corte **no está calibrado** y guardar los sub-umbral es la única
+  forma de comprobarlo luego. `break_probability = NULL` significa "sin puntuar",
+  nunca 0. Nuevos `POST /api/zonas-clave/cron` y `GET /zonas-clave/signals`.
+- **El Monitor es el hub de alertas** (#150, #154) — tres vistas (Alertas, Smart
+  Money, Técnico) y chips por alerta hacia la sección relevante. El chip de Ideas
+  solo aparece si ese ticker tiene señal geo activa: un enlace a una página vacía
+  es peor que ninguno.
+- **Fundamentales en Ideas** (#155) — `GET /charts/fundamentals` (yfinance `.info`,
+  caché 6h) + botón "Añadir a Zonas Clave" en los tickers recomendados. Los
+  fundamentales son **contexto para una tesis humana, jamás entrada de señal,
+  score o gate**.
+
+#### Changed
+- **Cartera y Watchlist fusionadas** en una lista (#149). Las posiciones ya se
+  auto-sincronizaban en la watchlist: las dos tabs enseñaban los mismos tickers.
+  El borrado es asimétrico a propósito — los tickers en cartera solo tienen
+  "Ocultar", porque un borrado normal lo deshace la sincronización.
+- **Geo-Intel → "Ideas"** (#148). Solo la etiqueta de UI: la ruta `/geo-intel`, la
+  tabla `geo_signals` y el prefijo de API se mantienen (renombrar la ruta rompe
+  deep links; renombrar tablas es DDL en prod sin Alembic).
+- **Las zonas se detectan sobre 10 años, no 20** (#153). Los 20y venían de un
+  commit de *gráficos* (el scope MAX los necesita) y la detección los heredó. Ahora
+  son dos ventanas de una misma descarga. La mediana de volumen se recorta también:
+  es el denominador de `vol_score`, y a 20y infravaloraba las zonas actuales
+  (SAN.MC: 62.5M vs 43.5M).
+- **`max_tokens` del scorer 200 → 500** (#156), igualando el valor que geo usa con
+  el mismo modelo sin fallar nunca.
+
+#### Removed
+- `InstrumentDrawer` y `app-sidebar.tsx` (#151), y con ellos `ZonasTab`,
+  `FiscalTab`, `DividendosTab` y `usePositionDetail` (#152). La página
+  `/ticker/[symbol]` para la que se guardaban queda **descartada**: mezclar fiscal
+  + opciones + zonas de un ticker es lo contrario de "cada página, una capa".
+- El card de Opciones en Zonas Clave (#148).
+
+#### Docs
+- `claude.md` documentaba el stack de IA como anthropic SDK / claude-haiku cuando
+  todo va por **OpenRouter + deepseek-v4-flash**; el mismo error estaba en README,
+  admin-guide y la tabla de env vars. Las variables del README además iban **sin el
+  prefijo `FINVIEW_`**, así que copiarlas dejaba las notificaciones muertas en
+  silencio.
+- `docs/deployment.md` no mencionaba **Cloud Scheduler** — el mecanismo del que
+  depende que los tres pipelines corran. Añadido, con el orden de rotación del
+  secreto y los síntomas de que falte un job.
+- Recuentos de tests corregidos (151/255 → 369 backend + 18 frontend).
+
+
 ### Security
 - **Startup secret validation** — `FINVIEW_ENV=production` now enforces that
   `FINVIEW_SECRET_KEY` and `FINVIEW_AUTH_SECRET` are non-default at boot.

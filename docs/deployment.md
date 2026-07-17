@@ -46,7 +46,69 @@ Configuradas via `gcloud run services update --set-env-vars`:
 | `FINVIEW_RATE_LIMIT_REGISTER` | Límite de intentos de registro por IP | Opcional. Default: `3/minute`. |
 | `FINVIEW_TURNSTILE_SECRET` | Secret key de Cloudflare Turnstile (protección anti-bot en login) | Opcional. **Si está vacío, la verificación se omite** (dev/sin configurar). Empareja con `NEXT_PUBLIC_TURNSTILE_SITE_KEY` del frontend. Obtén el par de claves en Cloudflare → Turnstile. |
 
-Otras opcionales (Stripe, Anthropic, notificaciones) declaradas en [backend/config.py](../backend/config.py). `gcloud run deploy` preserva las env vars existentes si no se pasa `--set-env-vars` ni `--clear-env-vars`.
+| `FINVIEW_CRON_SECRET` | Secreto compartido con Cloud Scheduler | **Obligatorio para que los pipelines corran en prod** (ver "Cloud Scheduler"). Si está vacío, los tres endpoints `/cron` devuelven 403 y nada se ejecuta. |
+| `FINVIEW_OPENROUTER_API_KEY` | Clave de OpenRouter (análisis IA de opciones, analyst de geo, scorer de zonas) | Opcional. Sin ella, el ciclo corre igual pero sin análisis IA y las señales técnicas se guardan **sin puntuar** (`break_probability = NULL`). |
+| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido | Default `deepseek/deepseek-v4-flash`. |
+| `FINVIEW_FRED_API_KEY` | Clave FRED (tipo libre de riesgo + régimen macro) | Opcional y gratuita. Sin ella los Greeks usan constantes por divisa y el régimen macro se omite. |
+
+Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes geo) declaradas en [backend/config.py](../backend/config.py). `gcloud run deploy` preserva las env vars existentes si no se pasa `--set-env-vars` ni `--clear-env-vars`.
+
+---
+
+## Cloud Scheduler — los pipelines NO corren sin esto
+
+**La lección más cara del proyecto.** Los tres pipelines (geo, options, zonas-clave) tienen
+un `APScheduler` en proceso con botones de start/stop en la UI. **Eso es una comodidad de
+desarrollo, no el mecanismo de producción**: con `--min-instances=0` la instancia muere al
+quedarse ociosa y se lleva el scheduler por delante. El síntoma es una sección que lee
+vacía sin ningún error en ninguna parte — el Options Monitor estuvo así hasta el PR #148.
+
+**La periodicidad de producción son jobs de Cloud Scheduler** golpeando endpoints HTTP,
+autenticados con la cabecera `X-Cron-Key` contra `FINVIEW_CRON_SECRET` (comparación en
+tiempo constante; secreto vacío = endpoint deshabilitado). Corren **síncronos** para que
+Cloud Run mantenga la CPU hasta terminar — no convertirlos en hilos fire-and-forget, la
+instancia puede reclamarse tras la respuesta.
+
+| Job | Endpoint | Horario | Por qué ese horario |
+|---|---|---|---|
+| `geo-intel-cycle` | `/api/geo/cron` | `*/10 * * * *` | Los eventos geopolíticos no cierran de noche |
+| `options-agent-cycle` | `/api/options/agent/cron` | `*/15 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer |
+| `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY: todo se calcula sobre barras **diarias**, recalcularlo intradía reescribe los mismos números |
+
+Listar y comprobar el último intento (`status.code` vacío = OK):
+
+```bash
+gcloud scheduler jobs list --location=europe-west1
+gcloud scheduler jobs describe <job> --location=europe-west1 --format='value(status.code,lastAttemptTime)'
+```
+
+Ver las respuestas HTTP reales (**imprime solo el código, nunca la cabecera**):
+
+```bash
+gcloud logging read 'resource.labels.service_name="finview-api" AND httpRequest.requestUrl:"agent/cron"' \
+  --limit=5 --format='value(timestamp,httpRequest.status)'
+```
+
+### Rotar `FINVIEW_CRON_SECRET`
+
+**Cloud Run primero, luego los tres jobs.** Al revés, los jobs dan 403 hasta que el
+servicio recargue. Y si te dejas uno, **falla en silencio**: el job sigue en ENABLED y
+solo lo delata un 403 en los logs.
+
+```bash
+NEW=$(openssl rand -hex 24)
+gcloud run services update finview-api --region=europe-west1 --update-env-vars="FINVIEW_CRON_SECRET=${NEW}"
+for J in geo-intel-cycle options-agent-cycle zonas-clave-cycle; do
+  gcloud scheduler jobs update http $J --location=europe-west1 --update-headers="X-Cron-Key=${NEW}"
+done
+```
+
+> ⚠️ `gcloud scheduler jobs describe` **imprime el secreto en claro**. Usa siempre
+> `--format` acotado a los campos que necesitas; no pegues la salida completa en ningún
+> sitio. (Ya pasó una vez: hubo que rotar.)
+
+**Si añades un cuarto pipeline programado, necesita su propio job.** El APScheduler solo
+nunca es suficiente.
 
 ### Vercel (frontend)
 Configuradas en Vercel → Project Settings → Environment Variables:
@@ -122,6 +184,11 @@ Ver revisiones: `gcloud run revisions list --service finview-api --region europe
 | Opciones europeas (.DE/.PA/.AS…) no cargan | Cloud Run estrangula CPU → preload Eurex en background no termina | Verificar que el deploy lleva `--no-cpu-throttling` (ver [cloudbuild.yaml](../cloudbuild.yaml)). Si tarda solo tras un periodo de idle, es el cold start repagando el preload (~63s) por `--min-instances=0` |
 | Build rojo en Cloud Build | SA sin permisos o Dockerfile roto | Logs: https://console.cloud.google.com/cloud-build/builds |
 | 500 en `/api/health` | Cold start lento o Neon durmiendo | Esperar 10s; Neon serverless tarda en despertar |
+| **Una sección lee vacía sin ningún error** (Monitor de opciones, Técnico, Ideas) | El job de Cloud Scheduler no existe, está paused, o su secreto no coincide con Cloud Run → el pipeline no corre. El APScheduler de la UI no cuenta: muere con `--min-instances=0` | `gcloud scheduler jobs list --location=europe-west1` y comparar con los endpoints `/cron` que existen en el código. Ver "Cloud Scheduler" |
+| Cron devuelve **403** | `FINVIEW_CRON_SECRET` de Cloud Run ≠ cabecera `X-Cron-Key` del job (típico: se rotó uno y no los otros) | Rotar de nuevo siguiendo el orden Cloud Run → los tres jobs |
+| Cron devuelve **404** | El endpoint aún no está desplegado (PR mergeado pero Cloud Build sin terminar) | Esperar al build; comprobar `gcloud builds list --limit=1` |
+| Señales técnicas todas "sin puntuar" | El scorer LLM falla: sin `FINVIEW_OPENROUTER_API_KEY`, o el modelo devolvió 200 con cuerpo vacío | `gcloud logging read '... textPayload:"zone scoring failed"'`. El log incluye `finish_reason` y `usage`. **`break_probability = NULL` es correcto en ese caso** — nunca se coerciona a 0, que leería como "seguro que no rompe" |
+| El ciclo de zonas corre pero emite 0 señales | Normal si ningún precio está a <2% de una zona. Ojo: `_already_open()` bloquea duplicados del mismo ticker+nivel durante 20h, así que relanzarlo a mano el mismo día no emite nada | Comprobar la línea `N signals (M alerting)` en los logs |
 
 ## Historial de migraciones
 

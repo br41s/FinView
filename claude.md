@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 255 tests (~131 skip without real broker PDFs/CSVs in files/) |
+| Tests | pytest · 369 tests (~131 skip without real broker PDFs/CSVs in files/) · vitest · 18 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -65,9 +65,16 @@ backend/
     notification_service.py — ntfy.sh push + Gmail SMTP + Telegram Bot API
     exchange_rates.py      — ECB reference-rate service (DB cache + ±7d fallback); official FX fallback for IRPF
     cnmv_catalog.py        — CNMV IIC registry → searchable catalog for the alt-investments search bar
-    geo/                   — Geo-Intel pipeline (WorldHawk port): ingest/ + sentinel, analyst, advisor, auditor, notify, orchestrator, scheduler, ais_collector
+    zonas_clave_analyzer.py — Pure TA: pivots → zones → RSI/MACD/MA → trend bias (no AI)
+    zone_proximity.py      — Deterministic gate: which zones price is within 2% of (pure)
+    zone_scorer.py         — LLM break-probability scorer; only sees gated candidates
+    technical_signals.py   — Gate + scorer + persist; alerts only above ALERT_THRESHOLD
+    macro_context.py       — FRED regime (VIX/curve/stress/HY) — annotation, never a gate
+    fred_rates.py          — Risk-free rate per currency + macro series cache
+    geo/                   — Ideas pipeline (WorldHawk port): ingest/ + sentinel, analyst, advisor, auditor, notify, orchestrator, scheduler, ais_collector
   api/alt_investments.py — Alt-investments CRUD + /summary consolidation (TVPI/DPI/RVPI) + /search
-  api/geo.py             — Geo-Intel endpoints: signals, run, scheduler control, /geo/cron (external cron entry)
+  api/geo.py             — Ideas endpoints: signals, run, scheduler control, /geo/cron (external cron entry)
+  api/zonas_clave.py     — Zonas Clave: watchlist, analysis, /signals (technical), /cron
 
 frontend/
   src/app/page.tsx                  — Public landing (FinviewIntro)
@@ -75,10 +82,9 @@ frontend/
                                       (Dashboard/Rendimiento/Dividendos/Casillas/Ganancias/
                                       Mi declaración/Comparativa/Importar; fiscal tabs only
                                       when a year is selected). Header: year selector,
-                                      privacy toggle, billing + logout, QuickNav. The old
-                                      AppSidebar was removed (PR #124) — QuickNav is the
-                                      single global nav on every section; app-sidebar.tsx
-                                      is unused, pending deletion.
+                                      privacy toggle, billing + logout, QuickNav. QuickNav is
+                                      the single global nav on every section (the old
+                                      AppSidebar was removed in PR #124, its dead file in #151).
   src/app/options/page.tsx          — Options monitor (5 tabs: Watchlist, Monitor, Backtesting, IA, Agente)
   src/app/alt-investments/page.tsx  — Alt-investments dashboard (summary cards, allocation, table, inline form)
   src/components/                   — FileUpload, tables, stat cards
@@ -88,7 +94,11 @@ frontend/
                                       auto-poll, chart). Absorbed the standalone /markets page
                                       (PR #125) — its candlestick-viewer search box and
                                       last-close change readout were ported in, /markets removed.
-  src/app/geo-intel/page.tsx        — Geo-Intel dashboard (map + signal feed; components in src/components/geo-intel/)
+  src/app/geo-intel/page.tsx        — Ideas dashboard (map + signal feed + thesis panel;
+                                      components in src/components/geo-intel/). Route/table/API
+                                      keep the `geo` name — only the UI label is "Ideas".
+  src/components/instrument/        — PrecioTab + OpcionesTab only (the drawer and its other
+                                      3 tabs were deleted in PRs #151/#152)
 
 ---
 
@@ -252,56 +262,38 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
 
 ---
 
-## Instrument tab components — inline everywhere, no global drawer
+## Instrument tab components — two survivors, inline only
 
-There used to be a global `InstrumentDrawer` slide-over mounted in
-`app/layout.tsx`; it was removed in favor of inline expandable cards scoped to
-whatever each page already cares about (matching `/portfolio`'s inline-expand
-Posiciones rows). The 5 former "drawer tabs" are still self-contained
-`{ symbol }` (+ `{ isin }` where noted) components under
-`components/instrument/`, just assembled directly into each page instead of a
-shared panel:
-- **Precio** (`PrecioTab.tsx`) — `PriceChart` + `/charts/price-history` + scope
-  buttons. Embedded under the ticker chips in Geo-Intel's signal detail panel
-  (`components/geo-intel/SignalPanel.tsx`).
-- **Opciones** (`OpcionesTab.tsx`) — on-demand per-ticker AI report
+There used to be a global `InstrumentDrawer` slide-over with five tabs, kept as
+the building blocks for a future `/ticker/[symbol]` page. **Both are gone**
+(PRs #151, #152): the drawer, `app-sidebar.tsx`, and the three tabs only it
+reached (`ZonasTab`, `FiscalTab`, `DividendosTab`) plus the `usePositionDetail`
+hook. Don't go looking for them.
+
+`/ticker/[symbol]` was **dropped on purpose, not deferred**: a page mixing
+fiscal + options + zonas for one ticker is the opposite of "each page owns one
+layer". If it's ever revived it's a rebuild, not a reassembly.
+
+Two components remain under `components/instrument/`, embedded inline where they
+belong and nowhere else:
+- **`PrecioTab.tsx`** — `PriceChart` + `/charts/price-history` + scope buttons.
+  Used in Ideas' signal detail panel (`components/geo-intel/SignalPanel.tsx`),
+  under the ticker chips.
+- **`OpcionesTab.tsx`** — on-demand per-ticker AI report
   (`POST /options/agent/analyze-ticker` → `analyze_single_ticker`, 5-section
-  VolatilityEdge prompt, runs regardless of alerts, AI failure still returns
-  rule summary) + compact chain. Embedded in the Options Watchlist row expand
-  (mobile card and desktop table row alike) — and **only** there. It used to also
-  sit in Zonas Clave's ticker detail panel; dropped to keep options content on
-  the Options Monitor page.
-- **Zonas** (`ZonasTab.tsx`) — ZC trend card + S/R chart; "Añadir y analizar"
-  CTA when the ticker isn't in `zonas_clave_watchlist`. Not currently embedded
-  outside Zonas Clave itself (which has its own native view).
-- **Fiscal / Dividendos** (`{FiscalTab,DividendosTab}.tsx`) — cost basis / P&L
-  / per-broker breakdown and dividends-by-year, both from
-  `GET /portfolio/positions/{isin}` via the shared `usePositionDetail` hook
-  (ISIN-keyed session cache → one fetch for both, portable outside any
-  particular page/component tree). Not currently embedded outside `/portfolio`
-  (which has the ISIN on hand per row already).
+  VolatilityEdge prompt, runs regardless of alerts, AI failure still returns the
+  rule summary) + compact chain. Used in the Options Watchlist row expand and the
+  Monitor's alert/technical expansions — **Options only**. It used to sit in Zonas
+  Clave's detail panel too; dropped so options content stays on its own page.
 
-Each page shows only the facet(s) relevant to it — Options doesn't surface
-Fiscal/Dividendos, Zonas Clave doesn't surface Precio/Fiscal, etc. — so seeing
-every facet of one ticker still means visiting Cartera/Options/Zonas Clave
-individually; there's no more single cross-section hub. Ideas' expanded
-Precio card links out to `/options?ticker=` and `/zonas-clave?ticker=` since it
-has no native Opciones/Zonas view of its own, and the Options Monitor links back
-the other way.
+Each page shows only the facet relevant to its layer, so seeing every facet of one
+ticker means visiting Cartera / Options / Zonas Clave individually. That's the
+intent, not a gap.
 
-**All three pages read `?ticker=`**, so cross-section links always land focused:
+**All three signal pages read `?ticker=`**, so cross-section links land focused:
 `/options` expands that watchlist row, `/zonas-clave` selects the ticker, and
 `/geo-intel` selects the newest signal affecting it. An unmatched ticker is a
 silent no-op everywhere (URLs go stale, and a thrown error would be worse).
-
-### Future `/ticker/[symbol]` page (still straightforward)
-Nothing above prevents assembling `OpcionesTab`/`ZonasTab`/`FiscalTab`/
-`DividendosTab`/`PrecioTab` into a single `app/ticker/[symbol]/page.tsx` later
-— they're still self-contained and drawer-independent (the `usePositionDetail`
-hook and per-section APIs never depended on the drawer's React tree). Building
-that page is now the *only* way to get a cross-section view again; it would
-resolve `isin` from holdings the same way the old drawer provider did
-(ticker→isin map from `/portfolio/positions`).
 
 ## Options monitor — architecture
 
@@ -726,8 +718,18 @@ replace each other:
 
 ## Tests
 
-Run: pytest
+Backend: `pytest` — 369 collected (all under `backend/tests/`). ~131 skip when the real
+broker files in `files/` are absent (not in repo — worktrees/CI skip them; the main
+machine runs them).
 
-255 tests collected (all under backend/tests/). ~131 skip when the real broker files in
-files/ are absent (not in repo — worktrees/CI skip them; the main machine runs them).
+Frontend: `cd frontend && pnpm test` (vitest) — 18 tests over the pure logic in `src/lib/`
+(`optionsWatchlistSync`, `optionsWatchlistRows`). **`vitest` must be installed** or
+`pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
+`pnpm install` in a fresh worktree before wondering why the build is red.
+
 If a test breaks, fix it before committing — no exceptions.
+
+**Anything that talks to an external service gets tests for the ugly paths, not just the
+happy one.** `zone_scorer.py` shipped with zero and spent its first prod cycle failing on
+every call: the LLM returned 200 with `content: null` and `json.loads(None)` raised. A 200
+means the server answered — nothing more. Validate the envelope before parsing.
