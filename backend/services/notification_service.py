@@ -9,6 +9,7 @@ Channels:
 import json
 import logging
 import smtplib
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -127,62 +128,79 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown") -> bool:
         return False
 
 
-def notify_spike_telegram(spike_alerts: list[dict]) -> None:
-    """Send premium spike alerts to Telegram.
+# Cross-cycle dedup. An alert that stays true (HIGH_IV on TEF.MC for three hours)
+# is one alert, not one every 15 minutes. Keyed on identity — ticker + type, plus
+# the contract for per-contract spikes — never on the message, whose numbers drift
+# each cycle and would defeat the dedup. In-memory with a TTL, same tradeoff as
+# premium_spike's baseline: a deploy clears it and the next cycle re-notifies
+# once. That's cheaper than a DB column + migration for a notification nicety, and
+# the reset is rare in steady state.
+_NOTIFIED: dict[str, float] = {}
+_NOTIFY_TTL = 6 * 3600  # re-notify a still-true alert at most once per 6h
+_NOTIFY_CACHE_MAX = 2000
 
-    Each spike gets its own message to keep them actionable and scannable.
-    Silently skips if Telegram is not configured.
-    """
-    for alert in spike_alerts:
-        ticker = alert["ticker"]
-        msg = alert["message"]
-        # Structured Markdown message
-        text = (
-            f"⚡ *PREMIUM SPIKE DETECTADO*\n"
-            f"*{ticker}*\n"
-            f"`{msg}`"
-        )
-        send_telegram(text)
+
+def _alert_key(a: dict) -> str:
+    parts = [a.get("ticker", ""), a.get("type", "")]
+    if a.get("_strike") is not None:  # spikes are per-contract
+        parts += [str(a.get("_strike")), str(a.get("_option_type", ""))]
+    return "|".join(parts)
+
+
+def filter_new_alerts(alerts: list[dict]) -> list[dict]:
+    """Return only the alerts not already notified within the TTL window."""
+    now = time.time()
+    if len(_NOTIFIED) > _NOTIFY_CACHE_MAX:
+        for k, ts in list(_NOTIFIED.items()):
+            if now - ts > _NOTIFY_TTL:
+                _NOTIFIED.pop(k, None)
+    fresh = []
+    for a in alerts:
+        key = _alert_key(a)
+        last = _NOTIFIED.get(key)
+        if last is not None and now - last < _NOTIFY_TTL:
+            continue
+        _NOTIFIED[key] = now
+        fresh.append(a)
+    return fresh
+
+
+def _telegram_line(a: dict) -> str:
+    if a.get("type") == "PREMIUM_SPIKE":
+        return f"⚡ *{a['ticker']}* — spike de prima\n`{a['message']}`"
+    return f"🔴 *{a['ticker']}* — {a['type']}\n`{a['message']}`"
 
 
 def notify_alerts(alerts: list[dict]) -> None:
-    """Send aggregated alert notifications through configured channels."""
+    """Notify on HIGH alerts only, and only those not already pushed.
+
+    MEDIUM/LOW still persist to the Monitor tab — that's for browsing, not for
+    pushing. Gating to HIGH plus the cross-cycle dedup is what turns this from
+    ~64 emails a day of ~100 rows each into a message only when something new and
+    actionable actually fires. All channels agree now: what notifies is HIGH and
+    fresh, nothing else.
+    """
     if not alerts:
         return
-
-    # Build summary
     high = [a for a in alerts if a.get("severity") == "HIGH"]
+    fresh = filter_new_alerts(high)
+    if not fresh:
+        return
 
-    title = f"⚡ {len(alerts)} Options Alerts"
-    lines = []
-    for a in alerts:
-        icon = "🔴" if a["severity"] == "HIGH" else "🟡"
-        lines.append(f"{icon} [{a['ticker']}] {a['message']}")
-    body = "\n".join(lines)
+    title = f"⚡ {len(fresh)} alerta(s) HIGH"
+    body = "\n".join(f"🔴 [{a['ticker']}] {a['message']}" for a in fresh)
 
-    # Push notification (ntfy)
-    if high:
-        send_ntfy(title, body, priority="high", tags="warning")
-    else:
-        send_ntfy(title, body, priority="default", tags="chart_with_upwards_trend")
+    send_ntfy(title, body, priority="high", tags="warning")
+    send_telegram(f"🚨 *{title}*\n\n" + "\n".join(_telegram_line(a) for a in fresh))
 
-    # Telegram — HIGH alerts only (avoid noise)
-    if high:
-        high_lines = "\n".join(
-            f"🔴 *{a['ticker']}* — {a['type']}\n`{a['message']}`" for a in high
-        )
-        send_telegram(f"🚨 *{len(high)} alertas HIGH*\n\n{high_lines}")
-
-    # Email digest
     html_rows = "".join(
-        f"<tr><td>{a['ticker']}</td><td>{a['type']}</td>"
-        f"<td>{a['severity']}</td><td>{a['message']}</td></tr>"
-        for a in alerts
+        f"<tr><td>{a['ticker']}</td><td>{a['type']}</td><td>{a['message']}</td></tr>"
+        for a in fresh
     )
     html = f"""
-    <h2>📊 Options Alerts</h2>
+    <h2>📊 {len(fresh)} alerta(s) HIGH de opciones</h2>
     <table border="1" cellpadding="4" cellspacing="0">
-    <tr><th>Ticker</th><th>Type</th><th>Severity</th><th>Message</th></tr>
+    <tr><th>Ticker</th><th>Tipo</th><th>Mensaje</th></tr>
     {html_rows}
     </table>
     """

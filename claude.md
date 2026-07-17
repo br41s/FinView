@@ -309,7 +309,7 @@ silent no-op everywhere (URLs go stale, and a thrown error would be worse).
 2. For each ticker: fetch chain → enrich with Greeks → rule analysis → premium spike detection → store snapshot + alerts + unusual activity → record backtest signals (HIGH/MEDIUM)
 3. evaluate_pending() resolves outcomes from previous cycles
 4. If `FINVIEW_OPENROUTER_API_KEY` set and alerts exist → AI analysis (7-section Markdown)
-5. notify_alerts() → ntfy.sh + email; notify_spike_telegram() → Telegram for PREMIUM_SPIKE
+5. notify_alerts() → single entry point for all channels (ntfy + Telegram + email)
 
 ### Scheduling — prod runs on external cron, NOT APScheduler
 Same rule as Geo-Intel: `options_scheduler.py` (APScheduler, the "Agente" tab's start/stop)
@@ -339,6 +339,25 @@ Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
 ### Premium spike detector
 Tracks (ticker, option_type, strike) EMA baseline per user in memory (resets on server restart).
 Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `current_premium ≥ $0.10` and `samples ≥ 3`. EMA α = 0.3.
+**Reset caveat**: the baseline is empty after every deploy, so the first cycle or two
+post-deploy fire spikes off a cold baseline — noise, not signal. Discount them.
+
+### Notifications — HIGH only, deduplicated across cycles
+`notify_alerts()` is the **single entry point** for every channel (ntfy + Telegram +
+email). Two gates, both load-bearing:
+- **Only `severity == "HIGH"` notifies.** MEDIUM/LOW still persist and show in the
+  Monitor tab — they're for browsing, not pushing. Without this, email carried ~100
+  MEDIUM/LOW rows across 70 tickers every cycle.
+- **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 15-min
+  cycle is pushed once per 6h TTL, not every cycle. In-memory, keyed on
+  ticker+type (+contract for spikes), never on the message (its numbers drift).
+  Resets on deploy like the spike baseline — re-notifies once, accepted.
+- The old split `notify_spike_telegram()` is **gone**: it double-sent spikes on
+  Telegram and had no dedup. Spikes now flow through `notify_alerts` with their own
+  Telegram label.
+- `send_telegram` retries once as plain text on a 400 (legacy Markdown rejects a whole
+  message over one stray char), and logs Telegram's `description` — a bare 400 hid a
+  wrong `chat_id` for a while.
 
 ### Backtest engine
 - `record_signal()`: stores every HIGH/MEDIUM alert as a `BacktestSignal` with direction (BULLISH/BEARISH derived from alert type)
