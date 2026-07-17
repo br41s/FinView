@@ -9,6 +9,7 @@ Channels:
 import json
 import logging
 import smtplib
+import urllib.error
 import urllib.parse
 import urllib.request
 from email.mime.multipart import MIMEMultipart
@@ -68,8 +69,8 @@ def send_email(subject: str, html_body: str) -> bool:
         return False
 
 
-def send_telegram(text: str) -> bool:
-    """Send a Markdown-formatted message via Telegram Bot API.
+def send_telegram(text: str, parse_mode: str | None = "Markdown") -> bool:
+    """Send a message via Telegram Bot API.
 
     Uses only stdlib urllib — no python-telegram-bot dependency needed.
     Returns True on success, False if unconfigured or on error.
@@ -83,9 +84,10 @@ def send_telegram(text: str) -> bool:
         body = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
+        if parse_mode:
+            body["parse_mode"] = parse_mode
         # Forum groups: route into the app's topic instead of General.
         thread_id = settings.telegram_thread_id.strip()
         if thread_id.isdigit():
@@ -99,6 +101,27 @@ def send_telegram(text: str) -> bool:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status == 200
+    except urllib.error.HTTPError as e:
+        # Telegram explains every rejection in the response body
+        # ({"ok": false, "error_code": 400, "description": "..."}). Logging only
+        # the traceback throws that away and leaves a bare "400: Bad Request"
+        # to guess at — which is exactly what happened in prod: spikes silently
+        # never arrived and the logs couldn't say why.
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            pass
+        logger.error("Telegram send failed: HTTP %s — %s", e.code, detail)
+        # A 400 on a formatted message is usually the formatting: Telegram's
+        # legacy Markdown rejects the whole message over one stray `*` or `_`,
+        # and alert text carries tickers and free-form reasons we don't control.
+        # The content matters more than the bold, so retry once as plain text.
+        # Guarded by `parse_mode` so the retry can't recurse.
+        if e.code == 400 and parse_mode:
+            logger.info("Telegram: retrying without Markdown")
+            return send_telegram(text, parse_mode=None)
+        return False
     except Exception:
         logger.exception("Telegram send failed")
         return False
