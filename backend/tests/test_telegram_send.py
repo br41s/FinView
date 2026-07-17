@@ -120,6 +120,25 @@ def test_thread_id_is_included_on_the_first_attempt_when_set(monkeypatch):
     assert sent["message_thread_id"] == 61
 
 
+def test_an_over_limit_message_is_truncated_not_rejected():
+    """Telegram hard-rejects >4096 chars ('message is too long'), and the
+    plain-text retry can't fix a length problem. Truncate so a big burst still
+    delivers."""
+    huge = "x" * 9000
+    with patch.object(notification_service.urllib.request, "urlopen", return_value=_Resp()) as op:
+        assert send_telegram(huge) is True
+    sent = json.loads(op.call_args.args[0].data)
+    assert len(sent["text"]) <= notification_service._TELEGRAM_MAX_CHARS
+    assert sent["text"].endswith("(recortado)")
+
+
+def test_a_message_at_the_limit_is_left_alone():
+    exact = "y" * notification_service._TELEGRAM_MAX_CHARS
+    with patch.object(notification_service.urllib.request, "urlopen", return_value=_Resp()) as op:
+        send_telegram(exact)
+    assert json.loads(op.call_args.args[0].data)["text"] == exact
+
+
 def test_non_400_errors_do_not_retry():
     err = _http_error(429, "Too Many Requests")
     with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
