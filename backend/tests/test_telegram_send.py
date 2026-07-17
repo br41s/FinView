@@ -25,6 +25,10 @@ def _configured(monkeypatch):
     monkeypatch.setattr(settings, "telegram_thread_id", "")
 
 
+def _configure_thread(monkeypatch, thread="61"):
+    monkeypatch.setattr(settings, "telegram_thread_id", thread)
+
+
 class _Resp:
     status = 200
 
@@ -86,6 +90,34 @@ def test_the_plain_text_retry_cannot_recurse():
     with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
         assert send_telegram("hola", parse_mode=None) is False
     assert op.call_count == 1
+
+
+def test_a_stale_thread_id_self_heals_on_the_retry(monkeypatch):
+    """Real prod case: chat moved from a forum group to a private DM, but the old
+    thread_id lingered → 'message thread not found'. The retry drops the thread
+    and delivers to the main chat, which for a DM is the right place."""
+    _configure_thread(monkeypatch, "61")
+    calls = []
+
+    def fake(req, timeout=None):
+        calls.append(json.loads(req.data))
+        if len(calls) == 1:
+            raise _http_error(400, "message thread not found")
+        return _Resp()
+
+    with patch.object(notification_service.urllib.request, "urlopen", side_effect=fake):
+        assert send_telegram("hola") is True
+    assert len(calls) == 2
+    assert calls[0]["message_thread_id"] == 61  # first try routes to the topic
+    assert "message_thread_id" not in calls[1]  # retry drops it
+
+
+def test_thread_id_is_included_on_the_first_attempt_when_set(monkeypatch):
+    _configure_thread(monkeypatch, "61")
+    with patch.object(notification_service.urllib.request, "urlopen", return_value=_Resp()) as op:
+        send_telegram("hola")
+    sent = json.loads(op.call_args.args[0].data)
+    assert sent["message_thread_id"] == 61
 
 
 def test_non_400_errors_do_not_retry():
