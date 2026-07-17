@@ -20,6 +20,9 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Telegram rejects any message over 4096 characters outright.
+_TELEGRAM_MAX_CHARS = 4096
+
 
 def send_ntfy(title: str, message: str, priority: str = "high", tags: str = "chart_with_upwards_trend") -> bool:
     """Send push notification via ntfy.sh."""
@@ -86,6 +89,14 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
     chat_id = settings.telegram_chat_id
     if not token or not chat_id:
         return False
+    # Telegram hard-caps a message at 4096 chars and rejects the whole thing with
+    # "message is too long" — a 400 that the plain-text retry can't fix, because
+    # it's about length, not formatting. HIGH-gating + dedup keep messages small
+    # in normal use, but a cold-start burst (empty dedup + a market-wide event)
+    # can still pile up. Truncate so a big burst degrades to "delivered, trimmed"
+    # rather than "silently dropped".
+    if len(text) > _TELEGRAM_MAX_CHARS:
+        text = text[: _TELEGRAM_MAX_CHARS - 20].rstrip() + "\n… (recortado)"
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         body = {
