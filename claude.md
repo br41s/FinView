@@ -339,8 +339,19 @@ Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
 ### Premium spike detector
 Tracks (ticker, option_type, strike) EMA baseline per user in memory (resets on server restart).
 Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `current_premium ≥ $0.10` and `samples ≥ 3`. EMA α = 0.3.
-**Reset caveat**: the baseline is empty after every deploy, so the first cycle or two
-post-deploy fire spikes off a cold baseline — noise, not signal. Discount them.
+- **Baseline per contract, alert per ticker.** A broad move spikes every strike at
+  once — IWDA.AS produced 17 alerts (K=136…148) for one event. `detect_spikes`
+  collapses a ticker's hits into ONE alert via `_aggregate_ticker_spikes`, keeping
+  the direction in the message ("6 calls + 11 puts, +151% a +195%"). The learning
+  stays per contract; only the output is aggregated. Don't un-aggregate it.
+- The aggregate carries **no `_strike`/`_option_type`** on purpose: that makes
+  `notification_service._alert_key` collapse to `(ticker, PREMIUM_SPIKE)`, so dedup
+  is one push per ticker per window instead of one per strike.
+- **Reset caveat**: the baseline is empty after every deploy, so the first cycle or two
+  post-deploy fire spikes off a cold baseline — noise, not signal. Discount them.
+- **The effective bar is higher than `SPIKE_MULTIPLIER`**: the EMA absorbs the current
+  premium *before* the spike check, so an isolated spike needs ≈7× the prior baseline,
+  not 2.5×. Pre-existing; worth revisiting if real spikes seem to be missed.
 
 ### Notifications — HIGH only, deduplicated across cycles
 `notify_alerts()` is the **single entry point** for every channel (ntfy + Telegram +
