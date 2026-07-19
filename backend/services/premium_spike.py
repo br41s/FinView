@@ -87,7 +87,11 @@ def detect_spikes(
         ``{"ticker", "type", "severity", "message"}``.
     """
     store = _get_store(user_id)
-    spike_alerts: list[dict] = []
+    # Raw per-contract hits, collected then collapsed into one alert per ticker.
+    # When an underlying moves, every strike spikes together — IWDA.AS fired on 17
+    # adjacent strikes at once, which is one event, not 17 signals. The baseline
+    # is still learned per contract (below); only the *output* is aggregated.
+    hits: list[dict] = []
 
     for option_type in ("calls", "puts"):
         contracts = options_data.get(option_type) or []
@@ -122,33 +126,51 @@ def detect_spikes(
                 continue
 
             if baseline.ema > 0 and premium >= SPIKE_MULTIPLIER * baseline.ema:
-                expiration = contract.get("expiration") or contract.get("expirationDate") or "?"
-                volume = contract.get("volume") or 0
-
                 pct = round((premium / baseline.ema - 1) * 100)
-                msg = (
-                    f"Premium spike {ot_label.upper()} {ticker} "
-                    f"K={strike} exp={expiration}: "
-                    f"prima={premium:.2f} (+{pct}% sobre baseline {baseline.ema:.2f})"
-                )
-                if volume:
-                    msg += f", vol={volume}"
-
-                spike_alerts.append({
-                    "ticker": ticker,
-                    "type": "PREMIUM_SPIKE",
-                    "severity": "HIGH",
-                    "message": msg,
-                    # Extra fields consumed by backtest_service.record_signal
-                    "_premium": premium,
-                    "_strike": strike,
-                    "_option_type": ot_label,
-                    "_expiration": expiration,
-                })
+                hits.append({"option_type": ot_label, "strike": strike, "premium": premium, "pct": pct})
                 logger.info("PREMIUM_SPIKE %s %s K=%s: %.2f vs baseline %.2f",
                             ticker, ot_label, strike, premium, baseline.ema)
 
-    return spike_alerts
+    alert = _aggregate_ticker_spikes(ticker, hits)
+    return [alert] if alert else []
+
+
+def _aggregate_ticker_spikes(ticker: str, hits: list[dict]) -> dict | None:
+    """Collapse a ticker's per-contract spikes into one HIGH alert, or None.
+
+    Direction is kept in the message (calls vs puts), since call-only flow reads
+    bullish and put-only bearish, but the whole ticker is one notification. The
+    aggregate deliberately carries no ``_strike``/``_option_type`` so the
+    cross-cycle dedup keys on (ticker, PREMIUM_SPIKE) — one push per ticker per
+    window, not one per strike.
+    """
+    if not hits:
+        return None
+
+    calls = [h for h in hits if h["option_type"] == "call"]
+    puts = [h for h in hits if h["option_type"] == "put"]
+    pcts = [h["pct"] for h in hits]
+    lo, hi = min(pcts), max(pcts)
+
+    parts = []
+    if calls:
+        parts.append(f"{len(calls)} call{'s' if len(calls) != 1 else ''}")
+    if puts:
+        parts.append(f"{len(puts)} put{'s' if len(puts) != 1 else ''}")
+    breakdown = " + ".join(parts)
+    pct_range = f"+{lo}%" if lo == hi else f"+{lo}% a +{hi}%"
+
+    n = len(hits)
+    contratos = "contrato con spike" if n == 1 else "contratos con spike"
+    msg = f"{n} {contratos} ({breakdown}), {pct_range} sobre baseline"
+
+    return {
+        "ticker": ticker,
+        "type": "PREMIUM_SPIKE",
+        "severity": "HIGH",
+        "message": msg,
+        "_spike_count": n,
+    }
 
 
 def reset_baselines(user_id: int) -> None:
