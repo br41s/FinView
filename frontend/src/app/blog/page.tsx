@@ -345,6 +345,27 @@ function ImgRebalanceo() {
   );
 }
 
+function ImgPea() {
+  return (
+    <div className={styles.postImgPea}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">PEA — DIVIDENDOS AL 0% IRPF</text>
+        {([18, 38, 58, 78, 98]).map((x, i) => {
+          const heights = [22, 34, 46, 58, 70];
+          return (
+            <rect key={x} x={x} y={100 - heights[i]} width="14" height={heights[i]}
+              fill={i === 4 ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'} rx="2"/>
+          );
+        })}
+        <circle cx="160" cy="52" r="26" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="160" y="50" fontSize="13" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="bold">0%</text>
+        <text x="160" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IRPF</text>
+        <text x="100" y="113" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">5 años de permanencia = exención</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -994,6 +1015,15 @@ function ImgImpuestoPatrimonio() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'plan-ahorro-largo-plazo-pea',
+    tag: 'Fiscalidad',
+    date: '21 jul 2026',
+    readTime: '9 min',
+    title: 'Plan de Ahorro a Largo Plazo (PEA): dividendos al 0% de IRPF si aguantas 5 años',
+    excerpt: 'Cómo funciona el PEA en España: exención del 0% en el IRPF para dividendos y plusvalías si mantienes el plan 5 años, el límite de 5.000€ al año y cómo declararlo en la Renta.',
+    Image: ImgPea,
+  },
   {
     slug: 'rebalanceo-cartera-dividendos',
     tag: 'Estrategia',
