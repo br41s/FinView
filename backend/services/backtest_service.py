@@ -37,6 +37,11 @@ _HORIZONS: list[tuple[str, int]] = [
     ("7d", 7),
 ]
 
+# Widest age (calendar days) at which a signal is still evaluated. Bounds the
+# per-run pending scan as volume grows AND drops signals whose 7d horizon can no
+# longer be fetched. The 7-day horizon plus generous slack for cron outages.
+_MAX_EVAL_AGE_DAYS = 45
+
 # Signal types that imply BEARISH direction
 _BEARISH_TYPES = {
     "HIGH_PUT_CALL_RATIO",
@@ -161,13 +166,17 @@ def evaluate_pending(db: Session, user_id: int) -> int:
     Returns the number of signals updated.
     """
     now = datetime.now(timezone.utc)
-    # Signals that are at least 1 day old and have not been fully evaluated
+    # Pending = at least 1 day old, not yet fully evaluated (no outcome_7d), and
+    # still inside the evaluable window. The lower age bound both bounds the scan
+    # as volume grows and drops signals whose 7d horizon can no longer be fetched.
     cutoff = now - timedelta(days=1)
+    floor = now - timedelta(days=_MAX_EVAL_AGE_DAYS)
     pending: list[BacktestSignal] = (
         db.query(BacktestSignal)
         .filter(
             BacktestSignal.user_id == user_id,
             BacktestSignal.recorded_at <= cutoff,
+            BacktestSignal.recorded_at >= floor,
             BacktestSignal.outcome_7d.is_(None),  # not fully evaluated yet
         )
         .all()
@@ -176,15 +185,22 @@ def evaluate_pending(db: Session, user_id: int) -> int:
     if not pending:
         return 0
 
-    # Batch tickers to minimise yfinance round trips
+    # Fetch one price window per ticker wide enough to cover EVERY pending
+    # signal's 7-day horizon. A fixed "10d" only reached signals recorded 7-17
+    # days ago, so any that missed that sweet spot (a weekend, a skipped cron
+    # run) were never evaluable and piled up unbounded. Start from the oldest
+    # pending signal, padded for the ±2-day weekend/holiday fallback.
     tickers_needed: set[str] = {s.ticker for s in pending}
+    start = min(s.recorded_at for s in pending).date() - timedelta(days=2)
     price_cache: dict[str, float] = {}
+    priced = 0
 
     for ticker in tickers_needed:
         try:
-            hist = yf.Ticker(ticker).history(period="10d")
+            hist = yf.Ticker(ticker).history(start=start.isoformat())
             if not hist.empty:
-                # Build date → close map (UTC-aware dates)
+                priced += 1
+                # Build date → close map
                 for ts, row in hist.iterrows():
                     d = ts.date()
                     price_cache[f"{ticker}_{d.isoformat()}"] = float(row["Close"])
@@ -236,6 +252,12 @@ def evaluate_pending(db: Session, user_id: int) -> int:
             logger.exception("Failed to commit backtest evaluations")
             updated = 0
 
+    # Per-run visibility: how many were scanned, priced, and filled. Makes a
+    # silent zero-throughput regression obvious in the logs instead of invisible.
+    logger.info(
+        "[backtest-eval] pending=%d tickers=%d priced=%d updated=%d",
+        len(pending), len(tickers_needed), priced, updated,
+    )
     return updated
 
 

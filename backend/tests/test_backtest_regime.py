@@ -125,3 +125,66 @@ def test_horizon_accuracy_counts_correct(db):
     seven = get_stats(db, user_id=1)["by_horizon"]["7d"]
     assert seven["correct"] == 1
     assert seven["accuracy_pct"] == 50.0
+
+
+# ── evaluate_pending window fix ────────────────────────────────────────────
+
+import backend.services.backtest_service as backtest_service  # noqa: E402
+from backend.services.backtest_service import evaluate_pending  # noqa: E402
+
+
+def _fake_yf(close: float):
+    """Minimal yfinance stand-in: a wide daily Close history at a fixed price."""
+    import pandas as pd
+    from datetime import date, timedelta
+
+    end = date.today()
+    idx = pd.date_range(start=end - timedelta(days=60), end=end, freq="D")
+    df = pd.DataFrame({"Close": [close] * len(idx)}, index=idx)
+
+    class _Ticker:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def history(self, **_k):
+            return df
+
+    class _Module:
+        Ticker = _Ticker
+
+    return _Module
+
+
+def _pending_signal(days_old: int):
+    from datetime import datetime, timedelta, timezone
+    return BacktestSignal(
+        user_id=1, ticker="AAPL", signal_type="ZONE_BREAK", direction="BULLISH",
+        price_at_signal=100, recorded_at=datetime.now(timezone.utc) - timedelta(days=days_old),
+    )
+
+
+def test_evaluate_pending_fills_matured_signal_beyond_old_window(db, monkeypatch):
+    # 20 days old: the old fixed "10d" fetch could never reach its T+7 price.
+    sig = _pending_signal(days_old=20)
+    db.add(sig)
+    db.commit()
+    monkeypatch.setattr(backtest_service, "yf", _fake_yf(close=105.0))  # +5% → CORRECT
+
+    updated = evaluate_pending(db, user_id=1)
+    db.refresh(sig)
+    assert updated == 1
+    assert sig.outcome_1d is not None
+    # Post-refresh the column returns the enum member; +5% on a BULLISH signal → CORRECT.
+    assert sig.outcome_7d == BacktestOutcome.CORRECT  # 7d now actually fills
+
+
+def test_evaluate_pending_skips_signals_past_max_age(db, monkeypatch):
+    # Older than _MAX_EVAL_AGE_DAYS → terminally unevaluable, left out of the scan.
+    sig = _pending_signal(days_old=backtest_service._MAX_EVAL_AGE_DAYS + 5)
+    db.add(sig)
+    db.commit()
+    monkeypatch.setattr(backtest_service, "yf", _fake_yf(close=105.0))
+
+    evaluate_pending(db, user_id=1)
+    db.refresh(sig)
+    assert sig.outcome_7d is None
