@@ -1014,7 +1014,37 @@ function ImgImpuestoPatrimonio() {
   );
 }
 
+function ImgTiposInteres() {
+  return (
+    <div className={styles.postImgTiposInteres}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">TIPOS BCE — PRECIO DEL DINERO</text>
+        {/* rate staircase rising */}
+        <polyline
+          points="20,95 50,95 50,80 90,80 90,62 130,62 130,44 170,44"
+          stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+        {([95, 80, 62, 44]).map((y, i) => (
+          <circle key={y} cx={[50, 90, 130, 170][i]} cy={y} r="3" fill="var(--fv-ochre)" />
+        ))}
+        {/* baseline */}
+        <line x1="20" y1="105" x2="180" y2="105" stroke="var(--fv-ink-15)" strokeWidth="1" strokeDasharray="4 3" />
+        <text x="100" y="116" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Tipos arriba · banca arriba · utilities y SOCIMIs abajo</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'tipos-interes-cartera-dividendos',
+    tag: 'Estrategia',
+    date: '22 jul 2026',
+    readTime: '11 min',
+    title: 'Tipos de interés y tu cartera de dividendos: qué hacer cuando el BCE mueve el precio del dinero',
+    excerpt: 'El BCE subió tipos en junio de 2026 y el mercado descuenta más subidas. Te explicamos por qué eso mueve tus bancos, utilities y SOCIMIs, y qué tocar en tu cartera de dividendos.',
+    Image: ImgTiposInteres,
+  },
   {
     slug: 'plan-ahorro-largo-plazo-pea',
     tag: 'Fiscalidad',
