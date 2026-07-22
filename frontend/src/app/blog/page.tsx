@@ -1054,7 +1054,39 @@ function ImgAristocratsEuropa() {
   );
 }
 
+function ImgDividendosInflacion() {
+  return (
+    <div className={styles.postImgDividendosInflacion}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">NOMINAL vs REAL</text>
+        {/* Nominal cluster: bars grow up (ochre) */}
+        <rect x="22" y="73" width="14" height="22" rx="2" fill="rgba(154,107,31,0.3)"/>
+        <rect x="40" y="57" width="14" height="38" rx="2" fill="rgba(154,107,31,0.45)"/>
+        <rect x="58" y="41" width="14" height="54" rx="2" fill="var(--fv-ochre)"/>
+        <text x="42" y="106" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">NOMINAL ↑</text>
+        {/* Real cluster: bars shrink (faded ink) */}
+        <rect x="122" y="49" width="14" height="46" rx="2" fill="rgba(31,27,22,0.18)"/>
+        <rect x="140" y="63" width="14" height="32" rx="2" fill="rgba(31,27,22,0.14)"/>
+        <rect x="158" y="77" width="14" height="18" rx="2" fill="rgba(31,27,22,0.10)"/>
+        <text x="140" y="106" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">REAL ↓</text>
+        {/* Diverging diagonal: nominal up, real down */}
+        <line x1="72" y1="44" x2="118" y2="76" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="4 3"/>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">cobras más, compras menos</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'dividendos-inflacion-poder-adquisitivo',
+    tag: 'Estrategia',
+    date: '23 jul 2026',
+    readTime: '8 min',
+    title: 'Dividendos e inflación: por qué tu poder adquisitivo importa más que el yield',
+    excerpt: 'La inflación se come tu renta por dividendo aunque el yield suba. Cómo medir tu dividendo real, qué empresas aguantan la subida de precios y qué hacer para no perder poder adquisitivo.',
+    Image: ImgDividendosInflacion,
+  },
   {
     slug: 'tipos-interes-cartera-dividendos',
     tag: 'Estrategia',
