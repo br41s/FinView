@@ -873,6 +873,22 @@ export const api = {
       fetchJSON(`/options/backtest${qs(params ?? {})}`),
     backtestStats: (ticker?: string) =>
       fetchJSON(`/options/backtest/stats${ticker ? qs({ ticker }) : ""}`),
+    backtestCalibration: (days = 30) =>
+      fetchJSON<{
+        window_days: number;
+        since: string;
+        total: number;
+        evaluated_7d: number;
+        newest: string | null;
+        by_type_alignment: Record<
+          string,
+          Record<string, { correct: number; total: number; accuracy_pct: number | null }>
+        >;
+        dedup_health: Record<
+          string,
+          { rows: number; ticker_days: number; rows_per_ticker_day: number | null }
+        >;
+      }>(`/options/backtest/calibration${qs({ days })}`),
     backtestEvaluate: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/options/backtest/evaluate`, {

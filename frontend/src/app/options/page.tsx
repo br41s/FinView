@@ -157,6 +157,20 @@ interface BacktestStats {
   by_alignment?: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
 }
 
+type AlignBucket = { correct: number; total: number; accuracy_pct: number | null };
+interface Calibration {
+  window_days: number;
+  since: string;
+  total: number;
+  evaluated_7d: number;
+  newest: string | null;
+  by_type_alignment: Record<string, Record<string, AlignBucket>>;
+  dedup_health: Record<
+    string,
+    { rows: number; ticker_days: number; rows_per_ticker_day: number | null }
+  >;
+}
+
 interface AgentStatus {
   running: boolean;
   interval_minutes: number;
@@ -263,6 +277,7 @@ export default function OptionsPage() {
   const [availabilityChecked, setAvailabilityChecked] = useState(false);
   const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
   const [backtestStats, setBacktestStats] = useState<BacktestStats | null>(null);
+  const [calibration, setCalibration] = useState<Calibration | null>(null);
   const [loadingBacktest, setLoadingBacktest] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
@@ -644,12 +659,14 @@ export default function OptionsPage() {
   async function loadBacktest() {
     setLoadingBacktest(true);
     try {
-      const [sigs, stats] = await Promise.all([
+      const [sigs, stats, calib] = await Promise.all([
         api.options.backtestSignals({ days: 30 }) as Promise<BacktestSignal[]>,
         api.options.backtestStats() as Promise<BacktestStats>,
+        api.options.backtestCalibration(30) as Promise<Calibration>,
       ]);
       setBacktestSignals(sigs);
       setBacktestStats(stats);
+      setCalibration(calib);
     } catch (e) {
       console.error("Failed to load backtest data:", e);
     } finally {
@@ -1636,6 +1653,8 @@ export default function OptionsPage() {
             </div>
           </div>
 
+          {calibration && <CalibrationPanel calibration={calibration} />}
+
           {loadingBacktest ? (
             <div className="flex min-h-[20vh] items-center justify-center">
               <LoadingDots text="Cargando backtesting" />
@@ -2188,6 +2207,84 @@ function AlignmentTag({ alignment }: { alignment?: string | null }) {
     >
       {aligned ? "macro ✓" : "macro ✗"}
     </Badge>
+  );
+}
+
+/** Calibration digest: dedup health + aligned-vs-counter edge per signal type. */
+function CalibrationPanel({ calibration }: { calibration: Calibration }) {
+  const { by_type_alignment, dedup_health } = calibration;
+  const worst = Math.max(
+    0,
+    ...Object.values(dedup_health).map((d) => d.rows_per_ticker_day ?? 0),
+  );
+  const healthy = worst <= 2; // ~1/ticker-day is clean; high = re-recording per cycle
+  const types = Object.keys(by_type_alignment);
+  const fmt = (b?: AlignBucket) =>
+    b && b.accuracy_pct != null ? `${b.accuracy_pct}% (${b.total})` : "—";
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm">Calibración · últimos {calibration.window_days}d</CardTitle>
+          <span
+            title="Filas por ticker-día: ~1 = sano; alto = la misma condición se re-registra cada ciclo"
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${
+              healthy
+                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                : "bg-red-500/10 text-red-600 border-red-500/20"
+            }`}
+          >
+            Dedup {healthy ? "✓" : "✗"} · {worst.toFixed(1)}/ticker-día
+          </span>
+        </div>
+        <CardDescription>
+          {calibration.evaluated_7d} evaluadas (7d) de {calibration.total} señales · desde {calibration.since}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {types.length === 0 ? (
+          <p className="px-6 pb-4 text-xs text-muted-foreground">
+            Aún sin señales alineadas/contrarias evaluadas en la ventana — se llenan al madurar (7d).
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead className="text-right">A favor</TableHead>
+                  <TableHead className="text-right">En contra</TableHead>
+                  <TableHead className="text-right">Ventaja</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {types.map((t) => {
+                  const a = by_type_alignment[t].aligned;
+                  const c = by_type_alignment[t].counter;
+                  const edge =
+                    a?.accuracy_pct != null && c?.accuracy_pct != null
+                      ? Math.round((a.accuracy_pct - c.accuracy_pct) * 10) / 10
+                      : null;
+                  const edgeColor =
+                    edge == null ? "" : edge >= 10 ? "text-emerald-600" : edge <= -10 ? "text-red-600" : "text-muted-foreground";
+                  return (
+                    <TableRow key={t}>
+                      <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{t}</Badge></TableCell>
+                      <TableCell className="text-right">{fmt(a)}</TableCell>
+                      <TableCell className="text-right">{fmt(c)}</TableCell>
+                      <TableCell className={`text-right font-semibold ${edgeColor}`}>
+                        {edge == null ? "—" : `${edge > 0 ? "+" : ""}${edge}pts`}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

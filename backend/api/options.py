@@ -630,6 +630,20 @@ def backtest_stats(
     return get_stats(db, user.id, ticker=ticker)
 
 
+@router.get("/backtest/calibration")
+def backtest_calibration(db: DbSession, user: CurrentUser, days: int = 30):
+    """Read-only calibration digest over a recent window (default 30 days).
+
+    Surfaces aligned-vs-counter accuracy by signal type, dedup health (rows per
+    ticker-day), and evaluator freshness — so data-quality regressions are
+    visible in-app instead of needing a hand-written Neon query.
+    """
+    from backend.services.backtest_service import get_calibration
+
+    days = max(1, min(days, 365))
+    return get_calibration(db, user.id, days=days)
+
+
 @router.post("/backtest/evaluate", status_code=200)
 def trigger_backtest_evaluation(db: DbSession, user: CurrentUser):
     """Manually trigger outcome evaluation for pending signals."""
