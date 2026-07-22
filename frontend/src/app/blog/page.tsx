@@ -1023,7 +1023,7 @@ function ImgAristocratsEuropa() {
           points="20,100 20,88 50,88 50,72 80,72 80,56 110,56 110,40 140,40 140,26 170,26"
           stroke="var(--fv-ochre)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"
         />
-        {([20,88],[50,72],[80,56],[110,40],[140,26],[170,26]).map(([x,y], i) => (
+        {[[20,88],[50,72],[80,56],[110,40],[140,26],[170,26]].map(([x,y], i) => (
           <circle key={i} cx={x} cy={y} r="3" fill="var(--fv-ochre)" />
         ))}
         <line x1="20" y1="100" x2="180" y2="100" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="4 3" />
