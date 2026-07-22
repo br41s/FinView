@@ -1035,6 +1035,25 @@ function ImgTiposInteres() {
   );
 }
 
+function ImgAristocratsEuropa() {
+  return (
+    <div className={styles.postImgAristocratsEuropa}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">10+ AÑOS SUBIENDO EL DIVIDENDO</text>
+        <polyline
+          points="20,100 20,88 50,88 50,72 80,72 80,56 110,56 110,40 140,40 140,26 170,26"
+          stroke="var(--fv-ochre)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+        {[[20,88],[50,72],[80,56],[110,40],[140,26],[170,26]].map(([x,y], i) => (
+          <circle key={i} cx={x} cy={y} r="3" fill="var(--fv-ochre)" />
+        ))}
+        <line x1="20" y1="100" x2="180" y2="100" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="4 3" />
+        <text x="100" y="113" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">cada peldaño = un año más de dividendo mayor</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
   {
     slug: 'tipos-interes-cartera-dividendos',
@@ -1044,6 +1063,15 @@ const POSTS: Post[] = [
     title: 'Tipos de interés y tu cartera de dividendos: qué hacer cuando el BCE mueve el precio del dinero',
     excerpt: 'El BCE subió tipos en junio de 2026 y el mercado descuenta más subidas. Te explicamos por qué eso mueve tus bancos, utilities y SOCIMIs, y qué tocar en tu cartera de dividendos.',
     Image: ImgTiposInteres,
+  },
+  {
+    slug: 'dividend-aristocrats-europa-espana-2026',
+    tag: 'Estrategia',
+    date: '22 jul 2026',
+    readTime: '11 min',
+    title: 'Dividend Aristocrats en Europa y España: las acciones que suben el dividendo cada año',
+    excerpt: 'Qué son los Dividend Aristocrats en Europa y España, qué empresas españolas entran en el índice S&P Europe 350 Dividend Aristocrats y cómo invertir en ellos desde España sin complicarte la fiscalidad.',
+    Image: ImgAristocratsEuropa,
   },
   {
     slug: 'plan-ahorro-largo-plazo-pea',

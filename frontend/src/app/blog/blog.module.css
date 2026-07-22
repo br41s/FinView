@@ -770,3 +770,12 @@
   align-items: center;
   justify-content: center;
 }
+
+.postImgAristocratsEuropa {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, var(--fv-ochre-ghost) 0%, rgba(154,107,31,0.18) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
