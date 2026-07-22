@@ -381,6 +381,21 @@ email). Two gates, both load-bearing:
 - **Regime alignment (Phase 2b):** each signal freezes the macro `regime` at record time
   and stores `regime_alignment` (aligned/counter/neutral). `get_stats` adds a `by_alignment`
   breakdown (aligned-vs-counter accuracy at 7d). Instrumentation only — see the FRED section.
+- **Evaluator window (load-bearing):** `evaluate_pending` fetches `history(start=oldest-pending)`,
+  NOT a fixed window — a `10d` window only reached signals recorded 7-17 days ago, so any that
+  missed that sweet spot (weekend, skipped cron) never got a 7d outcome and piled up unbounded.
+  Scan is bounded by `_MAX_EVAL_AGE_DAYS` (45); a `[backtest-eval] pending/tickers/priced/updated`
+  log line per run makes a zero-throughput regression visible.
+- **Cross-cycle dedup (both sources):** a persistent condition fires the same alert every cycle.
+  Options: `record_signal` skips a repeat within `_DEDUP_WINDOW_HOURS` (20h) on
+  (user, ticker, signal_type, direction). Technical: `technical_signals._already_open` does the
+  same per (ticker, level). Without it, one lingering setup stacks ~30-96 duplicate rows/day and
+  **biases `by_alignment`** (same direction+regime repeated). Never remove either dedup.
+- **Calibration digest** — `get_calibration(user, days)` + `GET /options/backtest/calibration`
+  + the Backtest-tab `CalibrationPanel`: aligned-vs-counter edge per signal type, **dedup health**
+  (rows/ticker-day; ~1 healthy, high = a dedup regression), and evaluator freshness. This is the
+  feedback loop — read it instead of hand-querying Neon; the two bugs above survived weeks because
+  nobody was reading the data.
 
 ### Frontend — /options (5 tabs)
 - **Watchlist** (default tab): the one list — Cartera and Watchlist were separate
@@ -428,7 +443,7 @@ email). Two gates, both load-bearing:
   - Smart Money rows deliberately have no chips — they're per-contract
     (ticker+strike+expiry), so several rows share a ticker and chips would be noise.
   - **This tab reads empty without the Cloud Scheduler cron** (see Scheduling above).
-- **Backtest**: accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown; "Precisión por régimen macro" aligned-vs-counter table (Phase 2b)
+- **Backtest**: `CalibrationPanel` on top (dedup-health badge + aligned-vs-counter "Ventaja" per type + freshness); accuracy table +1d/+3d/+7d per signal type; per-ticker breakdown; "Precisión por régimen macro" aligned-vs-counter table (Phase 2b)
 - **Análisis**: calls `GET /options/agent/last-analysis`; parses `## N.` Markdown sections via `parseAnalysisSections()`; renders each section as a Card; shows cycle metadata header (timestamp, tickers, alerts, sentiment)
 - **Agente**: scheduler status, cycle metrics, chat input → `POST /options/agent/chat`
 
@@ -617,7 +632,10 @@ The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never to
 - **Instrument + surface only — does NOT change severity, gating, or notifications.** Every
   signal is still recorded, just labeled, so aligned-vs-counter stays unbiased.
 - **Phase 2c (deferred):** let regime alignment actually modulate severity/notifications —
-  only after `by_alignment` shows aligned signals outperform over a week+ of evaluated data.
+  only after the calibration digest's aligned-vs-counter edge holds up over a week+ of clean,
+  evaluated data. Read it from the Backtest-tab `CalibrationPanel` (dedup badge must be green
+  first — a red badge means the window still includes pre-dedup firehose data). Higher stakes
+  now that notifications are HIGH-only: prefer promoting aligned over muting counter.
 
 ---
 
