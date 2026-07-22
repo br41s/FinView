@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.models import Base, BacktestOutcome, BacktestSignal
 from backend.services.backtest_service import (
+    _DEDUP_WINDOW_HOURS,
     alignment_for,
     alignment_for_alert,
     get_stats,
@@ -188,3 +189,41 @@ def test_evaluate_pending_skips_signals_past_max_age(db, monkeypatch):
     evaluate_pending(db, user_id=1)
     db.refresh(sig)
     assert sig.outcome_7d is None
+
+
+# ── options-path cross-cycle dedup ─────────────────────────────────────────
+
+
+def test_record_signal_dedups_same_condition_within_window(db):
+    s1 = record_signal(db, user_id=1, ticker="AAPL", alert_type="HIGH_IV_CALLS",
+                       message="calls hot", current_price=100)
+    db.commit()
+    s2 = record_signal(db, user_id=1, ticker="AAPL", alert_type="HIGH_IV_CALLS",
+                       message="calls hot", current_price=101)
+    assert s1 is not None
+    assert s2 is None                                   # same open condition → skipped
+    assert db.query(BacktestSignal).count() == 1
+
+
+def test_record_signal_distinct_type_not_deduped(db):
+    record_signal(db, user_id=1, ticker="AAPL", alert_type="HIGH_IV_CALLS",   # BULLISH
+                  message="c", current_price=100)
+    record_signal(db, user_id=1, ticker="AAPL", alert_type="HIGH_PUT_CALL_RATIO",  # BEARISH
+                  message="p", current_price=100)
+    db.commit()
+    assert db.query(BacktestSignal).count() == 2        # different type/direction → distinct
+
+
+def test_record_signal_allowed_after_window(db):
+    from datetime import datetime, timedelta, timezone
+    db.add(BacktestSignal(
+        user_id=1, ticker="AAPL", signal_type="HIGH_IV_CALLS", direction="BULLISH",
+        price_at_signal=100,
+        recorded_at=datetime.now(timezone.utc) - timedelta(hours=_DEDUP_WINDOW_HOURS + 1),
+    ))
+    db.commit()
+    s = record_signal(db, user_id=1, ticker="AAPL", alert_type="HIGH_IV_CALLS",
+                      message="c", current_price=100)
+    db.commit()
+    assert s is not None                                # prior record is outside the window
+    assert db.query(BacktestSignal).count() == 2
