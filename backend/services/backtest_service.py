@@ -42,6 +42,12 @@ _HORIZONS: list[tuple[str, int]] = [
 # longer be fetched. The 7-day horizon plus generous slack for cron outages.
 _MAX_EVAL_AGE_DAYS = 45
 
+# Cross-cycle dedup window for options signals. A persistent condition (IV stays
+# elevated, P/C ratio stays extreme) fires the same alert every 15-min cycle;
+# without this, one lingering setup records ~96 near-identical rows/day and
+# swamps the backtest. Mirrors technical_signals._already_open (ZONE_BREAK dedup).
+_DEDUP_WINDOW_HOURS = 20
+
 # Signal types that imply BEARISH direction
 _BEARISH_TYPES = {
     "HIGH_PUT_CALL_RATIO",
@@ -124,6 +130,30 @@ def alignment_for_alert(alert_type: str, message: str, regime: str | None) -> st
     return alignment_for(_derive_direction(alert_type, message), regime)
 
 
+def _recently_recorded(
+    db: Session, user_id: int, ticker: str, signal_type: str, direction: str
+) -> bool:
+    """True if the same (ticker, type, direction) was already recorded recently.
+
+    Cross-cycle dedup for the options path: a condition that stays true across
+    cycles is one signal, not one per cycle. Keyed on direction too, so a
+    HIGH_IV on calls and on puts stay distinct.
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=_DEDUP_WINDOW_HOURS)
+    return (
+        db.query(BacktestSignal.id)
+        .filter(
+            BacktestSignal.user_id == user_id,
+            BacktestSignal.ticker == ticker,
+            BacktestSignal.signal_type == signal_type,
+            BacktestSignal.direction == direction,
+            BacktestSignal.recorded_at >= since,
+        )
+        .first()
+        is not None
+    )
+
+
 def record_signal(
     db: Session,
     *,
@@ -134,14 +164,18 @@ def record_signal(
     current_price: float,
     regime: str | None = None,
 ) -> BacktestSignal | None:
-    """Record one alert as a backtest signal. Returns the persisted object or None on error.
+    """Record one alert as a backtest signal. Returns the persisted object or None.
 
     Callers should NOT commit — they can batch-commit alongside other inserts.
     `regime` is the macro regime frozen at record time (Phase 2b); the derived
     alignment is stored alongside it for later aligned-vs-counter analysis.
+    Returns None when the same condition was already recorded within
+    _DEDUP_WINDOW_HOURS (cross-cycle dedup) or on error.
     """
     try:
         direction = _derive_direction(alert_type, message)
+        if _recently_recorded(db, user_id, ticker, alert_type, direction):
+            return None  # same open condition already recorded this window
         signal = BacktestSignal(
             user_id=user_id,
             ticker=ticker,
