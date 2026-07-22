@@ -377,3 +377,64 @@ def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
         "by_signal_type": by_signal,
         "by_alignment": by_alignment,
     }
+
+
+def get_calibration(db: Session, user_id: int, days: int = 30) -> dict:
+    """Read-only calibration digest over a recent window.
+
+    Answers the three questions this instrumentation must answer to be trusted,
+    so nobody has to hand-query Neon (which is how two silent bugs survived weeks):
+      - Is regime alignment predictive?  → by_type_alignment (aligned vs counter)
+      - Is the data clean (dedup working)? → dedup_health (rows per ticker-day; ~1 healthy)
+      - Is the evaluator alive?           → evaluated_7d share + newest signal
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    signals: list[BacktestSignal] = (
+        db.query(BacktestSignal)
+        .filter(BacktestSignal.user_id == user_id, BacktestSignal.recorded_at >= since)
+        .all()
+    )
+    evaluated = [s for s in signals if s.outcome_7d is not None]
+
+    # Aligned-vs-counter accuracy split by signal_type — the Phase 2c decision data.
+    by_type_alignment: dict[str, dict] = {}
+    for s in evaluated:
+        if s.regime_alignment not in ("aligned", "counter"):
+            continue
+        buckets = by_type_alignment.setdefault(s.signal_type, {})
+        b = buckets.setdefault(s.regime_alignment, {"correct": 0, "total": 0})
+        b["total"] += 1
+        if _outcome_value(s.outcome_7d) == BacktestOutcome.CORRECT.value:
+            b["correct"] += 1
+    for buckets in by_type_alignment.values():
+        for b in buckets.values():
+            b["accuracy_pct"] = round(b["correct"] / b["total"] * 100, 1) if b["total"] else None
+
+    # Dedup health: rows per (ticker, calendar day). ~1 = healthy; a high number
+    # means the same condition is being re-recorded every cycle (firehose regression).
+    counts: dict[str, int] = {}
+    ticker_days: dict[str, set] = {}
+    for s in signals:
+        counts[s.signal_type] = counts.get(s.signal_type, 0) + 1
+        ticker_days.setdefault(s.signal_type, set()).add((s.ticker, s.recorded_at.date()))
+    dedup_health = {
+        st: {
+            "rows": counts[st],
+            "ticker_days": len(ticker_days[st]),
+            "rows_per_ticker_day": round(counts[st] / len(ticker_days[st]), 1)
+            if ticker_days[st]
+            else None,
+        }
+        for st in counts
+    }
+
+    newest = max((s.recorded_at for s in signals), default=None)
+    return {
+        "window_days": days,
+        "since": since.date().isoformat(),
+        "total": len(signals),
+        "evaluated_7d": len(evaluated),
+        "newest": newest.isoformat() if newest else None,
+        "by_type_alignment": by_type_alignment,
+        "dedup_health": dedup_health,
+    }

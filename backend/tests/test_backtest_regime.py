@@ -227,3 +227,38 @@ def test_record_signal_allowed_after_window(db):
     db.commit()
     assert s is not None                                # prior record is outside the window
     assert db.query(BacktestSignal).count() == 2
+
+
+# ── calibration digest ─────────────────────────────────────────────────────
+
+from backend.services.backtest_service import get_calibration  # noqa: E402
+
+
+def _win_signal(days_old: int, **kw):
+    from datetime import datetime, timedelta, timezone
+    base = dict(user_id=1, ticker="AAA", signal_type="IV_SKEW", direction="BEARISH",
+                price_at_signal=100)
+    base.update(kw)
+    return BacktestSignal(recorded_at=datetime.now(timezone.utc) - timedelta(days=days_old), **base)
+
+
+def test_get_calibration_windows_and_alignment(db):
+    db.add_all([
+        _win_signal(2, ticker="AAA", regime_alignment="aligned", outcome_7d=BacktestOutcome.CORRECT.value),
+        _win_signal(2, ticker="BBB", regime_alignment="aligned", outcome_7d=BacktestOutcome.INCORRECT.value),
+        _win_signal(2, ticker="CCC", regime_alignment="counter", outcome_7d=BacktestOutcome.INCORRECT.value),
+        _win_signal(40, ticker="DDD", regime_alignment="aligned", outcome_7d=BacktestOutcome.CORRECT.value),  # out of window
+    ])
+    db.commit()
+    cal = get_calibration(db, user_id=1, days=30)
+    assert cal["total"] == 3  # 40-day-old excluded
+    assert cal["by_type_alignment"]["IV_SKEW"]["aligned"] == {"correct": 1, "total": 2, "accuracy_pct": 50.0}
+    assert cal["by_type_alignment"]["IV_SKEW"]["counter"]["accuracy_pct"] == 0.0
+
+
+def test_get_calibration_dedup_health(db):
+    # 4 rows, same ticker + same day → 4.0 rows/ticker-day (unhealthy).
+    for _ in range(4):
+        db.add(_win_signal(1, ticker="AAA"))
+    db.commit()
+    assert get_calibration(db, user_id=1, days=30)["dedup_health"]["IV_SKEW"]["rows_per_ticker_day"] == 4.0
