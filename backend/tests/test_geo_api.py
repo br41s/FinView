@@ -7,7 +7,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.api.geo import _load_rule_stats, _matched_rules, _serialize
+from backend.api.geo import (
+    _balance_ids_by_category,
+    _load_rule_stats,
+    _matched_rules,
+    _serialize,
+)
 from backend.models import Base, GeoCheckpoint, GeoRuleStat, GeoSignal, GeoSignalTicker
 
 
@@ -104,6 +109,77 @@ def test_load_rule_stats_batches_across_signals(db):
 
 def test_load_rule_stats_empty_when_no_signals_have_rules(db):
     assert _load_rule_stats(db, [_signal(matched_rule_ids=None)]) == {}
+
+
+# ── _balance_ids_by_category: category-balanced windowing ─────────────
+
+
+def _rows(counts: dict[str, int]) -> list[tuple[int, str]]:
+    """Build (id, category) rows already ordered by descending priority.
+
+    Categories are interleaved by priority the way the SQL importance sort would
+    hand them over, so the round-robin sees a realistic mixed stream rather than
+    one category fully ahead of another.
+    """
+    remaining = dict(counts)
+    rows: list[tuple[int, str]] = []
+    next_id = 1
+    while any(remaining.values()):
+        for cat in list(remaining):
+            if remaining[cat] > 0:
+                rows.append((next_id, cat))
+                next_id += 1
+                remaining[cat] -= 1
+    return rows
+
+
+def test_balance_empty_input():
+    assert _balance_ids_by_category([], 100) == []
+
+
+def test_balance_returns_at_most_limit():
+    rows = _rows({"fire": 464, "conflict": 180})
+    assert len(_balance_ids_by_category(rows, 100)) == 100
+
+
+def test_balance_returns_all_when_under_limit():
+    rows = _rows({"fire": 10, "volcano": 5})
+    assert len(_balance_ids_by_category(rows, 100)) == 15
+
+
+def test_balance_surfaces_every_live_category_under_prod_distribution():
+    # Measured prod active counts: fires and conflict dominate; volcano, weather
+    # and cyclone are live but sparse and fell outside the old recency window.
+    rows = _rows(
+        {"fire": 464, "conflict": 180, "volcano": 30, "weather": 18, "cyclone": 15}
+    )
+    chosen = set(_balance_ids_by_category(rows, 100))
+    by_cat: dict[str, int] = {}
+    for sig_id, cat in rows:
+        if sig_id in chosen:
+            by_cat[cat] = by_cat.get(cat, 0) + 1
+    # The sparse categories that used to vanish now all appear.
+    for cat in ("volcano", "weather", "cyclone"):
+        assert by_cat.get(cat, 0) > 0, f"{cat} was starved out of the window"
+    # And no single high-churn category consumes the whole window.
+    assert by_cat["fire"] < 100
+
+
+def test_balance_caps_each_category_fairly():
+    # 7 equal-priority categories share a 70-slot window → 10 each, none starved.
+    rows = _rows({c: 50 for c in "abcdefg"})
+    chosen = set(_balance_ids_by_category(rows, 70))
+    by_cat = {c: 0 for c in "abcdefg"}
+    for sig_id, cat in rows:
+        if sig_id in chosen:
+            by_cat[cat] += 1
+    assert all(count == 10 for count in by_cat.values())
+
+
+def test_balance_preserves_priority_order_within_category():
+    # Ids ascend with priority within a category; the pick keeps the top ones.
+    rows = [(i, "fire") for i in range(1, 21)]  # single category, ids 1..20
+    assert _balance_ids_by_category(rows, 5) == [1, 2, 3, 4, 5]
 
 
 # ── _serialize: null-field handling ──────────────────────────────────
