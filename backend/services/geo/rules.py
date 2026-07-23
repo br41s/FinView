@@ -1,7 +1,12 @@
 """Geo-economic correlation rules — Python port of WorldHawk's rules.ts.
 
-63 fast rules across 22 categories + 50 geo-regions + the condition matcher.
-See tasks/geo-rules-spec.md for the authoritative spec. Direction: ↑ = bullish, ↓ = bearish.
+93 fast rules + 49 geo-regions + the condition matcher.
+Direction: ↑ = bullish, ↓ = bearish.
+
+Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's headers say
+"63 rules / 50 regions" but its own tables sum to 89 / 46. The tables were ported (89/46),
+not the headers. The commodity-basin additions (cocoa / iron ore / lithium) take it to
+93 / 49. Treat the spec's prose counts as historical, its tables as authoritative.
 
 Port decisions (flagged in the spec as un-enforced in the JS matcher):
 - ``fire.cluster>=N``: IMPLEMENTED here (the sentinel computes cluster size; gating
