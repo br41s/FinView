@@ -103,6 +103,13 @@ GEO_REGIONS: dict[str, tuple[float, float, float, float]] = {
     "drc_mining": (-8, 2, 22, 32),
     "libya": (19, 34, 9, 25),
     "myanmar": (9, 29, 92, 102),
+    # Commodity-basin boxes: narrow, single-commodity chokepoints where one
+    # physical event moves one price. Deliberately overlap the broader boxes
+    # above — match_regions returns every containing box, so an event can carry
+    # both theses (e.g. an Atacama quake is copper AND lithium).
+    "west_africa_cocoa": (4, 11, -8, 2),
+    "australia_pilbara": (-24, -18, 114, 122),
+    "lithium_triangle": (-27, -20, -70, -64),
 }
 
 
@@ -124,12 +131,14 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey", "Major Turkish earthquake", _t("TUR- X+ GLD+"), "Turkish disruption, reconstruction demand for steel", 0.70),
     FastRule("eq-indonesia-nickel", "earthquake", "earthquake.magnitude>=6 && region=indonesia_mining", "Indonesian earthquake disrupts nickel mining", _t("VALE- NI=F+"), "Nickel supply disruption", 0.68),
     FastRule("eq-peru-copper", "earthquake", "earthquake.magnitude>=6 && region=peru_mining", "Peruvian earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption", 0.76),
+    FastRule("eq-lithium-triangle", "earthquake", "earthquake.magnitude>=6 && region=lithium_triangle", "Atacama/Puna earthquake disrupts lithium brine operations", _t("LIT+ ALB+ SQM-"), "Brine/port disruption → lithium price up, local producer SQM hit", 0.74),
     # Cyclones / hurricanes
     FastRule("cyc-gulf-oil", "cyclone", "region=gulf_of_mexico", "Hurricane threatens Gulf of Mexico oil/gas", _t("USO+ UNG+ XLE+ XOM+ CVX+"), "Gulf production shut-ins → energy up", 0.85),
     FastRule("cyc-florida-insurance", "cyclone", "region=florida", "Hurricane hits Florida", _t("ALL- TRV- HIG- HD+ LOW+"), "Insurance losses, rebuilding demand", 0.80),
     FastRule("cyc-caribbean-tourism", "cyclone", "region=caribbean", "Hurricane disrupts Caribbean tourism", _t("JETS- DAL- RCL- CCL-"), "Tourism/cruise disruption", 0.72),
     FastRule("cyc-southeast-asia", "cyclone", "region=southeast_asia", "Cyclone hits Southeast Asia", _t("EWY- DBA+"), "Regional disruption, agri prices", 0.65),
     FastRule("cyc-india-agriculture", "cyclone", "region=india_coast", "Cyclone hits Indian coast agriculture", _t("DBA+ INDA-"), "Agricultural disruption", 0.68),
+    FastRule("cyc-australia-ironore", "cyclone", "region=australia_pilbara", "Cyclone shuts in Pilbara iron-ore export ports", _t("BHP- RIO- VALE+"), "Port Hedland shut-in → Australian export volume lost, Vale gains on tighter seaborne supply", 0.80),
     # Wildfires
     FastRule("fire-california", "fire", "fire.cluster>=50 && region=california", "Major California wildfires", _t("ALL- TRV- PCG- HD+"), "Insurance losses, utility liability", 0.78),
     FastRule("fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest", "Canadian wildfires disrupt lumber", _t("LBS=F+ WY+"), "Lumber supply disruption", 0.74),
@@ -145,6 +154,7 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("flood-bangladesh-textile", "flood", "region=bangladesh", "Flooding hits Bangladesh textiles", _t("XRT-"), "Textile supply disruption", 0.58),
     FastRule("flood-midwest-grain", "flood", "region=us_midwest", "Flooding hits US Midwest grain", _t("WEAT+ ZC=F+ DBA+"), "Grain supply disruption", 0.80),
     FastRule("flood-germany-rhine", "flood", "region=germany_rhine", "Rhine flooding disrupts logistics", _t("EWG- UNG+"), "Logistics / energy disruption", 0.65),
+    FastRule("flood-westafrica-cocoa", "flood", "region=west_africa_cocoa", "West African flooding drives black-pod disease in cocoa", _t("CC=F+ HSY- MDLZ-"), "Excess rain → black-pod harvest loss → cocoa up, chocolate makers squeezed on input cost", 0.62),
     # Conflicts / geopolitical (alert-zone driven, category conflict)
     FastRule("conflict-mideast-oil", "conflict", "alert.severity=red && region=middle_east_oil", "Middle East oil conflict", _t("USO+ UNG+ XLE+ LMT+ RTX+ NOC+ ITA+ GLD+"), "Oil supply risk, defense demand", 0.88),
     FastRule("conflict-hormuz-strait", "conflict", "region=strait_of_hormuz", "Strait of Hormuz tension", _t("USO+ XOM+ CVX+"), "Oil chokepoint risk", 0.90),
@@ -171,6 +181,7 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("drought-us-breadbasket", "drought", "region=us_great_plains", "US Great Plains drought", _t("WEAT+ ZC=F+ DBA+"), "Grain supply reduction", 0.82),
     FastRule("drought-brazil-coffee", "drought", "region=brazil_southeast", "Brazil drought hits coffee/soy", _t("KC=F+ SOYB+ DBA+ EWZ-"), "Coffee/soy supply reduction", 0.78),
     FastRule("drought-india-monsoon", "drought", "region=india", "Indian monsoon failure", _t("DBA+ INDA-"), "Agricultural disruption", 0.70),
+    FastRule("drought-westafrica-cocoa", "drought", "region=west_africa_cocoa", "Ivory Coast/Ghana drought hits cocoa supply", _t("CC=F+ HSY- MDLZ-"), "~60% of world cocoa → supply shock lifts cocoa, chocolate makers down on input cost", 0.78),
     # Nuclear / infra (declared but dormant — see module docstring)
     FastRule("nuclear-incident", "nuclear", "earthquake.magnitude>=5 && near_nuclear_plant", "Nuclear plant incident", _t("URA- CCJ- XLE+ UNG+"), "Nuclear supply risk, alt-energy demand", 0.70),
     # Iceberg / Arctic
