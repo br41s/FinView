@@ -4,6 +4,33 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Cobertura de Ideas — cuencas de materia prima (#177)
+
+#### Added
+- **Tres regiones de materia prima con cuatro reglas** (#177) — `west_africa_cocoa`
+  (Costa de Marfil + Ghana, ~60% del cacao mundial): sequía → `CC=F+ HSY- MDLZ-`
+  (0.78) e inundación → misma cesta por podredumbre parda (0.62, el enlace más
+  débil de los cuatro a propósito). `australia_pilbara` (Port Hedland, el mayor
+  puerto exportador de hierro del mundo): ciclón → `BHP- RIO- VALE+` (0.80), el
+  cierre de puerto quita volumen a los australianos y Vale gana con la oferta
+  marítima más tensa. `lithium_triangle` (salmuera de Atacama/Puna): terremoto
+  M≥6 → `LIT+ ALB+ SQM-` (0.74).
+- Expansión **por tesis, no por cobertura de mapa**: cada añadido es región +
+  regla + cesta con un enlace de mercado defendible. Nada de reglas de alta
+  frecuencia y poco filo.
+
+#### Notes
+- **Las tres van sobre fuentes sin clave** (EONET+GDACS y USGS): no hacen falta
+  variables de entorno nuevas. Se descartó a propósito una regla de helada en
+  Brasil porque `extreme_cold` viene de **Windy** y sin `FINVIEW_WINDY_API_KEY` no
+  dispararía jamás — en silencio. Queda diferida y condicionada a esa clave.
+- **El solape con `chile_mining` es intencionado**: `match_regions` devuelve todas
+  las cajas que contienen el punto, así que un terremoto en Atacama casa las dos
+  reglas y lleva la tesis del cobre y la del litio a la vez. Está aseverado en
+  tests para que quitarlo tenga que ser una decisión, no un descuido.
+- Cambio puramente aditivo: sin migración, `seed_rule_stats` recoge los `rule_id`
+  nuevos en el siguiente arranque. Recuentos: 89 → **93 reglas**, 46 → **49 regiones**.
+
 ### Signal architecture (PRs #148–#156)
 
 Cada sección de mercado pasa a tener **una capa**: Zonas Clave dispara (técnico),

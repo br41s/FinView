@@ -504,10 +504,35 @@ listed SOCIMIs via Yahoo.
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 89 rules / 46 regions
+WorldHawk port: geopolitical/natural events → market signals. 93 rules / 49 regions
 (`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
 maritime AIS, meteo, flights, GDELT, ACLED) — every source key optional, a missing
 key degrades that source to empty.
+
+### Adding regions / rules — overlap is the thing to reason about
+`match_regions` returns **every** box containing the point and `match_rules` gates on
+`region=X in regions`, so boxes are additive: a new box can only add matches to rules
+that **share its category**. Vetting a new region is therefore a category question, not
+a geometry one — check which categories the boxes you overlap already carry.
+- The **commodity-basin boxes** (`west_africa_cocoa`, `australia_pilbara`,
+  `lithium_triangle`) are narrow single-commodity chokepoints deliberately carved inside
+  broader boxes. `lithium_triangle` ∩ `chile_mining` share `earthquake` **on purpose**:
+  one Atacama quake carries both the copper and the lithium thesis. That dual match is
+  asserted in `backend/tests/test_geo_commodity_rules.py`, so de-overlapping has to be a
+  deliberate change, not an accident.
+- **Keep new rules on keyless sources** unless you're also adding the key: EONET+GDACS
+  (cyclone/volcano/flood/storm/drought) and USGS (earthquake) need nothing. The
+  `extreme_heat/extreme_cold/severe_storm/heavy_precipitation/deep_cyclone` types come
+  from **Windy** and silently never fire without `FINVIEW_WINDY_API_KEY` — a rule written
+  against them looks fine in review and is dead in prod. (A Brazil frost rule is deferred
+  for exactly this reason.)
+- Sentinel gates decide what ever reaches the matcher: earthquakes need `magnitude>=5.5`
+  **and** to land inside some region; natural events need a region **or** `severity=red`.
+  A rule whose threshold sits below the sentinel's floor is unreachable.
+- Adding is fully additive — no schema change; `seed_rule_stats` picks up new `rule_id`s
+  on next boot. `base_confidence` is **not cosmetic**: it feeds
+  `effective_confidence → importance = round(confidence × risk/10)`, and ≥60 is the
+  notify gate. It decides what pushes to a phone.
 
 ### Pipeline (`services/geo/orchestrator.py`, per user)
 `ingest → sentinel (event extraction) → analyst (rule matching, LLM enrichment for

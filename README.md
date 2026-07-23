@@ -193,9 +193,14 @@ zonas → zone_proximity  (determinista, 2%, gratis)
 
 ## Ideas (`/geo-intel`) — la mesa de tesis
 
-Puerto de WorldHawk: eventos geopolíticos y naturales → señales de mercado. 89 reglas /
-46 regiones, 8 fuentes de ingesta (cada clave opcional; una que falte degrada esa fuente
+Puerto de WorldHawk: eventos geopolíticos y naturales → señales de mercado. 93 reglas /
+49 regiones, 8 fuentes de ingesta (cada clave opcional; una que falte degrada esa fuente
 a vacío).
+
+Entre ellas, tres **cuencas de materia prima** (cocoa en Costa de Marfil/Ghana, hierro en
+Pilbara, litio en el triángulo Atacama/Puna): cajas estrechas de un solo subyacente,
+recortadas a propósito dentro de otras más amplias. La del litio solapa con `chile_mining`
+**queriendo** — un terremoto en Atacama lleva a la vez la tesis del cobre y la del litio.
 
 **La ruta, la tabla `geo_signals` y el prefijo de API mantienen el nombre `geo`** — solo
 cambió la etiqueta de UI. Renombrar la ruta rompe deep links; renombrar tablas es DDL en
