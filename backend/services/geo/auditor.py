@@ -64,11 +64,15 @@ def _score_basket(signal: GeoSignal, prices: dict[str, float]) -> tuple[float | 
             continue
         change = (cur - at) / at * 100
         parts.append(f"{t.symbol}: {'+' if change >= 0 else ''}{change:.2f}%")
-        if t.direction == "neutral":
+        # t.direction reads back as a GeoDirection member (Enum values_callable, no
+        # str mixin), so a raw `== "bullish"` is always False on a DB-read ticker —
+        # the same enum boundary as the horizon check above. Normalize before compare.
+        direction = getattr(t.direction, "value", t.direction)
+        if direction == "neutral":
             continue
         total += 1
-        if (t.direction == "bullish" and change > _MIN_MOVE_PCT) or (
-            t.direction == "bearish" and change < -_MIN_MOVE_PCT
+        if (direction == "bullish" and change > _MIN_MOVE_PCT) or (
+            direction == "bearish" and change < -_MIN_MOVE_PCT
         ):
             correct += 1
     if total == 0:
@@ -141,7 +145,10 @@ def evaluate_pending(db: Session, user_id: int) -> int:
         chk.evaluated_at = now
         evaluated += 1
 
-        if chk.horizon == _FINAL_HORIZON:
+        # chk.horizon reads back as a GeoHorizon member (Enum values_callable), not a
+        # str — GeoHorizon has no str mixin, so a raw `== "7d"` is always False and the
+        # +7d resolution branch never ran. Normalize like api/geo.py's _ev() helper.
+        if getattr(chk.horizon, "value", chk.horizon) == _FINAL_HORIZON:
             signal.status = GeoSignalStatus.RESOLVED.value
             _update_rule_stats(db, signal, is_correct=(score is not None and score >= 50))
 
