@@ -56,9 +56,33 @@ def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[Geo
             description=RULES_BY_ID[rid].description,
             thesis=RULES_BY_ID[rid].direction,
             confidence=effective_confidence(RULES_BY_ID[rid], stats.get(rid)),
+            category=RULES_BY_ID[rid].category,
+            trigger=RULES_BY_ID[rid].condition,
         )
         for rid in valid_ids
     ]
+
+
+def _source_url(raw_json: str | None) -> str | None:
+    """Best-effort link to the underlying source event.
+
+    Ingest normalizers stash the event's own page in ``raw_data`` under ``url``
+    (USGS, EONET) or ``source_url`` (GDELT). Absent for feeds that don't publish
+    a per-event page (fires, meteo, flights, AIS) — return None then. Only http(s)
+    links pass, so a malformed value never becomes a broken anchor.
+    """
+    if not raw_json:
+        return None
+    try:
+        raw = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    url = raw.get("url") or raw.get("source_url")
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        return url
+    return None
 
 
 def _load_rule_stats(db: Session, signals: list[GeoSignal]) -> dict[str, GeoRuleStat]:
@@ -115,6 +139,8 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
         ],
         timestamp=signal.created_at,
         status=_ev(signal.status),
+        source=signal.source or "",
+        sourceUrl=_source_url(signal.raw_json),
     )
 
 
