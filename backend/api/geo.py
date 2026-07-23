@@ -144,6 +144,35 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
     )
 
 
+def _balance_ids_by_category(rows: list[tuple[int, object]], limit: int) -> list[int]:
+    """Fair, category-balanced pick of at most ``limit`` signal ids.
+
+    ``rows`` are (id, display_category) tuples pre-ordered by descending priority
+    (importance, then recency). We round-robin across categories, so one
+    high-churn category can't consume the whole window and starve sparse ones.
+    Fires create a signal per grid cell per day and compound rules up to 3/day,
+    so a pure recency (or even pure importance) window fills with fire/compound
+    and genuinely-live volcano/conflict/weather never render on the map or feed.
+
+    Within a category the input order is preserved, so each category still
+    contributes its most significant signals first.
+    """
+    from collections import OrderedDict, deque
+
+    buckets: "OrderedDict[object, deque[int]]" = OrderedDict()
+    for sig_id, category in rows:
+        buckets.setdefault(category, deque()).append(sig_id)
+
+    chosen: list[int] = []
+    while len(chosen) < limit and any(buckets.values()):
+        for queue in buckets.values():
+            if queue:
+                chosen.append(queue.popleft())
+                if len(chosen) >= limit:
+                    break
+    return chosen
+
+
 @router.get("/signals", response_model=list[GeoSignalOut])
 def list_signals(
     db: DbSession,
@@ -151,11 +180,35 @@ def list_signals(
     status: str = Query("active", pattern="^(active|resolved|all)$"),
     limit: int = Query(100, le=500),
 ):
-    """List a user's geo signals (newest first), filtered by status."""
-    q = db.query(GeoSignal).options(*_EAGER).filter(GeoSignal.user_id == user.id)
+    """List a user's geo signals, balanced across categories, filtered by status.
+
+    The window is chosen so no single high-volume category (fires, compound)
+    buries lower-volume but live ones (volcano, conflict, weather). We first rank
+    every matching signal by importance then recency in a lightweight (id,
+    category) scan — no eager loads — then round-robin across categories up to
+    ``limit`` (see `_balance_ids_by_category`), and only then hydrate the chosen
+    rows with tickers/checkpoints.
+    """
+    ranked = db.query(GeoSignal.id, GeoSignal.display_category).filter(
+        GeoSignal.user_id == user.id
+    )
     if status != "all":
-        q = q.filter(GeoSignal.status == status)
-    signals = q.order_by(GeoSignal.created_at.desc()).limit(limit).all()
+        ranked = ranked.filter(GeoSignal.status == status)
+    rows = ranked.order_by(
+        GeoSignal.importance.desc(), GeoSignal.created_at.desc()
+    ).all()
+
+    chosen_ids = _balance_ids_by_category([(r[0], r[1]) for r in rows], limit)
+    if not chosen_ids:
+        return []
+
+    signals = (
+        db.query(GeoSignal)
+        .options(*_EAGER)
+        .filter(GeoSignal.id.in_(chosen_ids))
+        .order_by(GeoSignal.importance.desc(), GeoSignal.created_at.desc())
+        .all()
+    )
     stats = _load_rule_stats(db, signals)
     return [_serialize(s, stats) for s in signals]
 
