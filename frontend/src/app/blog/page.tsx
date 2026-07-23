@@ -1077,7 +1077,41 @@ function ImgDividendosInflacion() {
   );
 }
 
+function ImgHeredarAcciones() {
+  return (
+    <div className={styles.postImgHeredarAcciones}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        {/* stack of share certificates passing between two generations */}
+        <circle cx="40" cy="40" r="16" stroke="var(--fv-ink-40)" strokeWidth="2"/>
+        <path d="M24 74 q16 -14 32 0" stroke="var(--fv-ink-40)" strokeWidth="2" strokeLinecap="round"/>
+        <circle cx="160" cy="40" r="16" stroke="var(--fv-ochre)" strokeWidth="2"/>
+        <path d="M144 74 q16 -14 32 0" stroke="var(--fv-ochre)" strokeWidth="2" strokeLinecap="round"/>
+        {/* certificates */}
+        <rect x="82" y="30" width="36" height="26" rx="3" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <rect x="78" y="26" width="36" height="26" rx="3" fill="#fff" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <line x1="84" y1="34" x2="106" y2="34" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <line x1="84" y1="40" x2="100" y2="40" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        {/* arrow of transfer */}
+        <path d="M62 44 H74 M126 44 H138" stroke="var(--fv-ochre)" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M134 40 l6 4 -6 4" stroke="var(--fv-ochre)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        {/* erased gain: struck-through old cost */}
+        <text x="100" y="98" fontSize="10" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IRPF ganancia: 0 €</text>
+        <text x="100" y="112" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">plusvalía del muerto</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'heredar-acciones-irpf',
+    tag: 'Fiscalidad',
+    date: '24 jul 2026',
+    readTime: '9 min',
+    title: 'Heredar o donar acciones: la plusvalía del muerto y los errores que se pagan dos veces',
+    excerpt: 'Heredar borra la ganancia acumulada en IRPF; donar la hace tributar dos veces. Coste de adquisición, pactos sucesorios, FIFO con lotes heredados y qué documentar el día de la herencia.',
+    Image: ImgHeredarAcciones,
+  },
   {
     slug: 'dividendos-inflacion-poder-adquisitivo',
     tag: 'Estrategia',
