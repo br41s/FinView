@@ -1,12 +1,13 @@
 """Geo-economic correlation rules — Python port of WorldHawk's rules.ts.
 
-93 fast rules + 49 geo-regions + the condition matcher.
+94 fast rules + 49 geo-regions + the condition matcher.
 Direction: ↑ = bullish, ↓ = bearish.
 
 Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's headers say
 "63 rules / 50 regions" but its own tables sum to 89 / 46. The tables were ported (89/46),
 not the headers. The commodity-basin additions (cocoa / iron ore / lithium) take it to
-93 / 49. Treat the spec's prose counts as historical, its tables as authoritative.
+93 / 49, and the India monsoon precipitation rule to 94. Treat the spec's prose counts
+as historical, its tables as authoritative.
 
 Port decisions (flagged in the spec as un-enforced in the JS matcher):
 - ``fire.cluster>=N``: IMPLEMENTED here (the sentinel computes cluster size; gating
@@ -201,6 +202,7 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("wx-storm-northern-europe", "severe_storm", "region=northern_europe", "Severe storm in Northern Europe", _t("ALL- TRV- JETS-"), "Insurance losses, disruption", 0.68),
     FastRule("wx-precip-us-midwest", "heavy_precipitation", "region=us_midwest", "Heavy precipitation in US Midwest", _t("WEAT+ ZC=F+ DBA+"), "Crop disruption", 0.77),
     FastRule("wx-precip-china", "heavy_precipitation", "region=china_industrial", "Heavy precipitation in China", _t("FXI- SOXX-"), "Industrial disruption", 0.70),
+    FastRule("wx-precip-india", "heavy_precipitation", "region=india", "Heavy precipitation in India (monsoon)", _t("DBA+ INDA-"), "Crop/logistics disruption", 0.70),
     FastRule("wx-lowpres-atlantic", "deep_cyclone", "region=north_atlantic_shipping", "Deep cyclone in North Atlantic", _t("ZIM- BDRY- JETS-"), "Shipping disruption", 0.60),
     # Flight anomalies — OpenSky
     FastRule("air-closure-mideast", "airspace_closure", "region=middle_east_oil", "Airspace closure over Middle East", _t("USO+ GLD+ LMT+ RTX+ JETS-"), "Conflict signal, oil risk", 0.85),

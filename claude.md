@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 369 tests (~131 skip without real broker PDFs/CSVs in files/) · vitest · 18 frontend tests |
+| Tests | pytest · 464 tests (~131 skip without real broker PDFs/CSVs in files/) · vitest · 18 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -504,7 +504,7 @@ listed SOCIMIs via Yahoo.
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 93 rules / 49 regions
+WorldHawk port: geopolitical/natural events → market signals. 94 rules / 49 regions
 (`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
 maritime AIS, meteo, flights, GDELT, ACLED) — every source key optional, a missing
 key degrades that source to empty.
@@ -526,6 +526,17 @@ a geometry one — check which categories the boxes you overlap already carry.
   from **Windy** and silently never fire without `FINVIEW_WINDY_API_KEY` — a rule written
   against them looks fine in review and is dead in prod. (A Brazil frost rule is deferred
   for exactly this reason.)
+- **Weather rules also need a sample point, and the threshold has to be reachable there.**
+  Windy is a point source, not a feed: `meteo.py` only sees the coordinates it polls, so a
+  weather rule whose region is never sampled is dead no matter the weather. This killed 5
+  of 10 rules for the source's entire life (PR #178) — the old fixed 6×6 grid was unrelated
+  to the rule regions. **The sample set is now derived from the rules themselves**, so a new
+  weather rule gets its point automatically; `backend/tests/test_geo_meteo_sampling.py`
+  asserts that invariant. What is still manual is *where* in the box: the sentinel thresholds
+  are severe (45°C / -30°C / 50mm per 3h), and a centroid on water or in a mild sub-climate
+  keeps the rule just as dead. Override it in `meteo._REGION_POINTS` (as `mediterranean` does
+  — its centroid is the Tyrrhenian Sea) and mind the ~500 calls/day Windy budget: the source
+  really fetches ~48×/day, so each point costs ~48 calls.
 - Sentinel gates decide what ever reaches the matcher: earthquakes need `magnitude>=5.5`
   **and** to land inside some region; natural events need a region **or** `severity=red`.
   A rule whose threshold sits below the sentinel's floor is unreachable.
@@ -791,7 +802,7 @@ replace each other:
 
 ## Tests
 
-Backend: `pytest` — 369 collected (all under `backend/tests/`). ~131 skip when the real
+Backend: `pytest` — 464 collected (all under `backend/tests/`). ~131 skip when the real
 broker files in `files/` are absent (not in repo — worktrees/CI skip them; the main
 machine runs them).
 
