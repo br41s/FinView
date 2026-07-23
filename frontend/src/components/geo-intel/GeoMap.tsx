@@ -9,8 +9,17 @@ import {
 } from "react-simple-maps";
 import { anchorForSignal, type GeoSignal } from "@/lib/geo";
 
-const WORLD_TOPO =
+// Two base resolutions: coarse 110m by default (tiny, fast first paint), crisp
+// 50m once zoomed in so country outlines don't look faceted. On top of that, at
+// detail zoom we overlay admin-1 (states/provinces) so acercar reveals *regions*,
+// not just a scaled-up version of the same country lines. Natural Earth data
+// (public domain) via the same jsdelivr CDN the base map already uses.
+const WORLD_TOPO_110 =
   "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const WORLD_TOPO_50 =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json";
+const ADMIN1_TOPO =
+  "https://cdn.jsdelivr.net/gh/martynafford/natural-earth-geojson@master/50m/cultural/ne_50m_admin_1_states_provinces.json";
 
 const COLORS = {
   bullish: "#6B7A3A",
@@ -21,6 +30,8 @@ const COLORS = {
 const DEFAULT_CENTER: [number, number] = [10, 15];
 const DEFAULT_ZOOM = 1;
 const SELECTED_ZOOM = 4;
+// Above this zoom, swap the base to 50m and lazy-mount the admin-1 region layer.
+const DETAIL_ZOOM = 2.5;
 
 function markerRadius(importance: number) {
   const t = Math.max(0, Math.min(100, importance)) / 100;
@@ -47,6 +58,10 @@ export function GeoMap({
 
   const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  // Only the programmatic fly-to (selection) should ease over 900ms; a live
+  // wheel/drag gesture must track the cursor 1:1, so we disable the transition
+  // the moment the user starts moving the map.
+  const [animate, setAnimate] = useState(false);
 
   // Fly to the selected signal; return to the default view on deselect. Driven
   // entirely by selectedId so map-marker clicks and Live Feed clicks (which set
@@ -55,6 +70,7 @@ export function GeoMap({
     const target = selectedId
       ? signals.find((s) => s.id === selectedId)
       : null;
+    setAnimate(true);
     if (target) {
       setCenter([target.lng, target.lat]);
       setZoom(SELECTED_ZOOM);
@@ -63,6 +79,8 @@ export function GeoMap({
       setZoom(DEFAULT_ZOOM);
     }
   }, [selectedId, signals]);
+
+  const detail = zoom >= DETAIL_ZOOM;
 
   const arcs = useMemo(
     () =>
@@ -73,14 +91,14 @@ export function GeoMap({
   );
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className={`relative h-full w-full overflow-hidden ${animate ? "geo-animate" : ""}`}>
       <style>{`
         @keyframes geoPulse {
           0%, 100% { transform: scale(1); opacity: 0.95; }
           50% { transform: scale(1.35); opacity: 0.35; }
         }
         .geo-pulse { transform-box: fill-box; transform-origin: center; animation: geoPulse 2s cubic-bezier(0.2,0.8,0.2,1) infinite; }
-        .rsm-zoomable-group { transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); }
+        .geo-animate .rsm-zoomable-group { transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); }
       `}</style>
       <ComposableMap
         projection="geoEqualEarth"
@@ -89,8 +107,18 @@ export function GeoMap({
         height={520}
         style={{ width: "100%", height: "100%" }}
       >
-        <ZoomableGroup center={center} zoom={zoom} minZoom={1} maxZoom={6}>
-          <Geographies geography={WORLD_TOPO}>
+        <ZoomableGroup
+          center={center}
+          zoom={zoom}
+          minZoom={1}
+          maxZoom={6}
+          onMoveStart={() => setAnimate(false)}
+          onMoveEnd={({ coordinates, zoom: z }) => {
+            setCenter(coordinates);
+            setZoom(z);
+          }}
+        >
+          <Geographies geography={detail ? WORLD_TOPO_50 : WORLD_TOPO_110}>
             {({ geographies }) =>
               geographies.map((geo) => (
                 <Geography
@@ -120,6 +148,47 @@ export function GeoMap({
               ))
             }
           </Geographies>
+
+          {/* Admin-1 region borders — only mounted (and only fetched) once the
+              user zooms in, so the ~1.6MB layer never costs the default view.
+              Non-interactive overlay: fill:none keeps the countries beneath, and
+              pointerEvents:none leaves marker hover/click untouched. Stroke is
+              divided by zoom to stay hairline as the group scales up. */}
+          {detail && (
+            <Geographies geography={ADMIN1_TOPO}>
+              {({ geographies }) =>
+                geographies.map((geo) => (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    style={{
+                      default: {
+                        fill: "none",
+                        stroke: "rgba(31,27,22,0.22)",
+                        strokeWidth: 0.6 / zoom,
+                        outline: "none",
+                        pointerEvents: "none",
+                      },
+                      hover: {
+                        fill: "none",
+                        stroke: "rgba(31,27,22,0.22)",
+                        strokeWidth: 0.6 / zoom,
+                        outline: "none",
+                        pointerEvents: "none",
+                      },
+                      pressed: {
+                        fill: "none",
+                        stroke: "rgba(31,27,22,0.22)",
+                        strokeWidth: 0.6 / zoom,
+                        outline: "none",
+                        pointerEvents: "none",
+                      },
+                    }}
+                  />
+                ))
+              }
+            </Geographies>
+          )}
 
           {arcs.map(({ s, anchor }) => (
             <Line

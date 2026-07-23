@@ -471,6 +471,8 @@ class GeoRuleOut(BaseModel):
     description: str  # what happened, e.g. "Major Chilean earthquake disrupts copper supply"
     thesis: str  # rationale, e.g. "Copper supply disruption → COPX up, miners down"
     confidence: float  # rule's base confidence, 0-1
+    category: str = ""  # event bucket the rule belongs to, e.g. "earthquake"
+    trigger: str = ""  # the condition that fired, e.g. "mag>=6.5 near chile_mining"
 
 
 class GeoCheckpointOut(BaseModel):
@@ -501,6 +503,8 @@ class GeoSignalOut(BaseModel):
     checkpoints: list[GeoCheckpointOut] = []
     timestamp: datetime
     status: str  # active|resolved
+    source: str = ""  # ingest feed key (usgs|EONET|gdelt|acled|…)
+    sourceUrl: str | None = None  # link to the underlying source event, when captured
 
 
 class GeoSchedulerStatus(BaseModel):

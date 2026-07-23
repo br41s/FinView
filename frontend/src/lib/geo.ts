@@ -13,6 +13,8 @@ export type GeoRule = {
   description: string; // what happened
   thesis: string; // why it moves markets
   confidence: number; // 0-1
+  category?: string; // event bucket, e.g. "earthquake"
+  trigger?: string; // the condition that fired, e.g. "mag>=6.5 near chile_mining"
 };
 
 export type GeoCheckpointHorizon = "1h" | "6h" | "1d" | "3d" | "7d";
@@ -49,6 +51,8 @@ export type GeoSignal = {
   checkpoints: GeoCheckpoint[];
   timestamp: string;
   status: "active" | "resolved";
+  source?: string; // ingest feed key (usgs|EONET|gdelt|…)
+  sourceUrl?: string | null; // link to the underlying source event, when captured
 };
 
 export const MARKET_ANCHORS: Record<

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Target } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Target } from "lucide-react";
 import type { GeoSignal } from "@/lib/geo";
 import { api } from "@/lib/api";
 import { PrecioTab } from "@/components/instrument/PrecioTab";
@@ -79,6 +79,40 @@ function AddToZonasButton({ symbol }: { symbol: string }) {
       {state === "busy" ? "Añadiendo…" : state === "error" ? "Error — reintentar" : "Añadir a Zonas Clave"}
     </button>
   );
+}
+
+// Friendly names for the ingest feed keys stored on GeoSignal.source. Keyed
+// lowercase so mixed-case keys (usgs, EONET, GDACS) all resolve; unknown feeds
+// fall back to the raw key upper-cased rather than rendering blank.
+const SOURCE_LABELS: Record<string, string> = {
+  usgs: "USGS",
+  eonet: "NASA EONET",
+  gdacs: "GDACS",
+  firms: "NASA FIRMS",
+  alerts: "Alertas meteo",
+  opensky: "OpenSky",
+  windy: "Windy",
+  gdelt: "GDELT",
+  acled: "ACLED",
+  ais: "AIS marítimo",
+  compound: "Regla compuesta",
+};
+
+function sourceLabel(source?: string) {
+  if (!source) return "Desconocida";
+  return SOURCE_LABELS[source.toLowerCase()] ?? source.toUpperCase();
+}
+
+function formatRegistered(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function relTime(iso: string) {
@@ -277,12 +311,46 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
             Why this was triggered
           </p>
+
+          <div className="mt-2 rounded-md border border-[rgba(31,27,22,0.12)] bg-[rgba(154,107,31,0.05)] px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[rgba(31,27,22,0.7)]">
+              <span>
+                <span className="text-[rgba(31,27,22,0.5)]">Fuente:</span>{" "}
+                <span className="font-medium text-[#1F1B16]">{sourceLabel(signal.source)}</span>
+              </span>
+              <span>
+                <span className="text-[rgba(31,27,22,0.5)]">Registrada:</span>{" "}
+                <span
+                  className="tabular-nums text-[#1F1B16]"
+                  style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                >
+                  {formatRegistered(signal.timestamp)}
+                </span>
+              </span>
+            </div>
+            {signal.sourceUrl ? (
+              <a
+                href={signal.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-[#9A6B1F] transition-opacity hover:opacity-70"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Ver fuente
+              </a>
+            ) : (
+              <p className="mt-1.5 text-[10px] text-[rgba(31,27,22,0.4)]">
+                Esta fuente no publica un enlace por evento.
+              </p>
+            )}
+          </div>
+
           {signal.rules.length === 0 ? (
-            <p className="mt-2 text-[12px] text-[rgba(31,27,22,0.5)]">
+            <p className="mt-2.5 text-[12px] text-[rgba(31,27,22,0.5)]">
               No specific rule matched — scored on base event severity.
             </p>
           ) : (
-            <div className="mt-2 flex flex-col gap-2.5">
+            <div className="mt-2.5 flex flex-col gap-2.5">
               {signal.rules.map((r) => (
                 <div key={r.id} className="rounded-md border border-[rgba(31,27,22,0.12)] bg-[#FEFCF5] px-3 py-2.5">
                   <div className="flex items-start justify-between gap-2">
@@ -292,6 +360,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                     <span
                       className="shrink-0 text-[10px] tabular-nums text-[rgba(31,27,22,0.5)]"
                       style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                      title="Confianza de la regla (base + ajuste del auditor)"
                     >
                       {Math.round(r.confidence * 100)}%
                     </span>
@@ -299,6 +368,24 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                   <p className="mt-1 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
                     {r.thesis}
                   </p>
+                  {(r.category || r.trigger) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {r.category && (
+                        <span className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[9px] uppercase tracking-wider text-[rgba(31,27,22,0.55)]">
+                          {r.category}
+                        </span>
+                      )}
+                      {r.trigger && (
+                        <span
+                          className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[10px] text-[rgba(31,27,22,0.6)]"
+                          style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                          title="Condición que disparó esta regla"
+                        >
+                          {r.trigger}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
