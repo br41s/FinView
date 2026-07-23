@@ -1,11 +1,24 @@
-"""Windy GFS point-forecast grid → MeteoPoint list."""
+"""Windy GFS point forecasts at the regions the weather rules watch → MeteoPoint list.
+
+Same philosophy as ``flights.py``'s ``_SCAN_BOXES``: sample only where a rule can
+actually fire. This source used to hit an arbitrary global 6×6 grid (36 points);
+27 of those fell outside every ``GEO_REGIONS`` box, and ``analyze_weather_extremes``
+drops any point with no region match — so 75% of the API budget bought nothing,
+while four weather rules (texas / mediterranean / us_northeast / china_industrial)
+had no sample point at all and were structurally unable to ever fire.
+
+The sample set is **derived from the rules** rather than hand-listed, so it cannot
+silently drift when someone adds a weather rule — see ``_rule_regions()``.
+"""
 
 import asyncio
 import logging
 import math
+import re
 
 from backend.config import settings
 
+from ..rules import FAST_RULES, GEO_REGIONS
 from .base import TTLCache, fetch_json
 from .types import MeteoPoint
 
@@ -16,12 +29,76 @@ _CACHE_TTL = 30 * 60
 _CONCURRENCY = 6
 _cache = TTLCache()
 
-# Global 6×6 grid (36 points).
-_GRID_LATS = [-50, -20, 0, 20, 45, 65]
-_GRID_LONS = [-150, -90, -30, 30, 90, 150]
+# Event types analyze_weather_extremes can emit — i.e. the rule categories this
+# source feeds. A rule on any other category is served by a different ingest.
+_WEATHER_CATEGORIES = frozenset(
+    {"extreme_heat", "extreme_cold", "severe_storm", "heavy_precipitation", "deep_cyclone"}
+)
+_RE_REGION = re.compile(r"region=(\w+)")
+
+# Representative points for regions whose centroid would defeat the rule.
+#
+# The sentinel thresholds are severe (45°C / -30°C / 50mm per 3h), so "the point
+# is inside the box" is NOT sufficient — the number has to be physically
+# reachable there. A centroid that lands on water or in a mild sub-climate keeps
+# the rule just as dead as no point at all. Only regions listed here deviate from
+# the centroid; each entry documents why.
+_REGION_POINTS: dict[str, tuple[tuple[float, float], ...]] = {
+    # Centroid (39, 13) is the Tyrrhenian Sea — open water never reaches 45°C.
+    # Guadalquivir valley (Seville) is western Europe's reliable 45°C+ spot.
+    "mediterranean": ((37.4, -5.9),),
+    # Centroid (42.5, -73.5) is the Albany area, where -30°C is a once-in-decades
+    # record. Northern Maine / Québec border clears -30°C in most winters.
+    "us_northeast": ((45.5, -70.5),),
+    # Two rules with different geographies, so this region gets two points:
+    # Finnish Lapland for the -30°C cold rule, and the North Sea storm track for
+    # the 90km/h wind rule. The centroid (61, 9) — inland Norwegian highlands —
+    # is mediocre for both.
+    "northern_europe": ((68.0, 25.0), (58.0, 2.0)),
+}
 
 
-async def _fetch_point(lat: int, lon: int, key: str) -> MeteoPoint | None:
+def _centroid(box: tuple[float, float, float, float]) -> tuple[float, float]:
+    lat_min, lat_max, lon_min, lon_max = box
+    return (lat_min + lat_max) / 2, (lon_min + lon_max) / 2
+
+
+def _rule_regions() -> list[str]:
+    """Regions referenced by a weather rule, in FAST_RULES order (deduped)."""
+    out: list[str] = []
+    for rule in FAST_RULES:
+        if rule.category not in _WEATHER_CATEGORIES:
+            continue
+        m = _RE_REGION.search(rule.condition)
+        if not m:
+            continue
+        region = m.group(1)
+        if region in out:
+            continue
+        if region not in GEO_REGIONS:
+            # Unreachable by construction, not just unsampled — surface it.
+            logger.warning("meteo: rule %s targets unknown region %s", rule.id, region)
+            continue
+        out.append(region)
+    return out
+
+
+def _build_sample_points() -> list[tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+    for region in _rule_regions():
+        for pt in _REGION_POINTS.get(region) or (_centroid(GEO_REGIONS[region]),):
+            if pt not in points:  # regions can overlap; one call per coordinate
+                points.append(pt)
+    return points
+
+
+# Built once at import: ~10 points vs the old 36. With _CACHE_TTL at 30 min and
+# the geo cron every 10 min the source really fetches ~48×/day, so this is ~480
+# calls/day (was ~1728, ~1300 of them wasted).
+SAMPLE_POINTS: list[tuple[float, float]] = _build_sample_points()
+
+
+async def _fetch_point(lat: float, lon: float, key: str) -> MeteoPoint | None:
     body = {
         "lat": lat,
         "lon": lon,
@@ -79,7 +156,7 @@ async def fetch_meteo() -> list[MeteoPoint]:
         logger.info("WINDY_API_KEY not set — skipping meteo source")
         return _cache.stale or []
 
-    coords = [(lat, lon) for lat in _GRID_LATS for lon in _GRID_LONS]
+    coords = SAMPLE_POINTS
     results: list[MeteoPoint] = []
     for i in range(0, len(coords), _CONCURRENCY):
         batch = coords[i : i + _CONCURRENCY]
