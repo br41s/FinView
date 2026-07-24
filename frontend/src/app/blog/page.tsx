@@ -1102,7 +1102,45 @@ function ImgHeredarAcciones() {
   );
 }
 
+function ImgReglaChowder() {
+  return (
+    <div className={styles.postImgReglaChowder}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">NÚMERO DE CHOWDER</text>
+        {/* Yield block */}
+        <rect x="24" y="60" width="34" height="30" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="41" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Yield</text>
+        <text x="41" y="79" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">2,8%</text>
+        {/* Plus */}
+        <text x="70" y="79" fontSize="12" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">+</text>
+        {/* Growth block */}
+        <rect x="82" y="60" width="34" height="30" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none"/>
+        <text x="99" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Crec. 5a</text>
+        <text x="99" y="79" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">8%</text>
+        {/* Equals */}
+        <text x="128" y="79" fontSize="12" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">=</text>
+        {/* Result block */}
+        <rect x="140" y="52" width="40" height="38" rx="4" stroke="var(--fv-ochre)" strokeWidth="2" fill="var(--fv-ochre-ghost)"/>
+        <text x="160" y="48" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Chowder</text>
+        <text x="160" y="78" fontSize="12" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">10,8</text>
+        {/* Threshold line */}
+        <line x1="24" y1="102" x2="180" y2="102" stroke="var(--fv-ink-20)" strokeWidth="0.8" strokeDasharray="3 2"/>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Corte: 12 general · 8 para utilities</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'regla-chowder-seleccion-dividendos',
+    tag: 'Estrategia',
+    date: '24 jul 2026',
+    readTime: '8 min',
+    title: 'La regla de Chowder: el filtro que separa un buen dividendo de una trampa',
+    excerpt: 'El número de Chowder suma yield y crecimiento del dividendo en una sola cifra para filtrar acciones DGI. Cómo se calcula, los umbrales de 12 y 8, y por qué descarta trampas de yield alto que el yield solo no ve.',
+    Image: ImgReglaChowder,
+  },
   {
     slug: 'heredar-acciones-irpf',
     tag: 'Fiscalidad',
