@@ -1,0 +1,124 @@
+export const metadata = {
+  title: "¿Qué pasa con tus acciones si tu broker quiebra? FOGAIN y segregación — FinView",
+  description: "Guía clara sobre qué protege tu cartera si tu broker quiebra: segregación de activos, cuentas ómnibus, el FOGAIN español y los esquemas de garantía de DEGIRO, Trade Republic e Interactive Brokers.",
+};
+
+# ¿Qué pasa con tus acciones si tu broker quiebra?
+
+> Tienes 80.000 € en acciones en un broker extranjero. Un día abre un titular: "el broker entra en concurso". ¿Pierdes tu cartera? La respuesta corta es no. La larga tiene matices que casi nadie te explica bien.
+
+Es una de las preguntas que más ronda al inversor español, sobre todo al que usa brokers de fuera como DEGIRO, Trade Republic o Interactive Brokers. Y la mayoría de respuestas que encontrarás mezclan dos cosas que no tienen nada que ver: la protección de tus valores y los fondos de garantía. Vamos a separarlas bien.
+
+---
+
+## 1. Tus acciones no son del broker (y eso lo cambia todo)
+
+Cuando compras acciones, el broker no es el dueño. Solo las custodia. Por la normativa europea (MiFID II), los brokers están obligados a mantener el patrimonio de sus clientes separado de su propio balance. Se llama **segregación de activos**.
+
+La consecuencia práctica es la parte importante: si el broker quiebra, tus acciones **no forman parte de la masa concursal**. Los acreedores del broker —el banco que le prestó dinero, el casero de sus oficinas— no pueden tocarlas. Son bienes de terceros que el broker tenía en depósito.
+
+Esto es distinto de un depósito bancario. Cuando metes dinero en la cuenta corriente de un banco, ese dinero pasa a ser del banco y tú eres un acreedor más. Con las acciones no: siguen siendo tuyas, estén donde estén registradas.
+
+Por eso, en la práctica, lo que ocurre cuando un broker quiebra no es que tu dinero se evapore. Es un traspaso ordenado de tu cartera a otro broker solvente. El regulador interviene, verifica que los valores existen y mueve las posiciones en bloque.
+
+---
+
+## 2. Cuenta ómnibus vs cuenta nominativa
+
+Aquí está el matiz técnico que genera más confusión. Casi todos los brokers modernos usan **cuentas ómnibus** (o cuentas globales).
+
+Una cuenta ómnibus es una cuenta colectiva a nombre del broker, donde se agrupan las acciones de miles de clientes. A ojos del depositario central —Iberclear en España, Euroclear a nivel internacional— el titular de esas acciones es "el Broker X", no tú.
+
+¿Significa que las acciones no son tuyas? Legalmente, no. Existe una diferencia entre:
+
+- **Titularidad registral:** quién aparece en el registro oficial (el broker).
+- **Titularidad real:** quién es el dueño legítimo (tú).
+
+El broker está obligado a llevar un registro interno donde consta, al detalle, cuántas acciones pertenecen a cada cliente. Ese registro es el que permite reconstruir de quién es cada cosa si algo va mal.
+
+La alternativa es la **cuenta nominativa**, donde tú apareces directamente en el registro del depositario central. En España la usan algunos brokers tradicionales de banca. Es más transparente, pero también más cara y menos ágil. La mayoría del mercado low-cost funciona con ómnibus.
+
+¿Es peor la ómnibus? No necesariamente. El riesgo real de la ómnibus no es la quiebra en sí —para eso está la segregación y el registro interno—, sino el **fraude**: que el broker mienta sobre las acciones que dice tener. Y ahí es donde entran los fondos de garantía.
+
+---
+
+## 3. El FOGAIN: la red de seguridad española
+
+El **FOGAIN** (Fondo General de Garantía de Inversiones) cubre a los clientes de las empresas de servicios de inversión **autorizadas en España**: sociedades de valores, agencias de valores y sociedades gestoras de carteras.
+
+Lo que cubre: hasta **100.000 € por titular** si el broker entra en concurso de acreedores o la CNMV declara su insolvencia, y como consecuencia no puede devolverte el efectivo o los valores que le confiaste.
+
+Lo que NO cubre, y conviene grabárselo: **las pérdidas de mercado**. Si tu cartera de 10.000 € cae a 5.000 € porque la bolsa baja, el FOGAIN no interviene. Tampoco cubre la quiebra del emisor de la acción (si quiebra Telefónica, eso es riesgo de tu inversión, no del broker). El FOGAIN solo actúa cuando faltan activos que deberían estar ahí.
+
+Un par de detalles que casi nadie menciona:
+
+- El límite de 100.000 € se calcula **por titular**, sumando efectivo y valor de mercado de tus instrumentos, no por cuenta. Tener tres cuentas en el mismo broker no multiplica la cobertura.
+- En cuentas con varios titulares, el importe se reparte entre ellos, y el límite se aplica a cada uno.
+- El efectivo tiene además su propia lógica. En entidades de crédito, el dinero está cubierto por el **Fondo de Garantía de Depósitos** (FGD), también hasta 100.000 €, garantía compatible y distinta de la de los valores.
+
+---
+
+## 4. El problema: casi ningún broker popular está en el FOGAIN
+
+Aquí viene el giro. El FOGAIN cubre a entidades **autorizadas en España**. Y los tres brokers más usados por el inversor particular español no son españoles. Cada uno se acoge al esquema de garantía de **su país de origen**, y las cifras cambian bastante.
+
+| Broker | Entidad / país | Garantía de valores | Efectivo |
+|--------|----------------|---------------------|----------|
+| FOGAIN (broker español) | España (CNMV) | Hasta 100.000 € | FGD 100.000 € |
+| DEGIRO | flatexDEGIRO Bank SE (Alemania) | Esquema alemán: 90% hasta 20.000 € | Depósito alemán 100.000 € |
+| Trade Republic | Trade Republic Bank GmbH (Alemania) | Valores se traspasan a otra custodia | Depósito hasta 100.000 € por banco |
+| Interactive Brokers (UE) | IBIE (Irlanda) | Esquema irlandés: 90% hasta 20.000 € | — |
+
+La diferencia salta a la vista: el esquema de compensación al inversor en la mayoría de brokers europeos cubre **90% hasta 20.000 €**, cinco veces menos que los 100.000 € del FOGAIN. Interactive Brokers en su versión estadounidense (SIPC) llega a 500.000 $ con sublímite de 250.000 $ en efectivo, pero como cliente europeo lo normal es que estés dado de alta en la entidad irlandesa IBIE, con el esquema irlandés de 20.000 €.
+
+No te alarmes de más: ese tope de 20.000 € solo entra en juego si faltan activos, es decir, en un caso de fraude o descuadre. La segregación sigue siendo tu primera y principal defensa, y cubre el 100% de tu cartera sin límite mientras los valores estén donde deben estar. El fondo de garantía es la red por debajo, no el mecanismo principal.
+
+---
+
+## 5. Efectivo vs valores: no los mezcles
+
+Un error muy repetido es meter en el mismo saco el dinero y las acciones. Tienen protecciones distintas.
+
+**El efectivo** que dejas sin invertir suele estar en una cuenta bancaria (a veces del propio broker, a veces de un banco asociado) y lo cubre el fondo de garantía de depósitos del país de esa entidad, hasta 100.000 €. En DEGIRO, por ejemplo, tu efectivo está en flatexDEGIRO Bank SE y lo cubre el sistema alemán, no el español. Trade Republic reparte el efectivo entre varios bancos asociados, y cada uno cubre hasta 100.000 € por cliente.
+
+**Los valores** siguen la lógica de segregación + esquema de compensación al inversor que hemos visto.
+
+La conclusión práctica es sencilla y la comparten casi todos los expertos: **no dejes grandes sumas de efectivo muerto en el broker**. Su protección es la de un depósito bancario, no la de tus acciones, y ese dinero no te renta salvo que el broker remunere el saldo. Si no vas a invertirlo pronto, mejor en tu banco.
+
+---
+
+## 6. Cinco comprobaciones antes de confiar tu cartera
+
+No hace falta paranoia, pero sí un mínimo de diligencia:
+
+1. **Regulación de primer nivel.** CNMV, BaFin, banco central de Irlanda, FCA, SEC. Huye de licencias en paraísos fiscales o de brokers sin supervisor identificable.
+2. **Sabe qué entidad te presta el servicio.** DEGIRO no es "holandés" a efectos prácticos: opera bajo una entidad alemana. Interactive Brokers UE te da de alta en Irlanda. Ese dato define qué garantía te aplica.
+3. **Revisa el préstamo de valores.** Muchos brokers ofrecen prestar tus acciones a cambio de un ingreso. Introduce riesgo de contraparte. Si no lo quieres, desactívalo.
+4. **Distingue efectivo de valores.** Ya lo hemos visto: protecciones distintas.
+5. **Cuidado con las obligaciones fiscales.** Un broker extranjero puede activar el [Modelo 720](/blog/modelo-720-bienes-extranjero) si superas los umbrales, y tienes que declarar tus dividendos y plusvalías igual que con un broker nacional.
+
+Un apunte personal: la seguridad de un broker no depende de su marca ni de que aparezca en un registro. Depende de entender dónde está tu efectivo, cómo se custodian tus valores y qué pasa exactamente si la cosa se tuerce. Si has llegado hasta aquí, ya sabes más que el 90% de los inversores.
+
+---
+
+## Preguntas frecuentes
+
+### Si mi broker quiebra, ¿pierdo mis acciones?
+
+No, salvo caso de fraude. Tus acciones están segregadas del balance del broker y no forman parte de su masa concursal. Lo habitual es que se traspasen en bloque a otro broker. El fondo de garantía solo interviene si, además de la quiebra, faltan activos que deberían estar.
+
+### ¿DEGIRO y Trade Republic están cubiertos por el FOGAIN?
+
+No. El FOGAIN cubre entidades autorizadas en España. Ambos operan bajo entidades alemanas, así que aplican los esquemas de garantía alemanes: el efectivo hasta 100.000 € por el sistema de depósitos alemán, y los valores según el esquema alemán de compensación al inversor.
+
+### ¿Cuánto cubre el FOGAIN exactamente?
+
+Hasta 100.000 € por titular, sumando efectivo y valor de mercado de tus instrumentos financieros en la fecha de la insolvencia. El límite es por persona, no por cuenta. No cubre pérdidas de mercado ni la quiebra del emisor de las acciones.
+
+### ¿Es más seguro un broker con cuenta nominativa que uno con cuenta ómnibus?
+
+La nominativa es más transparente porque tú apareces directamente en el registro del depositario central. La ómnibus depende del registro interno del broker. En la práctica, un broker regulado con cuenta ómnibus es seguro; el riesgo diferencial de la ómnibus es el fraude, y para eso está el fondo de garantía.
+
+### ¿Debo repartir mi cartera entre varios brokers?
+
+Si tu patrimonio supera con holgura los límites de garantía y quieres dormir tranquilo ante un caso extremo de fraude, diversificar brokers reduce ese riesgo residual. Para carteras más modestas, la segregación de activos ya cubre el grueso del riesgo. Es una decisión de tranquilidad personal más que de necesidad estricta.
