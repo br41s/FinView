@@ -1131,7 +1131,44 @@ function ImgReglaChowder() {
   );
 }
 
+function ImgQuiebraBroker() {
+  return (
+    <div className={styles.postImgQuiebraBroker}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">SEGREGACIÓN DE ACTIVOS</text>
+        {/* Broker box (cracked / failing) */}
+        <rect x="18" y="46" width="46" height="46" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.2" strokeDasharray="4 3" fill="none"/>
+        <text x="41" y="42" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Broker</text>
+        <text x="41" y="72" fontSize="10" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">✕</text>
+        {/* Shield protecting assets */}
+        <path d="M100 44 L118 51 L118 72 Q118 86 100 94 Q82 86 82 72 L82 51 Z" stroke="var(--fv-ochre)" strokeWidth="2" fill="var(--fv-ochre-ghost)"/>
+        <text x="100" y="70" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        {/* Arrow: assets transferred out to new custody */}
+        <line x1="64" y1="69" x2="80" y2="69" stroke="var(--fv-ink-30)" strokeWidth="1.2"/>
+        <path d="M78 66 L82 69 L78 72 Z" fill="var(--fv-ink-30)"/>
+        {/* New custody box */}
+        <rect x="140" y="52" width="42" height="34" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <text x="161" y="48" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Custodia</text>
+        <text x="161" y="73" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">✓</text>
+        <line x1="120" y1="69" x2="138" y2="69" stroke="var(--fv-ink-30)" strokeWidth="1.2"/>
+        <path d="M136 66 L140 69 L136 72 Z" fill="var(--fv-ink-30)"/>
+        <line x1="24" y1="104" x2="180" y2="104" stroke="var(--fv-ink-20)" strokeWidth="0.8" strokeDasharray="3 2"/>
+        <text x="100" y="115" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">FOGAIN: hasta 100.000 € por titular</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'que-pasa-si-quiebra-tu-broker',
+    tag: 'Brokers',
+    date: '26 jul 2026',
+    readTime: '9 min',
+    title: '¿Qué pasa con tus acciones si tu broker quiebra? FOGAIN y segregación',
+    excerpt: 'Tus acciones no son del broker: están segregadas y no entran en la masa concursal. Cómo funcionan las cuentas ómnibus, qué cubre el FOGAIN (100.000 €) y por qué DEGIRO, Trade Republic e IBKR se rigen por esquemas de solo 20.000 €.',
+    Image: ImgQuiebraBroker,
+  },
   {
     slug: 'regla-chowder-seleccion-dividendos',
     tag: 'Estrategia',
