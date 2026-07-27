@@ -1159,7 +1159,36 @@ function ImgQuiebraBroker() {
   );
 }
 
+function ImgW8ben() {
+  return (
+    <div className={styles.postImgW8ben}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">FORM W-8BEN — RESIDENTE NO USA</text>
+        {/* Document outline */}
+        <rect x="38" y="20" width="124" height="86" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <line x1="52" y1="34" x2="148" y2="34" stroke="var(--fv-ink-30)" strokeWidth="1"/>
+        <line x1="52" y1="46" x2="132" y2="46" stroke="var(--fv-ink-20)" strokeWidth="1"/>
+        <line x1="52" y1="58" x2="120" y2="58" stroke="var(--fv-ink-20)" strokeWidth="1"/>
+        <text x="52" y="74" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui">España · tratado 15%</text>
+        {/* The two withholding figures: 30% struck, 15% kept */}
+        <text x="56" y="92" fontSize="10" fill="var(--fv-ink-30)" fontFamily="system-ui" textDecoration="line-through">30%</text>
+        <text x="110" y="92" fontSize="13" fill="var(--fv-ochre)" fontFamily="system-ui" fontWeight="700">15%</text>
+        <text x="150" y="92" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="end">origen</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'formulario-w8ben-guia-espana',
+    tag: 'Fiscalidad',
+    date: '28 jul 2026',
+    readTime: '8 min',
+    title: 'Formulario W-8BEN en España: baja la retención de dividendos USA del 30% al 15%',
+    excerpt: 'El W-8BEN es el papel que te ahorra la mitad de la retención de tus acciones y ETFs estadounidenses. Qué es, cómo rellenarlo en tu broker, que caduca a los 3 años y qué hacer si ya cobraste al 30%.',
+    Image: ImgW8ben,
+  },
   {
     slug: 'que-pasa-si-quiebra-tu-broker',
     tag: 'Brokers',
