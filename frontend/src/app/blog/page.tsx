@@ -1179,7 +1179,46 @@ function ImgW8ben() {
   );
 }
 
+function ImgTraspasoBrokers() {
+  return (
+    <div className={styles.postImgTraspasoBrokers}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="12" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">TRASPASO DE VALORES — SIN VENTA</text>
+        {/* Origin broker: moving box with shares */}
+        <rect x="16" y="34" width="52" height="56" rx="5" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none"/>
+        <text x="42" y="30" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Broker A</text>
+        <rect x="26" y="46" width="14" height="10" rx="2" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="44" y="46" width="14" height="10" rx="2" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="26" y="62" width="14" height="10" rx="2" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="44" y="62" width="14" height="10" rx="2" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="2 2"/>
+        {/* Truck arrow carrying a share box */}
+        <line x1="72" y1="62" x2="122" y2="62" stroke="var(--fv-ochre)" strokeWidth="2"/>
+        <path d="M120 57 L128 62 L120 67 Z" fill="var(--fv-ochre)"/>
+        <rect x="88" y="50" width="16" height="11" rx="2" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        {/* Destination broker */}
+        <rect x="132" y="34" width="52" height="56" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <text x="158" y="30" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">Broker B</text>
+        <rect x="142" y="46" width="14" height="10" rx="2" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <text x="158" y="79" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">✓</text>
+        {/* Tax toll crossed out */}
+        <line x1="20" y1="104" x2="180" y2="104" stroke="var(--fv-ink-20)" strokeWidth="0.8" strokeDasharray="3 2"/>
+        <text x="100" y="115" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">0 € de IRPF · mismo precio de compra · FIFO intacto</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'traspaso-acciones-entre-brokers',
+    tag: 'Brokers',
+    date: '29 jul 2026',
+    readTime: '9 min',
+    title: 'Traspasar acciones entre brokers: cómo cambiar de casa sin pagar peaje a Hacienda',
+    excerpt:
+      'El traspaso de valores no tributa; vender y recomprar sí. Cómo se solicita, cuánto cuesta por posición, por qué tus precios de compra pueden no viajar con los títulos y qué descargar antes de mudarte.',
+    Image: ImgTraspasoBrokers,
+  },
   {
     slug: 'formulario-w8ben-guia-espana',
     tag: 'Fiscalidad',
