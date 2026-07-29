@@ -4,6 +4,26 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Corrección fiscal FIFO cross-broker (#185)
+
+#### Fixed
+- El motor FIFO ahora consume ventas históricas antes de calcular el ejercicio objetivo
+  y rechaza compras posteriores a la venta. ISIN vacíos e inventario incompleto no
+  generan lotes o ajustes autoritativos.
+- Las comisiones de IBKR aumentan el coste de compra y reducen el importe de venta.
+- Los ajustes se calculan por separado para ganancias (332) y pérdidas (337), incluso
+  cuando el P&L neto del ISIN no cambia, y se aplican coherentemente en casillas,
+  resumen, estimador, dashboard, exportación y comparativa anual.
+- La UI ya no suma dos veces el ajuste y muestra los deltas de cada casilla.
+
+#### Migration
+- `CrossBrokerLot` y `FIFOAdjustment` incorporan desglose/versionado mediante columnas
+  nullable creadas de forma idempotente en startup. Las filas legacy se conservan pero
+  no se aplican hasta recalcular o reimportar el ejercicio; no hay backfill automático.
+
+#### Verification
+- 375 tests backend pasados, 131 omitidos; Ruff, TypeScript y build de producción limpios.
+
 ### Cobertura de Ideas — cuencas de materia prima (#177)
 
 #### Added

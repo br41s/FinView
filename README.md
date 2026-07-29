@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (369 backend) · vitest (18 frontend)
+- **Tests:** pytest (375 backend) · vitest (18 frontend)
 
 ## Brokers soportados
 
@@ -89,11 +89,17 @@ FinView/
 
 ## Motor fiscal IRPF
 
-- **Modelo 100:** Casillas 27 (intereses), 29 (dividendos), 332 (ganancias >1 año), 337 (pérdidas)
+- **Modelo 100:** Casillas 27 (intereses), 29 (dividendos), 332 (ganancias patrimoniales), 337 (pérdidas patrimoniales)
 - **Modelo 714:** Casillas 05-09 (patrimonio en el extranjero)
-- **FIFO cruzado:** Matching cronológico de compras/ventas entre todos los brokers
+- **FIFO cruzado v2:** Matching cronológico global; las ventas históricas consumen inventario antes del ejercicio objetivo y una compra futura nunca puede financiar una venta anterior
 - **Retenciones:** Tracking por país con deducciones CDI (15% estándar)
-- **Ajustes FIFO:** Diferencia entre P&L del broker y FIFO recalculado
+- **Ajustes FIFO:** Desglose versionado por ganancias/pérdidas, integrado en casillas, resumen, estimador, dashboard, exportación y comparativa anual
+- **Integridad:** ISIN vacío e inventario incompleto no generan un resultado FIFO autoritativo
+- **Comisiones IBKR:** Las compras incorporan la comisión al coste y las ventas la descuentan del importe obtenido
+
+Los lotes y ajustes anteriores a FIFO v2 no se aplican a los totales fiscales ni se
+exponen como vigentes. Para regenerarlos hay que reemplazar o reimportar el ejercicio;
+la migración de esquema no reinterpreta automáticamente datos históricos.
 
 ## Monitor de Opciones
 
@@ -273,6 +279,7 @@ Base URL: `http://localhost:8000/api`
 - `GET /fiscal/casillas?fiscal_year=2024` — Casillas Modelo 100/714
 - `GET /fiscal/summary/2024` — Resumen fiscal completo
 - `GET /fiscal/cross-broker-lots/2024` — Lotes FIFO cruzados
+- `GET /fiscal/fifo-adjustments?fiscal_year=2024` — Ajustes FIFO v2 y desglose 332/337
 - `GET /fiscal/fx-rate?currency=USD&on=2024-01-02` — Tipo de cambio ECB (fallback ±7 días)
 
 ### Inversiones Alternativas (`/alt-investments/...`)

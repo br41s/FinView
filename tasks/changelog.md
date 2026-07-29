@@ -3,6 +3,23 @@
 Running log of changes made during the audit-driven remediation work.
 Source: audit report from 2026-05-22 session.
 
+## Financial correctness — FIFO fiscal v2 (PR #185)
+
+**Status:** Implemented, reviewed and documented; awaiting merge.
+
+- Chronological ledger through the target year; prior sales consume inventory and
+  future purchases cannot fund earlier sales.
+- Empty ISIN and incomplete inventory fail closed without authoritative lots.
+- IBKR buy/sell commissions normalized into cost/proceeds.
+- Versioned, per-box 332/337 adjustments used consistently by every fiscal output and UI.
+- Additive nullable migration; legacy calculations are ignored until explicit recalculation.
+- Verification: 375 backend tests passed, 131 skipped; Ruff, TypeScript and Next build green.
+
+Deferred to separate PRs: future-year invalidation after historical edits, option
+assignment/spinoff cost basis, withholding normalization and portfolio valuation.
+
+---
+
 ## Perf Batch 3 — Drop yfinance from request path + index-friendly year filters (branch: `claude/nervous-clarke-6ba65c`)
 
 **Status:** Implemented, full backend suite green (122 passed, 35 skipped).
