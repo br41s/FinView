@@ -340,6 +340,9 @@ class DataIssue(Base):
     __tablename__ = "data_issues"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Direct owner is required for full-audit issues, which are not tied to one
+    # import.  Nullable only for rows created before tenant ownership existed.
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     import_id: Mapped[int | None] = mapped_column(ForeignKey("import_records.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 

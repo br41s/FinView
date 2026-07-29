@@ -16,12 +16,13 @@ import re
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import case, func
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from backend.models import (
     Account,
     DataIssue,
+    ImportRecord,
     PortfolioHolding,
     Transaction,
     TransactionType,
@@ -32,9 +33,42 @@ logger = logging.getLogger(__name__)
 
 def _scope_tx_query(q, user_id: int | None):
     """Add user-scoping via Account join if user_id is provided."""
-    if user_id:
+    if user_id is not None:
         q = q.join(Account, Transaction.account_id == Account.id).filter(Account.user_id == user_id)
     return q
+
+
+def _scope_holding_query(q, user_id: int | None):
+    """Add user-scoping to a PortfolioHolding query."""
+    if user_id is not None:
+        q = q.join(Account, PortfolioHolding.account_id == Account.id).filter(
+            Account.user_id == user_id
+        )
+    return q
+
+
+def _resolve_user_scope(db: Session, import_id: int | None, user_id: int | None) -> int:
+    """Resolve and validate the owner for a supervisor run."""
+    if import_id is None:
+        if user_id is None:
+            raise ValueError("run_checks requires import_id or user_id")
+        return user_id
+
+    owner_row = (
+        db.query(Account.user_id)
+        .select_from(ImportRecord)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(ImportRecord.id == import_id)
+        .one_or_none()
+    )
+    if owner_row is None:
+        raise ValueError(f"ImportRecord {import_id} not found")
+    owner_user_id = owner_row[0]
+    if owner_user_id is None:
+        raise ValueError(f"ImportRecord {import_id} has no owning user")
+    if user_id is not None and user_id != owner_user_id:
+        raise ValueError(f"ImportRecord {import_id} does not belong to user {user_id}")
+    return owner_user_id
 
 # Patterns that indicate rights/derechos (not actual share sales)
 _RIGHTS_PATTERNS = re.compile(
@@ -67,6 +101,7 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     If import_id is given, focus checks on transactions from that import.
     If user_id is given (full audit), scope to that user's accounts.
     """
+    user_id = _resolve_user_scope(db, import_id, user_id)
     issues: list[DataIssue] = []
 
     issues.extend(_check_rights_as_sells(db, import_id, user_id))
@@ -80,14 +115,23 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     # repeated supervisor runs don't create 5× copies of the same warning.
     existing_needs_input = {
         (row.issue_type, row.isin)
-        for row in db.query(DataIssue.issue_type, DataIssue.isin).filter(
+        for row in db.query(DataIssue.issue_type, DataIssue.isin)
+        .outerjoin(ImportRecord, DataIssue.import_id == ImportRecord.id)
+        .outerjoin(Account, ImportRecord.account_id == Account.id)
+        .filter(
             DataIssue.status == "needs_input",
-        ).all()
+            and_(
+                DataIssue.user_id == user_id,
+                or_(DataIssue.import_id.is_(None), Account.user_id == user_id),
+            ),
+        )
+        .all()
     }
     persisted: list[DataIssue] = []
     for issue in issues:
         if issue.status == "needs_input" and (issue.issue_type, issue.isin) in existing_needs_input:
             continue
+        issue.user_id = user_id
         db.add(issue)
         persisted.append(issue)
         if issue.status == "needs_input":
@@ -118,8 +162,7 @@ def _check_rights_as_sells(db: Session, import_id: int | None, user_id: int | No
     )
     if import_id:
         q = q.filter(Transaction.import_id == import_id)
-    elif user_id:
-        q = _scope_tx_query(q, user_id)
+    q = _scope_tx_query(q, user_id)
 
     issues = []
     for tx in q.all():
@@ -165,36 +208,35 @@ def _check_missing_buys(db: Session, import_id: int | None, user_id: int | None 
     This means the buy happened outside imported data — user needs to provide it.
     """
     # Get all ISINs with dividends
+    dividend_q = db.query(Transaction.isin).filter(
+        Transaction.type == TransactionType.DIVIDEND.value,
+        Transaction.isin.isnot(None),
+        Transaction.isin != "",
+    )
+    dividend_q = _scope_tx_query(dividend_q, user_id)
     dividend_isins = set(
         row[0]
-        for row in db.query(Transaction.isin)
-        .filter(
-            Transaction.type == TransactionType.DIVIDEND.value,
-            Transaction.isin.isnot(None),
-            Transaction.isin != "",
-        )
-        .distinct()
-        .all()
+        for row in dividend_q.distinct().all()
     )
 
     # Get all ISINs with holdings
+    holdings_isin_q = _scope_holding_query(db.query(PortfolioHolding.isin), user_id)
     holding_isins = set(
         row[0]
-        for row in db.query(PortfolioHolding.isin).distinct().all()
+        for row in holdings_isin_q.distinct().all()
     )
 
     # Get all ISINs with BUY transactions for active stocks (exclude derivatives)
+    buy_q = db.query(Transaction.isin).filter(
+        Transaction.type == TransactionType.BUY.value,
+        Transaction.isin.isnot(None),
+        ~Transaction.name.like("[OPT]%"),
+        ~Transaction.name.like("[FX]%"),
+    )
+    buy_q = _scope_tx_query(buy_q, user_id)
     buy_isins = set(
         row[0]
-        for row in db.query(Transaction.isin)
-        .filter(
-            Transaction.type == TransactionType.BUY.value,
-            Transaction.isin.isnot(None),
-            ~Transaction.name.like("[OPT]%"),
-            ~Transaction.name.like("[FX]%"),
-        )
-        .distinct()
-        .all()
+        for row in buy_q.distinct().all()
     )
 
     # ISINs with dividends or holdings but no BUY
@@ -205,34 +247,25 @@ def _check_missing_buys(db: Session, import_id: int | None, user_id: int | None 
     issues = []
     for isin in sorted(missing):
         # Get a representative name
-        name_row = (
-            db.query(Transaction.name)
-            .filter(Transaction.isin == isin, Transaction.name != "")
-            .first()
+        name_q = db.query(Transaction.name).filter(
+            Transaction.isin == isin,
+            Transaction.name != "",
         )
+        name_row = _scope_tx_query(name_q, user_id).first()
         if not name_row:
-            name_row = (
-                db.query(PortfolioHolding.name)
-                .filter(PortfolioHolding.isin == isin)
-                .first()
-            )
+            holding_name_q = db.query(PortfolioHolding.name).filter(PortfolioHolding.isin == isin)
+            name_row = _scope_holding_query(holding_name_q, user_id).first()
         name = name_row[0] if name_row else isin
 
-        div_count = (
-            db.query(func.count())
-            .select_from(Transaction)
-            .filter(
-                Transaction.isin == isin,
-                Transaction.type == TransactionType.DIVIDEND.value,
-            )
-            .scalar()
+        div_count_q = db.query(func.count()).select_from(Transaction).filter(
+            Transaction.isin == isin,
+            Transaction.type == TransactionType.DIVIDEND.value,
         )
-        hold_count = (
-            db.query(func.count())
-            .select_from(PortfolioHolding)
-            .filter(PortfolioHolding.isin == isin)
-            .scalar()
+        div_count = _scope_tx_query(div_count_q, user_id).scalar()
+        hold_count_q = db.query(func.count()).select_from(PortfolioHolding).filter(
+            PortfolioHolding.isin == isin
         )
+        hold_count = _scope_holding_query(hold_count_q, user_id).scalar()
 
         issue = DataIssue(
             import_id=import_id,
@@ -268,10 +301,7 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
     # Latest fiscal_year per account
     max_fy_by_acct: dict[int, int] = {}
     holdings_q = db.query(PortfolioHolding)
-    if user_id:
-        holdings_q = holdings_q.join(Account, PortfolioHolding.account_id == Account.id).filter(
-            Account.user_id == user_id
-        )
+    holdings_q = _scope_holding_query(holdings_q, user_id)
     all_holdings = holdings_q.all()
     for h in all_holdings:
         if h.account_id not in max_fy_by_acct or h.fiscal_year > max_fy_by_acct[h.account_id]:
@@ -362,19 +392,19 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
     active_isins = set()
 
     # From holdings
-    for row in db.query(PortfolioHolding.isin).distinct().all():
+    holding_isin_q = _scope_holding_query(db.query(PortfolioHolding.isin), user_id)
+    for row in holding_isin_q.distinct().all():
         active_isins.add(row[0])
 
     # From BUY transactions with no matching sell (open positions)
+    buy_q = db.query(Transaction.isin).filter(
+        Transaction.type == TransactionType.BUY.value,
+        Transaction.isin.isnot(None),
+    )
+    buy_q = _scope_tx_query(buy_q, user_id)
     buy_isins = set(
         row[0]
-        for row in db.query(Transaction.isin)
-        .filter(
-            Transaction.type == TransactionType.BUY.value,
-            Transaction.isin.isnot(None),
-        )
-        .distinct()
-        .all()
+        for row in buy_q.distinct().all()
     )
     # ISINs with buys but possibly still open
     active_isins |= buy_isins
@@ -385,7 +415,7 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
             continue
 
         # Skip derivatives and bonds — they don't have stock tickers
-        name = _get_name_for_isin(db, isin)
+        name = _get_name_for_isin(db, isin, user_id)
         if _DERIVATIVE_PATTERNS.search(name) or _BOND_PATTERNS.search(name):
             continue
 
@@ -397,7 +427,7 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
                 issue_type="missing_ticker",
                 severity="info",
                 isin=isin,
-                name=_get_name_for_isin(db, isin),
+                name=_get_name_for_isin(db, isin, user_id),
                 description=(
                     f"ISIN {isin} no estaba en el mapa de tickers. "
                     f"Resuelto automáticamente: {ticker}"
@@ -413,9 +443,9 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
                 issue_type="missing_ticker",
                 severity="warning",
                 isin=isin,
-                name=_get_name_for_isin(db, isin),
+                name=_get_name_for_isin(db, isin, user_id),
                 description=(
-                    f"ISIN {isin} ({_get_name_for_isin(db, isin)}) no tiene ticker de Yahoo Finance. "
+                    f"ISIN {isin} ({_get_name_for_isin(db, isin, user_id)}) no tiene ticker de Yahoo Finance. "
                     f"Los precios actuales no se mostrarán en la UI."
                 ),
                 status="needs_input",
@@ -448,7 +478,8 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
     issues = []
     active_isins = set()
-    for row in db.query(PortfolioHolding.isin).distinct().all():
+    holding_isin_q = _scope_holding_query(db.query(PortfolioHolding.isin), user_id)
+    for row in holding_isin_q.distinct().all():
         if row[0] in _ISIN_TICKER_MAP:
             active_isins.add(row[0])
 
@@ -466,14 +497,11 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
         # First buy across all ISINs for this ticker
         all_isins_for_ticker = ticker_to_isins.get(ticker, [isin])
-        first_buy = (
-            db.query(func.min(Transaction.trade_date))
-            .filter(
-                Transaction.isin.in_(all_isins_for_ticker),
-                Transaction.type == TransactionType.BUY.value,
-            )
-            .scalar()
+        first_buy_q = db.query(func.min(Transaction.trade_date)).filter(
+            Transaction.isin.in_(all_isins_for_ticker),
+            Transaction.type == TransactionType.BUY.value,
         )
+        first_buy = _scope_tx_query(first_buy_q, user_id).scalar()
         if not first_buy:
             continue
 
@@ -489,22 +517,19 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
             if len(all_isins_for_ticker) > 1:
                 # Verify transactions exist on both sides
                 old_isins = [i for i in all_isins_for_ticker if i != isin]
-                has_old = (
-                    db.query(Transaction)
-                    .filter(
-                        Transaction.isin.in_(old_isins),
-                        Transaction.type == TransactionType.BUY.value,
-                        Transaction.trade_date < split_date,
-                    )
-                    .first()
-                ) is not None
+                has_old_q = db.query(Transaction).filter(
+                    Transaction.isin.in_(old_isins),
+                    Transaction.type == TransactionType.BUY.value,
+                    Transaction.trade_date < split_date,
+                )
+                has_old = _scope_tx_query(has_old_q, user_id).first() is not None
                 if has_old:
                     issue = DataIssue(
                         import_id=import_id,
                         issue_type="potential_split",
                         severity="info",
                         isin=isin,
-                        name=_get_name_for_isin(db, isin),
+                        name=_get_name_for_isin(db, isin, user_id),
                         description=(
                             f"Split de {ticker} (ratio {ratio}, {split_date.isoformat()}) "
                             f"detectado y gestionado: ISINs separados antes/después del split. "
@@ -524,32 +549,27 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
             # ── Case 2: Qty-only split (same ISIN, quantities need adjustment) ─
             # Check if existing BUY quantities are pre-split (need × ratio)
-            already_handled = (
-                db.query(Transaction)
-                .filter(
-                    Transaction.isin == isin,
-                    Transaction.trade_date == split_date,
-                    Transaction.type == TransactionType.SELL.value,
-                )
-                .first()
+            handled_q = db.query(Transaction).filter(
+                Transaction.isin == isin,
+                Transaction.trade_date == split_date,
+                Transaction.type == TransactionType.SELL.value,
             )
+            already_handled = _scope_tx_query(handled_q, user_id).first()
             if already_handled:
                 continue
 
-            pre_split_qty = (
-                db.query(func.coalesce(func.sum(Transaction.quantity), 0))
-                .filter(
-                    Transaction.isin == isin,
-                    Transaction.type == TransactionType.BUY.value,
-                    Transaction.trade_date < split_date,
-                )
-                .scalar()
-            ) or Decimal("0")
+            pre_split_q = db.query(func.coalesce(func.sum(Transaction.quantity), 0)).filter(
+                Transaction.isin == isin,
+                Transaction.type == TransactionType.BUY.value,
+                Transaction.trade_date < split_date,
+            )
+            pre_split_qty = _scope_tx_query(pre_split_q, user_id).scalar() or Decimal("0")
 
+            holding_qty_q = db.query(
+                func.coalesce(func.sum(PortfolioHolding.quantity), 0)
+            ).filter(PortfolioHolding.isin == isin)
             holding_qty = (
-                db.query(func.coalesce(func.sum(PortfolioHolding.quantity), 0))
-                .filter(PortfolioHolding.isin == isin)
-                .scalar()
+                _scope_holding_query(holding_qty_q, user_id).scalar()
             ) or Decimal("0")
 
             expected_after_split = pre_split_qty * ratio
@@ -557,13 +577,13 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
             if holding_qty > 0 and abs(holding_qty - expected_after_split) <= tol:
                 # Auto-apply: adjust pre-split BUY/SELL quantities
-                _apply_qty_split(db, isin, split_date, ratio)
+                _apply_qty_split(db, isin, split_date, ratio, user_id)
                 issue = DataIssue(
                     import_id=import_id,
                     issue_type="potential_split",
                     severity="info",
                     isin=isin,
-                    name=_get_name_for_isin(db, isin),
+                    name=_get_name_for_isin(db, isin, user_id),
                     description=(
                         f"Split de {ticker} ({isin}) ratio {ratio} el {split_date.isoformat()} "
                         f"detectado y aplicado automáticamente. "
@@ -588,7 +608,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
                     issue_type="potential_split",
                     severity="warning",
                     isin=isin,
-                    name=_get_name_for_isin(db, isin),
+                    name=_get_name_for_isin(db, isin, user_id),
                     description=(
                         f"Split de {ticker} ({isin}): ratio {ratio} el {split_date.isoformat()}. "
                         f"No se pudo confirmar automáticamente (holdings: {holding_qty}, "
@@ -608,7 +628,13 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
     return issues
 
 
-def _apply_qty_split(db: Session, isin: str, split_date: date, ratio: Decimal) -> None:
+def _apply_qty_split(
+    db: Session,
+    isin: str,
+    split_date: date,
+    ratio: Decimal,
+    user_id: int,
+) -> None:
     """Adjust pre-split BUY/SELL transaction quantities for a qty-only split.
 
     Cost basis (gross_amount, net_amount_eur) is preserved — only quantity
@@ -616,6 +642,7 @@ def _apply_qty_split(db: Session, isin: str, split_date: date, ratio: Decimal) -
     Rows with price = 0 (scrip/free shares) keep price = 0.
     """
     db.query(Transaction).filter(
+        Transaction.account_id.in_(db.query(Account.id).filter(Account.user_id == user_id)),
         Transaction.isin == isin,
         Transaction.trade_date < split_date,
         Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
@@ -643,8 +670,7 @@ def _check_price_sanity(db: Session, import_id: int | None, user_id: int | None 
     )
     if import_id:
         q = q.filter(Transaction.import_id == import_id)
-    elif user_id:
-        q = _scope_tx_query(q, user_id)
+    q = _scope_tx_query(q, user_id)
     issues = []
     for tx in q.all():
         if tx.price == 0 and tx.quantity > 0:
@@ -708,16 +734,14 @@ def _check_price_sanity(db: Session, import_id: int | None, user_id: int | None 
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_name_for_isin(db: Session, isin: str) -> str:
+def _get_name_for_isin(db: Session, isin: str, user_id: int | None = None) -> str:
     """Get a human-readable name for an ISIN from existing data."""
-    row = (
-        db.query(Transaction.name)
-        .filter(Transaction.isin == isin, Transaction.name != "")
-        .first()
-    )
+    tx_q = db.query(Transaction.name).filter(Transaction.isin == isin, Transaction.name != "")
+    row = _scope_tx_query(tx_q, user_id).first()
     if row:
         return row[0]
-    row = db.query(PortfolioHolding.name).filter(PortfolioHolding.isin == isin).first()
+    holding_q = db.query(PortfolioHolding.name).filter(PortfolioHolding.isin == isin)
+    row = _scope_holding_query(holding_q, user_id).first()
     return row[0] if row else isin
 
 

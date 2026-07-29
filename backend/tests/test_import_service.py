@@ -8,11 +8,26 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.models import Base, Broker, ImportRecord, TaxLot, TaxResult, Transaction, User
+from backend.models import (
+    Account,
+    Base,
+    Broker,
+    CrossBrokerLot,
+    DataIssue,
+    FIFOAdjustment,
+    ImportRecord,
+    TaxLot,
+    TaxResult,
+    Transaction,
+    User,
+)
 from backend.services.import_service import (
     _check_duplicate,
     _check_year_duplicate,
     _delete_import_data,
+    _file_hash_for_storage,
+    _get_or_create_account,
+    delete_all_imports,
 )
 
 _FILES = Path(__file__).resolve().parents[2] / "files"
@@ -41,6 +56,13 @@ def user_id(db) -> int:
     return user.id
 
 
+def _make_user(db, email: str) -> int:
+    user = User(email=email, name=email, password_hash="x")
+    db.add(user)
+    db.flush()
+    return user.id
+
+
 def _make_import(db, user_id, broker="TR", fiscal_year=2024, file_hash="abc123", source_variant=None):
     """Helper to create a minimal import record with related data."""
     from backend.models import Account, TransactionType
@@ -54,7 +76,7 @@ def _make_import(db, user_id, broker="TR", fiscal_year=2024, file_hash="abc123",
     rec = ImportRecord(
         account_id=acct.id,
         filename="test.pdf",
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker(broker), user_id),
         broker=broker,
         fiscal_year=fiscal_year,
         record_count=2,
@@ -97,37 +119,85 @@ def _make_import(db, user_id, broker="TR", fiscal_year=2024, file_hash="abc123",
 
 
 class TestCheckDuplicate:
-    def test_no_duplicate(self, db):
-        assert _check_duplicate(db, "nonexistent", Broker.TR) is None
+    def test_no_duplicate(self, db, user_id):
+        assert _check_duplicate(db, "nonexistent", Broker.TR, user_id) is None
 
     def test_exact_hash_match(self, db, user_id):
         rec, _, _ = _make_import(db, user_id, file_hash="hash1")
-        result = _check_duplicate(db, "hash1", Broker.TR)
+        result = _check_duplicate(db, "hash1", Broker.TR, user_id)
         assert result is not None
         assert result.id == rec.id
 
     def test_same_hash_different_broker(self, db, user_id):
         _make_import(db, user_id, broker="TR", file_hash="hash1")
-        assert _check_duplicate(db, "hash1", Broker.DEGIRO) is None
+        assert _check_duplicate(db, "hash1", Broker.DEGIRO, user_id) is None
+
+    def test_same_hash_different_user_is_not_duplicate(self, db, user_id):
+        other_user_id = _make_user(db, "other@example.com")
+        first, _, _ = _make_import(db, user_id, file_hash="shared-hash")
+
+        assert _check_duplicate(db, "shared-hash", Broker.TR, other_user_id) is None
+
+        second, _, _ = _make_import(db, other_user_id, file_hash="shared-hash")
+        assert _check_duplicate(db, "shared-hash", Broker.TR, user_id).id == first.id
+        assert _check_duplicate(db, "shared-hash", Broker.TR, other_user_id).id == second.id
+        assert first.file_hash == "shared-hash"
+        assert second.file_hash != "shared-hash"
+
+    def test_finds_legacy_unscoped_hash_for_owner(self, db, user_id):
+        rec, _, _ = _make_import(db, user_id, file_hash="legacy-hash")
+        rec.file_hash = "legacy-hash"
+        db.flush()
+
+        assert _check_duplicate(db, "legacy-hash", Broker.TR, user_id).id == rec.id
+
+
+class TestGetOrCreateAccount:
+    def test_same_broker_account_id_is_isolated_by_user(self, db, user_id):
+        other_user_id = _make_user(db, "other@example.com")
+
+        first = _get_or_create_account(db, Broker.TR, "TR", user_id)
+        second = _get_or_create_account(db, Broker.TR, "TR", other_user_id)
+
+        assert first.id != second.id
+        assert first.user_id == user_id
+        assert second.user_id == other_user_id
+
+    def test_does_not_claim_unowned_legacy_account(self, db, user_id):
+        legacy = Account(broker=Broker.TR.value, account_id="TR", name="Legacy")
+        db.add(legacy)
+        db.flush()
+
+        owned = _get_or_create_account(db, Broker.TR, "TR", user_id)
+
+        assert owned.id != legacy.id
+        assert legacy.user_id is None
+        assert owned.user_id == user_id
 
 
 class TestCheckYearDuplicate:
-    def test_no_year_duplicate(self, db):
-        assert _check_year_duplicate(db, Broker.TR, 2024) is None
+    def test_no_year_duplicate(self, db, user_id):
+        assert _check_year_duplicate(db, Broker.TR, 2024, user_id) is None
 
     def test_same_broker_year(self, db, user_id):
         rec, _, _ = _make_import(db, user_id, broker="TR", fiscal_year=2024)
-        result = _check_year_duplicate(db, Broker.TR, 2024)
+        result = _check_year_duplicate(db, Broker.TR, 2024, user_id)
         assert result is not None
         assert result.id == rec.id
 
     def test_same_broker_different_year(self, db, user_id):
         _make_import(db, user_id, broker="TR", fiscal_year=2024)
-        assert _check_year_duplicate(db, Broker.TR, 2025) is None
+        assert _check_year_duplicate(db, Broker.TR, 2025, user_id) is None
 
     def test_different_broker_same_year(self, db, user_id):
         _make_import(db, user_id, broker="TR", fiscal_year=2024)
-        assert _check_year_duplicate(db, Broker.DEGIRO, 2024) is None
+        assert _check_year_duplicate(db, Broker.DEGIRO, 2024, user_id) is None
+
+    def test_same_broker_year_different_user_is_not_duplicate(self, db, user_id):
+        other_user_id = _make_user(db, "other@example.com")
+        _make_import(db, user_id, broker="TR", fiscal_year=2024)
+
+        assert _check_year_duplicate(db, Broker.TR, 2024, other_user_id) is None
 
 
 class TestDeleteImportData:
@@ -204,6 +274,107 @@ class TestDeleteImportData:
         assert db.query(ImportRecord).count() == 1
         assert db.query(ImportRecord).first().broker == Broker.DEGIRO
 
+    def test_preserves_other_users_same_year_derived_data(self, db, user_id):
+        other_user_id = _make_user(db, "other@example.com")
+        own_rec, _, own_tax_result = _make_import(
+            db, user_id, broker="TR", file_hash="own-hash", fiscal_year=2024
+        )
+        other_rec, other_tx, other_tax_result = _make_import(
+            db, other_user_id, broker="TR", file_hash="other-hash", fiscal_year=2024
+        )
+        own_adjustment = FIFOAdjustment(
+            user_id=user_id,
+            fiscal_year=2024,
+            isin="US0000000001",
+            broker_pl_eur=Decimal("0"),
+            fifo_pl_eur=Decimal("1"),
+            adjustment_eur=Decimal("1"),
+        )
+        other_adjustment = FIFOAdjustment(
+            user_id=other_user_id,
+            fiscal_year=2024,
+            isin="US0000000001",
+            broker_pl_eur=Decimal("0"),
+            fifo_pl_eur=Decimal("2"),
+            adjustment_eur=Decimal("2"),
+        )
+        other_lot = CrossBrokerLot(
+            fiscal_year=2024,
+            isin="US0378331005",
+            buy_tx_id=other_tx.id,
+            sell_tx_id=other_tx.id,
+            buy_broker=Broker.TR.value,
+            sell_broker=Broker.TR.value,
+            quantity=Decimal("1"),
+            cost_basis_eur=Decimal("1"),
+            proceeds_eur=Decimal("2"),
+            realized_pl_eur=Decimal("1"),
+            casilla=332,
+        )
+        db.add_all([own_adjustment, other_adjustment, other_lot])
+        db.flush()
+
+        _delete_import_data(db, own_rec.id)
+
+        assert db.get(ImportRecord, other_rec.id) is not None
+        assert db.get(Transaction, other_tx.id) is not None
+        assert db.get(TaxResult, other_tax_result.id) is not None
+        assert db.get(CrossBrokerLot, other_lot.id) is not None
+        assert db.get(FIFOAdjustment, other_adjustment.id) is not None
+        assert db.get(TaxResult, own_tax_result.id) is None
+        assert db.get(FIFOAdjustment, own_adjustment.id) is None
+
+
+class TestDeleteAllImports:
+    def test_removes_only_selected_users_importless_issues(self, db, user_id):
+        other_user_id = _make_user(db, "other@example.com")
+        own_import, _, _ = _make_import(db, user_id, file_hash="own-hash")
+        other_import, _, _ = _make_import(db, other_user_id, file_hash="other-hash")
+        own_issue = DataIssue(
+            user_id=user_id,
+            issue_type="missing_buy",
+            severity="warning",
+            description="Own full-audit issue",
+            status="needs_input",
+        )
+        other_issue = DataIssue(
+            user_id=other_user_id,
+            issue_type="missing_buy",
+            severity="warning",
+            description="Other full-audit issue",
+            status="needs_input",
+        )
+        own_legacy_issue = DataIssue(
+            import_id=own_import.id,
+            issue_type="zero_price",
+            severity="warning",
+            description="Own legacy issue",
+            status="needs_input",
+        )
+        other_legacy_issue = DataIssue(
+            import_id=other_import.id,
+            issue_type="zero_price",
+            severity="warning",
+            description="Other legacy issue",
+            status="needs_input",
+        )
+        db.add_all([own_issue, other_issue, own_legacy_issue, other_legacy_issue])
+        db.flush()
+        own_issue_id = own_issue.id
+        other_issue_id = other_issue.id
+        own_legacy_issue_id = own_legacy_issue.id
+        other_legacy_issue_id = other_legacy_issue.id
+
+        result = delete_all_imports(db, user_id)
+        db.expire_all()
+
+        assert result == {"deleted_imports": 1}
+        assert db.get(DataIssue, own_issue_id) is None
+        assert db.get(DataIssue, other_issue_id) is not None
+        assert db.get(DataIssue, own_legacy_issue_id) is None
+        assert db.get(DataIssue, other_legacy_issue_id) is not None
+        assert db.get(ImportRecord, other_import.id) is not None
+
 
 class TestCheckYearDuplicateVariant:
     """Variant-aware year key: complementary same-year TR reports coexist."""
@@ -214,9 +385,11 @@ class TestCheckYearDuplicateVariant:
             file_hash="h_de", source_variant="tr_de_premigration",
         )
         # The post-migration variant is a different slot → no duplicate.
-        assert _check_year_duplicate(db, Broker.TR, 2025, "es_branch") is None
+        assert _check_year_duplicate(db, Broker.TR, 2025, user_id, "es_branch") is None
         # The same variant is found → replaces itself.
-        same = _check_year_duplicate(db, Broker.TR, 2025, "tr_de_premigration")
+        same = _check_year_duplicate(
+            db, Broker.TR, 2025, user_id, "tr_de_premigration"
+        )
         assert same is not None
 
     def test_no_variant_matches_any(self, db, user_id):
@@ -225,7 +398,7 @@ class TestCheckYearDuplicateVariant:
             db, user_id, broker="TR", fiscal_year=2025,
             file_hash="h_de", source_variant="tr_de_premigration",
         )
-        assert _check_year_duplicate(db, Broker.TR, 2025) is not None
+        assert _check_year_duplicate(db, Broker.TR, 2025, user_id) is not None
 
 
 @pytest.mark.skipif(

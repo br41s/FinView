@@ -7,7 +7,14 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
-from backend.models import DataIssue, ImportRecord, Transaction, TransactionType
+from backend.models import (
+    Account,
+    DataIssue,
+    ImportRecord,
+    PortfolioHolding,
+    Transaction,
+    TransactionType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +22,43 @@ _ZERO = Decimal("0")
 _Q = Decimal("0.000001")
 
 
+def _issue_owner(db: Session, issue: DataIssue) -> tuple[int | None, int]:
+    """Return the trusted account (when known) and user for an issue."""
+    if issue.import_id is None:
+        if issue.user_id is None:
+            raise ValueError("Issue has no owning user")
+        return None, issue.user_id
+
+    owner_row = (
+        db.query(ImportRecord.account_id, Account.user_id)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(ImportRecord.id == issue.import_id)
+        .one_or_none()
+    )
+    if owner_row is None:
+        raise ValueError(f"ImportRecord {issue.import_id} not found")
+    account_id, user_id = owner_row
+    if user_id is None:
+        raise ValueError(f"ImportRecord {issue.import_id} has no owning user")
+    if issue.user_id is not None and issue.user_id != user_id:
+        raise ValueError(f"Issue {issue.id} owner does not match its import")
+    return account_id, user_id
+
+
 def resolve_zero_price(db: Session, issue: DataIssue, price_per_share: Decimal) -> None:
     """Set the correct price on a zero-price BUY transaction."""
+    _, user_id = _issue_owner(db, issue)
     data = json.loads(issue.resolution_data or "{}")
     tx_id = data.get("tx_id")
     if not tx_id:
         raise ValueError("resolution_data missing tx_id")
 
-    tx = db.query(Transaction).filter(Transaction.id == int(tx_id)).first()
+    tx = (
+        db.query(Transaction)
+        .join(Account, Transaction.account_id == Account.id)
+        .filter(Transaction.id == int(tx_id), Account.user_id == user_id)
+        .first()
+    )
     if not tx:
         raise ValueError(f"Transaction {tx_id} not found")
 
@@ -44,28 +80,26 @@ def resolve_add_buy(
     acquisition_date: date,
 ) -> None:
     """Create a synthetic BUY transaction for a missing acquisition."""
-    # Determine account_id: import record → resolution_data → ISIN lookup
-    account_id: int | None = None
-
-    if issue.import_id:
-        rec = db.query(ImportRecord).filter(ImportRecord.id == issue.import_id).first()
-        if rec:
-            account_id = rec.account_id
-
+    account_id, user_id = _issue_owner(db, issue)
     if account_id is None:
-        try:
-            stored = json.loads(issue.resolution_data or "{}")
-            account_id = stored.get("account_id")
-        except Exception:
-            pass
-
-    if account_id is None:
-        row = db.query(Transaction.account_id).filter(Transaction.isin == issue.isin).first()
-        if row:
-            account_id = row[0]
-
-    if account_id is None:
-        raise ValueError(f"No se puede determinar la cuenta para ISIN {issue.isin}")
+        tx_accounts = (
+            db.query(Transaction.account_id)
+            .join(Account, Transaction.account_id == Account.id)
+            .filter(Transaction.isin == issue.isin, Account.user_id == user_id)
+            .distinct()
+            .all()
+        )
+        holding_accounts = (
+            db.query(PortfolioHolding.account_id)
+            .join(Account, PortfolioHolding.account_id == Account.id)
+            .filter(PortfolioHolding.isin == issue.isin, Account.user_id == user_id)
+            .distinct()
+            .all()
+        )
+        candidates = {row[0] for row in tx_accounts + holding_accounts}
+        if len(candidates) != 1:
+            raise ValueError("La incidencia no identifica una única cuenta para la compra")
+        account_id = candidates.pop()
 
     gross = (qty * price).quantize(_Q, ROUND_HALF_UP)
     tx = Transaction(
@@ -103,6 +137,7 @@ def resolve_add_buy(
 
 def resolve_apply_split(db: Session, issue: DataIssue) -> None:
     """Adjust pre-split quantities and prices for a detected stock split."""
+    _, user_id = _issue_owner(db, issue)
     data = json.loads(issue.resolution_data or "{}")
     split_date_str = data.get("split_date")
     ratio_str = data.get("ratio")
@@ -115,7 +150,9 @@ def resolve_apply_split(db: Session, issue: DataIssue) -> None:
 
     txs = (
         db.query(Transaction)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(
+            Account.user_id == user_id,
             Transaction.isin == issue.isin,
             Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
             Transaction.trade_date < split_date,

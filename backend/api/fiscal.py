@@ -7,6 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func
+from sqlalchemy.orm import aliased
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
@@ -266,11 +267,21 @@ def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = 
 @router.get("/cross-broker-lots", response_model=list[CrossBrokerLotOut])
 def list_cross_broker_lots(db: DbSession, user: CurrentUser, fiscal_year: int):
     """List cross-broker FIFO lots for a fiscal year."""
+    buy_tx = aliased(Transaction)
+    sell_tx = aliased(Transaction)
+    buy_account = aliased(Account)
+    sell_account = aliased(Account)
     lots = (
         db.query(CrossBrokerLot)
-        .join(Transaction, CrossBrokerLot.buy_tx_id == Transaction.id)
-        .join(Account)
-        .filter(Account.user_id == user.id, CrossBrokerLot.fiscal_year == fiscal_year)
+        .join(buy_tx, CrossBrokerLot.buy_tx_id == buy_tx.id)
+        .join(buy_account, buy_tx.account_id == buy_account.id)
+        .join(sell_tx, CrossBrokerLot.sell_tx_id == sell_tx.id)
+        .join(sell_account, sell_tx.account_id == sell_account.id)
+        .filter(
+            buy_account.user_id == user.id,
+            sell_account.user_id == user.id,
+            CrossBrokerLot.fiscal_year == fiscal_year,
+        )
         .order_by(CrossBrokerLot.isin, CrossBrokerLot.id)
         .all()
     )
