@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from sqlalchemy import and_, or_
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import DataIssueOut, ImportRecordOut, ImportResult, ResolveIssueRequest
@@ -255,9 +256,14 @@ def list_issues(db: DbSession, user: CurrentUser, status: str | None = None, imp
     """List data quality issues, optionally filtered by status or import."""
     q = (
         db.query(DataIssue)
-        .join(ImportRecord, DataIssue.import_id == ImportRecord.id)
-        .join(Account, ImportRecord.account_id == Account.id)
-        .filter(Account.user_id == user.id)
+        .outerjoin(ImportRecord, DataIssue.import_id == ImportRecord.id)
+        .outerjoin(Account, ImportRecord.account_id == Account.id)
+        .filter(
+            and_(
+                DataIssue.user_id == user.id,
+                or_(DataIssue.import_id.is_(None), Account.user_id == user.id),
+            )
+        )
         .order_by(DataIssue.created_at.desc())
     )
     if status:
@@ -276,9 +282,15 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user:
 
     issue = (
         db.query(DataIssue)
-        .join(ImportRecord, DataIssue.import_id == ImportRecord.id)
-        .join(Account, ImportRecord.account_id == Account.id)
-        .filter(DataIssue.id == issue_id, Account.user_id == user.id)
+        .outerjoin(ImportRecord, DataIssue.import_id == ImportRecord.id)
+        .outerjoin(Account, ImportRecord.account_id == Account.id)
+        .filter(
+            DataIssue.id == issue_id,
+            and_(
+                DataIssue.user_id == user.id,
+                or_(DataIssue.import_id.is_(None), Account.user_id == user.id),
+            ),
+        )
         .first()
     )
     if not issue:

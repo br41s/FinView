@@ -86,8 +86,8 @@ def _holding_period_label(buy_date: date, sell_date: date) -> tuple[str, int]:
     return "<1y", 332  # both gains go to 332; losses to 337 — casilla set later
 
 
-def _get_real_buys(db: Session, isin: str) -> list[_BuySlice]:
-    """Get all real BUY transactions for an ISIN across all accounts, sorted by date.
+def _get_real_buys(db: Session, isin: str, user_id: int) -> list[_BuySlice]:
+    """Get a user's real BUY transactions for an ISIN, sorted by date.
 
     Real = stored via _store_transaction (has import_id) with type BUY
     and NOT a synthetic buy created only for a TaxLot.
@@ -96,7 +96,10 @@ def _get_real_buys(db: Session, isin: str) -> list[_BuySlice]:
     # IDs of synthetic buy transactions (created for TaxLots)
     synthetic_buy_ids = (
         db.query(TaxLot.buy_tx_id)
+        .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(TaxLot.buy_tx_id.isnot(None))
+        .filter(Account.user_id == user_id)
         .scalar_subquery()
     )
 
@@ -107,6 +110,7 @@ def _get_real_buys(db: Session, isin: str) -> list[_BuySlice]:
             Transaction.isin == isin,
             Transaction.type == TransactionType.BUY.value,
             Transaction.id.notin_(synthetic_buy_ids),
+            Account.user_id == user_id,
         )
         .order_by(Transaction.trade_date.asc(), Transaction.id.asc())
         .all()
@@ -126,11 +130,16 @@ def _get_real_buys(db: Session, isin: str) -> list[_BuySlice]:
     ]
 
 
-def _get_real_sells(db: Session, isin: str, fiscal_year: int) -> list[_SellRecord]:
-    """Get all real SELL transactions for an ISIN in a fiscal year."""
+def _get_real_sells(
+    db: Session, isin: str, fiscal_year: int, user_id: int
+) -> list[_SellRecord]:
+    """Get a user's real SELL transactions for an ISIN in a fiscal year."""
     synthetic_sell_ids = (
         db.query(TaxLot.sell_tx_id)
+        .join(Transaction, TaxLot.sell_tx_id == Transaction.id)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(TaxLot.sell_tx_id.isnot(None))
+        .filter(Account.user_id == user_id)
         .scalar_subquery()
     )
 
@@ -143,6 +152,7 @@ def _get_real_sells(db: Session, isin: str, fiscal_year: int) -> list[_SellRecor
             Transaction.type == TransactionType.SELL.value,
             Transaction.id.notin_(synthetic_sell_ids),
             _year_str(Transaction.trade_date) == year_value,
+            Account.user_id == user_id,
         )
         .order_by(Transaction.trade_date.asc(), Transaction.id.asc())
         .all()
@@ -206,22 +216,29 @@ def _fifo_match(buys: list[_BuySlice], sells: list[_SellRecord]) -> list[_Matche
     return matched
 
 
-def _get_broker_pl_for_isin(db: Session, isin: str, fiscal_year: int) -> Decimal:
-    """Sum broker-reported P&L for an ISIN from TaxLot table."""
+def _get_broker_pl_for_isin(
+    db: Session, isin: str, fiscal_year: int, user_id: int
+) -> Decimal:
+    """Sum a user's broker-reported P&L for an ISIN from TaxLot table."""
     year_value = str(fiscal_year)
     result = (
         db.query(func.coalesce(func.sum(TaxLot.realized_pl_eur), 0))
+        .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(
             TaxLot.isin == isin,
             _year_str(TaxLot.close_date) == year_value,
+            Account.user_id == user_id,
         )
         .scalar()
     )
     return Decimal(str(result)) if result else Decimal("0")
 
 
-def _find_multi_broker_isins(db: Session, fiscal_year: int) -> list[str]:
-    """Find ISINs that have real BUY transactions in 2+ different accounts.
+def _find_multi_broker_isins(
+    db: Session, fiscal_year: int, user_id: int
+) -> list[str]:
+    """Find ISINs a user bought in 2+ different accounts.
 
     These are the ISINs that could have different FIFO if bought at
     different brokers and then sold at one of them.
@@ -230,9 +247,11 @@ def _find_multi_broker_isins(db: Session, fiscal_year: int) -> list[str]:
     year_value = str(fiscal_year)
     sell_isins = (
         db.query(Transaction.isin)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(
             Transaction.type == TransactionType.SELL.value,
             _year_str(Transaction.trade_date) == year_value,
+            Account.user_id == user_id,
         )
         .distinct()
         .scalar_subquery()
@@ -241,16 +260,21 @@ def _find_multi_broker_isins(db: Session, fiscal_year: int) -> list[str]:
     # Among those, find ISINs with buys in 2+ different accounts (any year)
     synthetic_buy_ids = (
         db.query(TaxLot.buy_tx_id)
+        .join(Transaction, TaxLot.buy_tx_id == Transaction.id)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(TaxLot.buy_tx_id.isnot(None))
+        .filter(Account.user_id == user_id)
         .scalar_subquery()
     )
 
     multi = (
         db.query(Transaction.isin)
+        .join(Account, Transaction.account_id == Account.id)
         .filter(
             Transaction.type == TransactionType.BUY.value,
             Transaction.isin.in_(sell_isins),
             Transaction.id.notin_(synthetic_buy_ids),
+            Account.user_id == user_id,
         )
         .group_by(Transaction.isin)
         .having(func.count(func.distinct(Transaction.account_id)) >= 2)
@@ -274,16 +298,28 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
 
     Returns summary dict with counts.
     """
-    # Clean previous results for this year (scoped to user if provided)
-    cbl_q = db.query(CrossBrokerLot).filter(CrossBrokerLot.fiscal_year == fiscal_year)
-    adj_q = db.query(FIFOAdjustment).filter(FIFOAdjustment.fiscal_year == fiscal_year)
-    if user_id:
-        adj_q = adj_q.filter(FIFOAdjustment.user_id == user_id)
+    # CrossBrokerLot has no user_id column. Scope cleanup through either
+    # referenced transaction so historical mixed-user rows are also removed.
+    user_transaction_ids = (
+        db.query(Transaction.id)
+        .join(Account, Transaction.account_id == Account.id)
+        .filter(Account.user_id == user_id)
+        .scalar_subquery()
+    )
+    cbl_q = db.query(CrossBrokerLot).filter(
+        CrossBrokerLot.fiscal_year == fiscal_year,
+        CrossBrokerLot.buy_tx_id.in_(user_transaction_ids)
+        | CrossBrokerLot.sell_tx_id.in_(user_transaction_ids),
+    )
+    adj_q = db.query(FIFOAdjustment).filter(
+        FIFOAdjustment.fiscal_year == fiscal_year,
+        FIFOAdjustment.user_id == user_id,
+    )
     cbl_q.delete(synchronize_session="fetch")
     adj_q.delete(synchronize_session="fetch")
     db.flush()
 
-    multi_isins = _find_multi_broker_isins(db, fiscal_year)
+    multi_isins = _find_multi_broker_isins(db, fiscal_year, user_id)
     if not multi_isins:
         logger.info("No multi-broker ISINs found for %d", fiscal_year)
         return {"lots_created": 0, "adjustments": 0, "isins_analyzed": 0}
@@ -292,8 +328,8 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
     adjustments_created = 0
 
     for isin in multi_isins:
-        buys = _get_real_buys(db, isin)
-        sells = _get_real_sells(db, isin, fiscal_year)
+        buys = _get_real_buys(db, isin, user_id)
+        sells = _get_real_sells(db, isin, fiscal_year, user_id)
 
         if not buys or not sells:
             continue
@@ -324,7 +360,7 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
             lots_created += 1
 
         # Compare with broker-reported P&L
-        broker_pl = _get_broker_pl_for_isin(db, isin, fiscal_year)
+        broker_pl = _get_broker_pl_for_isin(db, isin, fiscal_year, user_id)
         adjustment = fifo_pl - broker_pl
 
         if adjustment != Decimal("0"):

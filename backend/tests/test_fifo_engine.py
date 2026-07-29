@@ -18,6 +18,7 @@ from backend.models import (
     TransactionType,
     User,
 )
+from backend.api.fiscal import list_cross_broker_lots
 from backend.services.fifo_engine import recalculate_cross_broker_fifo
 
 
@@ -43,8 +44,13 @@ def user_id(db) -> int:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_account(db, broker: str) -> Account:
-    acct = Account(broker=broker, account_id=f"test-{broker}", name=f"Test {broker}")
+def _make_account(db, broker: str, user_id: int) -> Account:
+    acct = Account(
+        broker=broker,
+        account_id=f"test-{broker}",
+        name=f"Test {broker}",
+        user_id=user_id,
+    )
     db.add(acct)
     db.flush()
     return acct
@@ -137,7 +143,7 @@ class TestSingleBroker:
     """When all trades are on one broker, no cross-broker lots are created."""
 
     def test_single_broker_no_lots(self, db, user_id):
-        acct = _make_account(db, Broker.TR.value)
+        acct = _make_account(db, Broker.TR.value, user_id)
         _make_buy(db, acct, "US0378331005", date(2023, 3, 1), Decimal("10"), Decimal("150"))
         _make_sell(db, acct, "US0378331005", date(2024, 6, 1), Decimal("10"), Decimal("180"))
         _make_broker_lot(db, acct, "US0378331005", date(2023, 3, 1), date(2024, 6, 1),
@@ -156,8 +162,8 @@ class TestMultiBrokerSameFIFO:
 
     def test_two_brokers_same_result(self, db, user_id):
         """Buy at TR (oldest), sell at TR → FIFO picks TR buy → same as broker."""
-        tr_acct = _make_account(db, Broker.TR.value)
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
 
         # Real buys: TR first (older), DG later
         _make_buy(db, tr_acct, "US0378331005", date(2023, 1, 15),
@@ -191,8 +197,8 @@ class TestMultiBrokerDifferentFIFO:
 
     def test_older_buy_at_different_broker(self, db, user_id):
         """Buy at DG (cheaper, older), sell at TR → broker says one thing, FIFO says another."""
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         # Real buys: DG first (cheaper, older), TR later
         _make_buy(db, dg_acct, "DE000BASF111", date(2023, 2, 1),
@@ -231,8 +237,8 @@ class TestPartialLotConsumption:
     """FIFO partially consumes a buy lot across multiple sells."""
 
     def test_partial_consumption(self, db, user_id):
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         # Real buys
         _make_buy(db, dg_acct, "US0378331005", date(2023, 1, 1),
@@ -277,8 +283,8 @@ class TestHoldingPeriod:
     """Verify holding period and casilla assignment."""
 
     def test_less_than_one_year(self, db, user_id):
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         _make_buy(db, dg_acct, "US12345", date(2024, 1, 15), Decimal("5"), Decimal("100"))
         _make_buy(db, tr_acct, "US12345", date(2024, 3, 15), Decimal("5"), Decimal("110"))
@@ -294,8 +300,8 @@ class TestHoldingPeriod:
         assert lot.casilla == 332  # gain
 
     def test_more_than_one_year(self, db, user_id):
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         _make_buy(db, dg_acct, "US12345", date(2022, 1, 1), Decimal("5"), Decimal("100"))
         _make_buy(db, tr_acct, "US12345", date(2023, 6, 1), Decimal("5"), Decimal("110"))
@@ -309,8 +315,8 @@ class TestHoldingPeriod:
         assert lot.holding_period == ">=1y"
 
     def test_loss_goes_to_casilla_337(self, db, user_id):
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         _make_buy(db, dg_acct, "US12345", date(2023, 1, 1), Decimal("5"), Decimal("150"))
         _make_buy(db, tr_acct, "US12345", date(2023, 6, 1), Decimal("5"), Decimal("110"))
@@ -328,8 +334,8 @@ class TestCleanRecalculation:
     """Verify that recalculation clears old data before creating new."""
 
     def test_recalculate_clears_previous(self, db, user_id):
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         _make_buy(db, dg_acct, "US12345", date(2023, 1, 1), Decimal("10"), Decimal("50"))
         _make_buy(db, tr_acct, "US12345", date(2023, 6, 1), Decimal("10"), Decimal("70"))
@@ -351,8 +357,8 @@ class TestNoSells:
     """Year with no sells should produce nothing."""
 
     def test_no_sells_no_lots(self, db, user_id):
-        dg_acct = _make_account(db, Broker.DEGIRO.value)
-        tr_acct = _make_account(db, Broker.TR.value)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
 
         _make_buy(db, dg_acct, "US12345", date(2023, 1, 1), Decimal("10"), Decimal("50"))
         _make_buy(db, tr_acct, "US12345", date(2023, 6, 1), Decimal("10"), Decimal("60"))
@@ -360,3 +366,225 @@ class TestNoSells:
         result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
         assert result["lots_created"] == 0
         assert result["adjustments"] == 0
+
+
+class TestUserIsolation:
+    """FIFO calculations and cleanup must stay within one user's accounts."""
+
+    def test_accounts_from_different_users_do_not_form_a_multi_broker_position(
+        self, db, user_id
+    ):
+        other_user = User(email="other@example.com", name="Other", password_hash="x")
+        db.add(other_user)
+        db.flush()
+
+        user_account = _make_account(db, Broker.TR.value, user_id)
+        other_account = _make_account(db, Broker.DEGIRO.value, other_user.id)
+        isin = "US0000000001"
+
+        _make_buy(
+            db, user_account, isin, date(2023, 1, 1), Decimal("10"), Decimal("100")
+        )
+        _make_sell(
+            db, user_account, isin, date(2024, 1, 1), Decimal("10"), Decimal("120")
+        )
+        _make_broker_lot(
+            db,
+            user_account,
+            isin,
+            date(2023, 1, 1),
+            date(2024, 1, 1),
+            Decimal("10"),
+            Decimal("1000"),
+            Decimal("1200"),
+        )
+        _make_buy(
+            db, other_account, isin, date(2022, 1, 1), Decimal("10"), Decimal("50")
+        )
+
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
+
+        assert result == {"lots_created": 0, "adjustments": 0, "isins_analyzed": 0}
+        assert db.query(CrossBrokerLot).count() == 0
+        assert db.query(FIFOAdjustment).count() == 0
+
+    def test_cleanup_removes_historical_mixed_user_lot_for_the_seller(
+        self, db, user_id
+    ):
+        other_user = User(email="other@example.com", name="Other", password_hash="x")
+        db.add(other_user)
+        db.flush()
+
+        user_account = _make_account(db, Broker.TR.value, user_id)
+        other_account = _make_account(db, Broker.DEGIRO.value, other_user.id)
+        isin = "US0000000003"
+        other_buy = _make_buy(
+            db, other_account, isin, date(2023, 1, 1), Decimal("10"), Decimal("50")
+        )
+        user_sell = _make_sell(
+            db, user_account, isin, date(2024, 1, 1), Decimal("10"), Decimal("80")
+        )
+        db.add(
+            CrossBrokerLot(
+                fiscal_year=2024,
+                isin=isin,
+                name="Historical mixed row",
+                buy_tx_id=other_buy.id,
+                sell_tx_id=user_sell.id,
+                buy_broker=Broker.DEGIRO.value,
+                sell_broker=Broker.TR.value,
+                quantity=Decimal("10"),
+                cost_basis_eur=Decimal("500"),
+                proceeds_eur=Decimal("800"),
+                realized_pl_eur=Decimal("300"),
+                holding_period=">=1y",
+                casilla=332,
+            )
+        )
+        db.flush()
+
+        result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
+
+        assert result == {"lots_created": 0, "adjustments": 0, "isins_analyzed": 0}
+        assert db.query(CrossBrokerLot).count() == 0
+
+    def test_api_hides_historical_lot_with_different_buy_and_sell_owners(
+        self, db, user_id
+    ):
+        user = db.get(User, user_id)
+        other_user = User(email="other@example.com", name="Other", password_hash="x")
+        db.add(other_user)
+        db.flush()
+
+        user_account = _make_account(db, Broker.TR.value, user_id)
+        other_account = _make_account(db, Broker.DEGIRO.value, other_user.id)
+        isin = "US0000000004"
+        user_buy = _make_buy(
+            db, user_account, isin, date(2023, 1, 1), Decimal("10"), Decimal("50")
+        )
+        other_sell = _make_sell(
+            db, other_account, isin, date(2024, 1, 1), Decimal("10"), Decimal("80")
+        )
+        own_sell = _make_sell(
+            db, user_account, isin, date(2024, 2, 1), Decimal("10"), Decimal("90")
+        )
+        mixed_lot = CrossBrokerLot(
+            fiscal_year=2024,
+            isin=isin,
+            name="Historical mixed row",
+            buy_tx_id=user_buy.id,
+            sell_tx_id=other_sell.id,
+            buy_broker=Broker.TR.value,
+            sell_broker=Broker.DEGIRO.value,
+            quantity=Decimal("10"),
+            cost_basis_eur=Decimal("500"),
+            proceeds_eur=Decimal("800"),
+            realized_pl_eur=Decimal("300"),
+            holding_period=">=1y",
+            casilla=332,
+        )
+        owned_lot = CrossBrokerLot(
+            fiscal_year=2024,
+            isin=isin,
+            name="Owned row",
+            buy_tx_id=user_buy.id,
+            sell_tx_id=own_sell.id,
+            buy_broker=Broker.TR.value,
+            sell_broker=Broker.TR.value,
+            quantity=Decimal("10"),
+            cost_basis_eur=Decimal("500"),
+            proceeds_eur=Decimal("900"),
+            realized_pl_eur=Decimal("400"),
+            holding_period=">=1y",
+            casilla=332,
+        )
+        db.add_all([mixed_lot, owned_lot])
+        db.flush()
+
+        assert list_cross_broker_lots(db, user, 2024) == [owned_lot]
+
+    def test_recalculation_preserves_and_separates_other_user_results(
+        self, db, user_id
+    ):
+        other_user = User(email="other@example.com", name="Other", password_hash="x")
+        db.add(other_user)
+        db.flush()
+
+        user_dg = _make_account(db, Broker.DEGIRO.value, user_id)
+        user_tr = _make_account(db, Broker.TR.value, user_id)
+        other_dg = _make_account(db, Broker.DEGIRO.value, other_user.id)
+        other_tr = _make_account(db, Broker.TR.value, other_user.id)
+        isin = "US0000000002"
+
+        _make_buy(db, user_dg, isin, date(2023, 1, 1), Decimal("10"), Decimal("50"))
+        _make_buy(db, user_tr, isin, date(2023, 6, 1), Decimal("10"), Decimal("70"))
+        _make_sell(db, user_tr, isin, date(2024, 3, 1), Decimal("10"), Decimal("80"))
+        _make_broker_lot(
+            db,
+            user_tr,
+            isin,
+            date(2023, 6, 1),
+            date(2024, 3, 1),
+            Decimal("10"),
+            Decimal("700"),
+            Decimal("800"),
+        )
+
+        _make_buy(
+            db, other_dg, isin, date(2023, 2, 1), Decimal("10"), Decimal("200")
+        )
+        _make_buy(
+            db, other_tr, isin, date(2023, 7, 1), Decimal("10"), Decimal("230")
+        )
+        _make_sell(
+            db, other_tr, isin, date(2024, 4, 1), Decimal("10"), Decimal("250")
+        )
+        _make_broker_lot(
+            db,
+            other_tr,
+            isin,
+            date(2023, 7, 1),
+            date(2024, 4, 1),
+            Decimal("10"),
+            Decimal("2300"),
+            Decimal("2500"),
+        )
+
+        other_result = recalculate_cross_broker_fifo(db, 2024, user_id=other_user.id)
+        assert other_result == {"lots_created": 1, "adjustments": 1, "isins_analyzed": 1}
+        other_lot = db.query(CrossBrokerLot).one()
+        other_adjustment = db.query(FIFOAdjustment).one()
+        assert other_lot.realized_pl_eur == Decimal("500")
+        assert other_adjustment.adjustment_eur == Decimal("300")
+        other_lot_id = other_lot.id
+        other_adjustment_id = other_adjustment.id
+
+        user_result = recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
+
+        assert user_result == {"lots_created": 1, "adjustments": 1, "isins_analyzed": 1}
+        assert db.get(CrossBrokerLot, other_lot_id) is not None
+        assert db.get(FIFOAdjustment, other_adjustment_id) is not None
+
+        lots_with_owner = (
+            db.query(CrossBrokerLot, Account.user_id)
+            .join(Transaction, CrossBrokerLot.buy_tx_id == Transaction.id)
+            .join(Account, Transaction.account_id == Account.id)
+            .all()
+        )
+        lots_by_user = {owner_id: lot for lot, owner_id in lots_with_owner}
+        assert set(lots_by_user) == {user_id, other_user.id}
+        assert lots_by_user[user_id].realized_pl_eur == Decimal("300")
+        assert lots_by_user[other_user.id].realized_pl_eur == Decimal("500")
+
+        adjustments = {adj.user_id: adj for adj in db.query(FIFOAdjustment).all()}
+        assert set(adjustments) == {user_id, other_user.id}
+        assert adjustments[user_id].broker_pl_eur == Decimal("100")
+        assert adjustments[user_id].adjustment_eur == Decimal("200")
+        assert adjustments[other_user.id].broker_pl_eur == Decimal("200")
+        assert adjustments[other_user.id].adjustment_eur == Decimal("300")
+
+        recalculate_cross_broker_fifo(db, 2024, user_id=user_id)
+        assert db.get(CrossBrokerLot, other_lot_id) is not None
+        assert db.get(FIFOAdjustment, other_adjustment_id) is not None
+        assert db.query(CrossBrokerLot).count() == 2
+        assert db.query(FIFOAdjustment).count() == 2

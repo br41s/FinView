@@ -1,10 +1,11 @@
 """Service to import parsed broker data into the database."""
 
+import hashlib
 import logging
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from backend.importers.base import (
@@ -84,7 +85,11 @@ TX_TYPE_MAP = {
 def _get_or_create_account(db: Session, broker: Broker, account_id: str, user_id: int | None = None) -> Account:
     account = (
         db.query(Account)
-        .filter(Account.broker == broker.value, Account.account_id == account_id)
+        .filter(
+            Account.broker == broker.value,
+            Account.account_id == account_id,
+            Account.user_id == user_id,
+        )
         .first()
     )
     if not account:
@@ -96,16 +101,64 @@ def _get_or_create_account(db: Session, broker: Broker, account_id: str, user_id
         )
         db.add(account)
         db.flush()
-    elif account.user_id is None and user_id is not None:
-        account.user_id = user_id
-        db.flush()
     return account
 
 
-def _check_duplicate(db: Session, file_hash: str, broker: Broker) -> ImportRecord | None:
+def _scoped_file_hash(file_hash: str, user_id: int | None) -> str:
+    """Build a tenant-specific hash while preserving the legacy schema.
+
+    ``import_records`` historically enforced global uniqueness on
+    ``(file_hash, broker)``. Hashing the owner into collision values keeps that
+    atomic duplicate guard without making identical statements from different
+    users collide. Lookups check both forms for backward compatibility.
+    """
+    if user_id is None:
+        return file_hash
+    return hashlib.sha256(f"{user_id}:{file_hash}".encode()).hexdigest()
+
+
+def _file_hash_for_storage(
+    db: Session,
+    file_hash: str,
+    broker: Broker,
+    user_id: int | None,
+) -> str:
+    """Keep the legacy raw hash until it collides with another user.
+
+    This makes rolling deploys compatible with older replicas, which only know
+    how to look up the raw hash.  A user-scoped value is needed only when that
+    global slot is already owned by a different tenant.
+    """
+    if user_id is None:
+        return file_hash
+    raw_owner = (
+        db.query(Account.user_id)
+        .select_from(ImportRecord)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(ImportRecord.file_hash == file_hash, ImportRecord.broker == broker.value)
+        .first()
+    )
+    if raw_owner is None or raw_owner[0] == user_id:
+        return file_hash
+    return _scoped_file_hash(file_hash, user_id)
+
+
+def _check_duplicate(
+    db: Session,
+    file_hash: str,
+    broker: Broker,
+    user_id: int | None,
+) -> ImportRecord | None:
+    scoped_hash = _scoped_file_hash(file_hash, user_id)
+    candidate_hashes = [scoped_hash] if scoped_hash == file_hash else [scoped_hash, file_hash]
     return (
         db.query(ImportRecord)
-        .filter(ImportRecord.file_hash == file_hash, ImportRecord.broker == broker.value)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(
+            ImportRecord.file_hash.in_(candidate_hashes),
+            ImportRecord.broker == broker.value,
+            Account.user_id == user_id,
+        )
         .first()
     )
 
@@ -114,6 +167,7 @@ def _check_year_duplicate(
     db: Session,
     broker: Broker,
     fiscal_year: int,
+    user_id: int | None,
     source_variant: str | None = None,
 ) -> ImportRecord | None:
     """Check if an import already exists for this broker + fiscal year.
@@ -123,9 +177,14 @@ def _check_year_duplicate(
     pre-migration and post-migration documents — coexist instead of
     replacing each other; re-uploading the same variant still replaces it.
     """
-    q = db.query(ImportRecord).filter(
-        ImportRecord.broker == broker.value,
-        ImportRecord.fiscal_year == fiscal_year,
+    q = (
+        db.query(ImportRecord)
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(
+            ImportRecord.broker == broker.value,
+            ImportRecord.fiscal_year == fiscal_year,
+            Account.user_id == user_id,
+        )
     )
     if source_variant is not None:
         q = q.filter(ImportRecord.source_variant == source_variant)
@@ -152,15 +211,22 @@ def _delete_import_data(db: Session, import_id: int) -> None:
         return
 
     account_id = import_rec.account_id
+    user_id = import_rec.account.user_id
 
     tx_ids = [
         t.id for t in
-        db.query(Transaction.id).filter(Transaction.import_id == import_id).all()
+        db.query(Transaction.id).filter(
+            Transaction.import_id == import_id,
+            Transaction.account_id == account_id,
+        ).all()
     ]
 
     if tx_ids:
         _delete_tx_dependents(db, tx_ids)
-        db.query(Transaction).filter(Transaction.import_id == import_id).delete(
+        db.query(Transaction).filter(
+            Transaction.import_id == import_id,
+            Transaction.account_id == account_id,
+        ).delete(
             synchronize_session="fetch"
         )
 
@@ -169,6 +235,7 @@ def _delete_import_data(db: Session, import_id: int) -> None:
         # predate import_id (import_id IS NULL) for this broker+year, so a
         # re-import of a pre-migration single-report year still replaces cleanly.
         db.query(TaxResult).filter(
+            TaxResult.user_id == user_id,
             or_(
                 TaxResult.import_id == import_id,
                 and_(
@@ -178,11 +245,22 @@ def _delete_import_data(db: Session, import_id: int) -> None:
                 ),
             )
         ).delete(synchronize_session="fetch")
+
+        user_tx_ids = (
+            select(Transaction.id)
+            .join(Account, Transaction.account_id == Account.id)
+            .where(Account.user_id == user_id)
+        )
         db.query(CrossBrokerLot).filter(
             CrossBrokerLot.fiscal_year == import_rec.fiscal_year,
+            or_(
+                CrossBrokerLot.buy_tx_id.in_(user_tx_ids),
+                CrossBrokerLot.sell_tx_id.in_(user_tx_ids),
+            ),
         ).delete(synchronize_session="fetch")
         db.query(FIFOAdjustment).filter(
             FIFOAdjustment.fiscal_year == import_rec.fiscal_year,
+            FIFOAdjustment.user_id == user_id,
         ).delete(synchronize_session="fetch")
 
     db.query(OptionAssignmentRecord).filter(
@@ -193,6 +271,7 @@ def _delete_import_data(db: Session, import_id: int) -> None:
     ).delete(synchronize_session="fetch")
     db.query(DataIssue).filter(
         DataIssue.import_id == import_id,
+        or_(DataIssue.user_id == user_id, DataIssue.user_id.is_(None)),
     ).delete(synchronize_session="fetch")
 
     db.delete(import_rec)
@@ -250,7 +329,10 @@ def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
     db.query(PortfolioHolding).filter(PortfolioHolding.import_id.in_(import_subq)).delete(
         synchronize_session=False
     )
-    db.query(DataIssue).filter(DataIssue.import_id.in_(import_subq)).delete(synchronize_session=False)
+    db.query(DataIssue).filter(
+        DataIssue.import_id.in_(import_subq),
+        or_(DataIssue.user_id == user_id, DataIssue.user_id.is_(None)),
+    ).delete(synchronize_session=False)
     db.query(ImportRecord).filter(ImportRecord.account_id == account_id).delete(synchronize_session=False)
 
     db.delete(account)
@@ -296,9 +378,12 @@ def delete_all_imports(db: Session, user_id: int) -> dict:
     db.query(PortfolioHolding).filter(
         PortfolioHolding.import_id.in_(import_subq)
     ).delete(synchronize_session=False)
-    db.query(DataIssue).filter(DataIssue.import_id.in_(import_subq)).delete(
-        synchronize_session=False
-    )
+    db.query(DataIssue).filter(
+        or_(
+            DataIssue.user_id == user_id,
+            and_(DataIssue.user_id.is_(None), DataIssue.import_id.in_(import_subq)),
+        )
+    ).delete(synchronize_session=False)
     db.query(ImportRecord).filter(ImportRecord.account_id.in_(account_subq)).delete(
         synchronize_session=False
     )
@@ -431,7 +516,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     Returns summary dict with counts and status.
     """
     # Check exact file duplicate
-    existing = _check_duplicate(db, file_hash, Broker.TR)
+    existing = _check_duplicate(db, file_hash, Broker.TR, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -444,7 +529,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     # reports coexist while re-uploading either one still replaces itself.
     replaced_id = None
     year_dup = _check_year_duplicate(
-        db, Broker.TR, report.fiscal_year, report.source_variant
+        db, Broker.TR, report.fiscal_year, user_id, report.source_variant
     )
     if year_dup:
         replaced_id = year_dup.id
@@ -458,7 +543,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.TR, user_id),
         broker=Broker.TR.value,
         fiscal_year=report.fiscal_year,
         record_count=len(report.transactions) + len(report.dividends),
@@ -534,7 +619,7 @@ def import_tr_csv_report(
       (account_id, trade_date, isin, type, quantity);
     - skips holdings / capital_gains / casillas entirely.
     """
-    existing = _check_duplicate(db, file_hash, Broker.TR)
+    existing = _check_duplicate(db, file_hash, Broker.TR, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -547,7 +632,7 @@ def import_tr_csv_report(
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.TR, user_id),
         broker=Broker.TR.value,
         fiscal_year=report.fiscal_year,
         record_count=len(report.transactions) + len(report.dividends),
@@ -782,7 +867,7 @@ def _compute_broker_casillas(
 
 def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed DEGIRO Annual Report into the database."""
-    existing = _check_duplicate(db, file_hash, Broker.DEGIRO)
+    existing = _check_duplicate(db, file_hash, Broker.DEGIRO, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -792,7 +877,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
 
     # Check if same broker+year already imported → auto-replace
     replaced_id = None
-    year_dup = _check_year_duplicate(db, Broker.DEGIRO, report.fiscal_year)
+    year_dup = _check_year_duplicate(db, Broker.DEGIRO, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
@@ -802,7 +887,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.DEGIRO, user_id),
         broker=Broker.DEGIRO.value,
         fiscal_year=report.fiscal_year,
         record_count=len(report.transactions) + len(report.dividends),
@@ -859,7 +944,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
 
 def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed ING Información Fiscal PDF into the database."""
-    existing = _check_duplicate(db, file_hash, Broker.ING)
+    existing = _check_duplicate(db, file_hash, Broker.ING, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -868,7 +953,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
         }
 
     replaced_id = None
-    year_dup = _check_year_duplicate(db, Broker.ING, report.fiscal_year)
+    year_dup = _check_year_duplicate(db, Broker.ING, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
@@ -879,7 +964,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.ING, user_id),
         broker=Broker.ING.value,
         fiscal_year=report.fiscal_year,
         record_count=record_count,
@@ -953,7 +1038,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
 
 def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed BBVA annual report (from 1-3 PDFs) into the database."""
-    existing = _check_duplicate(db, file_hash, Broker.BBVA)
+    existing = _check_duplicate(db, file_hash, Broker.BBVA, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -962,7 +1047,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
         }
 
     replaced_id = None
-    year_dup = _check_year_duplicate(db, Broker.BBVA, report.fiscal_year)
+    year_dup = _check_year_duplicate(db, Broker.BBVA, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
@@ -973,7 +1058,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.BBVA, user_id),
         broker=Broker.BBVA.value,
         fiscal_year=report.fiscal_year,
         record_count=record_count,
@@ -1060,7 +1145,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
 
 def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed eToro annual account statement into the database."""
-    existing = _check_duplicate(db, file_hash, Broker.ETORO)
+    existing = _check_duplicate(db, file_hash, Broker.ETORO, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -1069,7 +1154,7 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
         }
 
     replaced_id = None
-    year_dup = _check_year_duplicate(db, Broker.ETORO, report.fiscal_year)
+    year_dup = _check_year_duplicate(db, Broker.ETORO, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
@@ -1082,7 +1167,7 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.ETORO, user_id),
         broker=Broker.ETORO.value,
         fiscal_year=report.fiscal_year,
         record_count=record_count,
@@ -1215,7 +1300,7 @@ def import_ibkr_report(
     db: Session, report: IBKRAnnualReport, file_hash: str, filename: str, user_id: int | None = None
 ) -> dict:
     """Import a parsed IBKR Activity Statement into the database."""
-    existing = _check_duplicate(db, file_hash, Broker.IBKR)
+    existing = _check_duplicate(db, file_hash, Broker.IBKR, user_id)
     if existing:
         return {
             "status": "duplicate",
@@ -1225,7 +1310,7 @@ def import_ibkr_report(
 
     # Check if same broker+year already imported → auto-replace
     replaced_id = None
-    year_dup = _check_year_duplicate(db, Broker.IBKR, report.fiscal_year)
+    year_dup = _check_year_duplicate(db, Broker.IBKR, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
         _delete_import_data(db, year_dup.id)
@@ -1235,7 +1320,7 @@ def import_ibkr_report(
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=file_hash,
+        file_hash=_file_hash_for_storage(db, file_hash, Broker.IBKR, user_id),
         broker=Broker.IBKR.value,
         fiscal_year=report.fiscal_year,
         record_count=(
