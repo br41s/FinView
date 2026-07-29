@@ -113,11 +113,11 @@ En la pestaña **Rendimiento**, sección Casillas, encontrarás los valores prec
 |---------|-------------|
 | 27 | Intereses de cuentas y depósitos |
 | 29 | Rendimientos del capital mobiliario (dividendos brutos) |
-| 332 | Ganancias patrimoniales a corto plazo (<1 año) |
-| 337 | Pérdidas patrimoniales a corto plazo |
+| 332 | Ganancias patrimoniales |
+| 337 | Pérdidas patrimoniales |
 | 05-09 | Bienes en el extranjero — Modelo 714 |
 
-> Los valores del FIFO cruzado pueden diferir de los calculados por cada broker individualmente. FinView muestra el **ajuste FIFO** cuando existe diferencia — es el valor que Hacienda exige declarar.
+> Los valores del FIFO cruzado pueden diferir de los calculados por cada broker individualmente. El importe de la casilla ya **incluye el ajuste FIFO**; la línea de ajuste explica cuánto se ha movido respecto al total informado por los brokers y evita sumarlo dos veces.
 
 ---
 
@@ -344,7 +344,17 @@ En la parte superior de la página hay un **buscador**. Escribe el nombre de un 
 ## 11. Preguntas frecuentes
 
 **¿Por qué las ganancias calculadas difieren de las del broker?**  
-Cada broker calcula su FIFO internamente. FinView recalcula el FIFO combinando todos los brokers cronológicamente, como exige Hacienda. La diferencia se muestra como "ajuste FIFO".
+Cada broker calcula su FIFO internamente. FinView recalcula el FIFO combinando todos los brokers en una única cronología: las ventas de años anteriores consumen primero las compras antiguas y nunca se usa una compra posterior a la venta. La diferencia se reparte entre las casillas 332 y 337 y ya está incluida en los totales mostrados.
+
+Si falta inventario para cubrir una venta o el ISIN está vacío, FinView no publica un
+resultado FIFO parcial como definitivo. Revisa la calidad de las importaciones antes de
+usar esas cifras.
+
+**¿Por qué ha desaparecido un ajuste FIFO antiguo?**
+
+Los resultados calculados antes de FIFO v2 no contienen el desglose fiable entre
+ganancias y pérdidas y se ignoran de forma segura. Reemplaza o reimporta el ejercicio
+para regenerar sus lotes y ajustes con el motor actual. No se hace un backfill automático.
 
 **¿Por qué aparece Aena (u otra empresa) dos veces en Rendimiento?**  
 Cuando una empresa cambia de ISIN (por ejemplo, en un split accionarial), el broker puede reportar dividendos bajo ambos ISINs. FinView los detecta automáticamente y los consolida en una sola fila usando el ticker de Yahoo Finance como referencia.

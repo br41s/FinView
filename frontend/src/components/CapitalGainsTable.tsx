@@ -40,11 +40,16 @@ function CrossBrokerSection({
               <h4 className="text-xs font-medium text-amber-400">
                 Resumen de ajustes
               </h4>
-              {adjustments.map((a) => (
-                <div
-                  key={a.id}
-                  className="bg-muted/50 border border-border/50 rounded p-3 text-xs"
-                >
+              {adjustments.map((a) => {
+                const gainDelta =
+                  Number(a.fifo_gains_eur ?? 0) - Number(a.broker_gains_eur ?? 0);
+                const lossDelta =
+                  Number(a.fifo_losses_eur ?? 0) - Number(a.broker_losses_eur ?? 0);
+                return (
+                  <div
+                    key={a.id}
+                    className="bg-muted/50 border border-border/50 rounded p-3 text-xs"
+                  >
                   <div className="flex justify-between mb-1">
                     <span className="text-foreground font-medium">
                       {a.name}
@@ -76,9 +81,22 @@ function CrossBrokerSection({
                       </span>
                     </div>
                   </div>
-                  <p className="mt-1 text-muted-foreground">{a.note}</p>
-                </div>
-              ))}
+                    {(gainDelta !== 0 || lossDelta !== 0) && (
+                      <div className="mt-2 flex gap-4 text-muted-foreground">
+                        <span>
+                          Casilla 332: {gainDelta > 0 ? "+" : ""}
+                          {formatEur(gainDelta)}
+                        </span>
+                        <span>
+                          Casilla 337: {lossDelta > 0 ? "+" : ""}
+                          {formatEur(lossDelta)}
+                        </span>
+                      </div>
+                    )}
+                    <p className="mt-1 text-muted-foreground">{a.note}</p>
+                  </div>
+                );
+              })}
             </div>
           )}
 

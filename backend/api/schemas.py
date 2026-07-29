@@ -113,6 +113,7 @@ class CrossBrokerLotOut(BaseModel):
     realized_pl_eur: Decimal
     holding_period: str | None
     casilla: int
+    calculation_version: str | None
 
     model_config = {"from_attributes": True}
 
@@ -125,6 +126,11 @@ class FIFOAdjustmentOut(BaseModel):
     broker_pl_eur: Decimal
     fifo_pl_eur: Decimal
     adjustment_eur: Decimal
+    broker_gains_eur: Decimal | None
+    broker_losses_eur: Decimal | None
+    fifo_gains_eur: Decimal | None
+    fifo_losses_eur: Decimal | None
+    calculation_version: str | None
     note: str
 
     model_config = {"from_attributes": True}

@@ -68,6 +68,7 @@ export interface CrossBrokerLot {
   realized_pl_eur: string;
   holding_period: string | null;
   casilla: number;
+  calculation_version: string | null;
 }
 
 export interface FIFOAdjustment {
@@ -78,6 +79,11 @@ export interface FIFOAdjustment {
   broker_pl_eur: string;
   fifo_pl_eur: string;
   adjustment_eur: string;
+  broker_gains_eur: string | null;
+  broker_losses_eur: string | null;
+  fifo_gains_eur: string | null;
+  fifo_losses_eur: string | null;
+  calculation_version: string | null;
   note: string;
 }
 

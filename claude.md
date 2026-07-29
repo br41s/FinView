@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 464 tests (~131 skip without real broker PDFs/CSVs in files/) · vitest · 18 frontend tests |
+| Tests | pytest · 506 collected (375 pass, ~131 skip without real broker PDFs/CSVs in files/) · vitest · 18 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -747,6 +747,9 @@ replace each other:
 
 - fifo_engine.py is the most sensitive file. Any change must be followed by full test suite.
   Never touch it without understanding cross-broker FIFO matching logic.
+- FIFO v2 consumes the complete historical ledger through the target year, rejects
+  future buys and incomplete inventory, and publishes only versioned results. Never
+  apply legacy `calculation_version=NULL` rows to fiscal totals.
 - Importer changes: each importer is isolated — changes in one must not break others.
   Always run pytest backend/tests/ after importer changes.
 - DB schema: there is **no Alembic**. New tables auto-create via
@@ -772,9 +775,12 @@ replace each other:
 
 ## IRPF fiscal model (context for AI)
 
-- Modelo 100: casillas 27 (intereses), 29 (dividendos), 332 (ganancias >1 año), 337 (pérdidas)
+- Modelo 100: casillas 27 (intereses), 29 (dividendos), 332 (ganancias patrimoniales), 337 (pérdidas patrimoniales)
 - Modelo 714: casillas 05-09 (patrimonio exterior)
-- FIFO is chronological, cross-broker — a buy in IBKR can match a sell in DEGIRO
+- FIFO is chronological and cross-broker — historical sells consume earlier inventory;
+  a buy in IBKR can match a later sell in DEGIRO, never an earlier one
+- FIFO adjustments are versioned and split by box. `amount_eur` already contains the
+  v2 delta; frontend consumers must never add `fifo_adjustment_eur` a second time.
 - Withholding tracking per country, CDI deductions default 15%
 - finview_casillas_2024.json in repo root = reference output for fiscal year 2024
 

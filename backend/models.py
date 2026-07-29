@@ -226,6 +226,7 @@ class CrossBrokerLot(Base):
     realized_pl_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     holding_period: Mapped[str | None] = mapped_column(String(10))
     casilla: Mapped[int] = mapped_column(Integer, nullable=False)  # 332 or 337
+    calculation_version: Mapped[str | None] = mapped_column(String(10))
 
     buy_tx: Mapped["Transaction"] = relationship(foreign_keys=[buy_tx_id])
     sell_tx: Mapped["Transaction"] = relationship(foreign_keys=[sell_tx_id])
@@ -250,6 +251,11 @@ class FIFOAdjustment(Base):
     broker_pl_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     fifo_pl_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     adjustment_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    broker_gains_eur: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    broker_losses_eur: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    fifo_gains_eur: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    fifo_losses_eur: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    calculation_version: Mapped[str | None] = mapped_column(String(10))
     note: Mapped[str] = mapped_column(Text, default="")
 
     __table_args__ = (

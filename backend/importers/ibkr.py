@@ -276,6 +276,11 @@ def _parse_single_trade(
     # Convert amounts to EUR
     proceeds_eur, fx_rate = _to_eur(abs(proceeds), currency, forex_rates, trade_dt)
     commission_eur, _ = _to_eur(abs(commission), currency, forex_rates, trade_dt)
+    net_amount_eur = (
+        proceeds_eur + commission_eur
+        if tx_type == TxType.BUY
+        else proceeds_eur - commission_eur
+    )
 
     return ParsedTransaction(
         tx_type=tx_type,
@@ -289,7 +294,7 @@ def _parse_single_trade(
         exchange_rate=fx_rate,
         gross_amount=proceeds_eur,
         fees=commission_eur,
-        net_amount_eur=proceeds_eur - commission_eur,
+        net_amount_eur=net_amount_eur,
         realized_pl_eur=realized_pl,
     )
 

@@ -18,14 +18,21 @@ from backend.api.fiscal import (
     _aggregate_savings_inputs,
     _manual_casillas,
     _savings_estimate_csv,
+    cross_validation,
+    dashboard_stats,
+    fiscal_summary,
     list_casillas,
+    list_fifo_adjustments,
+    yearly_comparison,
 )
 from backend.api.schemas import SavingsEstimateOut
 from backend.models import (
     Account,
     Base,
     Broker,
+    FIFOAdjustment,
     ManualSavingsIncome,
+    TaxLot,
     TaxResult,
     Transaction,
     TransactionType,
@@ -48,6 +55,25 @@ def _casilla(user_id, year, casilla, amount, broker=Broker.TR):
     return TaxResult(
         user_id=user_id, fiscal_year=year, broker=broker, modelo=100,
         casilla=casilla, description="", amount_eur=D(amount),
+    )
+
+
+def _fifo_adjustment(user_id, year, broker_pl, fifo_pl):
+    broker_value = D(broker_pl)
+    fifo_value = D(fifo_pl)
+    return FIFOAdjustment(
+        user_id=user_id,
+        fiscal_year=year,
+        isin="US0000000001",
+        name="Test",
+        broker_pl_eur=broker_value,
+        fifo_pl_eur=fifo_value,
+        adjustment_eur=fifo_value - broker_value,
+        broker_gains_eur=max(broker_value, D("0")),
+        broker_losses_eur=min(broker_value, D("0")),
+        fifo_gains_eur=max(fifo_value, D("0")),
+        fifo_losses_eur=min(fifo_value, D("0")),
+        calculation_version="2",
     )
 
 
@@ -221,3 +247,170 @@ def test_casillas_and_estimate_agree(db):
     # The estimate's RCM equals c27 + c29 shown in Casillas fiscales; gains = c332.
     assert inputs.rcm_net == by_box.get(27, D("0")) + by_box.get(29, D("0"))
     assert inputs.gains == by_box.get(332, D("0"))
+
+
+def test_fifo_adjustment_flows_into_all_fiscal_totals(db):
+    broker_box = _casilla(1, 2024, 332, "200")
+    broker_box.tr_reference_amount = D("200")
+    db.add_all([
+        broker_box,
+        _fifo_adjustment(1, 2024, "200", "600"),
+    ])
+    db.commit()
+
+    by_box = {
+        row.casilla: row
+        for row in list_casillas(db, user=_user(1), fiscal_year=2024)
+    }
+    inputs, _ = _aggregate_savings_inputs(db, 1, 2024)
+    summary = fiscal_summary(db, user=_user(1), fiscal_year=2024)
+    yearly = yearly_comparison(db, user=_user(1)).years[0]
+    validation = cross_validation(db, user=_user(1), fiscal_year=2024).rows[0]
+
+    assert by_box[332].amount_eur == D("600")
+    assert by_box[332].fifo_adjustment_eur == D("400")
+    assert inputs.gains == D("600")
+    assert summary.total_gains == D("600")
+    assert summary.net_capital_gains == D("600")
+    assert yearly.gains == D("600")
+    assert yearly.net_capital == D("600")
+    assert validation.finview_amount == D("600")
+    assert validation.compare_amount == D("200")
+    assert validation.status == "match"
+
+
+def test_fifo_sign_change_moves_result_from_gains_to_losses(db):
+    db.add_all([
+        _casilla(1, 2024, 332, "200"),
+        _fifo_adjustment(1, 2024, "200", "-100"),
+    ])
+    db.commit()
+
+    by_box = {
+        row.casilla: row
+        for row in list_casillas(db, user=_user(1), fiscal_year=2024)
+    }
+    inputs, _ = _aggregate_savings_inputs(db, 1, 2024)
+    summary = fiscal_summary(db, user=_user(1), fiscal_year=2024)
+    validation_by_box = {
+        row.casilla: row
+        for row in cross_validation(db, user=_user(1), fiscal_year=2024).rows
+    }
+
+    assert by_box[332].amount_eur == D("0")
+    assert by_box[332].fifo_adjustment_eur == D("-200")
+    assert by_box[337].amount_eur == D("-100")
+    assert by_box[337].fifo_adjustment_eur == D("-100")
+    assert validation_by_box[337].finview_amount == D("-100")
+    assert inputs.gains == D("0")
+    assert inputs.losses == D("-100")
+    assert summary.total_gains == D("0")
+    assert summary.total_losses == D("-100")
+    assert summary.net_capital_gains == D("-100")
+
+
+def test_legacy_fifo_adjustment_is_not_applied_without_recalculation(db):
+    legacy = _fifo_adjustment(1, 2024, "200", "600")
+    legacy.calculation_version = None
+    db.add_all([_casilla(1, 2024, 332, "200"), legacy])
+    db.commit()
+
+    by_box = {
+        row.casilla: row
+        for row in list_casillas(db, user=_user(1), fiscal_year=2024)
+    }
+    inputs, _ = _aggregate_savings_inputs(db, 1, 2024)
+
+    assert by_box[332].amount_eur == D("200")
+    assert by_box[332].fifo_adjustment_eur is None
+    assert inputs.gains == D("200")
+    assert list_fifo_adjustments(db, user=_user(1), fiscal_year=2024) == []
+
+
+def test_tr_validation_excludes_other_brokers(db):
+    tr_box = _casilla(1, 2024, 332, "100", broker=Broker.TR)
+    tr_box.tr_reference_amount = D("100")
+    db.add_all([
+        tr_box,
+        _casilla(1, 2024, 332, "50", broker=Broker.DEGIRO),
+    ])
+    db.commit()
+
+    casilla = list_casillas(db, user=_user(1), fiscal_year=2024)[0]
+    validation = cross_validation(db, user=_user(1), fiscal_year=2024).rows[0]
+
+    assert casilla.amount_eur == D("150")
+    assert casilla.validation_status == "match"
+    assert validation.finview_amount == D("150")
+    assert validation.compare_amount == D("100")
+    assert validation.status == "match"
+
+
+def test_legacy_fifo_only_year_is_not_listed(db):
+    legacy = _fifo_adjustment(1, 2023, "0", "50")
+    legacy.calculation_version = None
+    db.add(legacy)
+    db.commit()
+
+    assert yearly_comparison(db, user=_user(1)).years == []
+
+
+def test_yearly_comparison_includes_fifo_only_year(db):
+    db.add(_fifo_adjustment(1, 2024, "0", "50"))
+    db.commit()
+
+    yearly = yearly_comparison(db, user=_user(1)).years
+
+    assert len(yearly) == 1
+    assert yearly[0].fiscal_year == 2024
+    assert yearly[0].gains == D("50")
+    assert yearly[0].net_capital == D("50")
+
+
+def test_dashboard_applies_fifo_adjustment(db):
+    account = Account(user_id=1, broker=Broker.TR, account_id="TR-FIFO")
+    db.add(account)
+    db.flush()
+    buy = Transaction(
+        account_id=account.id,
+        type=TransactionType.BUY.value,
+        trade_date=date(2023, 1, 1),
+        isin="US0000000001",
+        quantity=D("1"),
+        price=D("100"),
+        gross_amount=D("100"),
+        net_amount_eur=D("100"),
+    )
+    sell = Transaction(
+        account_id=account.id,
+        type=TransactionType.SELL.value,
+        trade_date=date(2024, 1, 1),
+        isin="US0000000001",
+        quantity=D("1"),
+        price=D("300"),
+        gross_amount=D("300"),
+        net_amount_eur=D("300"),
+    )
+    db.add_all([buy, sell])
+    db.flush()
+    db.add_all([
+        TaxLot(
+            buy_tx_id=buy.id,
+            sell_tx_id=sell.id,
+            isin="US0000000001",
+            quantity_bought=D("1"),
+            quantity_remaining=D("0"),
+            cost_basis_eur=D("100"),
+            quantity_sold=D("1"),
+            proceeds_eur=D("300"),
+            realized_pl_eur=D("200"),
+            close_date=date(2024, 1, 1),
+        ),
+        _fifo_adjustment(1, 2024, "200", "600"),
+    ])
+    db.commit()
+
+    stats = dashboard_stats(db, user=_user(1), fiscal_year=2024)
+
+    assert stats.total_gains_eur == D("600")
+    assert stats.net_pl_eur == D("600")
