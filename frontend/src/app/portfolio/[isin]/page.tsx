@@ -59,7 +59,7 @@ interface PositionDetail {
   avg_cost_eur: number | null;
   total_cost_eur: number | null;
   current_price_eur: number | null;
-  market_value_eur: number;
+  market_value_eur: number | null;
   unrealized_pl_eur: number | null;
   unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
@@ -219,7 +219,7 @@ function PositionDetailContent() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {detail.current_price_eur
+              {detail.current_price_eur != null
                 ? `${fmt(detail.current_price_eur)} €`
                 : "—"}
             </div>
@@ -235,7 +235,9 @@ function PositionDetailContent() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {fmt(detail.market_value_eur)} €
+              {detail.market_value_eur != null
+                ? `${fmt(detail.market_value_eur)} €`
+                : "—"}
             </div>
             <p className="text-xs text-muted-foreground">
               Invertido: {detail.total_cost_eur != null ? `${fmt(detail.total_cost_eur)} €` : "—"}
@@ -351,7 +353,7 @@ function PositionDetailContent() {
                       {a.cost_eur != null ? `${fmt(a.cost_eur)} €` : "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {a.value_eur ? `${fmt(a.value_eur)} €` : "—"}
+                      {a.value_eur != null ? `${fmt(a.value_eur)} €` : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

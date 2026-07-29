@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { api, type OhlcBar } from "@/lib/api";
 import type { GeoSignal } from "@/lib/geo";
+import { getAccountValueDisplay } from "@/lib/portfolioValues";
 import { PriceChart } from "@/components/charts/PriceChart";
 import {
   executionMarkers,
@@ -73,10 +74,12 @@ interface Summary {
   total_positions: number;
   unique_assets: number;
   brokers: number;
-  total_invested: number;
-  total_market_value: number;
-  unrealized_pl: number;
-  unrealized_pl_pct: number;
+  total_invested: number | null;
+  total_market_value: number | null;
+  unrealized_pl: number | null;
+  unrealized_pl_pct: number | null;
+  cost_basis_complete: boolean;
+  valuation_complete: boolean;
 }
 
 interface AccountBreakdown {
@@ -113,7 +116,7 @@ interface PositionDetail {
   avg_cost_eur: number | null;
   total_cost_eur: number | null;
   current_price_eur: number | null;
-  market_value_eur: number;
+  market_value_eur: number | null;
   unrealized_pl_eur: number | null;
   unrealized_pl_pct: number | null;
   accounts: AccountBreakdown[];
@@ -299,10 +302,14 @@ function PortfolioContent() {
     );
   }
 
-  const plColor =
-    summary && summary.unrealized_pl >= 0 ? "text-emerald-600" : "text-red-600";
-  const PlIcon =
-    summary && summary.unrealized_pl >= 0 ? ArrowUpRight : ArrowDownRight;
+  const plKnown = summary?.unrealized_pl != null;
+  const plPositive = (summary?.unrealized_pl ?? 0) >= 0;
+  const plColor = !plKnown
+    ? "text-muted-foreground"
+    : plPositive
+      ? "text-emerald-600"
+      : "text-red-600";
+  const PlIcon = plPositive ? ArrowUpRight : ArrowDownRight;
 
   // Shared between the desktop table's expanded row and the mobile card's
   // expanded section — same detail content, different container.
@@ -345,7 +352,7 @@ function PortfolioContent() {
           <div>
             <p className="text-xs text-muted-foreground">Peso cartera</p>
             <p className="font-medium">
-              {p.weight_pct ? `${fmt(p.weight_pct, 1)}%` : "—"}
+              {p.weight_pct != null ? `${fmt(p.weight_pct, 1)}%` : "—"}
             </p>
           </div>
           {p.country && (
@@ -361,19 +368,22 @@ function PortfolioContent() {
           <div>
             <h4 className="mb-2 text-sm font-semibold">Distribución por cuenta</h4>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {detail.accounts.map((a) => (
-                <div key={a.account_id} className="rounded-md border p-2">
-                  <Badge variant="outline" className="text-[10px]">
-                    {a.broker}
-                  </Badge>
-                  <p className="mt-1 text-sm">{fmt(a.quantity)} uds</p>
-                  <p className="text-xs text-muted-foreground fv-sensitive">
-                    {a.value_eur
-                      ? `${fmt(a.value_eur)} €`
-                      : `${fmt(a.cost_eur)} € (coste)`}
-                  </p>
-                </div>
-              ))}
+              {detail.accounts.map((a) => {
+                const display = getAccountValueDisplay(a.value_eur, a.cost_eur);
+                return (
+                  <div key={a.account_id} className="rounded-md border p-2">
+                    <Badge variant="outline" className="text-[10px]">
+                      {a.broker}
+                    </Badge>
+                    <p className="mt-1 text-sm">{fmt(a.quantity)} uds</p>
+                    <p className="text-xs text-muted-foreground fv-sensitive">
+                      {display
+                        ? `${fmt(display.amount)} €${display.kind === "cost" ? " (coste)" : ""}`
+                        : "—"}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -545,10 +555,14 @@ function PortfolioContent() {
               {pricesLoaded ? (
                 <>
                   <div className="text-2xl font-bold fv-sensitive">
-                    {fmt(summary.total_market_value)} €
+                    {summary.total_market_value != null ? `${fmt(summary.total_market_value)} €` : "—"}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Invertido: <span className="fv-sensitive">{fmt(summary.total_invested)} €</span>
+                    {summary.valuation_complete ? (
+                      <>Invertido: <span className="fv-sensitive">{summary.total_invested != null ? `${fmt(summary.total_invested)} €` : "—"}</span></>
+                    ) : (
+                      "Valoración incompleta"
+                    )}
                   </p>
                 </>
               ) : (
@@ -572,12 +586,16 @@ function PortfolioContent() {
               {pricesLoaded ? (
                 <>
                   <div className={`text-2xl font-bold fv-sensitive ${plColor}`}>
-                    {summary.unrealized_pl >= 0 ? "+" : ""}
-                    {fmt(summary.unrealized_pl)} €
+                    {plKnown && plPositive ? "+" : ""}
+                    {plKnown ? `${fmt(summary.unrealized_pl)} €` : "—"}
                   </div>
                   <p className={`text-xs ${plColor}`}>
-                    {summary.unrealized_pl_pct >= 0 ? "+" : ""}
-                    {fmt(summary.unrealized_pl_pct)}%
+                    {plKnown && plPositive ? "+" : ""}
+                    {plKnown
+                      ? `${fmt(summary.unrealized_pl_pct)}%`
+                      : !summary.cost_basis_complete
+                        ? "Coste incompleto"
+                        : "Valoración incompleta"}
                   </p>
                 </>
               ) : (
@@ -610,9 +628,11 @@ function PortfolioContent() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold fv-sensitive">
-                {fmt(summary.total_invested)} €
+                {summary.total_invested != null ? `${fmt(summary.total_invested)} €` : "—"}
               </div>
-              <p className="text-xs text-muted-foreground">Coste base total</p>
+              <p className="text-xs text-muted-foreground">
+                {summary.cost_basis_complete ? "Coste base total" : "Coste incompleto"}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -728,7 +748,7 @@ function PortfolioContent() {
                                 ·
                               </span>
                             </span>
-                          ) : p.current_price_eur ? (
+                          ) : p.current_price_eur != null ? (
                             `${fmt(p.current_price_eur, 2)} €`
                           ) : (
                             "—"
@@ -745,7 +765,7 @@ function PortfolioContent() {
                                 ·
                               </span>
                             </span>
-                          ) : p.market_value_eur ? (
+                          ) : p.market_value_eur != null ? (
                             `${fmt(p.market_value_eur)} €`
                           ) : (
                             "—"
@@ -790,7 +810,7 @@ function PortfolioContent() {
                                 ·
                               </span>
                             </span>
-                          ) : p.weight_pct ? (
+                          ) : p.weight_pct != null ? (
                             `${fmt(p.weight_pct, 1)}%`
                           ) : (
                             "—"
@@ -914,7 +934,7 @@ function PortfolioContent() {
                               <span className="animate-pulse [animation-delay:150ms]">·</span>
                               <span className="animate-pulse [animation-delay:300ms]">·</span>
                             </span>
-                          ) : p.market_value_eur ? (
+                          ) : p.market_value_eur != null ? (
                             `${fmt(p.market_value_eur)} €`
                           ) : (
                             "—"
@@ -940,7 +960,7 @@ function PortfolioContent() {
                         )}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span>Peso {p.weight_pct ? `${fmt(p.weight_pct, 1)}%` : "—"}</span>
+                        <span>Peso {p.weight_pct != null ? `${fmt(p.weight_pct, 1)}%` : "—"}</span>
                         {zcWatchlist.has(zcTicker.toUpperCase()) ? (
                           <Badge variant="secondary" className="px-1.5 text-[10px]">
                             <Target className="h-3 w-3" />

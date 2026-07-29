@@ -103,6 +103,18 @@ la migración de esquema no reinterpreta automáticamente datos históricos.
 Lo mismo ocurre con retenciones importadas antes del desglose origen/destino: siguen
 visibles como efectivo retenido, pero deben reimportarse para aplicarlas al estimador.
 
+## Cartera y valoración
+
+- Las cantidades se reconcilian contra el último snapshot anual completo y después
+  incorporan todas las operaciones posteriores. Un snapshot completo sin holdings
+  cierra correctamente las posiciones antiguas.
+- El coste de posiciones abiertas conserva los lotes FIFO. Un `SPINOFF` o una parte
+  del inventario sin origen conocido deja el coste como desconocido, nunca como cero.
+- Si falta coste en cualquier posición, la UI no inventa capital invertido ni
+  rentabilidad. Si falta un precio, tampoco publica una valoración total parcial.
+- Los precios compartidos por varios ISIN se aplican a todos; Yahoo `.SI` se interpreta
+  en SGD antes de convertir a EUR.
+
 ## Monitor de Opciones
 
 Módulo independiente accesible en `/options`. Funcionalidades implementadas:

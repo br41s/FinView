@@ -135,6 +135,17 @@ La página **Cartera** muestra tus posiciones abiertas con precios en tiempo rea
 ### Resumen
 - Valor de mercado total, capital invertido, rentabilidad latente
 
+El valor de mercado puede seguir mostrándose aunque FinView no conozca el coste de
+alguna posición. En ese caso, **capital invertido** y **rentabilidad latente** aparecen
+como “— / Coste incompleto”: no se sustituye el coste ausente por cero. Esto puede
+ocurrir con un spin-off o cuando el historial anterior al último snapshot está incompleto.
+Si Yahoo no devuelve el precio de algún activo, el total muestra “Valoración incompleta”
+en vez de sumar solo las posiciones que sí tienen precio.
+
+Las operaciones posteriores al último informe anual siempre se aplican sobre ese
+snapshot. Si un informe de patrimonio confirma que la cartera quedó vacía, las
+posiciones de años anteriores desaparecen y una compra posterior las reabre normalmente.
+
 ### Tabla de posiciones
 Al desplegar una posición verás un resumen con: ISIN, **Valor actual** (precio de mercado × cantidad), rentabilidad latente (%), peso en cartera y país. Además:
 - **Desglose por cuenta:** cantidad y coste por broker

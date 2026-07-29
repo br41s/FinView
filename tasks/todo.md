@@ -1,13 +1,27 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## PR #187 — resolución de conflictos con main — 2026-08-01
+
+- [x] Rebasar `codex/fix-portfolio-valuation` sobre `origin/main`.
+- [x] Resolver conflictos conservando valoración fail-closed, snapshots autoritativos
+      y el modelo actualizado de retenciones/casillas de `main`.
+- [x] Ejecutar `/review`, suite backend, Ruff, TypeScript, tests y build frontend.
+- [x] Publicar con `--force-with-lease` y confirmar PR mergeable con Vercel verde.
+
 ## Auditoría financiera 2026-07-29
 
 - [x] Aislamiento por usuario (PR #184).
 - [x] FIFO fiscal v2 y recálculo operativo (PR #185).
-- [x] Retenciones, doble imposición y casillas: implementación y verificación local.
-- [ ] Cartera y valoración: corregir los fallos reproducidos en el siguiente PR.
+- [x] Retenciones, doble imposición y casillas (PR #186).
+- [x] Cartera/valoración corregida: FIFO de posiciones, snapshots vacíos y
+      actividad posterior, coste desconocido fail-closed, precios multi-ISIN/SGD y
+      ceros preservados en API/UI.
 - [ ] Hardening FIFO residual: cerrar invalidación histórica, fees, asignaciones,
       spinoffs y redondeo en PR separado.
+- [ ] Hardening de imports/snapshots: impedir que un informe parcial sustituya uno
+      completo y distinguir cartera realmente vacía de un fallo de parseo.
+- [ ] Hacer atómica la escritura de la caché diaria de precios ante peticiones
+      concurrentes de posiciones y resumen.
 
 ## Cross-section coherence — instrument drawer (C now, B roadmap) — 2026-06-24
 

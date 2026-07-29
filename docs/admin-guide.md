@@ -106,7 +106,7 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 |-------|-------------|
 | `users` | Usuarios registrados |
 | `accounts` | Cuentas por broker (una por broker importado) |
-| `import_records` | Registro de importaciones (hash SHA-256 para deduplicación) |
+| `import_records` | Registro de importaciones (hash SHA-256 para deduplicación); `portfolio_snapshot_complete` marca informes con snapshot de cartera autoritativo |
 | `transactions` | Operaciones y desglose de retención: total efectivo, pago español y retención extranjera |
 | `tax_lots` | Lotes FIFO por broker |
 | `tax_results` | Casillas Modelo 100/714 precalculadas |
@@ -338,6 +338,18 @@ Usa `TooltipTrigger` de `@base-ui/react/tooltip` para mostrar el nombre al hover
 
 ### Portfolio position detail
 
+La reconciliación de cartera usa el último `ImportRecord` con
+`portfolio_snapshot_complete=true` por cuenta. El marcador también representa un
+snapshot válido sin holdings; solo se activa para el informe fiscal ING y cuando el
+lote BBVA incluye el documento de patrimonio. Los certificados ING de operaciones y
+los lotes BBVA parciales no pueden cerrar posiciones. Las importaciones legacy sin
+marcador conservan el fallback al último año que tenga filas en `portfolio_holdings`.
+
+Después del snapshot se aplican BUY/SELL/SPINOFF por fecha e ID. Las ventas consumen
+lotes FIFO; un lote de origen desconocido propaga `total_cost_eur=NULL` hasta que se
+vende por completo. Los agregados nunca suman solo la parte conocida del coste ni
+publican un valor de mercado total si falta el precio de alguna posición.
+
 El endpoint `GET /portfolio/positions/{isin}` devuelve ahora dos arrays separados:
 - `transactions`: solo BUY/SELL/CORPORATE_ACTION (sin DIVIDEND), limitado a 200
 - `dividends_by_year`: dividendos agregados por año fiscal `{ year, gross_eur, net_eur, count }`
@@ -354,7 +366,7 @@ Cuando dos ISINs distintos mapean al mismo ticker de Yahoo Finance (split con ca
 ## 10. Tests
 
 ```bash
-# Todos los tests (estado tras FIFO v2: 375 passed, 131 skipped sin fixtures reales)
+# Todos los tests (estado tras corrección de cartera: 401 passed, 131 skipped)
 pytest backend/tests/ -v
 
 # Solo un módulo

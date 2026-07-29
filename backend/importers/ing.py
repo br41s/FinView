@@ -539,6 +539,7 @@ def parse_ing_report(pdf_path: Path) -> INGAnnualReport:
             dividends=[],
             transactions=_parse_cert_transactions(text),
             holdings=[],
+            portfolio_snapshot_complete=False,
         )
 
     fiscal_year = _parse_fiscal_year(text)
@@ -548,6 +549,7 @@ def parse_ing_report(pdf_path: Path) -> INGAnnualReport:
         dividends=_parse_dividends(text, fiscal_year),
         transactions=_parse_transactions(text, fiscal_year),
         holdings=_parse_holdings(text, fiscal_year),
+        portfolio_snapshot_complete=True,
     )
 
 
