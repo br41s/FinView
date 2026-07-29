@@ -775,13 +775,15 @@ replace each other:
 
 ## IRPF fiscal model (context for AI)
 
-- Modelo 100: casillas 27 (intereses), 29 (dividendos), 332 (ganancias patrimoniales), 337 (pérdidas patrimoniales)
+- Modelo 100: casillas 27/29 (rendimientos), 328/380 o 332/337 según el ejercicio (ganancias/pérdidas), 588 (doble imposición) y 597 (retenciones españolas)
 - Modelo 714: casillas 05-09 (patrimonio exterior)
 - FIFO is chronological and cross-broker — historical sells consume earlier inventory;
   a buy in IBKR can match a later sell in DEGIRO, never an earlier one
 - FIFO adjustments are versioned and split by box. `amount_eur` already contains the
   v2 delta; frontend consumers must never add `fifo_adjustment_eur` a second time.
-- Withholding tracking per country, CDI deductions default 15%
+- Withholding has three distinct truths: cash withheld, Spanish payment on account and
+  foreign withholding. Never deduct total cash or infer a CDI credit from country;
+  casilla 588 requires an explicit credit and is capped by quota/effective tax rate.
 - finview_casillas_2024.json in repo root = reference output for fiscal year 2024
 
 ---

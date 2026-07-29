@@ -408,10 +408,25 @@ def _store_transaction(db: Session, tx: ParsedTransaction, account_id: int, impo
         exchange_rate=tx.exchange_rate,
         gross_amount=tx.gross_amount,
         fees=tx.fees,
-        withholding_tax=tx.withholding_tax,
+        withholding_tax=abs(tx.withholding_tax),
+        domestic_withholding_tax=(
+            abs(tx.domestic_withholding_tax)
+            if tx.domestic_withholding_tax is not None
+            else None
+        ),
+        foreign_withholding_tax=(
+            abs(tx.foreign_withholding_tax)
+            if tx.foreign_withholding_tax is not None
+            else None
+        ),
         net_amount_eur=tx.net_amount_eur,
         withholding_rate=tx.withholding_rate,
-        double_taxation_amount=tx.double_taxation_amount,
+        double_taxation_amount=(
+            abs(tx.double_taxation_amount)
+            if tx.double_taxation_amount is not None
+            else None
+        ),
+        double_taxation_rate=tx.double_taxation_rate,
         casilla=tx.casilla,
         holding_period=tx.holding_period,
     )
@@ -502,7 +517,10 @@ def _store_casillas(
             casilla=c.casilla,
             description=c.description,
             amount_eur=c.amount_eur,
-            tr_reference_amount=c.amount_eur,
+            # TaxResult is the broker-provided number itself. Repeating it as a
+            # "reference" made validation tautological; independent validation
+            # must be calculated from transaction detail instead.
+            tr_reference_amount=None,
             user_id=user_id,
         )
         db.add(tr)

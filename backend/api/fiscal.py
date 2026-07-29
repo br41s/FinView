@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlalchemy.orm import aliased
 
 from backend.api.auth import CurrentUser
@@ -89,6 +89,72 @@ def _fifo_adjustments_by_casilla(
     return _fifo_casilla_deltas(rows)
 
 
+_CAPITAL_CASILLAS = (328, 332, 337, 380)
+
+
+def _capital_totals(casillas: dict[int, Decimal]) -> tuple[Decimal, Decimal]:
+    """Return positive gains and negative losses across year-specific boxes."""
+    amounts = [casillas.get(box, Decimal("0")) for box in _CAPITAL_CASILLAS]
+    return (
+        sum((amount for amount in amounts if amount > 0), Decimal("0")),
+        sum((amount for amount in amounts if amount < 0), Decimal("0")),
+    )
+
+
+def _withholding_totals(db, user_id: int, year: int) -> dict[str, Decimal | int | bool]:
+    """Aggregate cash withheld and the two independently deductible amounts.
+
+    Rows imported before the explicit domestic/foreign split stay visible in
+    cash totals but do not reduce estimated tax unless their meaning is
+    unambiguous (ING/BBVA Spanish withholding) or they carry an explicit
+    double-taxation credit.
+    """
+    rows = (
+        db.query(Transaction, Account.broker)
+        .join(Account, Account.id == Transaction.account_id)
+        .filter(
+            Account.user_id == user_id,
+            year_range(Transaction.trade_date, year),
+        )
+        .all()
+    )
+    cash = domestic = foreign = credit = foreign_income = Decimal("0")
+    incomplete = 0
+    for tx, broker in rows:
+        total = abs(tx.withholding_tax or Decimal("0"))
+        explicit = (
+            tx.domestic_withholding_tax is not None
+            and tx.foreign_withholding_tax is not None
+        )
+        cash += total
+        tx_credit = abs(tx.double_taxation_amount or Decimal("0"))
+        credit += tx_credit
+        if tx_credit:
+            foreign_income += max(tx.gross_amount or Decimal("0"), Decimal("0"))
+        if explicit:
+            domestic += abs(tx.domestic_withholding_tax or Decimal("0"))
+            foreign += abs(tx.foreign_withholding_tax or Decimal("0"))
+        elif total and broker in (Broker.ING, Broker.BBVA):
+            domestic += total
+        elif total:
+            incomplete += 1
+
+    _, manual_whg = _manual_casillas(db, user_id, year)
+    manual = sum(manual_whg.values(), Decimal("0"))
+    cash += manual
+    domestic += manual
+    return {
+        "cash": cash,
+        "domestic": domestic,
+        "foreign": foreign,
+        "credit": credit,
+        "foreign_income": foreign_income,
+        "deductible": domestic + credit,
+        "incomplete_count": incomplete,
+        "complete": incomplete == 0,
+    }
+
+
 @router.get("/casillas", response_model=list[AggregatedCasillaOut])
 def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """List tax casillas aggregated across all brokers."""
@@ -115,6 +181,17 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
     man_cas: dict[int, Decimal] = {}
     if fiscal_year:
         man_cas, _ = _manual_casillas(db, user.id, fiscal_year)
+    withholding_cas: dict[int, Decimal] = {}
+    if fiscal_year:
+        whg = _withholding_totals(db, user.id, fiscal_year)
+        withholding_cas = {
+            box: amount
+            for box, amount in {
+                588: whg["credit"],
+                597: whg["domestic"],
+            }.items()
+            if amount
+        }
 
     result = []
     for (modelo, casilla), items in sorted(grouped.items()):
@@ -133,22 +210,6 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         ]
         if manual_amt:
             brokers.append({"broker": "MANUAL", "amount_eur": manual_amt})
-        # TR validation: sum both TR amounts and references. Migration years
-        # can have multiple TR fragments; other brokers/manual/FIFO are outside
-        # this broker-specific check.
-        tr_items = [item for item in items if item.broker == Broker.TR]
-        tr_refs = [
-            item.tr_reference_amount
-            for item in tr_items
-            if item.tr_reference_amount is not None
-        ]
-        tr_ref = None
-        validation = None
-        if tr_refs:
-            tr_ref = sum(tr_refs)
-            tr_amount = sum(item.amount_eur for item in tr_items)
-            validation = "match" if abs(tr_amount - tr_ref) < Decimal("0.02") else "mismatch"
-
         result.append(AggregatedCasillaOut(
             modelo=modelo,
             casilla=casilla,
@@ -156,12 +217,12 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
             amount_eur=total,
             brokers=brokers,
             fifo_adjustment_eur=adj_val or None,
-            tr_reference_amount=tr_ref,
-            validation_status=validation,
+            tr_reference_amount=None,
+            validation_status=None,
         ))
 
     # Casillas that exist only from manual or FIFO data (no broker rows this year).
-    for casilla in sorted(set(man_cas) | set(fifo_adj_by_casilla)):
+    for casilla in sorted(set(man_cas) | set(fifo_adj_by_casilla) | set(withholding_cas)):
         amt = man_cas.get(casilla, Decimal("0"))
         adj_val = fifo_adj_by_casilla.get(casilla, Decimal("0"))
         if (100, casilla) in grouped:
@@ -169,11 +230,14 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         brokers = []
         if amt:
             brokers.append({"broker": "MANUAL", "amount_eur": amt})
+        derived = withholding_cas.get(casilla, Decimal("0"))
+        if derived:
+            brokers.append({"broker": "CALCULATED", "amount_eur": derived})
         result.append(AggregatedCasillaOut(
             modelo=100,
             casilla=casilla,
             description=_MANUAL_CASILLA_DESC.get(casilla, ""),
-            amount_eur=amt + adj_val,
+            amount_eur=amt + adj_val + derived,
             brokers=brokers,
             fifo_adjustment_eur=adj_val or None,
         ))
@@ -207,7 +271,6 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
     div_detail = (
         db.query(
             func.coalesce(func.sum(Transaction.net_amount_eur), 0).label("net"),
-            func.coalesce(func.sum(Transaction.withholding_tax), 0).label("whg"),
         )
         .join(Account)
         .filter(
@@ -219,19 +282,15 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
     )
     # Manual dividend net = manual dividend gross − its withholding.
     manual_div_net = man_cas.get(29, Decimal("0")) - man_whg.get(29, Decimal("0"))
-    manual_whg_total = sum(man_whg.values(), Decimal("0"))
-
     fifo_cas = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
-    gains_total = (
-        _sum_casilla(332)
-        + man_cas.get(332, Decimal("0"))
-        + fifo_cas.get(332, Decimal("0"))
-    )
-    losses_total = (
-        _sum_casilla(337)
-        + man_cas.get(337, Decimal("0"))
-        + fifo_cas.get(337, Decimal("0"))
-    )
+    capital_cas = {
+        box: _sum_casilla(box) + man_cas.get(box, Decimal("0"))
+        for box in _CAPITAL_CASILLAS
+    }
+    for box, amount in fifo_cas.items():
+        capital_cas[box] = capital_cas.get(box, Decimal("0")) + amount
+    gains_total, losses_total = _capital_totals(capital_cas)
+    whg_totals = _withholding_totals(db, user.id, fiscal_year)
 
     # Reuse list_casillas so the summary's casillas are byte-identical to the
     # Casillas fiscales view (broker + manual, same sources, same boxes).
@@ -241,7 +300,7 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
         fiscal_year=fiscal_year,
         total_dividends_gross=div_gross,
         total_dividends_net=div_detail.net + manual_div_net,
-        total_withholdings=div_detail.whg + manual_whg_total,
+        total_withholdings=whg_totals["cash"],
         total_gains=gains_total,
         total_losses=losses_total,
         net_capital_gains=gains_total + losses_total,
@@ -445,7 +504,7 @@ def fx_rate(user: CurrentUser, currency: str, on: str):
 
 @router.get("/cross-validation/{fiscal_year}", response_model=CrossValidationResult)
 def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
-    """Compare FinView-calculated casillas against TR reference values."""
+    """Describe whether each broker casilla has independent validation data."""
     rows = (
         db.query(TaxResult)
         .filter(TaxResult.user_id == user.id, TaxResult.fiscal_year == fiscal_year)
@@ -462,7 +521,7 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
     fifo_adj = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
 
     result_rows: list[CrossValidationRow] = []
-    match_count = mismatch_count = no_ref_count = 0
+    no_ref_count = 0
 
     keys = set(grouped)
     keys.update((100, casilla) for casilla in fifo_adj)
@@ -474,33 +533,13 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
         desc = items[0].description if items else _MANUAL_CASILLA_DESC.get(casilla, "")
         brokers = [{"broker": i.broker, "amount_eur": i.amount_eur} for i in items]
 
-        # TR references validate broker-reported amounts, not FIFO/manual
-        # corrections. Sum migration fragments instead of keeping the last one.
-        tr_refs = [
-            item.tr_reference_amount
-            for item in items
-            if item.broker == Broker.TR and item.tr_reference_amount is not None
-        ]
-        tr_ref = sum(tr_refs, Decimal("0")) if tr_refs else None
-        tr_amount = sum(
-            (item.amount_eur for item in items if item.broker == Broker.TR),
-            Decimal("0"),
-        )
         broker_count = len({item.broker for item in items})
-
-        if tr_ref is not None:
-            compare_amount = tr_amount
-            diff = compare_amount - tr_ref
-            status = "match" if abs(diff) < Decimal("1.00") else "mismatch"
-            if status == "match":
-                match_count += 1
-            else:
-                mismatch_count += 1
-        else:
-            diff = None
-            compare_amount = adjusted_total
-            status = "no_tr_data"
-            no_ref_count += 1
+        # TaxResult is copied from the broker report. Comparing it with the
+        # same copied value previously produced a guaranteed false "match".
+        diff = None
+        compare_amount = adjusted_total
+        status = "no_independent_data"
+        no_ref_count += 1
 
         result_rows.append(CrossValidationRow(
             modelo=modelo,
@@ -508,7 +547,7 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
             description=desc,
             finview_amount=adjusted_total,
             compare_amount=compare_amount,
-            tr_amount=tr_ref,
+            tr_amount=None,
             difference=diff,
             status=status,
             is_multi_broker=broker_count > 1 or bool(adj_val),
@@ -518,8 +557,8 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
     return CrossValidationResult(
         fiscal_year=fiscal_year,
         rows=result_rows,
-        total_match=match_count,
-        total_mismatch=mismatch_count,
+        total_match=0,
+        total_mismatch=0,
         total_no_ref=no_ref_count,
     )
 
@@ -527,46 +566,28 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
 @router.get("/yearly-comparison", response_model=YearlyComparisonResult)
 def yearly_comparison(db: DbSession, user: CurrentUser):
     """Get fiscal metrics aggregated per year for multi-year comparison."""
-    # All TaxResult aggregates per year in one query (was 4 queries × N years)
-    tax_rows = (
-        db.query(
-            TaxResult.fiscal_year,
-            func.coalesce(
-                func.sum(case((TaxResult.casilla == 29, TaxResult.amount_eur), else_=Decimal("0"))),
-                Decimal("0"),
-            ).label("dividends"),
-            func.coalesce(
-                func.sum(case((TaxResult.casilla == 332, TaxResult.amount_eur), else_=Decimal("0"))),
-                Decimal("0"),
-            ).label("gains"),
-            func.coalesce(
-                func.sum(case((TaxResult.casilla == 337, TaxResult.amount_eur), else_=Decimal("0"))),
-                Decimal("0"),
-            ).label("losses"),
-            func.count(func.distinct(TaxResult.broker)).label("broker_count"),
-        )
-        .filter(TaxResult.user_id == user.id)
-        .group_by(TaxResult.fiscal_year)
-        .order_by(TaxResult.fiscal_year)
-        .all()
-    )
+    # The Modelo 100 changed from legacy gain/loss boxes (332/337) to signed
+    # asset-category boxes (328/380), so rows are folded by year in Python.
+    tax_rows = db.query(TaxResult).filter(TaxResult.user_id == user.id).all()
+    tax_by_year: dict[int, dict[int, Decimal]] = {}
+    brokers_by_year: dict[int, set[str]] = {}
+    for row in tax_rows:
+        year_cas = tax_by_year.setdefault(row.fiscal_year, {})
+        year_cas[row.casilla] = year_cas.get(row.casilla, Decimal("0")) + row.amount_eur
+        if row.broker:
+            brokers_by_year.setdefault(row.fiscal_year, set()).add(str(row.broker))
 
-    # Withholdings and distinct-ISIN count per year in one query (was 2 queries × N years)
     tx_rows = (
         db.query(
             year_str(Transaction.trade_date).label("yr"),
-            func.coalesce(func.sum(Transaction.withholding_tax), Decimal("0")).label("whg"),
             func.count(func.distinct(Transaction.isin)).label("pos_count"),
         )
         .join(Account, Account.id == Transaction.account_id)
-        .filter(
-            Account.user_id == user.id,
-            Transaction.type == TransactionType.DIVIDEND.value,
-        )
+        .filter(Account.user_id == user.id)
         .group_by(year_str(Transaction.trade_date))
         .all()
     )
-    tx_map = {int(row.yr): (row.whg or Decimal("0"), row.pos_count) for row in tx_rows}
+    positions_by_year = {int(row.yr): row.pos_count for row in tx_rows}
 
     fifo_rows = (
         db.query(FIFOAdjustment)
@@ -584,28 +605,40 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
         for year, adjustments in fifo_by_year.items()
     }
 
-    tax_map = {row.fiscal_year: row for row in tax_rows}
+    manual_years = {
+        row[0]
+        for row in db.query(ManualSavingsIncome.fiscal_year)
+        .filter(ManualSavingsIncome.user_id == user.id)
+        .distinct()
+        .all()
+    }
     metrics = []
-    for year in sorted(set(tax_map) | set(fifo_map)):
-        row = tax_map.get(year)
+    years = set(tax_by_year) | set(fifo_map) | set(positions_by_year) | manual_years
+    for year in sorted(years):
+        cas = dict(tax_by_year.get(year, {}))
+        man_cas, _ = _manual_casillas(db, user.id, year)
+        for box, amount in man_cas.items():
+            cas[box] = cas.get(box, Decimal("0")) + amount
         fifo = fifo_map.get(year, {})
-        gains = (row.gains if row else Decimal("0")) + fifo.get(332, Decimal("0"))
-        losses = (row.losses if row else Decimal("0")) + fifo.get(337, Decimal("0"))
+        for box, amount in fifo.items():
+            cas[box] = cas.get(box, Decimal("0")) + amount
+        gains, losses = _capital_totals(cas)
+        whg = _withholding_totals(db, user.id, year)
         metrics.append(YearlyMetrics(
             fiscal_year=year,
-            dividends_gross=row.dividends if row else Decimal("0"),
+            dividends_gross=cas.get(29, Decimal("0")),
             gains=gains,
             losses=losses,
             net_capital=gains + losses,
-            withholdings=tx_map.get(year, (Decimal("0"), 0))[0],
-            brokers=row.broker_count if row else 0,
-            positions=tx_map.get(year, (Decimal("0"), 0))[1],
+            withholdings=whg["cash"],
+            brokers=len(brokers_by_year.get(year, set())),
+            positions=positions_by_year.get(year, 0),
         ))
     return YearlyComparisonResult(years=metrics)
 
 
 # ── Fiscal onboarding: savings-base estimate (v1 individual) ─────────────────
-_SAVINGS_CASILLAS = (27, 29, 332, 337)
+_SAVINGS_CASILLAS = (27, 29, 328, 332, 337, 380)
 
 
 # Manual savings entries map to real Modelo 100 boxes so every casilla-level
@@ -624,6 +657,8 @@ _MANUAL_CASILLA_DESC = {
     29: "Dividendos y demás rendimientos",
     332: "Ganancias patrimoniales",
     337: "Pérdidas patrimoniales",
+    588: "Deducción por doble imposición internacional",
+    597: "Retenciones por rendimientos del capital mobiliario",
 }
 
 
@@ -670,34 +705,35 @@ def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInput
     cas = {c: (a or Decimal("0")) for c, a in rows}
 
     # Fold in manual entries mapped to the same casillas (shared helper).
-    man_cas, man_whg = _manual_casillas(db, user_id, year)
+    man_cas, _ = _manual_casillas(db, user_id, year)
     for box, amt in man_cas.items():
         cas[box] = cas.get(box, Decimal("0")) + amt
     for box, amt in _fifo_adjustments_by_casilla(db, user_id, year).items():
         cas[box] = cas.get(box, Decimal("0")) + amt
-    man_whg_total = sum(man_whg.values(), Decimal("0"))
-
     rcm = cas.get(27, Decimal("0")) + cas.get(29, Decimal("0"))
-    gains = cas.get(332, Decimal("0"))
-    losses = cas.get(337, Decimal("0"))  # stored ≤ 0
+    gains, losses = _capital_totals(cas)
 
-    # Withholdings on savings income: broker transactions + manual entries.
-    whg = (
-        db.query(func.coalesce(func.sum(Transaction.withholding_tax), Decimal("0")))
-        .join(Account, Account.id == Transaction.account_id)
-        .filter(
-            Account.user_id == user_id,
-            Transaction.type.in_(
-                [TransactionType.DIVIDEND.value, TransactionType.INTEREST.value]
-            ),
-            year_range(Transaction.trade_date, year),
-        )
-        .scalar()
-    ) or Decimal("0")
-    whg += man_whg_total
-
-    casillas = {"rcm": rcm, "gains": gains, "losses": losses, "withholdings": whg}
-    return SavingsInputs(rcm_net=rcm, gains=gains, losses=losses, withholdings=whg), casillas
+    whg = _withholding_totals(db, user_id, year)
+    casillas = {
+        "rcm": rcm,
+        "gains": gains,
+        "losses": losses,
+        "withholdings": whg["deductible"],
+        "cash_withholdings": whg["cash"],
+        "domestic_withholdings": whg["domestic"],
+        "double_taxation_credit": whg["credit"],
+    }
+    return (
+        SavingsInputs(
+            rcm_net=rcm,
+            gains=gains,
+            losses=losses,
+            withholdings=whg["domestic"],
+            double_taxation_credit=whg["credit"],
+            foreign_taxed_income=whg["foreign_income"],
+        ),
+        casillas,
+    )
 
 
 @router.get("/profile/{fiscal_year}", response_model=FiscalProfileOut)
@@ -829,6 +865,7 @@ def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
         inputs.prior_gp_loss = p.prior_gp_loss or Decimal("0")
 
     est = estimate_savings(inputs, profile, fiscal_year)
+    withholding = _withholding_totals(db, user.id, fiscal_year)
     return SavingsEstimateOut(
         fiscal_year=fiscal_year,
         rates_year_used=est.rates_year_used,
@@ -844,6 +881,12 @@ def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
         gross_quota=est.gross_quota,
         quota=est.quota,
         withholdings=est.withholdings,
+        cash_withholdings=withholding["cash"],
+        domestic_withholdings=est.domestic_withholdings,
+        double_taxation_credit=withholding["credit"],
+        double_taxation_credit_applied=est.double_taxation_credit_applied,
+        withholding_breakdown_complete=withholding["complete"],
+        incomplete_withholding_transactions=withholding["incomplete_count"],
         result=est.result,
         brackets=est.breakdown,
         casillas=casillas,
@@ -867,7 +910,11 @@ def _savings_estimate_csv(est: SavingsEstimateOut) -> str:
         ("Mínimo aplicado al ahorro", est.minimum_on_savings),
         ("Cuota íntegra del ahorro", est.gross_quota),
         ("Cuota tras mínimo", est.quota),
-        ("Retenciones soportadas", est.withholdings),
+        ("Retenido en efectivo", est.cash_withholdings),
+        ("Pago a cuenta español (casilla 0597)", est.domestic_withholdings),
+        ("Crédito exterior informado (límite 0588)", est.double_taxation_credit),
+        ("Doble imposición aplicada (casilla 0588)", est.double_taxation_credit_applied),
+        ("Total de pagos y deducciones aplicado", est.withholdings),
         ("Resultado (>0 a ingresar · <0 a devolver)", est.result),
     ]:
         writer.writerow([label, str(val)])
@@ -882,6 +929,13 @@ def _savings_estimate_csv(est: SavingsEstimateOut) -> str:
         writer.writerow([
             f"Aviso: sin tablas fiscales para {est.fiscal_year}; "
             f"se usaron las de {est.rates_year_used}."
+        ])
+    if not est.withholding_breakdown_complete:
+        writer.writerow([])
+        writer.writerow([
+            "Aviso: "
+            f"{est.incomplete_withholding_transactions} retenciones antiguas no tienen "
+            "desglose origen/destino y no reducen la estimación hasta reimportarlas."
         ])
     writer.writerow([])
     writer.writerow([

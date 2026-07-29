@@ -23,6 +23,7 @@ from backend.api.fiscal import (
     fiscal_summary,
     list_casillas,
     list_fifo_adjustments,
+    savings_estimate,
     yearly_comparison,
 )
 from backend.api.schemas import SavingsEstimateOut
@@ -132,10 +133,14 @@ def test_withholdings_from_dividend_and_interest_transactions(db):
     db.add_all([
         Transaction(account_id=acc.id, type=TransactionType.DIVIDEND.value,
                     trade_date=date(2024, 5, 1), quantity=D("1"), price=D("0"),
-                    gross_amount=D("100"), withholding_tax=D("19"), net_amount_eur=D("81")),
+                    gross_amount=D("100"), withholding_tax=D("19"),
+                    domestic_withholding_tax=D("19"), foreign_withholding_tax=D("0"),
+                    net_amount_eur=D("81")),
         Transaction(account_id=acc.id, type=TransactionType.INTEREST.value,
                     trade_date=date(2024, 6, 1), quantity=D("1"), price=D("0"),
-                    gross_amount=D("50"), withholding_tax=D("9"), net_amount_eur=D("41")),
+                    gross_amount=D("50"), withholding_tax=D("9"),
+                    domestic_withholding_tax=D("9"), foreign_withholding_tax=D("0"),
+                    net_amount_eur=D("41")),
         Transaction(account_id=acc.id, type=TransactionType.BUY.value,
                     trade_date=date(2024, 7, 1), quantity=D("1"), price=D("10"),
                     gross_amount=D("10"), withholding_tax=D("5"), net_amount_eur=D("10")),
@@ -150,6 +155,80 @@ def test_withholdings_from_dividend_and_interest_transactions(db):
     assert inputs.withholdings == D("28")  # 19 + 9 (BUY and 2023 excluded)
 
 
+def test_withholding_cash_domestic_and_foreign_credit_are_not_conflated(db):
+    acc = Account(user_id=1, broker=Broker.TR, account_id="TR-ES")
+    db.add(acc)
+    db.flush()
+    db.add(Transaction(
+        account_id=acc.id,
+        type=TransactionType.DIVIDEND.value,
+        trade_date=date(2025, 5, 1),
+        quantity=D("1"),
+        price=D("100"),
+        gross_amount=D("100"),
+        withholding_tax=D("45"),
+        domestic_withholding_tax=D("19"),
+        foreign_withholding_tax=D("26"),
+        double_taxation_amount=D("15"),
+        net_amount_eur=D("55"),
+    ))
+    db.commit()
+
+    inputs, casillas = _aggregate_savings_inputs(db, 1, 2025)
+    shown = {row.casilla: row.amount_eur for row in list_casillas(
+        db, user=_user(1), fiscal_year=2025
+    )}
+
+    assert inputs.withholdings == D("19")
+    assert inputs.double_taxation_credit == D("15")
+    assert casillas["cash_withholdings"] == D("45")
+    assert casillas["domestic_withholdings"] == D("19")
+    assert casillas["double_taxation_credit"] == D("15")
+    assert shown[597] == D("19")
+    assert shown[588] == D("15")
+
+
+def test_legacy_foreign_withholding_is_visible_but_not_guessed(db):
+    acc = Account(user_id=1, broker=Broker.IBKR, account_id="IBKR")
+    db.add(acc)
+    db.flush()
+    db.add(Transaction(
+        account_id=acc.id,
+        type=TransactionType.DIVIDEND.value,
+        trade_date=date(2024, 5, 1),
+        quantity=D("1"),
+        price=D("100"),
+        gross_amount=D("100"),
+        withholding_tax=D("-15"),  # legacy sign and no semantic split
+        net_amount_eur=D("85"),
+    ))
+    db.commit()
+
+    inputs, casillas = _aggregate_savings_inputs(db, 1, 2024)
+    estimate = savings_estimate(db, user=_user(1), fiscal_year=2024)
+
+    assert inputs.withholdings == D("0")
+    assert casillas["cash_withholdings"] == D("15")
+    assert estimate.withholding_breakdown_complete is False
+    assert estimate.incomplete_withholding_transactions == 1
+
+
+def test_signed_2025_asset_boxes_feed_economic_gains_and_losses(db):
+    db.add_all([
+        _casilla(1, 2025, 328, "-50"),
+        _casilla(1, 2025, 380, "125"),
+    ])
+    db.commit()
+
+    inputs, _ = _aggregate_savings_inputs(db, 1, 2025)
+    summary = fiscal_summary(db, user=_user(1), fiscal_year=2025)
+
+    assert inputs.gains == D("125")
+    assert inputs.losses == D("-50")
+    assert summary.total_gains == D("125")
+    assert summary.total_losses == D("-50")
+
+
 def _sample_estimate(year=2024, rates_year=2024):
     return SavingsEstimateOut(
         fiscal_year=year, rates_year_used=rates_year,
@@ -158,6 +237,9 @@ def _sample_estimate(year=2024, rates_year=2024):
         prior_rcm_loss_applied=D("0"), prior_gp_loss_applied=D("0"),
         personal_minimum=D("6700"), minimum_on_savings=D("6700"),
         gross_quota=D("2505"), quota=D("1218"), withholdings=D("2200"),
+        cash_withholdings=D("2200"), domestic_withholdings=D("2200"),
+        double_taxation_credit=D("0"), withholding_breakdown_complete=True,
+        incomplete_withholding_transactions=0,
         result=D("-982"),
         brackets=[
             {"from": D("0"), "to": D("6000"), "rate": D("0.19"), "tax": D("1140")},
@@ -275,8 +357,8 @@ def test_fifo_adjustment_flows_into_all_fiscal_totals(db):
     assert yearly.gains == D("600")
     assert yearly.net_capital == D("600")
     assert validation.finview_amount == D("600")
-    assert validation.compare_amount == D("200")
-    assert validation.status == "match"
+    assert validation.compare_amount == D("600")
+    assert validation.status == "no_independent_data"
 
 
 def test_fifo_sign_change_moves_result_from_gains_to_losses(db):
@@ -327,7 +409,7 @@ def test_legacy_fifo_adjustment_is_not_applied_without_recalculation(db):
     assert list_fifo_adjustments(db, user=_user(1), fiscal_year=2024) == []
 
 
-def test_tr_validation_excludes_other_brokers(db):
+def test_cross_validation_does_not_claim_tautological_match(db):
     tr_box = _casilla(1, 2024, 332, "100", broker=Broker.TR)
     tr_box.tr_reference_amount = D("100")
     db.add_all([
@@ -340,10 +422,11 @@ def test_tr_validation_excludes_other_brokers(db):
     validation = cross_validation(db, user=_user(1), fiscal_year=2024).rows[0]
 
     assert casilla.amount_eur == D("150")
-    assert casilla.validation_status == "match"
+    assert casilla.validation_status is None
     assert validation.finview_amount == D("150")
-    assert validation.compare_amount == D("100")
-    assert validation.status == "match"
+    assert validation.compare_amount == D("150")
+    assert validation.tr_amount is None
+    assert validation.status == "no_independent_data"
 
 
 def test_legacy_fifo_only_year_is_not_listed(db):

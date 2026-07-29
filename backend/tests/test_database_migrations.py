@@ -51,3 +51,19 @@ def test_ensure_columns_adds_fifo_breakdown_and_version(monkeypatch):
         for column in inspect(engine).get_columns("cross_broker_lots")
     }
     assert "calculation_version" in lot_columns
+
+
+def test_ensure_columns_adds_withholding_breakdown(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE transactions (id INTEGER PRIMARY KEY)"))
+    monkeypatch.setattr(database, "engine", engine)
+
+    database.ensure_columns()
+    database.ensure_columns()
+
+    columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("transactions")
+    }
+    assert {"domestic_withholding_tax", "foreign_withholding_tax"} <= columns

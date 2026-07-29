@@ -305,6 +305,12 @@ export interface SavingsEstimate {
   gross_quota: string;
   quota: string;
   withholdings: string;
+  cash_withholdings: string;
+  domestic_withholdings: string;
+  double_taxation_credit: string;
+  double_taxation_credit_applied: string;
+  withholding_breakdown_complete: boolean;
+  incomplete_withholding_transactions: number;
   result: string; // >0 a ingresar · <0 a devolver
   brackets: { from: string; to: string; rate: string; tax: string }[];
   casillas: Record<string, string>;

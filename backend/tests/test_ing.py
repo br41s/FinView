@@ -91,7 +91,9 @@ class TestInterest:
         i = report.interest[0]
         assert i.tx_type == TxType.INTEREST
         assert i.gross_amount == _D("200.00")
-        assert i.withholding_tax == _D("-38.00")
+        assert i.withholding_tax == _D("38.00")
+        assert i.domestic_withholding_tax == _D("38.00")
+        assert i.foreign_withholding_tax == _D("0")
         assert i.net_amount_eur == _D("162.00")
         assert "ING" in i.name
 
@@ -106,7 +108,7 @@ class TestDividends:
 
     def test_total_withholding(self, report):
         total = sum(d.withholding_tax for d in report.dividends)
-        assert total == _D("-263.01")
+        assert total == _D("263.01")
 
     def test_all_spanish(self, report):
         for d in report.dividends:

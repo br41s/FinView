@@ -389,7 +389,9 @@ def _extract_dividends(
             gross_amount=amount_eur,
             fees=Decimal("0"),
             net_amount_eur=amount_eur - wht_eur,
-            withholding_tax=-wht_eur,
+            withholding_tax=wht_eur,
+            domestic_withholding_tax=Decimal("0"),
+            foreign_withholding_tax=wht_eur,
             withholding_rate=wht_rate,
         ))
 

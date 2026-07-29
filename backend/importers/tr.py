@@ -16,6 +16,7 @@ Sections parsed:
 
 import hashlib
 import re
+from collections import defaultdict, deque
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -322,6 +323,7 @@ _INT_RE = re.compile(
 
 def _build_dividend_tx(m, tx_type, isin, name, country):
     """Build a ParsedTransaction from a dividend/interest regex match."""
+    withholding = abs(parse_eur_number(m.group(8)))
     return ParsedTransaction(
         tx_type=tx_type,
         trade_date=parse_date(m.group(1)),
@@ -333,9 +335,11 @@ def _build_dividend_tx(m, tx_type, isin, name, country):
         currency=m.group(2),
         fees=parse_eur_number(m.group(5)),
         gross_amount=parse_eur_number(m.group(7)),
-        withholding_tax=-abs(parse_eur_number(m.group(8))),
+        withholding_tax=withholding,
+        domestic_withholding_tax=Decimal("0"),
+        foreign_withholding_tax=withholding,
         exchange_rate=parse_eur_number(m.group(9)),
-        net_amount_eur=parse_eur_number(m.group(10)) - abs(parse_eur_number(m.group(8))),
+        net_amount_eur=parse_eur_number(m.group(10)) - withholding,
         casilla=int(m.group(12)),
     )
 
@@ -645,6 +649,32 @@ def _parse_section_v(pages_text: list[str]) -> list[ParsedWithholding]:
     return results
 
 
+def _apply_withholding_details(
+    transactions: list[ParsedTransaction],
+    details: list[ParsedWithholding],
+) -> None:
+    """Attach the explicit foreign-tax credit from legacy TR section V.
+
+    Legacy Trade Republic reports were issued by the German entity, so their
+    withholding is foreign rather than a Spanish payment on account. Matching
+    by ISIN and payment date avoids inferring treaty limits from country names.
+    """
+    by_key: dict[tuple[str, date], deque[ParsedWithholding]] = defaultdict(deque)
+    for detail in details:
+        by_key[(detail.isin, detail.payment_date)].append(detail)
+    for tx in transactions:
+        matches = by_key.get((tx.isin, tx.trade_date))
+        if not matches:
+            continue
+        detail = matches.popleft()
+        tx.withholding_tax = abs(detail.withholding_eur)
+        tx.domestic_withholding_tax = Decimal("0")
+        tx.foreign_withholding_tax = abs(detail.withholding_eur)
+        tx.withholding_rate = detail.withholding_rate
+        tx.double_taxation_amount = abs(detail.double_taxation_eur)
+        tx.double_taxation_rate = detail.double_taxation_rate
+
+
 # =============================================================================
 # Main parser
 # =============================================================================
@@ -692,16 +722,20 @@ def parse_tr_tax_report(pdf_path: str | Path) -> TRTaxReport:
     source_variant = "tr_de_premigration" if pre_migration else "legacy"
     transactions = [] if pre_migration else _parse_section_vi(pages_text)
 
+    dividends = _parse_section_i(pages_text)
+    withholdings = _parse_section_v(pages_text)
+    _apply_withholding_details(dividends, withholdings)
+
     return TRTaxReport(
         client_id=client_id,
         period_start=period_start,
         period_end=period_end,
         currency="EUR",
         fiscal_year=period_end.year,
-        dividends=_parse_section_i(pages_text),
+        dividends=dividends,
         capital_gains=_parse_section_iii(pages_text),
         transactions=transactions,
-        withholdings=_parse_section_v(pages_text),
+        withholdings=withholdings,
         holdings=_parse_section_vii(pages_text),
         casillas_modelo_100=_parse_section_viii(pages_text),
         casillas_modelo_714=_parse_section_ix(pages_text),

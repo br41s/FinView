@@ -121,7 +121,11 @@ class SavingsInputs:
     rcm_net: Decimal = Decimal("0")      # casilla 27 (intereses) + 29 (dividendos)
     gains: Decimal = Decimal("0")        # casilla 332 — ganancias por transmisión (≥0)
     losses: Decimal = Decimal("0")       # casilla 337 — pérdidas (≤0)
-    withholdings: Decimal = Decimal("0")  # retenciones del ahorro (≥0)
+    # Spanish payments on account plus independently calculated foreign-tax
+    # credit are separate because the credit cannot create a refund by itself.
+    withholdings: Decimal = Decimal("0")
+    double_taxation_credit: Decimal = Decimal("0")
+    foreign_taxed_income: Decimal = Decimal("0")
     # Pending savings losses carried from prior years (art. 49). Positive
     # magnitudes; each compensates the current same-type positive balance.
     prior_rcm_loss: Decimal = Decimal("0")
@@ -155,6 +159,9 @@ class SavingsEstimate:
     gross_quota: Decimal                 # cuota íntegra del ahorro (pre-minimum)
     quota: Decimal                       # cuota tras mínimo, floored at 0
     withholdings: Decimal
+    domestic_withholdings: Decimal
+    double_taxation_credit: Decimal
+    double_taxation_credit_applied: Decimal
     result: Decimal                      # >0 a ingresar · <0 a devolver
     breakdown: list[dict] = field(default_factory=list)  # per-bracket detail
 
@@ -251,7 +258,17 @@ def estimate_savings(inputs: SavingsInputs, profile: TaxpayerProfile, year: int)
     quota_minimum, _ = progressive_tax(minimum_applied, year)
     quota = max(Decimal("0"), gross_quota - quota_minimum)
 
-    result = quota - inputs.withholdings
+    effective_savings_rate = quota / base if base > 0 else Decimal("0")
+    foreign_income_limit = (
+        max(inputs.foreign_taxed_income, Decimal("0")) * effective_savings_rate
+    )
+    credit_applied = min(
+        max(inputs.double_taxation_credit, Decimal("0")),
+        quota,
+        foreign_income_limit,
+    )
+    applied = inputs.withholdings + credit_applied
+    result = quota - credit_applied - inputs.withholdings
 
     q = lambda d: d.quantize(_CENTS)  # noqa: E731
     return SavingsEstimate(
@@ -267,7 +284,10 @@ def estimate_savings(inputs: SavingsInputs, profile: TaxpayerProfile, year: int)
         minimum_on_savings=q(minimum_on_savings),
         gross_quota=q(gross_quota),
         quota=q(quota),
-        withholdings=q(inputs.withholdings),
+        withholdings=q(applied),
+        domestic_withholdings=q(inputs.withholdings),
+        double_taxation_credit=q(inputs.double_taxation_credit),
+        double_taxation_credit_applied=q(credit_applied),
         result=q(result),
         breakdown=[
             {**b, "rate": b["rate"], "tax": q(b["tax"]), "from": q(b["from"]), "to": q(b["to"])}

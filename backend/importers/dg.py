@@ -171,7 +171,13 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             price=_D("0"),
             currency="EUR",
             gross_amount=gross,
-            withholding_tax=withholding,
+            withholding_tax=abs(withholding),
+            domestic_withholding_tax=(
+                abs(withholding) if country == "España" else _D("0")
+            ),
+            foreign_withholding_tax=(
+                _D("0") if country == "España" else abs(withholding)
+            ),
             net_amount_eur=net,
         ))
     return dividends

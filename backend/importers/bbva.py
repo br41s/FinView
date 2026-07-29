@@ -193,7 +193,9 @@ def _parse_dividendos(text: str, fiscal_year: int, isin_map: dict[str, str]) -> 
             price=_D("0"),
             currency="EUR",
             gross_amount=gross,
-            withholding_tax=-withholding,
+            withholding_tax=withholding,
+            domestic_withholding_tax=withholding,
+            foreign_withholding_tax=_D("0"),
             net_amount_eur=gross - withholding,
         ))
 

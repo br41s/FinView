@@ -42,6 +42,8 @@ class TransactionOut(BaseModel):
     gross_amount: Decimal
     fees: Decimal
     withholding_tax: Decimal
+    domestic_withholding_tax: Decimal | None = None
+    foreign_withholding_tax: Decimal | None = None
     net_amount_eur: Decimal
     casilla: int | None
     holding_period: str | None
@@ -97,7 +99,7 @@ class AggregatedCasillaOut(BaseModel):
     brokers: list[BrokerAmount]
     fifo_adjustment_eur: Decimal | None = None
     tr_reference_amount: Decimal | None = None
-    validation_status: str | None = None  # "match" | "mismatch" | None
+    validation_status: str | None = None
 
 
 class CrossBrokerLotOut(BaseModel):
@@ -208,7 +210,7 @@ class CrossValidationRow(BaseModel):
     compare_amount: Decimal  # amount actually compared (TR-only for multi-broker casillas)
     tr_amount: Decimal | None
     difference: Decimal | None
-    status: str  # "match" | "mismatch" | "no_tr_data"
+    status: str  # currently "no_independent_data"
     is_multi_broker: bool
     brokers: list[BrokerAmount]
 
@@ -574,6 +576,12 @@ class SavingsEstimateOut(BaseModel):
     gross_quota: Decimal
     quota: Decimal
     withholdings: Decimal
+    cash_withholdings: Decimal = Decimal("0")
+    domestic_withholdings: Decimal = Decimal("0")
+    double_taxation_credit: Decimal = Decimal("0")
+    double_taxation_credit_applied: Decimal = Decimal("0")
+    withholding_breakdown_complete: bool = True
+    incomplete_withholding_transactions: int = 0
     result: Decimal  # >0 a ingresar · <0 a devolver
     brackets: list[dict]
     casillas: dict[str, Decimal]  # source casilla totals (brokers + manual)

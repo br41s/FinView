@@ -205,7 +205,10 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
             <Row label="Mínimo aplicado al ahorro" value={estimate.minimum_on_savings} muted />
             <Row label="Cuota íntegra del ahorro" value={estimate.gross_quota} />
             <Row label="Cuota tras mínimo" value={estimate.quota} strong />
-            <Row label="Retenciones soportadas" value={`-${estimate.withholdings}`} muted />
+            <Row label="Retenido en efectivo" value={`-${estimate.cash_withholdings}`} muted />
+            <Row label="Pago a cuenta ES (0597)" value={`-${estimate.domestic_withholdings}`} muted />
+            <Row label="Doble imposición aplicada (0588)" value={`-${estimate.double_taxation_credit_applied}`} muted />
+            <Row label="Total aplicado" value={`-${estimate.withholdings}`} muted />
             <hr className="border-border" />
             <ResultRow result={estimate.result} />
 
@@ -253,6 +256,13 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
               <p className="text-xs text-amber-600 dark:text-amber-500">
                 ⚠️ No hay tablas fiscales para {fiscalYear}; se han usado las de{" "}
                 {estimate.rates_year_used}.
+              </p>
+            )}
+            {!estimate.withholding_breakdown_complete && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                ⚠️ {estimate.incomplete_withholding_transactions} retenciones antiguas no
+                tienen desglose origen/destino. Se muestran en el efectivo retenido, pero no
+                reducen esta estimación hasta volver a importar el informe.
               </p>
             )}
             <p className="text-xs text-muted-foreground border-t border-border pt-2">

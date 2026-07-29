@@ -298,7 +298,9 @@ def _parse_rendimientos_row(line: str) -> ParsedTransaction | None:
         exchange_rate=Decimal("1"),
         gross_amount=gross,
         fees=Decimal("0"),
-        withholding_tax=-(origen + destino),
+        withholding_tax=origen + destino,
+        domestic_withholding_tax=destino,
+        foreign_withholding_tax=origen,
         net_amount_eur=gross - origen - destino,
         double_taxation_amount=acreditable if acreditable > 0 else None,
         casilla=27 if tx_type == TxType.INTEREST else 29,
@@ -668,7 +670,7 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
                     tx = _parse_rendimientos_row(line)
                     if tx:
                         dividends.append(tx)
-                        if tx.withholding_tax < 0:
+                        if tx.withholding_tax > 0:
                             withholdings.append(
                                 ParsedWithholding(
                                     country=tx.country,
@@ -682,7 +684,7 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
                                     payment_date=tx.trade_date,
                                     currency="EUR",
                                     income_eur=tx.gross_amount,
-                                    withholding_eur=-tx.withholding_tax,
+                                    withholding_eur=tx.withholding_tax,
                                     withholding_rate=Decimal("0"),
                                     double_taxation_eur=tx.double_taxation_amount
                                     or Decimal("0"),
