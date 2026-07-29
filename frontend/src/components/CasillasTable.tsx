@@ -140,7 +140,17 @@ function CountryAnalysis({
 }
 
 function brokerAmount(c: Casilla, broker: string): string | undefined {
-  return c.brokers?.find((b) => b.broker === broker)?.amount_eur;
+  const amounts = c.brokers?.filter((b) => b.broker === broker) ?? [];
+  if (amounts.length === 0) return undefined;
+  return amounts
+    .reduce((total, item) => total + Number(item.amount_eur), 0)
+    .toString();
+}
+
+function reportedBrokerTotal(c: Casilla): number {
+  return (c.brokers ?? [])
+    .filter((item) => item.broker !== "MANUAL")
+    .reduce((total, item) => total + Number(item.amount_eur), 0);
 }
 
 function CasillasSection({
@@ -209,7 +219,7 @@ function CasillasSection({
                           )}
                           {showBadge && c.validation_status === "mismatch" && (
                             <span
-                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
+                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(reportedBrokerTotal(c) - Number(c.tr_reference_amount ?? 0)))}`}
                               className="text-amber-400"
                             >
                               ⚠️
@@ -228,20 +238,12 @@ function CasillasSection({
                       {showCrossBroker &&
                         c.fifo_adjustment_eur &&
                         Number(c.fifo_adjustment_eur) !== 0 && (
-                          <>
-                            <span className="mt-1 block text-xs text-amber-400">
-                              ⚠ Ajuste FIFO cruzado:{" "}
-                              {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
-                              {formatEur(c.fifo_adjustment_eur)} (diferencia entre FIFO
-                              global y broker)
-                            </span>
-                            <span className="mt-1 block font-mono text-xs text-amber-400">
-                              ⚠ Ajustado:{" "}
-                              {formatEur(
-                                Number(c.amount_eur) + Number(c.fifo_adjustment_eur),
-                              )}
-                            </span>
-                          </>
+                          <span className="mt-1 block text-xs text-amber-400">
+                            ⚠ Incluye ajuste FIFO cruzado:{" "}
+                            {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
+                            {formatEur(c.fifo_adjustment_eur)} (diferencia entre FIFO
+                            global y broker)
+                          </span>
                         )}
                     </div>
                   );
@@ -291,7 +293,7 @@ function CasillasSection({
                             c.fifo_adjustment_eur &&
                             Number(c.fifo_adjustment_eur) !== 0 && (
                               <span className="block text-xs text-amber-400 mt-1">
-                                ⚠ Ajuste FIFO cruzado:{" "}
+                                ⚠ Incluye ajuste FIFO cruzado:{" "}
                                 {Number(c.fifo_adjustment_eur) > 0 ? "+" : ""}
                                 {formatEur(c.fifo_adjustment_eur)} (diferencia
                                 entre FIFO global y broker)
@@ -300,17 +302,6 @@ function CasillasSection({
                         </td>
                         <td className="py-2 text-right font-mono">
                           {formatEur(amount)}
-                          {showCrossBroker &&
-                            c.fifo_adjustment_eur &&
-                            Number(c.fifo_adjustment_eur) !== 0 && (
-                              <span className="block text-xs text-amber-400 mt-1 font-mono">
-                                ⚠ Ajustado:{" "}
-                                {formatEur(
-                                  Number(c.amount_eur) +
-                                    Number(c.fifo_adjustment_eur),
-                                )}
-                              </span>
-                            )}
                         </td>
                         <td className="py-2 text-center">
                           {showBadge && c.validation_status === "match" && (
@@ -323,7 +314,7 @@ function CasillasSection({
                           )}
                           {showBadge && c.validation_status === "mismatch" && (
                             <span
-                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(Number(c.amount_eur) - Number(c.tr_reference_amount ?? 0)))}`}
+                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(reportedBrokerTotal(c) - Number(c.tr_reference_amount ?? 0)))}`}
                               className="text-amber-400 cursor-help"
                             >
                               ⚠️

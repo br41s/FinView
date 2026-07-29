@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.importers.ibkr import parse_ibkr_activity_statement
+from backend.importers.ibkr import _parse_single_trade, parse_ibkr_activity_statement
 
 CSV_PATH = Path(__file__).parent.parent.parent / "files" / "IBKR-U11040354_2024_2024.csv"
 
@@ -69,6 +69,28 @@ class TestTrades:
     def test_no_forex_trades(self, report):
         fx = [t for t in report.trades if "EUR.USD" in t.name or "EUR.GBP" in t.name]
         assert len(fx) == 0
+
+    def test_commissions_increase_buy_cost_and_reduce_sell_proceeds(self):
+        buy_row = [""] * 14
+        buy_row[3:14] = [
+            "Stocks", "EUR", "BASF", "2024-01-02", "10", "100", "",
+            "-1000", "-10", "", "0",
+        ]
+        sell_row = [""] * 14
+        sell_row[3:14] = [
+            "Stocks", "EUR", "BASF", "2024-06-02", "-10", "120", "",
+            "1200", "-10", "", "180",
+        ]
+        symbol_isin = {"BASF": "DE000BASF111"}
+
+        buy = _parse_single_trade(buy_row, symbol_isin, {})
+        sell = _parse_single_trade(sell_row, symbol_isin, {})
+
+        assert buy is not None
+        assert sell is not None
+        assert buy.net_amount_eur == Decimal("1010")
+        assert sell.net_amount_eur == Decimal("1190")
+        assert sell.net_amount_eur - buy.net_amount_eur == Decimal("180")
 
 
 class TestDividends:

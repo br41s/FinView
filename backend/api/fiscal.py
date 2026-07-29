@@ -34,6 +34,7 @@ from backend.services.tax_estimator import (
     TaxpayerProfile,
     estimate_savings,
 )
+from backend.services.fifo_engine import FIFO_CALCULATION_VERSION
 from backend.models import (
     Account,
     Broker,
@@ -52,6 +53,42 @@ from backend.models import (
 router = APIRouter(prefix="/fiscal", tags=["fiscal"])
 
 
+def _fifo_casilla_deltas(adjustments: list[FIFOAdjustment]) -> dict[int, Decimal]:
+    """Split FIFO corrections between gains (332) and losses (337).
+
+    Legacy rows are deliberately ignored: they were calculated before the
+    chronological FIFO fix and do not contain a reliable per-box breakdown.
+    """
+    deltas = {332: Decimal("0"), 337: Decimal("0")}
+    for adj in adjustments:
+        if adj.calculation_version != FIFO_CALCULATION_VERSION:
+            continue
+        deltas[332] += (
+            (adj.fifo_gains_eur or Decimal("0"))
+            - (adj.broker_gains_eur or Decimal("0"))
+        )
+        deltas[337] += (
+            (adj.fifo_losses_eur or Decimal("0"))
+            - (adj.broker_losses_eur or Decimal("0"))
+        )
+
+    return {casilla: amount for casilla, amount in deltas.items() if amount}
+
+
+def _fifo_adjustments_by_casilla(
+    db: DbSession, user_id: int, fiscal_year: int
+) -> dict[int, Decimal]:
+    rows = (
+        db.query(FIFOAdjustment)
+        .filter(
+            FIFOAdjustment.user_id == user_id,
+            FIFOAdjustment.fiscal_year == fiscal_year,
+        )
+        .all()
+    )
+    return _fifo_casilla_deltas(rows)
+
+
 @router.get("/casillas", response_model=list[AggregatedCasillaOut])
 def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """List tax casillas aggregated across all brokers."""
@@ -67,18 +104,11 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         grouped.setdefault(key, []).append(r)
 
     # Load FIFO adjustments for the fiscal year (if any)
-    fifo_adj_by_casilla: dict[int, Decimal] = {}
-    if fiscal_year:
-        adjs = db.query(FIFOAdjustment).filter(
-            FIFOAdjustment.user_id == user.id,
-            FIFOAdjustment.fiscal_year == fiscal_year
-        ).all()
-        for adj in adjs:
-            # Positive adjustment → more gains (332), negative → less gains / more losses (337)
-            if adj.adjustment_eur > 0:
-                fifo_adj_by_casilla[332] = fifo_adj_by_casilla.get(332, Decimal("0")) + adj.adjustment_eur
-            elif adj.adjustment_eur < 0:
-                fifo_adj_by_casilla[337] = fifo_adj_by_casilla.get(337, Decimal("0")) + adj.adjustment_eur
+    fifo_adj_by_casilla = (
+        _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
+        if fiscal_year
+        else {}
+    )
 
     # Manual savings entries (per-year) mapped to their casillas, folded in as a
     # "MANUAL" source so the boxes match Mi declaración. Only when a year is set.
@@ -90,7 +120,12 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
     for (modelo, casilla), items in sorted(grouped.items()):
         broker_total = sum(i.amount_eur for i in items)
         manual_amt = man_cas.get(casilla, Decimal("0")) if modelo == 100 else Decimal("0")
-        total = broker_total + manual_amt
+        adj_val = (
+            fifo_adj_by_casilla.get(casilla, Decimal("0"))
+            if modelo == 100
+            else Decimal("0")
+        )
+        total = broker_total + manual_amt + adj_val
         desc = items[0].description
         brokers = [
             {"broker": i.broker, "amount_eur": i.amount_eur}
@@ -98,22 +133,21 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         ]
         if manual_amt:
             brokers.append({"broker": "MANUAL", "amount_eur": manual_amt})
-        adj_val = fifo_adj_by_casilla.get(casilla)
-
-        # TR validation: sum TR broker reference amounts for this casilla. A
-        # migration year has two TR reports (pre/post), so the combined
-        # cross-broker total must be compared against their summed reference.
-        # Validate the BROKER total only — manual entries have no TR reference.
+        # TR validation: sum both TR amounts and references. Migration years
+        # can have multiple TR fragments; other brokers/manual/FIFO are outside
+        # this broker-specific check.
+        tr_items = [item for item in items if item.broker == Broker.TR]
         tr_refs = [
-            i.tr_reference_amount
-            for i in items
-            if i.broker == Broker.TR and i.tr_reference_amount is not None
+            item.tr_reference_amount
+            for item in tr_items
+            if item.tr_reference_amount is not None
         ]
         tr_ref = None
         validation = None
         if tr_refs:
             tr_ref = sum(tr_refs)
-            validation = "match" if abs(broker_total - tr_ref) < Decimal("0.02") else "mismatch"
+            tr_amount = sum(item.amount_eur for item in tr_items)
+            validation = "match" if abs(tr_amount - tr_ref) < Decimal("0.02") else "mismatch"
 
         result.append(AggregatedCasillaOut(
             modelo=modelo,
@@ -121,21 +155,27 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
             description=desc,
             amount_eur=total,
             brokers=brokers,
-            fifo_adjustment_eur=adj_val,
+            fifo_adjustment_eur=adj_val or None,
             tr_reference_amount=tr_ref,
             validation_status=validation,
         ))
 
-    # Casillas that exist only from manual entries (no broker rows this year).
-    for casilla, amt in man_cas.items():
+    # Casillas that exist only from manual or FIFO data (no broker rows this year).
+    for casilla in sorted(set(man_cas) | set(fifo_adj_by_casilla)):
+        amt = man_cas.get(casilla, Decimal("0"))
+        adj_val = fifo_adj_by_casilla.get(casilla, Decimal("0"))
         if (100, casilla) in grouped:
             continue
+        brokers = []
+        if amt:
+            brokers.append({"broker": "MANUAL", "amount_eur": amt})
         result.append(AggregatedCasillaOut(
             modelo=100,
             casilla=casilla,
             description=_MANUAL_CASILLA_DESC.get(casilla, ""),
-            amount_eur=amt,
-            brokers=[{"broker": "MANUAL", "amount_eur": amt}],
+            amount_eur=amt + adj_val,
+            brokers=brokers,
+            fifo_adjustment_eur=adj_val or None,
         ))
 
     result.sort(key=lambda c: (c.modelo, c.casilla))
@@ -181,8 +221,17 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
     manual_div_net = man_cas.get(29, Decimal("0")) - man_whg.get(29, Decimal("0"))
     manual_whg_total = sum(man_whg.values(), Decimal("0"))
 
-    gains_total = _sum_casilla(332) + man_cas.get(332, Decimal("0"))
-    losses_total = _sum_casilla(337) + man_cas.get(337, Decimal("0"))
+    fifo_cas = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
+    gains_total = (
+        _sum_casilla(332)
+        + man_cas.get(332, Decimal("0"))
+        + fifo_cas.get(332, Decimal("0"))
+    )
+    losses_total = (
+        _sum_casilla(337)
+        + man_cas.get(337, Decimal("0"))
+        + fifo_cas.get(337, Decimal("0"))
+    )
 
     # Reuse list_casillas so the summary's casillas are byte-identical to the
     # Casillas fiscales view (broker + manual, same sources, same boxes).
@@ -234,6 +283,16 @@ def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = 
 
     gains = _sum_realized_pl(positive=True)
     losses = _sum_realized_pl(positive=False)
+    if fiscal_year:
+        fifo_cas = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
+    else:
+        fifo_cas = _fifo_casilla_deltas(
+            db.query(FIFOAdjustment)
+            .filter(FIFOAdjustment.user_id == user.id)
+            .all()
+        )
+    gains += fifo_cas.get(332, Decimal("0"))
+    losses += fifo_cas.get(337, Decimal("0"))
 
     accounts = db.query(func.count(Account.id)).filter(Account.user_id == user.id).scalar() or 0
     imports = (
@@ -281,6 +340,7 @@ def list_cross_broker_lots(db: DbSession, user: CurrentUser, fiscal_year: int):
             buy_account.user_id == user.id,
             sell_account.user_id == user.id,
             CrossBrokerLot.fiscal_year == fiscal_year,
+            CrossBrokerLot.calculation_version == FIFO_CALCULATION_VERSION,
         )
         .order_by(CrossBrokerLot.isin, CrossBrokerLot.id)
         .all()
@@ -293,7 +353,11 @@ def list_fifo_adjustments(db: DbSession, user: CurrentUser, fiscal_year: int):
     """List FIFO adjustments (cross-broker vs broker) for a fiscal year."""
     adjs = (
         db.query(FIFOAdjustment)
-        .filter(FIFOAdjustment.user_id == user.id, FIFOAdjustment.fiscal_year == fiscal_year)
+        .filter(
+            FIFOAdjustment.user_id == user.id,
+            FIFOAdjustment.fiscal_year == fiscal_year,
+            FIFOAdjustment.calculation_version == FIFO_CALCULATION_VERSION,
+        )
         .order_by(FIFOAdjustment.isin)
         .all()
     )
@@ -395,40 +459,37 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
         key = (r.modelo, r.casilla)
         grouped.setdefault(key, []).append(r)
 
-    # Load FIFO adjustments
-    fifo_adj: dict[int, Decimal] = {}
-    adjs = db.query(FIFOAdjustment).filter(
-        FIFOAdjustment.user_id == user.id,
-        FIFOAdjustment.fiscal_year == fiscal_year,
-    ).all()
-    for adj in adjs:
-        target = 332 if adj.adjustment_eur > 0 else 337
-        fifo_adj[target] = fifo_adj.get(target, Decimal("0")) + adj.adjustment_eur
+    fifo_adj = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
 
     result_rows: list[CrossValidationRow] = []
     match_count = mismatch_count = no_ref_count = 0
 
-    for (modelo, casilla), items in sorted(grouped.items()):
+    keys = set(grouped)
+    keys.update((100, casilla) for casilla in fifo_adj)
+    for modelo, casilla in sorted(keys):
+        items = grouped.get((modelo, casilla), [])
         total = sum(i.amount_eur for i in items)
         adj_val = fifo_adj.get(casilla, Decimal("0"))
         adjusted_total = total + adj_val
-        desc = items[0].description
+        desc = items[0].description if items else _MANUAL_CASILLA_DESC.get(casilla, "")
         brokers = [{"broker": i.broker, "amount_eur": i.amount_eur} for i in items]
 
-        # Find TR reference and TR's own amount
-        tr_ref = None
-        tr_own_amount = None
-        for i in items:
-            if i.broker == Broker.TR:
-                tr_own_amount = i.amount_eur
-                if i.tr_reference_amount is not None:
-                    tr_ref = i.tr_reference_amount
+        # TR references validate broker-reported amounts, not FIFO/manual
+        # corrections. Sum migration fragments instead of keeping the last one.
+        tr_refs = [
+            item.tr_reference_amount
+            for item in items
+            if item.broker == Broker.TR and item.tr_reference_amount is not None
+        ]
+        tr_ref = sum(tr_refs, Decimal("0")) if tr_refs else None
+        tr_amount = sum(
+            (item.amount_eur for item in items if item.broker == Broker.TR),
+            Decimal("0"),
+        )
+        broker_count = len({item.broker for item in items})
 
         if tr_ref is not None:
-            # For multi-broker casillas (29, 332, 337), compare TR amount vs TR reference
-            # For TR-only casillas (27, 714), compare total vs TR reference
-            is_multi_broker = len(items) > 1
-            compare_amount = tr_own_amount if is_multi_broker and tr_own_amount is not None else adjusted_total
+            compare_amount = tr_amount
             diff = compare_amount - tr_ref
             status = "match" if abs(diff) < Decimal("1.00") else "mismatch"
             if status == "match":
@@ -450,7 +511,7 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
             tr_amount=tr_ref,
             difference=diff,
             status=status,
-            is_multi_broker=len(items) > 1,
+            is_multi_broker=broker_count > 1 or bool(adj_val),
             brokers=brokers,
         ))
 
@@ -507,19 +568,40 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
     )
     tx_map = {int(row.yr): (row.whg or Decimal("0"), row.pos_count) for row in tx_rows}
 
-    return YearlyComparisonResult(years=[
-        YearlyMetrics(
-            fiscal_year=row.fiscal_year,
-            dividends_gross=row.dividends,
-            gains=row.gains,
-            losses=row.losses,
-            net_capital=row.gains + row.losses,
-            withholdings=tx_map.get(row.fiscal_year, (Decimal("0"), 0))[0],
-            brokers=row.broker_count,
-            positions=tx_map.get(row.fiscal_year, (Decimal("0"), 0))[1],
+    fifo_rows = (
+        db.query(FIFOAdjustment)
+        .filter(
+            FIFOAdjustment.user_id == user.id,
+            FIFOAdjustment.calculation_version == FIFO_CALCULATION_VERSION,
         )
-        for row in tax_rows
-    ])
+        .all()
+    )
+    fifo_by_year: dict[int, list[FIFOAdjustment]] = {}
+    for adjustment in fifo_rows:
+        fifo_by_year.setdefault(adjustment.fiscal_year, []).append(adjustment)
+    fifo_map = {
+        year: _fifo_casilla_deltas(adjustments)
+        for year, adjustments in fifo_by_year.items()
+    }
+
+    tax_map = {row.fiscal_year: row for row in tax_rows}
+    metrics = []
+    for year in sorted(set(tax_map) | set(fifo_map)):
+        row = tax_map.get(year)
+        fifo = fifo_map.get(year, {})
+        gains = (row.gains if row else Decimal("0")) + fifo.get(332, Decimal("0"))
+        losses = (row.losses if row else Decimal("0")) + fifo.get(337, Decimal("0"))
+        metrics.append(YearlyMetrics(
+            fiscal_year=year,
+            dividends_gross=row.dividends if row else Decimal("0"),
+            gains=gains,
+            losses=losses,
+            net_capital=gains + losses,
+            withholdings=tx_map.get(year, (Decimal("0"), 0))[0],
+            brokers=row.broker_count if row else 0,
+            positions=tx_map.get(year, (Decimal("0"), 0))[1],
+        ))
+    return YearlyComparisonResult(years=metrics)
 
 
 # ── Fiscal onboarding: savings-base estimate (v1 individual) ─────────────────
@@ -590,6 +672,8 @@ def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInput
     # Fold in manual entries mapped to the same casillas (shared helper).
     man_cas, man_whg = _manual_casillas(db, user_id, year)
     for box, amt in man_cas.items():
+        cas[box] = cas.get(box, Decimal("0")) + amt
+    for box, amt in _fifo_adjustments_by_casilla(db, user_id, year).items():
         cas[box] = cas.get(box, Decimal("0")) + amt
     man_whg_total = sum(man_whg.values(), Decimal("0"))
 
