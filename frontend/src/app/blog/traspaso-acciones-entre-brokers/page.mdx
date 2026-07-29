@@ -1,0 +1,119 @@
+export const metadata = {
+  title: "Traspasar acciones entre brokers: cómo hacerlo sin pagar a Hacienda — FinView",
+  description:
+    "Guía para traspasar acciones entre brokers en España: el traspaso de valores no tributa, pero vender y recomprar sí. Costes, plazos y qué pasa con tus precios de compra.",
+};
+
+# Traspasar acciones entre brokers: cómo cambiar de casa sin pagar peaje a Hacienda
+
+> Cambiar de broker no obliga a vender. Un traspaso de valores mueve tus acciones de una entidad a otra sin generar plusvalía, sin retención y sin casilla nueva en el IRPF. Y aun así, cada año hay gente que vende toda su cartera para "empezar de cero" en el broker nuevo y le regala a Hacienda un 19-28% de sus ganancias acumuladas. No lo hagas.
+
+---
+
+## 1. Traspaso de valores vs vender y recomprar
+
+Hay dos formas de mudarte de broker, y fiscalmente no se parecen en nada.
+
+**Traspaso de valores (transfer de cartera).** Tus acciones viajan de la cuenta de custodia del broker A a la del broker B. No hay venta, no hay hecho imponible, no declaras nada. Sigues siendo dueño de los mismos títulos, con la misma fecha y precio de compra. Es el equivalente a cambiar tus muebles de piso: los muebles siguen siendo tuyos.
+
+**Vender en A y recomprar en B.** Aquí sí hay venta. Cada posición con ganancia acumulada tributa ese año en la base del ahorro: 19% hasta 6.000 €, 21% hasta 50.000 €, 23% hasta 200.000 €, 27% hasta 300.000 € y 28% a partir de ahí. Si llevas años acumulando una cartera DGI, la factura puede ser de miles de euros por una simple mudanza.
+
+¿Cuándo tiene sentido vender y recomprar? Casi nunca. Las dos excepciones razonables: posiciones muy pequeñas donde la comisión de traspaso supera al impuesto, o cuando quieres aflorar pérdidas a propósito (y ahí cuidado con la [regla de los dos meses](/blog/compensar-perdidas-ganancias-irpf)).
+
+---
+
+## 2. Cómo funciona un traspaso paso a paso
+
+El proceso lo inicia siempre el **broker de destino**, no el de origen. Es contraintuitivo pero tiene lógica: el destino es quien tiene interés en captarte.
+
+1. **Abres cuenta en el broker nuevo** (si no la tienes). La titularidad debe ser idéntica: mismo titular o titulares, mismo orden. Un traspaso de una cuenta individual a una conjunta se rechaza o se trata como transmisión.
+2. **Solicitas el traspaso en el destino.** Te pedirán un extracto de posiciones del broker de origen con ISIN, número de títulos y datos de la cuenta.
+3. **El destino contacta con el origen** y los títulos se mueven entre custodios (Iberclear para valores españoles, Euroclear/Clearstream y agentes locales para el resto).
+4. **Esperas.** Con valores españoles entre entidades nacionales, una o dos semanas es lo habitual. Con valores extranjeros o brokers con cuentas ómnibus, de dos a seis semanas no es raro. Durante ese tiempo las posiciones suelen quedar bloqueadas: no puedes venderlas aunque el mercado se hunda.
+
+Un detalle que sorprende: los **dividendos que se paguen durante el traspaso** llegan igualmente, a veces al broker antiguo semanas después. No pierdes el cobro, pero puede aparecer donde no lo esperabas.
+
+---
+
+## 3. Lo que casi nadie te cuenta: tus precios de compra no siempre viajan
+
+El traspaso mueve los títulos, pero **el precio de adquisición y la fecha de compra no siempre acompañan al título**. Depende del par de brokers:
+
+- Entre bancos españoles (ING, BBVA, bancos tradicionales) el coste fiscal suele transmitirse, porque están obligados a informar a Hacienda del valor de adquisición.
+- Con brokers extranjeros (DEGIRO, Interactive Brokers, Trade Republic) es frecuente que las posiciones aparezcan en el destino **sin precio de compra**, o con el precio del día del traspaso, que es peor: parece que no tienes plusvalía cuando sí la tienes.
+
+¿Por qué importa tanto? Porque cuando vendas, la plusvalía se calcula contra tu precio real de compra, y por **FIFO**: las primeras acciones que compraste son las primeras que vendes, aunque estén repartidas en tres brokers distintos. Hacienda no acepta "no sé lo que me costaron". Si no puedes acreditar el coste, te arriesgas a que la Administración lo estime a su favor.
+
+Antes de iniciar cualquier traspaso, descarga del broker de origen:
+
+- El histórico completo de operaciones (compras, ventas, splits, scrip dividends)
+- Los extractos anuales de posiciones
+- Los justificantes de dividendos y retenciones
+
+Esto es exactamente el problema que FinView ataca: importas los históricos de cada broker (Trade Republic, DEGIRO, IBKR, ING, BBVA, eToro) y el motor FIFO reconstruye tus precios de adquisición cruzando brokers, de forma que la mudanza no te deja huérfano de datos.
+
+---
+
+## 4. Cuánto cuesta traspasar
+
+Las comisiones de **salida** son el arma de retención clásica de los brokers. Órdenes de magnitud orientativos (revisa siempre la tarifa vigente, cambian a menudo):
+
+| Concepto | Rango habitual |
+|---|---|
+| Salida por posición (brokers low-cost) | 0 € – 25 € por valor |
+| Salida en banca tradicional española | 0,2% – 0,5% con mínimos de 15-60 € por valor |
+| Entrada en el broker de destino | Gratis casi siempre |
+
+Dos apuntes prácticos. Primero: la comisión se cobra **por posición**, no por cartera. Una cartera de 25 valores a 20 € el traspaso son 500 €. Si tienes muchas posiciones pequeñas, haz números: quizá compensa vender las minúsculas y traspasar solo las grandes. Segundo: muchos brokers de destino tienen **promociones que reembolsan los costes de traspaso** hasta cierto límite si les llevas la cartera. Pregunta antes de pagar; a veces basta con enviar la factura del broker de origen.
+
+Ojo también con los brokers que directamente **no admiten traspasos de salida de ciertos productos** (fracciones de acciones, planes de inversión en fracciones): esas posiciones hay que venderlas sí o sí. Las fracciones son cómodas para acumular, pero te atan.
+
+---
+
+## 5. Efectos colaterales que conviene prever
+
+**Modelo 720.** Si traspasas de un broker español a uno extranjero y tu cartera fuera de España supera los 50.000 €, entras en obligación de informar con el [modelo 720](/blog/modelo-720-bienes-extranjero). No es un impuesto, pero olvidarlo trae sanciones.
+
+**Retención en dividendos USA.** Al cambiar de broker tendrás que firmar de nuevo el [formulario W-8BEN](/blog/formulario-w8ben-guia-espana) en el destino. Si no lo haces, tus dividendos americanos vuelven a la retención del 30% en vez del 15%.
+
+**Cuentas ómnibus.** La mayoría de brokers extranjeros custodian a nombre propio en cuentas globales. No es un problema fiscal, pero sí alarga los plazos del traspaso y conviene entender [qué pasa si el broker quiebra](/blog/que-pasa-si-quiebra-tu-broker) durante la mudanza: tus títulos siguen segregados del balance del broker.
+
+**Historial huérfano.** El broker de origen suele cerrar tu acceso a los informes meses después de irte. Descarga todo *antes* de pedir el traspaso, no después.
+
+---
+
+## 6. Checklist antes de darle al botón
+
+1. Descarga histórico de operaciones, extractos y justificantes del broker de origen.
+2. Verifica que el destino admite todos tus valores (ISIN, mercado, fracciones).
+3. Confirma que la titularidad de ambas cuentas es idéntica.
+4. Pide la tarifa de salida al origen y pregunta al destino si reembolsa.
+5. Vende las posiciones donde la comisión de salida supere el coste fiscal de vender.
+6. Firma el W-8BEN en el destino si tienes valores USA.
+7. Inicia el traspaso desde el broker de destino y no toques la cartera hasta que liquide.
+
+No es complicado. Es papeleo y paciencia. Lo caro es hacerlo mal: vender sin necesidad o quedarte sin poder acreditar tus precios de compra.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Tengo que declarar algo en el IRPF por traspasar acciones entre brokers?
+
+No. El traspaso de valores no es una transmisión: no hay ganancia ni pérdida patrimonial, no hay retención y no aparece en la declaración. Solo tributarás cuando vendas, y entonces contra tu precio de compra original.
+
+### ¿Se conserva la antigüedad y el precio de compra de mis acciones?
+
+Fiscalmente sí, siempre. Operativamente, el broker de destino puede no recibir esos datos y mostrarte la posición sin coste de adquisición. La obligación de acreditar el precio real es tuya: guarda los históricos del broker de origen antes de mudarte.
+
+### ¿Puedo traspasar fracciones de acciones?
+
+Normalmente no. Las fracciones son un apunte interno del broker, no un título traspasable entre custodios. Lo habitual es que el broker las venda (con su efecto fiscal) y traspase solo las acciones enteras.
+
+### ¿Cuánto tarda un traspaso de cartera?
+
+Entre una y seis semanas según los brokers y los mercados implicados. Valores españoles entre entidades nacionales van rápido; valores extranjeros vía cuentas ómnibus, lento. Durante el proceso las posiciones suelen quedar bloqueadas para operar.
+
+### ¿Y si el broker de origen me lo pone difícil?
+
+No pueden negarse a un traspaso, pero sí cobrarte la tarifa publicada y tomarse los plazos con calma. Si hay bloqueos injustificados, reclama por escrito al servicio de atención al cliente y, si no responde en un mes, ante la CNMV.
