@@ -1237,7 +1237,45 @@ function ImgFiscalidadOpciones() {
   );
 }
 
+function ImgRecomprasVsDividendos() {
+  return (
+    <div className={styles.postImgRecomprasVsDividendos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">ACCIONES EN CIRCULACIÓN</text>
+        {/* Shrinking pie: shares outstanding reduced by buybacks */}
+        <circle cx="52" cy="66" r="30" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <path d="M52 36 A30 30 0 0 1 82 66 L52 66 Z" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="66" y="56" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−25%</text>
+        <text x="52" y="106" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">recompradas</text>
+        {/* Arrow to bigger slice per shareholder */}
+        <path d="M92 66 L114 66" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="3 2"/>
+        <path d="M110 62 L116 66 L110 70" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        {/* Coins column: dividend vs buyback split */}
+        <rect x="122" y="30" width="66" height="32" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <circle cx="134" cy="46" r="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <text x="160" y="43" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Dividendo</text>
+        <text x="160" y="53" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tributa al cobro</text>
+        <rect x="122" y="68" width="66" height="32" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <polygon points="128,92 140,74 134,92" fill="var(--fv-ochre)"/>
+        <text x="160" y="81" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Recompra</text>
+        <text x="160" y="91" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">difiere el IRPF</text>
+        <text x="100" y="116" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Shareholder yield = dividendo + recompra neta</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'recompras-acciones-vs-dividendos',
+    tag: 'Estrategia',
+    date: '31 jul 2026',
+    readTime: '9 min',
+    title: 'Recompras de acciones vs dividendos: qué gana el accionista con cada una',
+    excerpt:
+      'Las recompras difieren el IRPF y suben tu parte del pastel; los dividendos son renta que llega sola. Cuándo un buyback crea valor, cómo detectar los que destruyen y por qué el shareholder yield mide mejor que el yield a secas.',
+    Image: ImgRecomprasVsDividendos,
+  },
   {
     slug: 'fiscalidad-opciones-irpf-espana',
     tag: 'Fiscalidad',
