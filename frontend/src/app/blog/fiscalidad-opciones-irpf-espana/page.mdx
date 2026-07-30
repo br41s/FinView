@@ -1,0 +1,121 @@
+export const metadata = {
+  title: "Fiscalidad de las opciones en el IRPF: cómo tributan las primas de puts y calls — FinView",
+  description:
+    "Cómo tributan las opciones financieras en el IRPF español: primas de puts vendidas, covered calls, ejercicio, vencimiento y recompra. Con ejemplos numéricos y errores típicos.",
+};
+
+# Fiscalidad de las opciones en el IRPF: cómo tributan las primas de puts y calls
+
+> Vendes una put, cobras 180 € de prima y piensas "esto ya lo declararé cuando venda las acciones". Error. Hacienda tiene su propio calendario para las opciones, y no coincide ni con el día que cobras la prima ni con el día que te apetezca.
+
+Cada vez más inversores en dividendos españoles venden puts para entrar en sus empresas favoritas con descuento, o covered calls para sacar renta extra de la cartera. La estrategia está bien documentada — ya la contamos en [opciones para generar ingresos extra](/blog/opciones-ingresos-extra-dividendos). Lo que casi nadie cuenta es qué pasa después, cuando llega abril y tienes que meter todo eso en Renta Web. Tu broker extranjero no retiene nada, no le manda nada a Hacienda, y el informe anual viene en inglés y en dólares. Estás solo.
+
+Esta guía cubre los tres desenlaces posibles de una opción vendida, qué hacer cuando compras opciones, en qué apartado va cada cosa y los errores que veo repetirse una y otra vez.
+
+---
+
+## 1. La regla básica: las primas son ganancias patrimoniales
+
+Cuando operas con opciones como inversor particular (no como actividad económica), el resultado tributa como **ganancia o pérdida patrimonial**. No es rendimiento del capital mobiliario como los dividendos: no va a la casilla 29, no lleva retención del 19% y tu broker no le comunica nada a la Agencia Tributaria si es extranjero.
+
+Se integra en la **base del ahorro**, con los mismos tramos que una plusvalía por venta de acciones: del 19% al 30% según tu base total. Si necesitas repasar los tramos, están en la [guía de plusvalías en el IRPF](/blog/plusvalias-espana-irpf-guia).
+
+¿Y cuándo se declara? Aquí está la primera trampa. La Dirección General de Tributos ha mantenido en varias consultas vinculantes que la renta **no se imputa cuando cobras la prima, sino cuando la operación se liquida**: al vencimiento, al ejercicio o al cierre anticipado. Si vendes una put en diciembre de 2026 que vence en marzo de 2027, esa prima va a la declaración de 2027. Aunque el dinero lleve meses en tu cuenta.
+
+No te mentiré: este criterio de imputación es de los que generan discusión entre asesores, y algunos brokers lo reflejan de otra forma en sus informes. Si mueves cifras grandes, una consulta con un asesor fiscal cuesta menos que una paralela.
+
+---
+
+## 2. Venta de puts: los tres finales posibles
+
+Vendiste una put sobre Iberdrola, strike 13 €, prima de 0,45 € por acción (45 € por contrato de 100). Tres cosas pueden pasar.
+
+**La opción expira sin valor.** Iberdrola cierra por encima de 13 € al vencimiento. Te quedas la prima entera: ganancia patrimonial de 45 € (menos comisiones), imputada al año del vencimiento. El escenario limpio.
+
+**Cierras la posición antes.** Recompras la put pagando 0,15 €. Tu ganancia es la diferencia: 45 − 15 = 30 €, imputada al año de la recompra. Si la acción se desplomó y recompras a 1,20 €, tienes una pérdida de 75 € que puedes compensar con otras ganancias — el mecanismo es el mismo que explicamos en [compensar pérdidas y ganancias](/blog/compensar-perdidas-ganancias-irpf).
+
+**Te ejercitan.** Iberdrola cae a 12,10 € y te adjudican 100 acciones a 13 €. Aquí el criterio administrativo mayoritario separa las dos operaciones: la prima de 45 € tributa como ganancia patrimonial en el año del ejercicio, y las acciones entran en tu cartera con valor de adquisición de 13 € por título (más gastos). Ese 13 € es el que usará el FIFO el día que vendas, aunque "sientas" que tu coste real fue 12,55 €.
+
+Fíjate en la asimetría del último caso: la prima tributa ya, pero la minusvalía latente de las acciones (compradas a 13 cuando cotizan a 12,10) no aflora hasta que vendas. Puedes acabar pagando impuestos en un año en el que tu posición global pierde dinero.
+
+---
+
+## 3. Covered calls: renta extra con letra pequeña
+
+La covered call es la favorita del inversor en dividendos: tienes 200 Telefónicas, vendes 2 calls fuera de dinero y cobras prima mientras esperas el dividendo. Fiscalmente funciona igual que la put vendida, con un matiz importante en el ejercicio.
+
+Si la call expira sin valor o la recompras, la prima (o la diferencia) es ganancia o pérdida patrimonial. Sencillo.
+
+Si te ejercitan, vendes tus acciones al strike. Eso dispara **dos** hechos imponibles el mismo día: la prima cobrada por un lado, y la plusvalía o minusvalía de las acciones por otro, calculada con FIFO desde tu precio de compra original hasta el strike. Si esas Telefónicas las compraste en 2016 a 9 € y te las ejercitan a 4,50 €... sí, la covered call te acaba de cristalizar una pérdida que quizá no querías aflorar ese año. O al revés: una plusvalía gorda que no tenías planificada.
+
+Mi opinión: antes de vender calls sobre posiciones antiguas, mira el precio medio de compra de los lotes FIFO más viejos. La prima de 60 € no compensa cristalizar 4.000 € de plusvalía en el año equivocado.
+
+---
+
+## 4. Compra de opciones: cuando la prima la pagas tú
+
+Si compras puts como cobertura o calls como apuesta direccional, el esquema se invierte.
+
+| Desenlace | Resultado fiscal |
+|---|---|
+| Expira sin valor | Pérdida patrimonial por la prima pagada |
+| Vendes la opción | Ganancia o pérdida por la diferencia de primas |
+| Ejercitas una call | La prima se suma al coste de adquisición de las acciones |
+
+El tercer caso es el único donde la prima no genera resultado propio: si ejercitas una call con strike 20 € pagando antes 1 € de prima, tus acciones entran a 21 € de coste. La prima se recupera fiscalmente el día que vendas.
+
+Las opciones compradas que expiran sin valor son pérdidas perfectamente compensables. Guarda el extracto del broker que lo acredite: en una comprobación, "la opción venció a cero" se demuestra con papeles, no con capturas de la app.
+
+---
+
+## 5. Dónde va todo esto en Renta Web
+
+Las opciones no tienen casilla con nombre propio. Van al apartado de **ganancias y pérdidas patrimoniales derivadas de la transmisión de otros elementos patrimoniales** — el mismo bloque genérico donde caen los derivados, no el de acciones cotizadas. Cosas a tener en cuenta:
+
+- **No hay retención.** Nadie ha adelantado nada a Hacienda por ti. Todo lo que declares se paga (o se compensa) en la cuota.
+- **Operaciones en dólares:** cada prima cobrada o pagada se convierte a euros al tipo de cambio de su fecha. Con 40 operaciones al año, esto es la parte más tediosa — y la que los informes anuales de brokers americanos no te dan hecha en euros.
+- **Los brokers extranjeros no informan** a la AEAT de tus derivados. El borrador vendrá vacío en este apartado. Si no lo rellenas tú, no lo rellena nadie... hasta que llegue un requerimiento con los datos del intercambio internacional de información.
+- Las pérdidas en derivados se compensan con ganancias patrimoniales sin restricción entre productos, y hasta un 25% con dividendos e intereses.
+
+¿Y la regla de los dos meses? Está pensada para recompras de **valores homogéneos** (acciones, fondos). Una opción que vence y otra que abres después con distinto strike y vencimiento no son el mismo valor. Pero si encadenas operaciones diseñadas solo para aflorar pérdidas manteniendo la misma exposición, pisas terreno gris. Prudencia.
+
+---
+
+## 6. Ejemplo completo: un año vendiendo puts
+
+Situación: durante 2026 vendes 10 puts sobre acciones del Ibex y americanas. Resultado bruto:
+
+| Concepto | Importe |
+|---|---|
+| 7 puts expiradas sin valor | +620 € |
+| 2 puts recompradas con pérdida | −290 € |
+| 1 put ejercida (prima) | +85 € |
+| Comisiones totales | −38 € |
+
+Ganancia patrimonial neta: **377 €**, a la base del ahorro. Al 19%, unos 72 € de cuota. Las 100 acciones adjudicadas por la put ejercida entran en cartera al strike y no generan nada más este año.
+
+Ahora imagina que además cobraste 3.000 € de dividendos y afloraste 500 € de pérdidas vendiendo un fondo. Las pérdidas se comen primero los 377 € de las opciones, y el resto compensa dividendos hasta el tope del 25%. El orden de compensación importa, y hacerlo a mano con operaciones en dos divisas es donde la mayoría tira la toalla — o usa una herramienta que lleve el registro operación a operación.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Las primas de opciones llevan retención del 19% como los dividendos?
+
+No. Son ganancias patrimoniales, no rendimientos del capital. Ningún broker retiene nada, ni español ni extranjero. Todo el impuesto se liquida en tu declaración.
+
+### ¿Declaro la prima cuando la cobro o cuando vence la opción?
+
+El criterio de la DGT es imputarla al período en que la operación se cierra: vencimiento, ejercicio o recompra. Una put vendida en noviembre de 2026 con vencimiento en enero de 2027 se declara en la renta de 2027.
+
+### ¿Puedo compensar pérdidas de opciones con plusvalías de acciones?
+
+Sí, sin límite: ambas son ganancias y pérdidas patrimoniales de la base del ahorro. Y el saldo negativo restante compensa hasta el 25% de tus dividendos e intereses, con 4 años para arrastrar lo que sobre.
+
+### Si me ejercitan una put, ¿la prima reduce el precio de compra de las acciones?
+
+Según el criterio administrativo mayoritario, no: la prima tributa como ganancia independiente en el año del ejercicio, y las acciones entran a tu cartera al precio de ejercicio. Algunos informes de brokers lo presentan de otra manera — para el IRPF español manda el criterio de la DGT, no el 1099 americano.
+
+### ¿Operar opciones puede considerarse actividad económica?
+
+Solo en casos extremos de dedicación y medios (operativa profesional, ordenación por cuenta propia). Para el inversor particular que vende unas cuantas puts y covered calls al año, es gestión de patrimonio personal: ganancias patrimoniales y punto.

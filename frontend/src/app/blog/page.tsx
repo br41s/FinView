@@ -1208,7 +1208,46 @@ function ImgTraspasoBrokers() {
   );
 }
 
+function ImgFiscalidadOpciones() {
+  return (
+    <div className={styles.postImgFiscalidadOpciones}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">PUT VENDIDA — 3 DESENLACES</text>
+        {/* Prima coin at origin */}
+        <circle cx="30" cy="62" r="16" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="30" y="60" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">prima</text>
+        <text x="30" y="70" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">+45 €</text>
+        {/* Branch lines */}
+        <path d="M46 56 C70 40, 84 34, 104 32" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none"/>
+        <path d="M46 62 L104 62" stroke="var(--fv-ink-30)" strokeWidth="1.2"/>
+        <path d="M46 68 C70 84, 84 90, 104 92" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        {/* Outcome boxes */}
+        <rect x="106" y="20" width="82" height="24" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="147" y="30" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Expira sin valor</text>
+        <text x="147" y="39" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">ganancia: prima</text>
+        <rect x="106" y="50" width="82" height="24" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="147" y="60" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Recompra</text>
+        <text x="147" y="69" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">± diferencia</text>
+        <rect x="106" y="80" width="82" height="24" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="147" y="90" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Ejercicio</text>
+        <text x="147" y="99" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">acciones al strike</text>
+        <text x="100" y="115" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Ganancia patrimonial · base del ahorro · sin retención</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'fiscalidad-opciones-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '30 jul 2026',
+    readTime: '10 min',
+    title: 'Fiscalidad de las opciones en el IRPF: cómo tributan las primas de puts y calls',
+    excerpt:
+      'Las primas de opciones son ganancias patrimoniales sin retención, y se imputan al vencimiento, no al cobro. Qué pasa si te ejercitan, cómo tributa la covered call y dónde va todo en Renta Web.',
+    Image: ImgFiscalidadOpciones,
+  },
   {
     slug: 'traspaso-acciones-entre-brokers',
     tag: 'Brokers',
