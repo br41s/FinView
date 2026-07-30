@@ -199,7 +199,9 @@ def _parse_interest(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             price=_D("0"),
             currency="EUR",
             gross_amount=gross,
-            withholding_tax=-withholding,  # Store as negative (retention)
+            withholding_tax=withholding,
+            domestic_withholding_tax=withholding,
+            foreign_withholding_tax=_D("0"),
             net_amount_eur=gross - withholding,
         ))
     return results
@@ -231,7 +233,9 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             price=_D("0"),
             currency="EUR",
             gross_amount=gross,
-            withholding_tax=-withholding,
+            withholding_tax=withholding,
+            domestic_withholding_tax=withholding,
+            foreign_withholding_tax=_D("0"),
             net_amount_eur=gross - withholding,
         ))
 
@@ -263,7 +267,9 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
                 price=_D("0"),
                 currency="EUR",
                 gross_amount=gross,
-                withholding_tax=-withholding,
+                withholding_tax=withholding,
+                domestic_withholding_tax=withholding,
+                foreign_withholding_tax=_D("0"),
                 net_amount_eur=gross - withholding,
             ))
 
@@ -388,7 +394,9 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             price=amount / qty if qty else _D("0"),
             currency="EUR",
             gross_amount=amount,
-            withholding_tax=-withholding,
+            withholding_tax=withholding,
+            domestic_withholding_tax=withholding,
+            foreign_withholding_tax=_D("0"),
             net_amount_eur=amount - withholding,
         ))
 

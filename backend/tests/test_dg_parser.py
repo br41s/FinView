@@ -37,7 +37,8 @@ def test_enagas_dividend(report):
     assert d.isin == "ES0130960018"  # enriched from holdings
     assert d.country == "España"
     assert d.gross_amount == Decimal("40.00")
-    assert d.withholding_tax == Decimal("-7.60")
+    assert d.withholding_tax == Decimal("7.60")
+    assert d.foreign_withholding_tax == Decimal("7.60")
     assert d.net_amount_eur == Decimal("32.40")
     assert d.tx_type == TxType.DIVIDEND
 

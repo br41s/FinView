@@ -73,6 +73,12 @@ def test_cdi_credit_captured(report):
         (d.double_taxation_amount or Decimal("0")) for d in report.dividends
     )
     assert total_acreditable == Decimal("84.60")
+    assert all(
+        d.withholding_tax
+        == (d.domestic_withholding_tax or Decimal("0"))
+        + (d.foreign_withholding_tax or Decimal("0"))
+        for d in report.dividends
+    )
 
 
 def test_transactions_empty(report):

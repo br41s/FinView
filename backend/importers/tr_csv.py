@@ -106,7 +106,9 @@ def _build_dividend(row: dict) -> ParsedTransaction | None:
         exchange_rate=Decimal("1"),
         gross_amount=gross,
         fees=Decimal("0"),
-        withholding_tax=wht,
+        withholding_tax=abs(wht),
+        domestic_withholding_tax=(abs(wht) if country_from_isin(isin) == "España" else Decimal("0")),
+        foreign_withholding_tax=(Decimal("0") if country_from_isin(isin) == "España" else abs(wht)),
         net_amount_eur=net,
         casilla=29,
     )

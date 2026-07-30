@@ -4,6 +4,30 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Retenciones y casillas IRPF
+
+#### Fixed
+- Las retenciones usan magnitudes positivas y separan el efectivo retenido, el pago a
+  cuenta español (casilla 0597) y la retención extranjera. El estimador ya no resta la
+  retención total como si toda fuese recuperable.
+- La deducción por doble imposición (casilla 0588) solo usa el importe explícito del
+  informe fiscal, queda limitada por la cuota y por el tipo efectivo sobre la renta
+  extranjera, y no puede crear una devolución por sí sola.
+- Los intereses, derechos y demás transacciones con retención entran en los totales;
+  la comparativa anual incluye también ejercicios con datos manuales.
+- Las casillas 0328 y 0380 del formato 2025 participan en ganancias y pérdidas. La
+  validación contra Trade Republic deja de mostrar coincidencias tautológicas cuando
+  no existe un cálculo independiente.
+
+#### Migration
+- `transactions` incorpora `domestic_withholding_tax` y
+  `foreign_withholding_tax` mediante migración aditiva. Las filas antiguas conservan
+  el efectivo retenido, pero el estimador avisa y no adivina el desglose; hay que
+  reimportar el informe para recuperarlo.
+
+#### Verification
+- Suite backend completa, Ruff y TypeScript limpios.
+
 ### Corrección fiscal FIFO cross-broker (#185)
 
 #### Fixed

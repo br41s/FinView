@@ -67,10 +67,16 @@ class ParsedTransaction:
     fees: Decimal = Decimal("0")
     net_amount_eur: Decimal = Decimal("0")
 
-    # Dividend-specific
+    # Savings-income withholding. All amounts are positive magnitudes.
+    # ``withholding_tax`` is the total cash withheld. The domestic/foreign
+    # split is explicit because only Spanish payments on account and an
+    # independently calculated foreign-tax credit reduce the IRPF result.
     withholding_tax: Decimal = Decimal("0")
+    domestic_withholding_tax: Decimal | None = None
+    foreign_withholding_tax: Decimal | None = None
     withholding_rate: Decimal | None = None
     double_taxation_amount: Decimal | None = None
+    double_taxation_rate: Decimal | None = None
 
     # Fiscal pre-calculation from TR
     casilla: int | None = None

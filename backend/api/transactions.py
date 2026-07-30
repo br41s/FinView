@@ -80,7 +80,7 @@ def dividend_summary(db: DbSession, user: CurrentUser, fiscal_year: int | None =
         func.min(Transaction.name).label("name"),
         func.max(Transaction.country).label("country"),
         func.sum(Transaction.gross_amount).label("total_gross_eur"),
-        func.sum(Transaction.withholding_tax).label("total_withholding_eur"),
+        func.sum(func.abs(Transaction.withholding_tax)).label("total_withholding_eur"),
         func.sum(Transaction.net_amount_eur).label("total_net_eur"),
         func.count().label("payment_count"),
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
@@ -155,6 +155,8 @@ def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser
     valid_types = [t.value for t in TransactionType]
     if data.type not in valid_types:
         raise HTTPException(400, f"Invalid type. Must be one of: {valid_types}")
+    if data.withholding_tax < 0:
+        raise HTTPException(422, "withholding_tax must be a positive magnitude")
 
     gross = data.quantity * data.price
     net_eur = (gross - data.fees - data.withholding_tax) * data.exchange_rate
@@ -175,6 +177,8 @@ def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser
         gross_amount=gross,
         fees=data.fees,
         withholding_tax=data.withholding_tax,
+        domestic_withholding_tax=data.withholding_tax,
+        foreign_withholding_tax=Decimal("0"),
         net_amount_eur=net_eur,
     )
     db.add(tx)

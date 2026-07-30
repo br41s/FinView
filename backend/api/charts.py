@@ -28,7 +28,7 @@ def dividends_by_country(
     q = db.query(
         func.coalesce(Transaction.country, "Desconocido").label("country"),
         func.sum(Transaction.gross_amount).label("gross"),
-        func.sum(Transaction.withholding_tax).label("withholding"),
+        func.sum(func.abs(Transaction.withholding_tax)).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
         func.count().label("count"),
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
@@ -60,7 +60,7 @@ def dividends_monthly(
     q = db.query(
         year_month_str(Transaction.trade_date).label("month"),
         func.sum(Transaction.gross_amount).label("gross"),
-        func.sum(Transaction.withholding_tax).label("withholding"),
+        func.sum(func.abs(Transaction.withholding_tax)).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
         func.count().label("count"),
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
@@ -95,7 +95,7 @@ def top_dividend_payers(
         func.min(Transaction.name).label("name"),
         func.max(Transaction.country).label("country"),
         func.sum(Transaction.gross_amount).label("gross"),
-        func.sum(Transaction.withholding_tax).label("withholding"),
+        func.sum(func.abs(Transaction.withholding_tax)).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
         func.count().label("count"),
     ).join(Account).filter(Account.user_id == user.id, Transaction.type == TransactionType.DIVIDEND.value)
@@ -528,18 +528,20 @@ def withholdings_by_country(
     q = db.query(
         func.coalesce(Transaction.country, "Desconocido").label("country"),
         func.sum(Transaction.gross_amount).label("gross"),
-        func.sum(Transaction.withholding_tax).label("withholding"),
+        func.sum(func.abs(Transaction.withholding_tax)).label("withholding"),
         func.sum(Transaction.net_amount_eur).label("net"),
     ).join(Account).filter(
         Account.user_id == user.id,
         Transaction.type == TransactionType.DIVIDEND.value,
-        Transaction.withholding_tax < 0,
+        Transaction.withholding_tax != 0,
     )
 
     if fiscal_year:
         q = q.filter(year_range(Transaction.trade_date, fiscal_year))
 
-    rows = q.group_by("country").order_by(func.sum(Transaction.withholding_tax).asc()).all()
+    rows = q.group_by("country").order_by(
+        func.sum(func.abs(Transaction.withholding_tax)).desc()
+    ).all()
 
     return [
         {

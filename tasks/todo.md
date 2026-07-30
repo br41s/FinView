@@ -1,5 +1,14 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Auditoría financiera 2026-07-29
+
+- [x] Aislamiento por usuario (PR #184).
+- [x] FIFO fiscal v2 y recálculo operativo (PR #185).
+- [x] Retenciones, doble imposición y casillas: implementación y verificación local.
+- [ ] Cartera y valoración: corregir los fallos reproducidos en el siguiente PR.
+- [ ] Hardening FIFO residual: cerrar invalidación histórica, fees, asignaciones,
+      spinoffs y redondeo en PR separado.
+
 ## Cross-section coherence — instrument drawer (C now, B roadmap) — 2026-06-24
 
 **Origen:** /office-hours (proyecto completo). Decisión: **coherencia, no features.**

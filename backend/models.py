@@ -130,7 +130,11 @@ class Transaction(Base):
 
     gross_amount: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     fees: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    # Positive cash amount withheld. The split is nullable so rows imported
+    # before withholding semantics v2 remain identifiable as incomplete.
     withholding_tax: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    domestic_withholding_tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    foreign_withholding_tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     net_amount_eur: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
 
     # For dividends: withholding details

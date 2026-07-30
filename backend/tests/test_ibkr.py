@@ -109,10 +109,10 @@ class TestDividends:
         assert d.gross_amount > Decimal("10")  # Sanity check
         assert d.exchange_rate < Decimal("1")  # EUR/USD < 1 in 2024
         # Withholding also in EUR (stored as negative)
-        assert d.withholding_tax > Decimal("-2.08")
-        assert d.withholding_tax < Decimal("-1.5")
+        assert d.withholding_tax < Decimal("2.08")
+        assert d.withholding_tax > Decimal("1.5")
         # Net = gross + wht (wht is negative)
-        assert abs(d.net_amount_eur - (d.gross_amount + d.withholding_tax)) < Decimal("0.01")
+        assert abs(d.net_amount_eur - (d.gross_amount - d.withholding_tax)) < Decimal("0.01")
 
     def test_all_dividends_in_eur(self, report):
         """All dividend gross_amounts should be in EUR (less than original USD)."""
@@ -354,7 +354,9 @@ class TestDividends2025:
     def test_withholding_matched(self, report_2025):
         """All dividends should have withholding tax matched."""
         for d in report_2025.dividends:
-            assert d.withholding_tax < 0, f"Missing WHT for {d.name} on {d.trade_date}"
+            assert d.withholding_tax > 0, f"Missing WHT for {d.name} on {d.trade_date}"
+            assert d.domestic_withholding_tax == 0
+            assert d.foreign_withholding_tax == d.withholding_tax
 
     def test_new_tickers_hrl_kvue(self, report_2025):
         """HRL and KVUE are new dividend payers in 2025."""

@@ -113,11 +113,18 @@ En la pestaña **Rendimiento**, sección Casillas, encontrarás los valores prec
 |---------|-------------|
 | 27 | Intereses de cuentas y depósitos |
 | 29 | Rendimientos del capital mobiliario (dividendos brutos) |
-| 332 | Ganancias patrimoniales |
-| 337 | Pérdidas patrimoniales |
+| 328 / 380 | Ganancias o pérdidas por categoría de activo (formato 2025) |
+| 332 / 337 | Ganancias y pérdidas patrimoniales (formatos anteriores) |
+| 588 | Deducción por doble imposición internacional |
+| 597 | Retenciones españolas sobre capital mobiliario |
 | 05-09 | Bienes en el extranjero — Modelo 714 |
 
 > Los valores del FIFO cruzado pueden diferir de los calculados por cada broker individualmente. El importe de la casilla ya **incluye el ajuste FIFO**; la línea de ajuste explica cuánto se ha movido respecto al total informado por los brokers y evita sumarlo dos veces.
+
+En **Mi declaración**, “Retenido en efectivo” explica lo descontado por los brokers.
+Solo el pago a cuenta español y la deducción exterior aplicable reducen el resultado.
+Si una importación antigua no contiene el desglose origen/destino, FinView muestra un
+aviso y no lo estima: vuelve a importar el informe fiscal de ese ejercicio.
 
 ---
 

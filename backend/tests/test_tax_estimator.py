@@ -126,6 +126,53 @@ def test_estimate_with_general_base_absorbing_minimum():
     assert est.result == D("80")  # a ingresar
 
 
+def test_foreign_tax_credit_cannot_create_refund_by_itself():
+    est = estimate_savings(
+        SavingsInputs(
+            rcm_net=D("1000"),
+            withholdings=D("19"),
+            double_taxation_credit=D("15"),
+        ),
+        TaxpayerProfile(),
+        2024,
+    )
+    assert est.quota == D("0")
+    assert est.double_taxation_credit_applied == D("0")
+    assert est.withholdings == D("19")
+    assert est.result == D("-19")
+
+
+def test_foreign_tax_credit_is_capped_by_remaining_quota():
+    est = estimate_savings(
+        SavingsInputs(
+            rcm_net=D("1000"),
+            withholdings=D("10"),
+            double_taxation_credit=D("500"),
+            foreign_taxed_income=D("1000"),
+        ),
+        TaxpayerProfile(general_base=D("20000")),
+        2024,
+    )
+    assert est.quota == D("190")
+    assert est.double_taxation_credit_applied == D("190")
+    assert est.result == D("-10")
+
+
+def test_foreign_tax_credit_uses_effective_rate_on_foreign_income():
+    est = estimate_savings(
+        SavingsInputs(
+            rcm_net=D("10000"),
+            double_taxation_credit=D("50"),
+            foreign_taxed_income=D("100"),
+        ),
+        TaxpayerProfile(general_base=D("20000")),
+        2024,
+    )
+    assert est.quota == D("1980")
+    assert est.double_taxation_credit_applied == D("19.80")
+    assert est.result == D("1960.20")
+
+
 def test_estimate_with_loss_compensation():
     est = estimate_savings(
         SavingsInputs(rcm_net=D("10000"), gains=D("0"), losses=D("-2000"),

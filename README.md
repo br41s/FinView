@@ -89,10 +89,10 @@ FinView/
 
 ## Motor fiscal IRPF
 
-- **Modelo 100:** Casillas 27 (intereses), 29 (dividendos), 332 (ganancias patrimoniales), 337 (pérdidas patrimoniales)
+- **Modelo 100:** Casillas 27/29 (rendimientos), 328/380 o 332/337 según el formato del ejercicio (ganancias y pérdidas), 588 (doble imposición) y 597 (retenciones españolas)
 - **Modelo 714:** Casillas 05-09 (patrimonio en el extranjero)
 - **FIFO cruzado v2:** Matching cronológico global; las ventas históricas consumen inventario antes del ejercicio objetivo y una compra futura nunca puede financiar una venta anterior
-- **Retenciones:** Tracking por país con deducciones CDI (15% estándar)
+- **Retenciones:** Efectivo, pago a cuenta español y retención extranjera se guardan por separado; la deducción CDI solo se aplica cuando el informe aporta un importe acreditable explícito
 - **Ajustes FIFO:** Desglose versionado por ganancias/pérdidas, integrado en casillas, resumen, estimador, dashboard, exportación y comparativa anual
 - **Integridad:** ISIN vacío e inventario incompleto no generan un resultado FIFO autoritativo
 - **Comisiones IBKR:** Las compras incorporan la comisión al coste y las ventas la descuentan del importe obtenido
@@ -100,6 +100,8 @@ FinView/
 Los lotes y ajustes anteriores a FIFO v2 no se aplican a los totales fiscales ni se
 exponen como vigentes. Para regenerarlos hay que reemplazar o reimportar el ejercicio;
 la migración de esquema no reinterpreta automáticamente datos históricos.
+Lo mismo ocurre con retenciones importadas antes del desglose origen/destino: siguen
+visibles como efectivo retenido, pero deben reimportarse para aplicarlas al estimador.
 
 ## Monitor de Opciones
 

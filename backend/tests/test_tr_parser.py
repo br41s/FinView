@@ -121,6 +121,8 @@ class TestDividends:
         d = mbg[0]
         assert d.net_amount_eur == Decimal("530.0000")
         assert d.withholding_tax == Decimal("139.780000")
+        assert d.domestic_withholding_tax == Decimal("0")
+        assert d.foreign_withholding_tax == Decimal("139.780000")
         assert d.casilla == 29
 
     def test_siemens_dividend(self, report):

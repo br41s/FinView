@@ -107,7 +107,7 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `users` | Usuarios registrados |
 | `accounts` | Cuentas por broker (una por broker importado) |
 | `import_records` | Registro de importaciones (hash SHA-256 para deduplicación) |
-| `transactions` | Todas las operaciones: BUY, SELL, DIVIDEND, INTEREST, FEE, SPINOFF, CORPORATE_ACTION |
+| `transactions` | Operaciones y desglose de retención: total efectivo, pago español y retención extranjera |
 | `tax_lots` | Lotes FIFO por broker |
 | `tax_results` | Casillas Modelo 100/714 precalculadas |
 | `cross_broker_lots` | Lotes FIFO cruzados entre todos los brokers |

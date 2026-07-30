@@ -147,12 +147,6 @@ function brokerAmount(c: Casilla, broker: string): string | undefined {
     .toString();
 }
 
-function reportedBrokerTotal(c: Casilla): number {
-  return (c.brokers ?? [])
-    .filter((item) => item.broker !== "MANUAL")
-    .reduce((total, item) => total + Number(item.amount_eur), 0);
-}
-
 function CasillasSection({
   casillas,
   selectedBroker,
@@ -200,32 +194,13 @@ function CasillasSection({
                     ? (brokerAmount(c, selectedBroker) ?? c.amount_eur)
                     : c.amount_eur;
                   const showCrossBroker = !selectedBroker;
-                  const showBadge = !selectedBroker || selectedBroker === "TR";
                   return (
                     <div key={`${c.modelo}-${c.casilla}-card`} className="py-2 text-sm">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs text-muted-foreground">
                           {c.casilla}
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-medium">{formatEur(amount)}</span>
-                          {showBadge && c.validation_status === "match" && (
-                            <span
-                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
-                              className="text-green-400"
-                            >
-                              ✅
-                            </span>
-                          )}
-                          {showBadge && c.validation_status === "mismatch" && (
-                            <span
-                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(reportedBrokerTotal(c) - Number(c.tr_reference_amount ?? 0)))}`}
-                              className="text-amber-400"
-                            >
-                              ⚠️
-                            </span>
-                          )}
-                        </div>
+                        <span className="font-mono font-medium">{formatEur(amount)}</span>
                       </div>
                       <p className="text-foreground">{c.description}</p>
                       {showCrossBroker && c.brokers && c.brokers.length > 1 && (
@@ -257,20 +232,17 @@ function CasillasSection({
                       <th className="text-left py-2">Casilla</th>
                       <th className="text-left py-2">Descripción</th>
                       <th className="text-right py-2">Importe</th>
-                      <th className="text-center py-2 w-10">TR</th>
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((c) => {
                       // When filtering by broker, show that broker's own
                       // contribution and hide cross-broker context (multi-broker
-                      // breakdown, FIFO adjustment). The TR validation badge only
-                      // applies to the aggregate or the TR-filtered view.
+                      // breakdown and FIFO adjustment).
                       const amount = selectedBroker
                         ? (brokerAmount(c, selectedBroker) ?? c.amount_eur)
                         : c.amount_eur;
                       const showCrossBroker = !selectedBroker;
-                      const showBadge = !selectedBroker || selectedBroker === "TR";
                       return (
                       <tr
                         key={`${c.modelo}-${c.casilla}`}
@@ -302,24 +274,6 @@ function CasillasSection({
                         </td>
                         <td className="py-2 text-right font-mono">
                           {formatEur(amount)}
-                        </td>
-                        <td className="py-2 text-center">
-                          {showBadge && c.validation_status === "match" && (
-                            <span
-                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)}`}
-                              className="text-green-400 cursor-help"
-                            >
-                              ✅
-                            </span>
-                          )}
-                          {showBadge && c.validation_status === "mismatch" && (
-                            <span
-                              title={`TR ref: ${formatEur(c.tr_reference_amount ?? 0)} — Δ ${formatEur(Math.abs(reportedBrokerTotal(c) - Number(c.tr_reference_amount ?? 0)))}`}
-                              className="text-amber-400 cursor-help"
-                            >
-                              ⚠️
-                            </span>
-                          )}
                         </td>
                       </tr>
                       );
