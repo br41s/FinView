@@ -986,6 +986,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
         broker=Broker.ING.value,
         fiscal_year=report.fiscal_year,
         record_count=record_count,
+        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
     )
     db.add(import_rec)
     db.flush()
@@ -1080,6 +1081,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
         broker=Broker.BBVA.value,
         fiscal_year=report.fiscal_year,
         record_count=record_count,
+        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
     )
     db.add(import_rec)
     db.flush()

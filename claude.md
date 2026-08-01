@@ -752,6 +752,15 @@ replace each other:
   apply legacy `calculation_version=NULL` rows to fiscal totals.
 - Importer changes: each importer is isolated — changes in one must not break others.
   Always run pytest backend/tests/ after importer changes.
+- Portfolio snapshots are authoritative only when
+  `ImportRecord.portfolio_snapshot_complete=true`. Empty complete snapshots close old
+  positions; partial ING/BBVA document sets must leave the marker false. Apply all
+  later transactions after reconciliation and propagate unknown cost instead of zero.
+- Portfolio totals are fail-closed: one unknown cost invalidates invested/P&L and one
+  missing price invalidates total market value/P&L. Never publish a partial subtotal as
+  the whole portfolio.
+- Portfolio price resolution is one ticker to many ISINs. Corporate-action ISINs that
+  share a Yahoo ticker must all receive the fetched price and cache row.
 - DB schema: there is **no Alembic**. New tables auto-create via
   `Base.metadata.create_all` on startup. `create_all` does NOT alter existing tables, so
   adding a column to a table that already exists in prod requires registering it in

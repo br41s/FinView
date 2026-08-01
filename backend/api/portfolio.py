@@ -69,11 +69,11 @@ def list_positions(db: DbSession, user: CurrentUser, skip_prices: bool = False):
             "quantity": float(round(p.quantity, 6)),
             "avg_cost_eur": float(round(p.avg_cost_eur, 4)) if p.avg_cost_eur is not None else None,
             "total_cost_eur": float(round(p.total_cost_eur, 2)) if p.total_cost_eur is not None else None,
-            "current_price_eur": float(round(p.current_price_eur, 4)) if p.current_price_eur else None,
-            "market_value_eur": float(round(p.market_value_eur, 2)) if p.market_value_eur else None,
-            "unrealized_pl_eur": float(round(p.unrealized_pl_eur, 2)) if p.unrealized_pl_eur else None,
-            "unrealized_pl_pct": float(round(p.unrealized_pl_pct, 2)) if p.unrealized_pl_pct else None,
-            "weight_pct": float(round(p.weight_pct, 2)) if p.weight_pct else None,
+            "current_price_eur": float(round(p.current_price_eur, 4)) if p.current_price_eur is not None else None,
+            "market_value_eur": float(round(p.market_value_eur, 2)) if p.market_value_eur is not None else None,
+            "unrealized_pl_eur": float(round(p.unrealized_pl_eur, 2)) if p.unrealized_pl_eur is not None else None,
+            "unrealized_pl_pct": float(round(p.unrealized_pl_pct, 2)) if p.unrealized_pl_pct is not None else None,
+            "weight_pct": float(round(p.weight_pct, 2)) if p.weight_pct is not None else None,
         }
         for p in positions
     ]

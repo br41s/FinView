@@ -18,6 +18,7 @@ _EXCHANGE_CURRENCY: dict[str, str] = {
     ".L": "GBP",
     ".OL": "NOK",
     ".CO": "DKK",
+    ".SI": "SGD",
     ".SA": "BRL",
 }
 
@@ -170,24 +171,24 @@ def fetch_and_cache_prices(
         return cached
 
     # Resolve tickers for missing ISINs
-    ticker_to_isin: dict[str, str] = {}
+    ticker_to_isins: dict[str, list[str]] = {}
     for isin in missing:
         ticker = _resolve_ticker(isin, db)
         if ticker:
-            ticker_to_isin[ticker] = isin
+            ticker_to_isins.setdefault(ticker, []).append(isin)
         else:
             logger.warning("No Yahoo ticker for ISIN %s", isin)
 
-    if not ticker_to_isin:
+    if not ticker_to_isins:
         return cached
 
     # Batch fetch via yfinance
-    prices = _fetch_yahoo_prices(list(ticker_to_isin.keys()))
+    prices = _fetch_yahoo_prices(list(ticker_to_isins.keys()))
 
     # Determine which currencies need conversion
     non_eur_currencies: set[str] = set()
     ticker_currencies: dict[str, str] = {}
-    for ticker in ticker_to_isin:
+    for ticker in ticker_to_isins:
         ccy = _ticker_currency(ticker)
         ticker_currencies[ticker] = ccy
         if ccy != "EUR":
@@ -205,8 +206,8 @@ def fetch_and_cache_prices(
             logger.warning("No ECB rate for %s", ccy)
 
     for ticker, price_val in prices.items():
-        isin = ticker_to_isin.get(ticker)
-        if not isin:
+        ticker_isins = ticker_to_isins.get(ticker)
+        if not ticker_isins:
             continue
 
         # London Stock Exchange quotes in GBX (pence) — convert to GBP
@@ -229,30 +230,32 @@ def fetch_and_cache_prices(
 
         price_dec = Decimal(str(round(price_eur, 6)))
 
-        # Upsert cache
-        existing = (
-            db.query(PriceCache)
-            .filter(PriceCache.isin == isin, PriceCache.fetched_date == today)
-            .first()
-        )
-        if existing:
-            existing.price = price_dec
-            existing.yahoo_ticker = ticker
-            existing.original_currency = ccy
-            existing.original_price = orig_price
-            existing.fx_rate = rate
-        else:
-            db.add(PriceCache(
-                isin=isin,
-                yahoo_ticker=ticker,
-                price=price_dec,
-                currency="EUR",
-                original_currency=ccy,
-                original_price=orig_price,
-                fx_rate=rate,
-                fetched_date=today,
-            ))
-        cached[isin] = price_dec
+        # One Yahoo ticker can represent multiple ISINs across a corporate
+        # action (for example AENA pre/post split). Cache every requested ISIN.
+        for isin in ticker_isins:
+            existing = (
+                db.query(PriceCache)
+                .filter(PriceCache.isin == isin, PriceCache.fetched_date == today)
+                .first()
+            )
+            if existing:
+                existing.price = price_dec
+                existing.yahoo_ticker = ticker
+                existing.original_currency = ccy
+                existing.original_price = orig_price
+                existing.fx_rate = rate
+            else:
+                db.add(PriceCache(
+                    isin=isin,
+                    yahoo_ticker=ticker,
+                    price=price_dec,
+                    currency="EUR",
+                    original_currency=ccy,
+                    original_price=orig_price,
+                    fx_rate=rate,
+                    fetched_date=today,
+                ))
+            cached[isin] = price_dec
 
     db.commit()
     return cached

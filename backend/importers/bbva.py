@@ -284,6 +284,7 @@ def parse_bbva_pdfs(pdf_paths: list[Path]) -> BBVAAnnualReport:
         transactions=transactions,
         holdings=holdings,
         custody_fee=custody_fee,
+        portfolio_snapshot_complete="patrimonio" in texts,
     )
 
 

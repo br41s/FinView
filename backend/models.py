@@ -285,6 +285,9 @@ class ImportRecord(Base):
     # a TR DE→ES migration year has a pre-migration and a post-migration report).
     # Used as part of the year-replacement key. NULL for legacy/other imports.
     source_variant: Mapped[str | None] = mapped_column(String(20))
+    # True when this import is an authoritative year-end portfolio snapshot,
+    # including the valid case where the snapshot contains zero holdings.
+    portfolio_snapshot_complete: Mapped[bool | None] = mapped_column(Boolean)
 
     account: Mapped["Account"] = relationship(back_populates="imports")
 

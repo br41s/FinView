@@ -244,6 +244,7 @@ class INGAnnualReport:
     dividends: list[ParsedTransaction] = field(default_factory=list)
     transactions: list[ParsedTransaction] = field(default_factory=list)
     holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
+    portfolio_snapshot_complete: bool = False
 
 
 @dataclass
@@ -255,6 +256,7 @@ class BBVAAnnualReport:
     transactions: list[ParsedTransaction] = field(default_factory=list)
     holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
     custody_fee: Decimal = Decimal("0")
+    portfolio_snapshot_complete: bool = False
 
 
 @dataclass

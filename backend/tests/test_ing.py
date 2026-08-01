@@ -163,6 +163,9 @@ class TestTransactions:
 
 
 class TestHoldings:
+    def test_snapshot_is_marked_complete(self, report):
+        assert report.portfolio_snapshot_complete is True
+
     def test_count(self, report):
         assert len(report.holdings) == 8
 

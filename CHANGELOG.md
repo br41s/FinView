@@ -28,6 +28,27 @@ All notable changes to FinView are documented here.
 #### Verification
 - Suite backend completa, Ruff y TypeScript limpios.
 
+### Corrección de cartera y valoración
+
+#### Fixed
+- La cartera conserva la actividad posterior al último snapshot y reconoce un
+  snapshot anual vacío como cierre válido de posiciones anteriores.
+- Las ventas consumen el coste de los lotes FIFO en vez de reducir un coste medio;
+  los `SPINOFF` mantienen la cantidad con coste desconocido.
+- Un coste desconocido en cualquier cuenta ya no se convierte en una ganancia ficticia:
+  el total invertido y la rentabilidad quedan explícitamente sin calcular.
+- Un ticker compartido por varios ISIN recibe precio para todos ellos, `.SI` se
+  convierte desde SGD y los ceros reales se conservan en API y UI. Si falta el
+  precio de una posición, el total de mercado no publica una suma parcial.
+
+#### Migration
+- `import_records.portfolio_snapshot_complete` distingue los informes que contienen
+  un snapshot de cartera autoritativo, incluido uno vacío. Se añade de forma
+  idempotente y sin reinterpretar importaciones históricas.
+
+#### Verification
+- 401 tests backend pasados, 131 omitidos; Ruff, TypeScript y build de producción limpios.
+
 ### Corrección fiscal FIFO cross-broker (#185)
 
 #### Fixed
