@@ -26,7 +26,7 @@ Extends root claude.md. Rules here are FinView-specific only.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 506 collected (375 pass, ~131 skip without real broker PDFs/CSVs in files/) · vitest · 18 frontend tests |
+| Tests | pytest · 584 collected (453 pass, 131 skip without real broker PDFs/CSVs in files/) · vitest · 21 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -748,8 +748,20 @@ replace each other:
 - fifo_engine.py is the most sensitive file. Any change must be followed by full test suite.
   Never touch it without understanding cross-broker FIFO matching logic.
 - FIFO v2 consumes the complete historical ledger through the target year, rejects
-  future buys and incomplete inventory, and publishes only versioned results. Never
-  apply legacy `calculation_version=NULL` rows to fiscal totals.
+  future buys and incomplete inventory, and publishes only versioned results. A
+  SPINOFF contributes quantity with unknown basis; if a target-year sale reaches it,
+  publish no authoritative adjustment and surface `fifo_missing_cost_basis`; the
+  source SPINOFF remains tracked separately as `missing_cost_basis`. Never apply
+  legacy `calculation_version=NULL` rows to fiscal totals.
+- Resolving `missing_cost_basis` reuses `set_price`: store the inherited per-share
+  basis on the SPINOFF and recalculate from its trade year. A non-zero SPINOFF
+  `net_amount_eur` means known basis; zero remains unknown.
+- Any mutation of historical trades or imports must call `recalculate_fifo_from_year`
+  using the earliest affected year. FIFO is stateful across years; recalculating only
+  the file's nominal fiscal year leaves later sales stale.
+- Transaction cash semantics are directional: BUY = gross + fees; SELL = gross − fees
+  − withholding. Fiscal boxes round only after aggregation, with `ROUND_HALF_UP` cents;
+  audit lots retain six decimals.
 - Importer changes: each importer is isolated — changes in one must not break others.
   Always run pytest backend/tests/ after importer changes.
 - Portfolio snapshots are authoritative only when
@@ -790,6 +802,11 @@ replace each other:
   a buy in IBKR can match a later sell in DEGIRO, never an earlier one
 - FIFO adjustments are versioned and split by box. `amount_eur` already contains the
   v2 delta; frontend consumers must never add `fifo_adjustment_eur` a second time.
+- Assigned IBKR PUT premiums reduce stock acquisition cost; assigned CALL premiums
+  increase stock sale proceeds. Apply each detected premium exactly once and fail on
+  ambiguous stock legs.
+- Annual import replacement and FIFO rebuilds use transaction-scoped PostgreSQL
+  advisory locks. Keep duplicate checks, replacement and recalculation in one transaction.
 - Withholding has three distinct truths: cash withheld, Spanish payment on account and
   foreign withholding. Never deduct total cash or infer a CDI credit from country;
   casilla 588 requires an explicit credit and is capped by quota/effective tax rate.
@@ -819,11 +836,11 @@ replace each other:
 
 ## Tests
 
-Backend: `pytest` — 464 collected (all under `backend/tests/`). ~131 skip when the real
+Backend: `pytest` — 584 collected (all under `backend/tests/`). 131 skip when the real
 broker files in `files/` are absent (not in repo — worktrees/CI skip them; the main
 machine runs them).
 
-Frontend: `cd frontend && pnpm test` (vitest) — 18 tests over the pure logic in `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 21 tests over the pure logic in `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`). **`vitest` must be installed** or
 `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.

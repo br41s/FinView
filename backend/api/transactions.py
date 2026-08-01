@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 
 from backend.api.auth import CurrentUser
@@ -14,8 +14,11 @@ from backend.api.schemas import (
     TransactionOut,
 )
 from backend.database import DbSession, LimitParam, OffsetParam
-from backend.models import Account, TaxLot, Transaction, TransactionType
+from backend.models import Account, CrossBrokerLot, TaxLot, Transaction, TransactionType
+from backend.services.db_locks import lock_fifo_recalculation
+from backend.services.fifo_engine import recalculate_fifo_from_year
 from backend.services.sql_compat import year_range
+from backend.services.transaction_amounts import trade_net_amount
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -31,21 +34,21 @@ class TransactionCreate(BaseModel):
     ticker: str | None = None
     name: str = ""
     country: str | None = None
-    quantity: Decimal
-    price: Decimal
+    quantity: Decimal = Field(gt=0)
+    price: Decimal = Field(ge=0)
     currency: str = "EUR"
-    exchange_rate: Decimal = Decimal("1")
-    fees: Decimal = Decimal("0")
-    withholding_tax: Decimal = Decimal("0")
+    exchange_rate: Decimal = Field(default=Decimal("1"), gt=0)
+    fees: Decimal = Field(default=Decimal("0"), ge=0)
+    withholding_tax: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 class TransactionUpdate(BaseModel):
     name: str | None = None
     ticker: str | None = None
     country: str | None = None
-    quantity: Decimal | None = None
-    price: Decimal | None = None
-    fees: Decimal | None = None
+    quantity: Decimal | None = Field(default=None, gt=0)
+    price: Decimal | None = Field(default=None, ge=0)
+    fees: Decimal | None = Field(default=None, ge=0)
 
 
 @router.get("", response_model=list[TransactionOut], include_in_schema=False)
@@ -142,6 +145,7 @@ def capital_gains(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
 @router.post("/", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
 def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser):
     """Manually add a transaction."""
+    lock_fifo_recalculation(db, user.id)
     # Validate account ownership
     account = (
         db.query(Account)
@@ -159,7 +163,12 @@ def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser
         raise HTTPException(422, "withholding_tax must be a positive magnitude")
 
     gross = data.quantity * data.price
-    net_eur = (gross - data.fees - data.withholding_tax) * data.exchange_rate
+    net_eur = trade_net_amount(
+        data.type,
+        gross,
+        data.fees,
+        data.withholding_tax,
+    ) * data.exchange_rate
 
     tx = Transaction(
         account_id=data.account_id,
@@ -182,6 +191,8 @@ def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser
         net_amount_eur=net_eur,
     )
     db.add(tx)
+    db.flush()
+    recalculate_fifo_from_year(db, data.trade_date.year, user.id)
     db.commit()
     db.refresh(tx)
     return tx
@@ -190,6 +201,7 @@ def create_transaction(data: TransactionCreate, db: DbSession, user: CurrentUser
 @router.patch("/{tx_id}", response_model=TransactionOut)
 def update_transaction(tx_id: int, data: TransactionUpdate, db: DbSession, user: CurrentUser):
     """Update a manually-added transaction (import_id must be NULL)."""
+    lock_fifo_recalculation(db, user.id)
     tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
     if not tx:
         raise HTTPException(404, "Transaction not found")
@@ -221,8 +233,15 @@ def update_transaction(tx_id: int, data: TransactionUpdate, db: DbSession, user:
 
     # Recompute amounts
     tx.gross_amount = tx.quantity * tx.price
-    tx.net_amount_eur = (tx.gross_amount - tx.fees - tx.withholding_tax) * tx.exchange_rate
+    tx.net_amount_eur = trade_net_amount(
+        tx.type,
+        tx.gross_amount,
+        tx.fees,
+        tx.withholding_tax,
+    ) * tx.exchange_rate
 
+    db.flush()
+    recalculate_fifo_from_year(db, tx.trade_date.year, user.id)
     db.commit()
     db.refresh(tx)
     return tx
@@ -231,6 +250,7 @@ def update_transaction(tx_id: int, data: TransactionUpdate, db: DbSession, user:
 @router.delete("/{tx_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_transaction(tx_id: int, db: DbSession, user: CurrentUser):
     """Delete a manually-added transaction."""
+    lock_fifo_recalculation(db, user.id)
     tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
     if not tx:
         raise HTTPException(404, "Transaction not found")
@@ -246,5 +266,14 @@ def delete_transaction(tx_id: int, db: DbSession, user: CurrentUser):
     if tx.import_id is not None:
         raise HTTPException(409, "Cannot delete imported transactions. Delete the import instead.")
 
+    affected_year = tx.trade_date.year
+    db.query(CrossBrokerLot).filter(
+        (CrossBrokerLot.buy_tx_id == tx.id) | (CrossBrokerLot.sell_tx_id == tx.id)
+    ).delete(synchronize_session="fetch")
+    db.query(TaxLot).filter(
+        (TaxLot.buy_tx_id == tx.id) | (TaxLot.sell_tx_id == tx.id)
+    ).delete(synchronize_session="fetch")
     db.delete(tx)
+    db.flush()
+    recalculate_fifo_from_year(db, affected_year, user.id)
     db.commit()

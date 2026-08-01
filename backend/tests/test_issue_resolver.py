@@ -109,6 +109,57 @@ def test_zero_price_rejects_transaction_owned_by_another_user(db):
     assert issue.status == "needs_input"
 
 
+def test_missing_cost_basis_sets_spinoff_acquisition_cost(db):
+    _, account, record = _owner(db, "spin@example.com", "spin")
+    tx = _transaction(db, account, record, "US0000000008", quantity="5", price="0")
+    tx.type = TransactionType.SPINOFF.value
+    issue = _issue(db, record, "missing_cost_basis", tx.isin, {"tx_id": tx.id})
+
+    resolve_zero_price(db, issue, Decimal("12.50"))
+
+    assert issue.status == "resolved"
+    assert tx.price == Decimal("12.50")
+    assert tx.gross_amount == Decimal("62.500000")
+    assert tx.net_amount_eur == Decimal("62.500000")
+
+
+@pytest.mark.parametrize("price", [Decimal("0"), Decimal("-1"), Decimal("NaN")])
+def test_set_price_rejects_non_positive_or_non_finite_values(db, price):
+    _, account, record = _owner(db, "invalid-price@example.com", "invalid-price")
+    tx = _transaction(db, account, record, "US0000000015", price="0")
+    issue = _issue(db, record, "zero_price", tx.isin, {"tx_id": tx.id})
+
+    with pytest.raises(ValueError, match="finito mayor que cero"):
+        resolve_zero_price(db, issue, price)
+
+    assert issue.status == "needs_input"
+    assert tx.price == Decimal("0")
+
+
+def test_set_price_uses_sell_fee_direction(db):
+    _, account, record = _owner(db, "sell-price@example.com", "sell-price")
+    tx = _transaction(db, account, record, "US0000000016", price="0")
+    tx.type = TransactionType.SELL.value
+    tx.fees = Decimal("2")
+    issue = _issue(db, record, "zero_price", tx.isin, {"tx_id": tx.id})
+
+    resolve_zero_price(db, issue, Decimal("12"))
+
+    assert tx.gross_amount == Decimal("120.000000")
+    assert tx.net_amount_eur == Decimal("118.000000")
+
+
+def test_missing_basis_action_rejects_non_spinoff_transaction(db):
+    _, account, record = _owner(db, "wrong-type@example.com", "wrong-type")
+    tx = _transaction(db, account, record, "US0000000017", price="0")
+    issue = _issue(db, record, "missing_cost_basis", tx.isin, {"tx_id": tx.id})
+
+    with pytest.raises(ValueError, match="no permite fijar precio"):
+        resolve_zero_price(db, issue, Decimal("12"))
+
+    assert issue.status == "needs_input"
+
+
 def test_legacy_issue_without_direct_owner_is_hidden(db):
     user, _, record = _owner(db, "one@example.com", "one")
     issue = _issue(db, record, "missing_buy", "US0000000007", {})
@@ -339,3 +390,40 @@ def test_importless_split_uses_direct_owner_and_preserves_other_user(db):
     assert (tx1.quantity, tx1.price) == (Decimal("20"), Decimal("5"))
     assert (tx2.quantity, tx2.price) == (Decimal("10"), Decimal("10"))
     assert json.loads(issue.resolution_data)["transactions_adjusted"] == 1
+
+
+def test_add_buy_recalculates_from_acquisition_year(db, monkeypatch):
+    user, account, record = _owner(db, "recalc-buy@example.com", "recalc-buy")
+    isin = "US0000000018"
+    _transaction(db, account, record, isin)
+    issue = _issue(db, record, "missing_buy", isin, {})
+    calls = []
+    monkeypatch.setattr(
+        "backend.services.issue_resolver.recalculate_fifo_from_year",
+        lambda _db, year, owner_id: calls.append((year, owner_id)),
+    )
+
+    resolve_add_buy(db, issue, Decimal("3"), Decimal("4"), date(2023, 5, 1))
+
+    assert calls == [(2023, user.id)]
+
+
+def test_apply_split_recalculates_from_oldest_adjusted_year(db, monkeypatch):
+    user, account, record = _owner(db, "recalc-split@example.com", "recalc-split")
+    tx = _transaction(db, account, record, "US0000000019")
+    issue = _issue(
+        db,
+        record,
+        "potential_split",
+        tx.isin,
+        {"split_date": "2021-01-01", "ratio": "2"},
+    )
+    calls = []
+    monkeypatch.setattr(
+        "backend.services.issue_resolver.recalculate_fifo_from_year",
+        lambda _db, year, owner_id: calls.append((year, owner_id)),
+    )
+
+    resolve_apply_split(db, issue)
+
+    assert calls == [(2020, user.id)]

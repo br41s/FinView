@@ -92,16 +92,22 @@ FinView/
 - **Modelo 100:** Casillas 27/29 (rendimientos), 328/380 o 332/337 según el formato del ejercicio (ganancias y pérdidas), 588 (doble imposición) y 597 (retenciones españolas)
 - **Modelo 714:** Casillas 05-09 (patrimonio en el extranjero)
 - **FIFO cruzado v2:** Matching cronológico global; las ventas históricas consumen inventario antes del ejercicio objetivo y una compra futura nunca puede financiar una venta anterior
+- **Invalidación cronológica:** Cambiar o borrar historia recalcula automáticamente todos los ejercicios posteriores con ventas y elimina resultados obsoletos
 - **Retenciones:** Efectivo, pago a cuenta español y retención extranjera se guardan por separado; la deducción CDI solo se aplica cuando el informe aporta un importe acreditable explícito
 - **Ajustes FIFO:** Desglose versionado por ganancias/pérdidas, integrado en casillas, resumen, estimador, dashboard, exportación y comparativa anual
-- **Integridad:** ISIN vacío e inventario incompleto no generan un resultado FIFO autoritativo
-- **Comisiones IBKR:** Las compras incorporan la comisión al coste y las ventas la descuentan del importe obtenido
+- **Integridad:** ISIN vacío, inventario incompleto o un spin-off sin coste alcanzado por una venta no generan un resultado FIFO autoritativo; el supervisor conserva `missing_cost_basis`, permite completar el coste por acción y el bloqueo anual usa `fifo_missing_cost_basis`
+- **Costes de operación:** Compras manuales, DEGIRO e IBKR incorporan comisiones al coste; las ventas las descuentan. Las asignaciones PUT/CALL de IBKR aplican su prima una sola vez a la pata de acciones
+- **Redondeo fiscal:** Se agregan los lotes por ISIN y casilla antes de redondear a céntimos con criterio `ROUND_HALF_UP`; el detalle de auditoría conserva seis decimales
+- **Concurrencia:** PostgreSQL serializa los reemplazos anuales y cada rebuild FIFO por usuario dentro de la transacción
 
 Los lotes y ajustes anteriores a FIFO v2 no se aplican a los totales fiscales ni se
 exponen como vigentes. Para regenerarlos hay que reemplazar o reimportar el ejercicio;
 la migración de esquema no reinterpreta automáticamente datos históricos.
 Lo mismo ocurre con retenciones importadas antes del desglose origen/destino: siguen
 visibles como efectivo retenido, pero deben reimportarse para aplicarlas al estimador.
+Los informes DEGIRO e IBKR importados antes de estas correcciones deben reemplazarse o
+reimportarse para regenerar comisiones, primas de asignación y lotes fiscales; no hay
+migración de esquema ni backfill implícito.
 
 ## Cartera y valoración
 
@@ -327,7 +333,7 @@ Base URL: `http://localhost:8000/api`
 pytest tests/ backend/tests/ -v
 ```
 
-**Backend:** 369 tests, ~131 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
+**Backend:** 453 tests, 131 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
 que no están en el repo).
 
 **Frontend:**
@@ -336,7 +342,7 @@ que no están en el repo).
 cd frontend && pnpm test
 ```
 
-18 tests sobre la lógica pura de `src/lib/`. Requiere `pnpm install` — sin `vitest`
+21 tests sobre la lógica pura de `src/lib/`. Requiere `pnpm install` — sin `vitest`
 instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
 
 ## Despliegue y CI/CD

@@ -15,6 +15,9 @@ from backend.models import (
     Transaction,
     TransactionType,
 )
+from backend.services.db_locks import lock_fifo_recalculation
+from backend.services.fifo_engine import recalculate_fifo_from_year
+from backend.services.transaction_amounts import trade_net_amount
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +49,11 @@ def _issue_owner(db: Session, issue: DataIssue) -> tuple[int | None, int]:
 
 
 def resolve_zero_price(db: Session, issue: DataIssue, price_per_share: Decimal) -> None:
-    """Set the correct price on a zero-price BUY transaction."""
+    """Set a missing per-share acquisition price and refresh dependent FIFO."""
+    if not price_per_share.is_finite() or price_per_share <= _ZERO:
+        raise ValueError("El precio por acción debe ser un número finito mayor que cero")
     _, user_id = _issue_owner(db, issue)
+    lock_fifo_recalculation(db, user_id)
     data = json.loads(issue.resolution_data or "{}")
     tx_id = data.get("tx_id")
     if not tx_id:
@@ -62,13 +68,28 @@ def resolve_zero_price(db: Session, issue: DataIssue, price_per_share: Decimal) 
     if not tx:
         raise ValueError(f"Transaction {tx_id} not found")
 
+    normalized_type = tx.type.value if hasattr(tx.type, "value") else tx.type
+    allowed_types = {
+        "zero_price": {TransactionType.BUY.value, TransactionType.SELL.value},
+        "missing_cost_basis": {TransactionType.SPINOFF.value},
+    }
+    if issue.issue_type not in allowed_types or normalized_type not in allowed_types[issue.issue_type]:
+        raise ValueError(
+            f"La incidencia {issue.issue_type} no permite fijar precio en una transacción {normalized_type}"
+        )
+
     tx.price = price_per_share
-    tx.gross_amount = (price_per_share * tx.quantity).quantize(_Q, ROUND_HALF_UP)
-    rate = tx.exchange_rate or Decimal("1")
-    tx.net_amount_eur = (tx.gross_amount * rate + tx.fees).quantize(_Q, ROUND_HALF_UP)
+    tx.gross_amount = (price_per_share * abs(tx.quantity)).quantize(_Q, ROUND_HALF_UP)
+    tx.net_amount_eur = trade_net_amount(
+        normalized_type,
+        tx.gross_amount,
+        abs(tx.fees or _ZERO),
+        abs(tx.withholding_tax or _ZERO),
+    ).quantize(_Q, ROUND_HALF_UP)
 
     issue.status = "resolved"
     issue.resolution_data = json.dumps({**data, "applied_price": str(price_per_share)})
+    recalculate_fifo_from_year(db, tx.trade_date.year, user_id)
     logger.info("Resolved zero_price issue %d: tx %d price → %s", issue.id, tx_id, price_per_share)
 
 
@@ -80,7 +101,14 @@ def resolve_add_buy(
     acquisition_date: date,
 ) -> None:
     """Create a synthetic BUY transaction for a missing acquisition."""
+    if issue.issue_type not in {"missing_buy", "holdings_mismatch"}:
+        raise ValueError(f"La incidencia {issue.issue_type} no permite crear una compra")
+    if not qty.is_finite() or qty <= _ZERO:
+        raise ValueError("La cantidad debe ser un número finito mayor que cero")
+    if not price.is_finite() or price <= _ZERO:
+        raise ValueError("El precio debe ser un número finito mayor que cero")
     account_id, user_id = _issue_owner(db, issue)
+    lock_fifo_recalculation(db, user_id)
     if account_id is None:
         tx_accounts = (
             db.query(Transaction.account_id)
@@ -129,6 +157,7 @@ def resolve_add_buy(
         "acquisition_date": acquisition_date.isoformat(),
         "account_id": account_id,
     })
+    recalculate_fifo_from_year(db, acquisition_date.year, user_id)
     logger.info(
         "Resolved missing_buy issue %d: created BUY tx %d (%s × %s on %s)",
         issue.id, tx.id, qty, price, acquisition_date,
@@ -137,7 +166,10 @@ def resolve_add_buy(
 
 def resolve_apply_split(db: Session, issue: DataIssue) -> None:
     """Adjust pre-split quantities and prices for a detected stock split."""
+    if issue.issue_type != "potential_split":
+        raise ValueError(f"La incidencia {issue.issue_type} no permite aplicar un split")
     _, user_id = _issue_owner(db, issue)
+    lock_fifo_recalculation(db, user_id)
     data = json.loads(issue.resolution_data or "{}")
     split_date_str = data.get("split_date")
     ratio_str = data.get("ratio")
@@ -147,6 +179,8 @@ def resolve_apply_split(db: Session, issue: DataIssue) -> None:
 
     split_date = date.fromisoformat(split_date_str)
     ratio = Decimal(ratio_str)
+    if not ratio.is_finite() or ratio <= _ZERO:
+        raise ValueError("El ratio del split debe ser un número finito mayor que cero")
 
     txs = (
         db.query(Transaction)
@@ -172,3 +206,5 @@ def resolve_apply_split(db: Session, issue: DataIssue) -> None:
         "Resolved potential_split issue %d: ratio %s on %s, adjusted %d txs",
         issue.id, ratio, split_date, len(txs),
     )
+    if txs:
+        recalculate_fifo_from_year(db, min(tx.trade_date.year for tx in txs), user_id)

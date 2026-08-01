@@ -1,5 +1,14 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## PR #190/#191 — resolución de conflictos con main — 2026-08-01
+
+- [x] Rebasar el artículo de riesgo divisa (#190) preservando el índice y estilos
+      de los artículos ya incorporados a `main`; validar frontend y Vercel.
+- [x] Rebasar el hardening FIFO (#191) preservando cartera/valoración de #187 y
+      retenciones/casillas de #186; validar backend, Ruff y frontend.
+- [x] Ejecutar `/review` sobre ambas ramas y publicar con `--force-with-lease`.
+- [x] Confirmar ambos PRs como `CLEAN`/`MERGEABLE` con checks remotos verdes.
+
 ## PR #187 — resolución de conflictos con main — 2026-08-01
 
 - [x] Rebasar `codex/fix-portfolio-valuation` sobre `origin/main`.
@@ -16,12 +25,34 @@
 - [x] Cartera/valoración corregida: FIFO de posiciones, snapshots vacíos y
       actividad posterior, coste desconocido fail-closed, precios multi-ISIN/SGD y
       ceros preservados en API/UI.
-- [ ] Hardening FIFO residual: cerrar invalidación histórica, fees, asignaciones,
+- [x] Hardening FIFO residual: cerrar invalidación histórica, fees, asignaciones,
       spinoffs y redondeo en PR separado.
 - [ ] Hardening de imports/snapshots: impedir que un informe parcial sustituya uno
       completo y distinguir cartera realmente vacía de un fallo de parseo.
 - [ ] Hacer atómica la escritura de la caché diaria de precios ante peticiones
       concurrentes de posiciones y resumen.
+
+## Auditoría financiera — fase 3: integridad FIFO residual — 2026-08-01 ✅
+
+- [x] Invalidación descendente desde el primer año modificado para import/replace/delete,
+      borrado de cuenta y CRUD manual; limpia años posteriores y el último sell.
+- [x] Semántica única de importes: BUY suma fees; SELL los descuenta. Aplicada a CRUD
+      manual y DEGIRO; sus `TaxLot` descuentan comisión e impuesto de transacción.
+- [x] Asignaciones IBKR: todas las patas se conservan, matching unívoco, prima aplicada
+      una sola vez (PUT al coste, CALL al importe de venta).
+- [x] SPINOFF entra por cantidad con base desconocida; venta que lo alcanza falla
+      cerrada y genera `fifo_missing_cost_basis` sin cerrar el aviso fuente
+      `missing_cost_basis`, en vez de asumir coste cero.
+- [x] El aviso fuente permite introducir coste por acción con la acción `set_price`;
+      al resolverlo se actualiza el SPINOFF y se recalculan los años dependientes.
+- [x] Agregación por ISIN/casilla antes de redondeo `ROUND_HALF_UP` a céntimos; detalle
+      de auditoría a seis decimales.
+- [x] Concurrencia: advisory locks transaccionales para reemplazo de import y rebuild
+      FIFO; validación backend de importes y acciones de resolución.
+- [x] Verificación: Ruff limpio; 453 passed/131 skipped; fixtures reales DEGIRO 2024
+      (537,01 € tras costes) e IBKR 2024 (ADM/VZ, primas exactas).
+- [x] Operación: sin cambio de esquema ni versión FIFO. Reimportar históricos DEGIRO e
+      IBKR afectados para regenerar valores persistidos; no hay backfill automático.
 
 ## Cross-section coherence — instrument drawer (C now, B roadmap) — 2026-06-24
 

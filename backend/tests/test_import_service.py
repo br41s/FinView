@@ -19,14 +19,17 @@ from backend.models import (
     TaxLot,
     TaxResult,
     Transaction,
+    TransactionType,
     User,
 )
+from backend.services.fifo_engine import recalculate_cross_broker_fifo
 from backend.services.import_service import (
     _check_duplicate,
     _check_year_duplicate,
     _delete_import_data,
     _file_hash_for_storage,
     _get_or_create_account,
+    delete_account_cascade,
     delete_all_imports,
 )
 
@@ -273,6 +276,29 @@ class TestDeleteImportData:
 
         assert db.query(ImportRecord).count() == 1
         assert db.query(ImportRecord).first().broker == Broker.DEGIRO
+
+    def test_last_import_deletion_includes_older_orphan_year(self, db, user_id):
+        rec, _, _ = _make_import(db, user_id, fiscal_year=2025)
+        orphan = Transaction(
+            account_id=rec.account_id,
+            import_id=None,
+            type=TransactionType.BUY.value,
+            trade_date=date(2023, 1, 1),
+            isin="US0000000099",
+            name="Older orphan",
+            quantity=Decimal("1"),
+            price=Decimal("10"),
+            gross_amount=Decimal("10"),
+            fees=Decimal("0"),
+            net_amount_eur=Decimal("10"),
+        )
+        db.add(orphan)
+        db.flush()
+
+        affected_year = _delete_import_data(db, rec.id, recalculate=False)
+
+        assert affected_year == 2023
+        assert db.get(Transaction, orphan.id) is None
 
     def test_preserves_other_users_same_year_derived_data(self, db, user_id):
         other_user_id = _make_user(db, "other@example.com")
@@ -580,3 +606,164 @@ class TestLegacyPdfNoLedgerDoubleCount:
         }
         assert c.get(29) == Decimal("5301.020528")  # dividends
         assert c.get(337) == Decimal("-2155.109352")  # losses
+
+
+def test_deleting_historical_import_recalculates_later_fifo(db, user_id):
+    dg_account = Account(
+        broker="DEGIRO",
+        account_id="downstream-dg",
+        name="DEGIRO",
+        user_id=user_id,
+    )
+    tr_account = Account(
+        broker="TR",
+        account_id="downstream-tr",
+        name="TR",
+        user_id=user_id,
+    )
+    db.add_all([dg_account, tr_account])
+    db.flush()
+    dg_import = ImportRecord(
+        account_id=dg_account.id,
+        filename="dg.pdf",
+        file_hash="downstream-dg",
+        broker="DEGIRO",
+        fiscal_year=2025,
+        record_count=1,
+    )
+    tr_import = ImportRecord(
+        account_id=tr_account.id,
+        filename="tr.csv",
+        file_hash="downstream-tr",
+        broker="TR",
+        fiscal_year=2025,
+        record_count=2,
+    )
+    db.add_all([dg_import, tr_import])
+    db.flush()
+
+    def transaction(account, record, tx_type, when, price):
+        tx = Transaction(
+            account_id=account.id,
+            import_id=record.id,
+            type=tx_type,
+            trade_date=when,
+            isin="US0000000701",
+            name="Downstream",
+            quantity=Decimal("10"),
+            price=Decimal(price),
+            gross_amount=Decimal("10") * Decimal(price),
+            fees=Decimal("0"),
+            net_amount_eur=Decimal("10") * Decimal(price),
+        )
+        db.add(tx)
+        db.flush()
+
+    transaction(dg_account, dg_import, TransactionType.BUY.value, date(2023, 1, 1), "50")
+    transaction(tr_account, tr_import, TransactionType.BUY.value, date(2023, 6, 1), "70")
+    transaction(tr_account, tr_import, TransactionType.SELL.value, date(2025, 6, 1), "80")
+    recalculate_cross_broker_fifo(db, 2025, user_id)
+    assert db.query(FIFOAdjustment).count() == 1
+
+    _delete_import_data(db, dg_import.id)
+
+    assert db.get(ImportRecord, dg_import.id) is None
+    assert db.query(CrossBrokerLot).count() == 0
+    assert db.query(FIFOAdjustment).count() == 0
+
+
+def test_deleting_account_preserves_other_account_tax_and_older_fifo(db, user_id):
+    target = Account(
+        broker="TR",
+        account_id="delete-target",
+        name="Target",
+        user_id=user_id,
+    )
+    sibling = Account(
+        broker="TR",
+        account_id="delete-sibling",
+        name="Sibling",
+        user_id=user_id,
+    )
+    db.add_all([target, sibling])
+    db.flush()
+    target_import = ImportRecord(
+        account_id=target.id,
+        filename="target.pdf",
+        file_hash="delete-target",
+        broker="TR",
+        fiscal_year=2024,
+        record_count=1,
+    )
+    sibling_import = ImportRecord(
+        account_id=sibling.id,
+        filename="sibling.pdf",
+        file_hash="delete-sibling",
+        broker="TR",
+        fiscal_year=2024,
+        record_count=1,
+    )
+    db.add_all([target_import, sibling_import])
+    db.flush()
+    db.add(Transaction(
+        account_id=target.id,
+        import_id=target_import.id,
+        type=TransactionType.BUY.value,
+        trade_date=date(2024, 1, 1),
+        isin="US0000000801",
+        name="Target",
+        quantity=Decimal("1"),
+        price=Decimal("10"),
+        gross_amount=Decimal("10"),
+        fees=Decimal("0"),
+        net_amount_eur=Decimal("10"),
+    ))
+    target_tax = TaxResult(
+        user_id=user_id,
+        import_id=target_import.id,
+        fiscal_year=2024,
+        broker="TR",
+        modelo=100,
+        casilla=29,
+        amount_eur=Decimal("1"),
+    )
+    sibling_tax = TaxResult(
+        user_id=user_id,
+        import_id=sibling_import.id,
+        fiscal_year=2024,
+        broker="TR",
+        modelo=100,
+        casilla=29,
+        amount_eur=Decimal("2"),
+    )
+    older_adjustment = FIFOAdjustment(
+        user_id=user_id,
+        fiscal_year=2022,
+        isin="US0000000802",
+        name="Older",
+        broker_pl_eur=Decimal("0"),
+        fifo_pl_eur=Decimal("1"),
+        adjustment_eur=Decimal("1"),
+    )
+    affected_adjustment = FIFOAdjustment(
+        user_id=user_id,
+        fiscal_year=2024,
+        isin="US0000000803",
+        name="Affected",
+        broker_pl_eur=Decimal("0"),
+        fifo_pl_eur=Decimal("1"),
+        adjustment_eur=Decimal("1"),
+    )
+    db.add_all([target_tax, sibling_tax, older_adjustment, affected_adjustment])
+    db.flush()
+    target_tax_id = target_tax.id
+    sibling_tax_id = sibling_tax.id
+    older_adjustment_id = older_adjustment.id
+
+    delete_account_cascade(db, target.id, user_id)
+    db.expire_all()
+
+    assert db.get(TaxResult, target_tax_id) is None
+    assert db.get(TaxResult, sibling_tax_id) is not None
+    assert db.get(FIFOAdjustment, older_adjustment_id) is not None
+    assert db.query(FIFOAdjustment).count() == 1

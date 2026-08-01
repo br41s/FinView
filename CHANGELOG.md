@@ -49,6 +49,39 @@ All notable changes to FinView are documented here.
 #### Verification
 - 401 tests backend pasados, 131 omitidos; Ruff, TypeScript y build de producción limpios.
 
+### Integridad residual de costes y FIFO
+
+#### Fixed
+- Crear, editar, eliminar o reemplazar una operación histórica recalcula el FIFO del
+  año afectado y de todos los ejercicios posteriores con ventas. Al desaparecer la
+  última venta también se limpian los lotes y ajustes obsoletos.
+- Las compras manuales y de DEGIRO capitalizan comisiones; las ventas descuentan
+  comisiones. Los `TaxLot` de DEGIRO usan el resultado fiscal después de comisión e
+  impuesto de transacción.
+- Las asignaciones IBKR conservan varias patas del mismo subyacente y fecha, fallan si
+  el emparejamiento es ambiguo y aplican la prima una sola vez: PUT reduce el coste de
+  las acciones adquiridas y CALL aumenta el importe de las acciones vendidas.
+- Los spin-offs sin coste conocido participan en la cronología por cantidad. Si una
+  venta alcanza uno de esos lotes, el motor no publica un ajuste parcial y crea un
+  aviso `fifo_missing_cost_basis`; el supervisor mantiene por separado el aviso
+  fuente `missing_cost_basis` mientras el coste siga sin conocerse. Ese aviso permite
+  introducir el coste por acción y recalcula la cronología dependiente al resolverlo.
+- Los lotes de auditoría conservan seis decimales; ganancias y pérdidas se agregan por
+  ISIN/casilla y solo entonces se redondean a céntimos con `ROUND_HALF_UP`.
+- Las mutaciones fiscales concurrentes se serializan por usuario en PostgreSQL y los
+  reemplazos por usuario/bróker/año se bloquean desde la comprobación de duplicados
+  hasta el commit. El CRUD manual rechaza cantidades, precios, tipos y costes inválidos.
+
+#### Operations
+- No hay migración de esquema. Para corregir datos históricos ya persistidos es
+  necesario reemplazar/reimportar los informes DEGIRO e IBKR afectados.
+- El reemplazo elimina e inserta dentro de la misma transacción y ejecuta un único
+  recálculo desde el año más antiguo afectado.
+
+#### Verification
+- 453 tests backend pasados, 131 omitidos; Ruff limpio. Validado además contra los
+  extractos reales DEGIRO 2024 e IBKR 2024.
+
 ### Corrección fiscal FIFO cross-broker (#185)
 
 #### Fixed

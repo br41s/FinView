@@ -8,18 +8,22 @@ parallel CrossBrokerLot records and FIFOAdjustment summaries.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.services.sql_compat import year_str as _year_str
+from backend.services.db_locks import lock_fifo_recalculation
 from backend.models import (
     Account,
     CrossBrokerLot,
+    DataIssue,
     FIFOAdjustment,
     TaxLot,
     Transaction,
@@ -28,6 +32,8 @@ from backend.models import (
 
 logger = logging.getLogger(__name__)
 FIFO_CALCULATION_VERSION = "2"
+CENT = Decimal("0.01")
+AUDIT_PRECISION = Decimal("0.000001")
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +49,8 @@ class _BuySlice:
     isin: str
     name: str
     remaining: Decimal  # qty still unmatched
-    price_eur: Decimal  # per-unit cost in EUR
+    price_eur: Decimal | None  # per-unit cost in EUR; None when basis is unknown
+    import_id: int | None
 
 
 @dataclass
@@ -76,6 +83,16 @@ class _MatchedLot:
     casilla: int  # 332 or 337
 
 
+@dataclass
+class _MatchResult:
+    """FIFO matches plus completeness metadata."""
+
+    lots: list[_MatchedLot]
+    incomplete_sell_ids: set[int]
+    unknown_cost_sell_ids: set[int]
+    unknown_cost_import_ids: set[int]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -88,10 +105,18 @@ def _holding_period_label(buy_date: date, sell_date: date) -> tuple[str, int]:
     return "<1y", 332  # both gains go to 332; losses to 337 — casilla set later
 
 
+def _money_round(value: Decimal) -> Decimal:
+    return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _audit_round(value: Decimal) -> Decimal:
+    return value.quantize(AUDIT_PRECISION, rounding=ROUND_HALF_UP)
+
+
 def _get_real_buys(
     db: Session, isin: str, fiscal_year: int, user_id: int
 ) -> list[_BuySlice]:
-    """Get a user's real BUY transactions for an ISIN, sorted by date.
+    """Get a user's real acquisition transactions for an ISIN, sorted by date.
 
     Real = stored via _store_transaction (has import_id) with type BUY
     and NOT a synthetic buy created only for a TaxLot.
@@ -112,7 +137,10 @@ def _get_real_buys(
         .join(Account, Transaction.account_id == Account.id)
         .filter(
             Transaction.isin == isin,
-            Transaction.type == TransactionType.BUY.value,
+            Transaction.type.in_([
+                TransactionType.BUY.value,
+                TransactionType.SPINOFF.value,
+            ]),
             Transaction.trade_date <= date(fiscal_year, 12, 31),
             Transaction.id.notin_(synthetic_buy_ids),
             Account.user_id == user_id,
@@ -128,8 +156,18 @@ def _get_real_buys(
             trade_date=tx.trade_date,
             isin=tx.isin,
             name=tx.name or "",
-            remaining=tx.quantity,
-            price_eur=tx.net_amount_eur / tx.quantity if tx.quantity else Decimal("0"),
+            remaining=abs(tx.quantity),
+            price_eur=(
+                None
+                if (
+                    tx.type.value if hasattr(tx.type, "value") else tx.type
+                ) == TransactionType.SPINOFF.value
+                and tx.price <= 0
+                else tx.net_amount_eur / tx.quantity
+                if tx.quantity
+                else Decimal("0")
+            ),
+            import_id=tx.import_id,
         )
         for tx, broker in rows
     ]
@@ -180,16 +218,20 @@ def _get_real_sells(
     ]
 
 
-def _fifo_match(buys: list[_BuySlice], sells: list[_SellRecord]) -> list[_MatchedLot]:
+def _fifo_match(buys: list[_BuySlice], sells: list[_SellRecord]) -> _MatchResult:
     """Match sells to buys using strict FIFO (oldest buy first)."""
+    buy_queue = deque(buys)
     matched: list[_MatchedLot] = []
+    incomplete_sell_ids: set[int] = set()
+    unknown_cost_sell_ids: set[int] = set()
+    unknown_cost_import_ids: set[int] = set()
 
     for sell in sells:
         qty_to_match = sell.quantity
-        while qty_to_match > 0 and buys:
-            buy = buys[0]
+        while qty_to_match > 0 and buy_queue:
+            buy = buy_queue[0]
             if buy.remaining <= 0:
-                buys.pop(0)
+                buy_queue.popleft()
                 continue
             # Buys are chronological. If the oldest remaining buy happened
             # after this sell, no later buy can legally fund the sale either.
@@ -197,36 +239,49 @@ def _fifo_match(buys: list[_BuySlice], sells: list[_SellRecord]) -> list[_Matche
                 break
 
             match_qty = min(buy.remaining, qty_to_match)
-            cost = match_qty * buy.price_eur
-            proceeds = match_qty * sell.price_eur
-            pl = proceeds - cost
+            if buy.price_eur is None:
+                unknown_cost_sell_ids.add(sell.tx_id)
+                if buy.import_id is not None:
+                    unknown_cost_import_ids.add(buy.import_id)
+            else:
+                cost = match_qty * buy.price_eur
+                proceeds = match_qty * sell.price_eur
+                pl = proceeds - cost
 
-            hp_label, _ = _holding_period_label(buy.trade_date, sell.trade_date)
-            casilla = 332 if pl >= 0 else 337
+                hp_label, _ = _holding_period_label(buy.trade_date, sell.trade_date)
+                casilla = 332 if pl >= 0 else 337
 
-            matched.append(_MatchedLot(
-                buy_tx_id=buy.tx_id,
-                sell_tx_id=sell.tx_id,
-                buy_broker=buy.broker,
-                sell_broker=sell.broker,
-                isin=sell.isin,
-                name=sell.name or buy.name,
-                sell_date=sell.trade_date,
-                quantity=match_qty,
-                cost_basis_eur=cost,
-                proceeds_eur=proceeds,
-                realized_pl_eur=pl,
-                holding_period=hp_label,
-                casilla=casilla,
-            ))
+                matched.append(_MatchedLot(
+                    buy_tx_id=buy.tx_id,
+                    sell_tx_id=sell.tx_id,
+                    buy_broker=buy.broker,
+                    sell_broker=sell.broker,
+                    isin=sell.isin,
+                    name=sell.name or buy.name,
+                    sell_date=sell.trade_date,
+                    quantity=match_qty,
+                    cost_basis_eur=cost,
+                    proceeds_eur=proceeds,
+                    realized_pl_eur=pl,
+                    holding_period=hp_label,
+                    casilla=casilla,
+                ))
 
             buy.remaining -= match_qty
             qty_to_match -= match_qty
 
             if buy.remaining <= 0:
-                buys.pop(0)
+                buy_queue.popleft()
 
-    return matched
+        if qty_to_match > 0:
+            incomplete_sell_ids.add(sell.tx_id)
+
+    return _MatchResult(
+        lots=matched,
+        incomplete_sell_ids=incomplete_sell_ids,
+        unknown_cost_sell_ids=unknown_cost_sell_ids,
+        unknown_cost_import_ids=unknown_cost_import_ids,
+    )
 
 
 def _get_broker_pl_by_casilla_for_isin(
@@ -252,7 +307,7 @@ def _get_broker_pl_by_casilla_for_isin(
             totals[332] += amount
         elif amount < 0:
             totals[337] += amount
-    return totals
+    return {casilla: _money_round(amount) for casilla, amount in totals.items()}
 
 
 def _find_multi_broker_isins(
@@ -294,7 +349,10 @@ def _find_multi_broker_isins(
         db.query(Transaction.isin)
         .join(Account, Transaction.account_id == Account.id)
         .filter(
-            Transaction.type == TransactionType.BUY.value,
+            Transaction.type.in_([
+                TransactionType.BUY.value,
+                TransactionType.SPINOFF.value,
+            ]),
             Transaction.isin.in_(sell_isins),
             Transaction.isin.isnot(None),
             Transaction.isin != "",
@@ -308,6 +366,100 @@ def _find_multi_broker_isins(
     )
 
     return [row[0] for row in multi]
+
+
+def _sync_missing_cost_issue(
+    db: Session,
+    *,
+    user_id: int,
+    isin: str,
+    fiscal_year: int,
+    name: str,
+    blocked: bool,
+    import_ids: set[int],
+) -> None:
+    """Create or resolve the year-specific missing-basis FIFO warning."""
+    resolution_data = json.dumps(
+        {"source": "cross_broker_fifo", "fiscal_year": fiscal_year},
+        sort_keys=True,
+    )
+    issue = (
+        db.query(DataIssue)
+        .filter(
+            DataIssue.user_id == user_id,
+            DataIssue.issue_type == "fifo_missing_cost_basis",
+            DataIssue.isin == isin,
+            DataIssue.resolution_data == resolution_data,
+        )
+        .first()
+    )
+
+    if blocked:
+        if issue is None:
+            db.add(DataIssue(
+                user_id=user_id,
+                import_id=min(import_ids) if import_ids else None,
+                issue_type="fifo_missing_cost_basis",
+                severity="warning",
+                isin=isin,
+                name=name,
+                description=(
+                    f"El FIFO cruzado de {fiscal_year} alcanza acciones recibidas "
+                    "por spin-off sin coste de adquisición conocido. No se publica "
+                    "un ajuste fiscal hasta completar ese coste."
+                ),
+                status="needs_input",
+                resolution_data=resolution_data,
+            ))
+        elif issue.status in {"resolved", "dismissed", "auto_resolved"}:
+            issue.status = "needs_input"
+    elif issue is not None and issue.status == "needs_input":
+        issue.status = "resolved"
+        issue.auto_resolution = "El FIFO ya no alcanza un lote con coste desconocido."
+
+
+def recalculate_fifo_from_year(
+    db: Session,
+    start_year: int,
+    user_id: int,
+) -> dict:
+    """Recalculate every fiscal year that can depend on older chronology."""
+    lock_fifo_recalculation(db, user_id)
+    years = {start_year}
+    years.update(
+        year
+        for (year,) in (
+            db.query(func.extract("year", Transaction.trade_date))
+            .join(Account, Transaction.account_id == Account.id)
+            .filter(
+                Account.user_id == user_id,
+                Transaction.type == TransactionType.SELL.value,
+                Transaction.trade_date >= date(start_year, 1, 1),
+            )
+            .distinct()
+            .all()
+        )
+        if year is not None
+    )
+    years.update(
+        year
+        for (year,) in (
+            db.query(FIFOAdjustment.fiscal_year)
+            .filter(
+                FIFOAdjustment.user_id == user_id,
+                FIFOAdjustment.fiscal_year >= start_year,
+            )
+            .distinct()
+            .all()
+        )
+    )
+
+    totals = {"lots_created": 0, "adjustments": 0, "isins_analyzed": 0}
+    for fiscal_year in sorted(int(year) for year in years):
+        result = recalculate_cross_broker_fifo(db, fiscal_year, user_id)
+        for key in totals:
+            totals[key] += result[key]
+    return totals
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +495,23 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
     )
     cbl_q.delete(synchronize_session="fetch")
     adj_q.delete(synchronize_session="fetch")
+    issue_resolution_data = json.dumps(
+        {"source": "cross_broker_fifo", "fiscal_year": fiscal_year},
+        sort_keys=True,
+    )
+    stale_issues = (
+        db.query(DataIssue)
+        .filter(
+            DataIssue.user_id == user_id,
+            DataIssue.issue_type == "fifo_missing_cost_basis",
+            DataIssue.resolution_data == issue_resolution_data,
+            DataIssue.status == "needs_input",
+        )
+        .all()
+    )
+    for issue in stale_issues:
+        issue.status = "resolved"
+        issue.auto_resolution = "El FIFO ya no alcanza un lote con coste desconocido."
     db.flush()
 
     multi_isins = _find_multi_broker_isins(db, fiscal_year, user_id)
@@ -360,36 +529,45 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
         if not buys or not sells:
             continue
 
-        matched = _fifo_match(buys, sells)
-        matched_quantity_by_sell: dict[int, Decimal] = {}
-        for lot in matched:
-            matched_quantity_by_sell[lot.sell_tx_id] = (
-                matched_quantity_by_sell.get(lot.sell_tx_id, Decimal("0"))
-                + lot.quantity
-            )
-        incomplete_sells = [
-            sell.tx_id
-            for sell in sells
-            if matched_quantity_by_sell.get(sell.tx_id, Decimal("0")) < sell.quantity
-        ]
+        match_result = _fifo_match(buys, sells)
 
         # Partial inventory is not an authoritative FIFO result. Do not expose
         # partial lots or compare them against the broker's complete sales.
-        if incomplete_sells:
+        if match_result.incomplete_sell_ids:
             logger.warning(
                 "Skipping FIFO result for %s in %d: unmatched sells %s",
                 isin,
                 fiscal_year,
-                incomplete_sells,
+                sorted(match_result.incomplete_sell_ids),
             )
             continue
 
-        fifo_pl = Decimal("0")
-        fifo_by_casilla = {332: Decimal("0"), 337: Decimal("0")}
-        name = ""
-        for lot in matched:
-            if lot.sell_date.year != fiscal_year:
-                continue
+        target_sells = {sell.tx_id for sell in sells if sell.trade_date.year == fiscal_year}
+        target_unknown = target_sells & match_result.unknown_cost_sell_ids
+        name = next((sell.name for sell in sells if sell.tx_id in target_sells), "")
+        _sync_missing_cost_issue(
+            db,
+            user_id=user_id,
+            isin=isin,
+            fiscal_year=fiscal_year,
+            name=name,
+            blocked=bool(target_unknown),
+            import_ids=match_result.unknown_cost_import_ids,
+        )
+        if target_unknown:
+            logger.warning(
+                "Skipping FIFO result for %s in %d: unknown cost basis in sells %s",
+                isin,
+                fiscal_year,
+                sorted(target_unknown),
+            )
+            continue
+
+        target_lots = [
+            lot for lot in match_result.lots if lot.sell_date.year == fiscal_year
+        ]
+        raw_fifo_by_casilla = {332: Decimal("0"), 337: Decimal("0")}
+        for lot in target_lots:
             name = name or lot.name
             cbl = CrossBrokerLot(
                 fiscal_year=fiscal_year,
@@ -399,21 +577,28 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
                 sell_tx_id=lot.sell_tx_id,
                 buy_broker=lot.buy_broker,
                 sell_broker=lot.sell_broker,
-                quantity=lot.quantity,
-                cost_basis_eur=lot.cost_basis_eur,
-                proceeds_eur=lot.proceeds_eur,
-                realized_pl_eur=lot.realized_pl_eur,
+                quantity=_audit_round(lot.quantity),
+                cost_basis_eur=_audit_round(lot.cost_basis_eur),
+                proceeds_eur=_audit_round(lot.proceeds_eur),
+                realized_pl_eur=_audit_round(lot.realized_pl_eur),
                 holding_period=lot.holding_period,
                 casilla=lot.casilla,
                 calculation_version=FIFO_CALCULATION_VERSION,
             )
             db.add(cbl)
-            fifo_pl += lot.realized_pl_eur
             if lot.realized_pl_eur > 0:
-                fifo_by_casilla[332] += lot.realized_pl_eur
+                raw_fifo_by_casilla[332] += lot.realized_pl_eur
             elif lot.realized_pl_eur < 0:
-                fifo_by_casilla[337] += lot.realized_pl_eur
+                raw_fifo_by_casilla[337] += lot.realized_pl_eur
             lots_created += 1
+
+        # Fiscal output is rounded only after aggregating every matched lot in
+        # the ISIN/box. Audit rows retain six decimal places.
+        fifo_by_casilla = {
+            casilla: _money_round(amount)
+            for casilla, amount in raw_fifo_by_casilla.items()
+        }
+        fifo_pl = fifo_by_casilla[332] + fifo_by_casilla[337]
 
         # Compare gains and losses separately. Equal net P/L can still require
         # moving amounts between Modelo 100 boxes 332 and 337.
@@ -421,9 +606,11 @@ def recalculate_cross_broker_fifo(db: Session, fiscal_year: int, user_id: int) -
             db, isin, fiscal_year, user_id
         )
         broker_pl = broker_by_casilla[332] + broker_by_casilla[337]
-        adjustment = fifo_pl - broker_pl
+        adjustment = _money_round(fifo_pl - broker_pl)
         casilla_deltas = {
-            casilla: fifo_by_casilla[casilla] - broker_by_casilla[casilla]
+            casilla: _money_round(
+                fifo_by_casilla[casilla] - broker_by_casilla[casilla]
+            )
             for casilla in (332, 337)
         }
 

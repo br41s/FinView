@@ -141,6 +141,18 @@ def test_spinoff_keeps_quantity_but_cost_unknown(db):
     assert position.avg_cost_eur is None
 
 
+def test_spinoff_uses_cost_resolved_by_issue_workflow(db):
+    account = _account(db)
+    _tx(db, account, TransactionType.SPINOFF, date(2024, 1, 1), "3", "60")
+    db.commit()
+
+    [position] = svc.get_open_positions(db, 1, skip_prices=True)
+
+    assert position.quantity == Decimal("3")
+    assert position.total_cost_eur == Decimal("60")
+    assert position.avg_cost_eur == Decimal("20")
+
+
 def test_empty_isin_never_becomes_a_position(db):
     account = _account(db)
     _tx(db, account, TransactionType.BUY, date(2024, 1, 1), "1", "100", isin="")

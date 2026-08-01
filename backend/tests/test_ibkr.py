@@ -5,9 +5,41 @@ from pathlib import Path
 
 import pytest
 
-from backend.importers.ibkr import _parse_single_trade, parse_ibkr_activity_statement
+from backend.importers import ibkr as ibkr_module
+from backend.importers.ibkr import (
+    _apply_assignment_premiums,
+    _detect_assignments,
+    _extract_trades,
+    _parse_single_trade,
+    parse_ibkr_activity_statement,
+)
 
 CSV_PATH = Path(__file__).parent.parent.parent / "files" / "IBKR-U11040354_2024_2024.csv"
+
+
+def _assignment_row(
+    category: str,
+    symbol: str,
+    quantity: str,
+    price: str,
+    code: str,
+    *,
+    basis: str = "0",
+    proceeds: str = "0",
+) -> list[str]:
+    row = [""] * 16
+    row[1] = "Data"
+    row[2] = "Order"
+    row[3] = category
+    row[4] = "EUR"
+    row[5] = symbol
+    row[6] = "2024-12-19"
+    row[7] = quantity
+    row[8] = price
+    row[10] = proceeds
+    row[12] = basis
+    row[15] = code
+    return row
 
 
 @pytest.fixture
@@ -235,6 +267,110 @@ class TestOptionAssignments:
             assert opt_name not in realized_names, (
                 f"Assigned option {a.option_symbol} should not be in realized gains"
             )
+
+    def test_multiple_assignments_same_underlying_and_date_are_not_overwritten(self):
+        rows = [
+            _assignment_row(
+                "Equity and Index Options", "ABC 20DEC24 50 P", "1", "0", "A;C",
+                basis="100",
+            ),
+            _assignment_row("Stocks", "ABC", "100", "50", "A;O", proceeds="-5000"),
+            _assignment_row(
+                "Equity and Index Options", "ABC 20DEC24 55 P", "1", "0", "A;C",
+                basis="80",
+            ),
+            _assignment_row("Stocks", "ABC", "100", "55", "A;O", proceeds="-5500"),
+        ]
+
+        assignments = _detect_assignments(rows, {"ABC": "US0000000001"}, {})
+
+        assert [item.strike for item in assignments] == [Decimal("50"), Decimal("55")]
+        assert [item.premium_eur for item in assignments] == [
+            Decimal("100"),
+            Decimal("80"),
+        ]
+
+    def test_put_and_call_premiums_adjust_stock_cash_once(self):
+        rows = [
+            _assignment_row(
+                "Equity and Index Options", "ABC 20DEC24 50 P", "1", "0", "A;C",
+                basis="100",
+            ),
+            _assignment_row("Stocks", "ABC", "100", "50", "A;O", proceeds="-5000"),
+            _assignment_row(
+                "Equity and Index Options", "XYZ 20DEC24 60 C", "-1", "0", "A;C",
+                basis="80",
+            ),
+            _assignment_row("Stocks", "XYZ", "-100", "60", "A;O", proceeds="6000"),
+        ]
+        symbol_isin = {"ABC": "US0000000001", "XYZ": "US0000000002"}
+        assignments = _detect_assignments(rows, symbol_isin, {})
+        trades = _extract_trades(rows, symbol_isin, {})
+
+        _apply_assignment_premiums(trades, assignments)
+
+        abc = next(trade for trade in trades if trade.name == "ABC")
+        xyz = next(trade for trade in trades if trade.name == "XYZ")
+        assert abc.net_amount_eur == Decimal("4900")
+        assert xyz.net_amount_eur == Decimal("6080")
+
+    def test_missing_or_ambiguous_stock_leg_is_rejected(self):
+        option = _assignment_row(
+            "Equity and Index Options", "ABC 20DEC24 50 P", "1", "0", "A;C",
+            basis="100",
+        )
+        with pytest.raises(ValueError, match="0 coincidencias"):
+            _detect_assignments([option], {"ABC": "US0000000001"}, {})
+
+        stock = _assignment_row(
+            "Stocks", "ABC", "100", "50", "A;O", proceeds="-5000"
+        )
+        with pytest.raises(ValueError, match="2 coincidencias"):
+            _detect_assignments([option, stock, stock.copy()], {"ABC": "US0000000001"}, {})
+
+    def test_invalid_option_type_is_rejected(self):
+        malformed = _assignment_row(
+            "Equity and Index Options", "ABC 20DEC24 50 X", "1", "0", "A;C",
+            basis="100",
+        )
+
+        with pytest.raises(ValueError, match="Tipo de opción no válido"):
+            _detect_assignments([malformed], {"ABC": "US0000000001"}, {})
+
+    def test_public_parser_applies_assignment_premium(self, tmp_path, monkeypatch):
+        rows = [
+            _assignment_row(
+                "Equity and Index Options", "ABC 20DEC24 50 P", "1", "0", "A;C",
+                basis="100",
+            ),
+            _assignment_row("Stocks", "ABC", "100", "50", "A;O", proceeds="-5000"),
+        ]
+        monkeypatch.setattr(ibkr_module, "_parse_sections", lambda _text: {"Trades": rows})
+        monkeypatch.setattr(
+            ibkr_module,
+            "_extract_account_info",
+            lambda _rows: ("TEST", "Test", "EUR"),
+        )
+        monkeypatch.setattr(ibkr_module, "_extract_fiscal_year", lambda _rows: 2024)
+        monkeypatch.setattr(
+            ibkr_module,
+            "_extract_instrument_info",
+            lambda _rows: {"ABC": "US0000000001"},
+        )
+        monkeypatch.setattr(ibkr_module, "_extract_forex_rates", lambda _rows: {})
+        monkeypatch.setattr(ibkr_module, "_extract_yearend_fx_rates", lambda _rows: {})
+        monkeypatch.setattr(ibkr_module, "_extract_dividends", lambda *_args: [])
+        monkeypatch.setattr(ibkr_module, "_extract_interest", lambda _rows: [])
+        monkeypatch.setattr(ibkr_module, "_extract_open_positions", lambda *_args: [])
+        monkeypatch.setattr(ibkr_module, "_extract_realized_performance", lambda *_args: [])
+        path = tmp_path / "ibkr.csv"
+        path.write_text("fixture", encoding="utf-8")
+
+        parsed = parse_ibkr_activity_statement(path)
+
+        stock = next(trade for trade in parsed.trades if trade.name == "ABC")
+        assert stock.gross_amount == Decimal("5000")
+        assert stock.net_amount_eur == Decimal("4900")
 
 
 class TestForexRates:

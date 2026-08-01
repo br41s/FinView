@@ -20,7 +20,8 @@
 - `BACKEND_URL` en Vercel es build-time: **redeploy manual** si cambia la URL del backend.
 - `AUTH_SECRET` en Vercel debe ser idéntico a `FINVIEW_AUTH_SECRET` en Cloud Run.
 - Cloud Build solo se dispara si hay cambios en: `backend/`, `Dockerfile`, `pyproject.toml`, `cloudbuild.yaml`.
-- El FIFO cruzado se recalcula en cada import/delete — nunca omitirlo.
+- El FIFO cruzado se recalcula desde el primer año afectado en cada import, replace,
+  delete y mutación manual — nunca limitarlo al año nominal del documento.
 - Los resultados FIFO anteriores a la versión 2 se conservan en BD pero los endpoints fiscales los ignoran hasta que el ejercicio se recalcule.
 
 ---
@@ -270,12 +271,26 @@ El motor en `backend/services/fifo_engine.py`:
 1. Detecta ISIN no vacíos vendidos en el ejercicio y comprados en dos o más cuentas del usuario.
 2. Carga todas las compras y ventas reales hasta el 31 de diciembre del ejercicio; las ventas históricas consumen inventario antes de procesar las del año objetivo.
 3. Ordena por fecha e ID y hace matching FIFO global. Una compra con fecha posterior a la venta nunca puede emparejarse.
-4. Si cualquier venta queda sin inventario verificable, descarta todo el resultado del ISIN: no persiste lotes parciales ni ajustes autoritativos.
-5. Persiste solo los lotes vendidos en el ejercicio solicitado. El periodo de tenencia es informativo; la casilla se decide por el signo del resultado: ganancia → 332, pérdida → 337.
-6. Compara por separado ganancias y pérdidas del broker contra FIFO. Esto permite mover importes entre 332/337 aunque el P&L neto del ISIN no cambie.
-7. Persiste `CrossBrokerLot` y `FIFOAdjustment` con `calculation_version="2"`. Los agregados fiscales, dashboard, exportación y UI aplican solo esa versión.
+4. Incluye `SPINOFF` como adquisición de cantidad con base desconocida. Si una venta del
+   ejercicio alcanza esa cantidad, crea `fifo_missing_cost_basis` y descarta el
+   resultado fiscal del ISIN; `missing_cost_basis` queda como incidencia fuente del
+   supervisor y nunca se interpreta la base como cero. La acción `set_price` persiste
+   el coste unitario del SPINOFF y llama a `recalculate_fifo_from_year`.
+5. Si cualquier venta queda sin inventario verificable, descarta todo el resultado del ISIN: no persiste lotes parciales ni ajustes autoritativos.
+6. Persiste solo los lotes vendidos en el ejercicio solicitado. El periodo de tenencia es informativo; la casilla se decide por el signo del resultado: ganancia → 332, pérdida → 337.
+7. Agrega resultados por ISIN/casilla y redondea después a céntimos con
+   `ROUND_HALF_UP`; `CrossBrokerLot` conserva seis decimales para auditoría.
+8. Compara por separado ganancias y pérdidas del broker contra FIFO. Esto permite mover importes entre 332/337 aunque el P&L neto del ISIN no cambie.
+9. Persiste `CrossBrokerLot` y `FIFOAdjustment` con `calculation_version="2"`. Los agregados fiscales, dashboard, exportación y UI aplican solo esa versión.
 
-Se recalcula automáticamente en cada import y delete.
+`recalculate_fifo_from_year` se invoca con la fecha más antigua afectada y recorre ese
+año y todos los posteriores con ventas o ajustes existentes. Esto cubre importación,
+reemplazo, borrado de archivo/cuenta y CRUD manual, incluida la limpieza del último sell.
+En PostgreSQL, un advisory lock transaccional por usuario evita dos rebuilds FIFO
+simultáneos. Otro lock por usuario, broker y ejercicio cubre desde la
+comprobación de duplicados hasta el commit del reemplazo anual; no requiere migración.
+Las auto-correcciones del supervisor y las resoluciones manuales que cambian historia
+recalculan desde el primer año alterado antes de confirmar la transacción.
 
 ### Migración y datos históricos
 
@@ -285,9 +300,9 @@ arrancar. Son nullable para mantener compatibilidad con filas antiguas.
 
 No hay backfill automático: las filas legacy quedan almacenadas pero no se muestran ni
 alteran los totales. Para activarlas con v2 hay que reemplazar o reimportar el ejercicio.
-Además, modificar historia antigua todavía no invalida automáticamente todos los
-ejercicios posteriores afectados; hasta implementar esa invalidación, recalcularlos o
-reimportarlos expresamente.
+La invalidación descendente sí es automática desde el primer año afectado. Para corregir
+`net_amount_eur` y `TaxLot` ya persistidos con la semántica antigua de comisiones/primas,
+reimportar los informes DEGIRO e IBKR afectados.
 
 ---
 
@@ -366,7 +381,7 @@ Cuando dos ISINs distintos mapean al mismo ticker de Yahoo Finance (split con ca
 ## 10. Tests
 
 ```bash
-# Todos los tests (estado tras corrección de cartera: 401 passed, 131 skipped)
+# Todos los tests (estado tras integridad FIFO residual: 453 passed, 131 skipped sin fixtures reales)
 pytest backend/tests/ -v
 
 # Solo un módulo
