@@ -4,6 +4,37 @@ import styles from './blog.module.css';
 
 // ── Post images ──────────────────────────────────────────────────────────────
 
+function ImgRiesgoDivisa() {
+  return (
+    <div className={styles.postImgRiesgoDivisa}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">EUR / USD</text>
+        {/* Euro circle */}
+        <circle cx="46" cy="62" r="26" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="46" y="70" fontSize="24" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">€</text>
+        {/* Dollar circle */}
+        <circle cx="154" cy="62" r="26" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="154" y="70" fontSize="24" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">$</text>
+        {/* Wavy exchange line between them */}
+        <path d="M76,54 q12,-10 24,0 t24,0" stroke="var(--fv-ochre)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#divArrowR)"/>
+        <path d="M124,72 q-12,10 -24,0 t-24,0" stroke="var(--fv-ink-40)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#divArrowL)"/>
+        {/* Dividend coins falling into euro */}
+        <circle cx="40" cy="102" r="4" fill="var(--fv-ochre)"/>
+        <circle cx="52" cy="102" r="4" fill="rgba(154,107,31,0.35)"/>
+        <text x="100" y="106" fontSize="7" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">tu dividendo, al cambio del día</text>
+        <defs>
+          <marker id="divArrowR" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ochre)"/>
+          </marker>
+          <marker id="divArrowL" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6" fill="var(--fv-ink-40)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
 function ImgDgi() {
   return (
     <div className={styles.postImgDgi}>
@@ -1266,6 +1297,16 @@ function ImgRecomprasVsDividendos() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'riesgo-divisa-cartera-dividendos',
+    tag: 'Estrategia',
+    date: '01 ago 2026',
+    readTime: '9 min',
+    title: 'Riesgo divisa en tu cartera de dividendos: por qué el euro/dólar decide parte de tu cobro',
+    excerpt:
+      'Si cobras dividendos de empresas USA o europeas fuera de la zona euro, el tipo de cambio mueve tu renta cada trimestre. Cuánto pesa, cómo se combina con la retención en origen y por qué cubrir la divisa casi nunca compensa en acciones.',
+    Image: ImgRiesgoDivisa,
+  },
   {
     slug: 'recompras-acciones-vs-dividendos',
     tag: 'Estrategia',
