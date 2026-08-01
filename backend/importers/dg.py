@@ -23,6 +23,7 @@ from backend.importers.base import (
     TxType,
     country_from_isin,
 )
+from backend.services.transaction_amounts import trade_net_amount
 
 # ── Number / date helpers ──────────────────────────────────────────────
 
@@ -284,7 +285,11 @@ def _parse_transactions(text: str) -> list[ParsedTransaction]:
             exchange_rate=fx_rate,
             gross_amount=eur_value,
             fees=commission,
-            net_amount_eur=eur_value,
+            net_amount_eur=trade_net_amount(
+                tx_type.value,
+                eur_value,
+                commission,
+            ),
             realized_pl_eur=realized_pl,
         ))
     return transactions

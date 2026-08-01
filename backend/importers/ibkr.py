@@ -560,18 +560,13 @@ def _detect_assignments(
     in the Realized Performance Summary — IBKR embeds them in the stock's
     cost basis automatically.  This function extracts them for display.
     """
-    assignments: list[OptionAssignment] = []
-
-    # Pass 1: collect option premiums from assignment closes (A;C)
-    option_premiums: dict[tuple[str, str], Decimal] = {}
-    option_info: dict[tuple[str, str], tuple[str, str, Decimal]] = {}
+    option_closes: list[dict] = []
+    stock_legs: list[dict] = []
 
     for row in trades_rows:
         if len(row) < 16 or row[1].strip() != "Data" or row[2].strip() != "Order":
             continue
         code = row[15].strip() if len(row) > 15 else ""
-        if "A" not in code:
-            continue
         asset_category = row[3].strip()
         currency = row[4].strip()
         symbol = row[5].strip()
@@ -587,43 +582,98 @@ def _detect_assignments(
             underlying = symbol.split()[0]
             basis = abs(_dec(row[12])) if len(row) > 12 else Decimal("0")
             basis_eur, _ = _to_eur(basis, currency, forex_rates, trade_dt)
-            key = (underlying, trade_dt.isoformat())
-            option_premiums[key] = basis_eur
             parts = symbol.split()
-            opt_type = parts[-1] if parts else "?"
+            opt_type = parts[-1].upper() if parts else "?"
+            if opt_type not in {"P", "C"}:
+                raise ValueError(f"Tipo de opción no válido en asignación: {symbol}")
             strike = _dec(parts[-2]) if len(parts) >= 3 else Decimal("0")
-            option_info[key] = (symbol, opt_type, strike)
+            option_qty = abs(_dec(row[7])) if len(row) > 7 else Decimal("0")
+            option_closes.append({
+                "underlying": underlying,
+                "trade_date": trade_dt,
+                "option_symbol": symbol,
+                "option_type": opt_type,
+                "strike": strike,
+                "stock_quantity": option_qty * Decimal("100"),
+                "premium_eur": basis_eur,
+            })
+        elif "A;O" in code or "A; O" in code:
+            if _norm_cat(asset_category) != "Stocks":
+                continue
+            stock_legs.append({
+                "symbol": symbol,
+                "trade_date": trade_dt,
+                "quantity": _dec(row[7]) if len(row) > 7 else Decimal("0"),
+                "price": abs(_dec(row[8])) if len(row) > 8 else Decimal("0"),
+            })
 
-    # Pass 2: match stock trades from assignments (A;O)
-    for row in trades_rows:
-        if len(row) < 16 or row[1].strip() != "Data" or row[2].strip() != "Order":
-            continue
-        code = row[15].strip() if len(row) > 15 else ""
-        if "A;O" not in code and "A; O" not in code:
-            continue
-        symbol = row[5].strip()
-        date_str = row[6].strip()
-        if not date_str:
-            continue
-        trade_dt = _parse_date(date_str)
-        key = (symbol, trade_dt.isoformat())
-        if key not in option_premiums:
-            continue
-        quantity = abs(_dec(row[7])) if len(row) > 7 else Decimal("0")
-        isin = symbol_isin.get(symbol, "")
-        opt_symbol, opt_type, strike = option_info[key]
+    assignments: list[OptionAssignment] = []
+    used_stock_legs: set[int] = set()
+    for option in option_closes:
+        expected_sign = 1 if option["option_type"] == "P" else -1
+        candidates = [
+            index
+            for index, stock in enumerate(stock_legs)
+            if index not in used_stock_legs
+            and stock["symbol"] == option["underlying"]
+            and stock["trade_date"] == option["trade_date"]
+            and (1 if stock["quantity"] > 0 else -1) == expected_sign
+            and abs(stock["quantity"]) == option["stock_quantity"]
+            and stock["price"] == option["strike"]
+        ]
+        if len(candidates) != 1:
+            raise ValueError(
+                "No se pudo identificar de forma unívoca la pata de acciones "
+                f"para la asignación {option['option_symbol']} "
+                f"del {option['trade_date']}: {len(candidates)} coincidencias"
+            )
+
+        used_stock_legs.add(candidates[0])
         assignments.append(OptionAssignment(
-            assignment_date=trade_dt,
-            underlying=symbol,
-            option_symbol=opt_symbol,
-            option_type=opt_type,
-            strike=strike,
-            stock_quantity=quantity,
-            stock_isin=isin,
-            premium_eur=option_premiums[key],
+            assignment_date=option["trade_date"],
+            underlying=option["underlying"],
+            option_symbol=option["option_symbol"],
+            option_type=option["option_type"],
+            strike=option["strike"],
+            stock_quantity=option["stock_quantity"],
+            stock_isin=symbol_isin.get(option["underlying"], ""),
+            premium_eur=option["premium_eur"],
         ))
 
     return assignments
+
+
+def _apply_assignment_premiums(
+    trades: list[ParsedTransaction],
+    assignments: list[OptionAssignment],
+) -> None:
+    """Apply each assignment premium once to the resulting stock leg."""
+    used_trade_indexes: set[int] = set()
+    for assignment in assignments:
+        expected_type = TxType.BUY if assignment.option_type == "P" else TxType.SELL
+        candidates = [
+            index
+            for index, trade in enumerate(trades)
+            if index not in used_trade_indexes
+            and trade.trade_date == assignment.assignment_date
+            and trade.name == assignment.underlying
+            and trade.tx_type == expected_type
+            and trade.quantity == assignment.stock_quantity
+            and trade.price == assignment.strike
+        ]
+        if len(candidates) != 1:
+            raise ValueError(
+                "No se pudo aplicar de forma unívoca la prima de la asignación "
+                f"{assignment.option_symbol}: {len(candidates)} operaciones candidatas"
+            )
+
+        trade_index = candidates[0]
+        stock_trade = trades[trade_index]
+        if expected_type == TxType.BUY:
+            stock_trade.net_amount_eur -= assignment.premium_eur
+        else:
+            stock_trade.net_amount_eur += assignment.premium_eur
+        used_trade_indexes.add(trade_index)
 
 
 def parse_ibkr_activity_statement(path: Path) -> IBKRAnnualReport:
@@ -680,6 +730,7 @@ def parse_ibkr_activity_statement(path: Path) -> IBKRAnnualReport:
 
     # Detect option assignments from trade codes
     assignments = _detect_assignments(trades_rows, symbol_isin, forex_rates)
+    _apply_assignment_premiums(trades, assignments)
 
     return IBKRAnnualReport(
         account_id=account_id,

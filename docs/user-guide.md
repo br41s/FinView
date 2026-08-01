@@ -368,6 +368,15 @@ Si falta inventario para cubrir una venta o el ISIN está vacío, FinView no pub
 resultado FIFO parcial como definitivo. Revisa la calidad de las importaciones antes de
 usar esas cifras.
 
+Si la cronología alcanza acciones recibidas por **spin-off** cuyo coste de adquisición
+no figura en los documentos, aparece el aviso `missing_cost_basis`. La cantidad sí se
+consume en orden FIFO, pero FinView no inventa un coste cero ni publica el ajuste del
+ejercicio hasta que ese dato sea conocido; ese bloqueo anual aparece como
+`fifo_missing_cost_basis`. En el aviso fuente puedes introducir el **coste por acción**;
+debe ser un número mayor que cero. FinView actualiza solo el lote indicado y recalcula
+automáticamente el ejercicio y los posteriores. Si recibiste varias entregas del mismo
+ISIN, cada una conserva su propio aviso hasta completar su coste.
+
 **¿Por qué ha desaparecido un ajuste FIFO antiguo?**
 
 Los resultados calculados antes de FIFO v2 no contienen el desglose fiable entre
@@ -384,7 +393,17 @@ Sí. Cada importación se asocia a un año fiscal. Puedes tener datos de múltip
 No — si ya existe una importación para ese broker + año, la nueva reemplaza a la anterior automáticamente.
 
 **¿Qué pasa con las asignaciones de opciones de IBKR?**  
-Las asignaciones se detectan automáticamente por los trade codes del extracto IBKR. Se registran en tabla separada y son visibles en la pestaña de ganancias.
+Las asignaciones se detectan automáticamente por los trade codes del extracto IBKR. Se
+registran en tabla separada y son visibles en la pestaña de ganancias. La prima se aplica
+una sola vez a la operación de acciones: reduce el coste en una PUT asignada y aumenta el
+importe de venta en una CALL asignada. Si ya habías importado un extracto IBKR anterior a
+esta corrección, reemplázalo para regenerar los importes.
+
+**¿Tengo que volver a importar informes DEGIRO antiguos?**
+
+Sí, si quieres que las comisiones e impuestos de transacción corrijan lotes ya
+persistidos. Reemplazar el informe recalcula también cualquier venta posterior que
+dependa de esas compras históricas.
 
 **¿Qué tickers puedo añadir al monitor de opciones?**  
 Cualquier ticker con opciones en Yahoo Finance (acciones US/EU) o en MEFF (tickers con sufijo `.MC` como `IBE.MC`, `SAN.MC`).

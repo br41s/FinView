@@ -27,8 +27,25 @@ from backend.models import (
     Transaction,
     TransactionType,
 )
+from backend.services.db_locks import lock_fifo_recalculation
 
 logger = logging.getLogger(__name__)
+
+_ACQUISITION_TYPES = [
+    TransactionType.BUY.value,
+    TransactionType.SPINOFF.value,
+]
+
+
+def _issue_dedupe_key(issue: DataIssue) -> tuple[str, str | None, int | None]:
+    """Keep transaction-specific basis issues distinct for the same ISIN."""
+    tx_id = None
+    if issue.issue_type == "missing_cost_basis":
+        try:
+            tx_id = int(json.loads(issue.resolution_data or "{}").get("tx_id"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            tx_id = None
+    return issue.issue_type, issue.isin, tx_id
 
 
 def _scope_tx_query(q, user_id: int | None):
@@ -102,10 +119,12 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     If user_id is given (full audit), scope to that user's accounts.
     """
     user_id = _resolve_user_scope(db, import_id, user_id)
+    lock_fifo_recalculation(db, user_id)
     issues: list[DataIssue] = []
 
     issues.extend(_check_rights_as_sells(db, import_id, user_id))
     issues.extend(_check_missing_buys(db, import_id, user_id))
+    issues.extend(_check_missing_cost_basis(db, import_id, user_id))
     issues.extend(_check_holdings_mismatch(db, import_id, user_id))
     issues.extend(_check_missing_ticker(db, import_id, user_id))
     issues.extend(_check_split_candidates(db, import_id, user_id))
@@ -114,8 +133,8 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     # Persist issues, deduplicating against existing needs_input rows so
     # repeated supervisor runs don't create 5× copies of the same warning.
     existing_needs_input = {
-        (row.issue_type, row.isin)
-        for row in db.query(DataIssue.issue_type, DataIssue.isin)
+        _issue_dedupe_key(row)
+        for row in db.query(DataIssue)
         .outerjoin(ImportRecord, DataIssue.import_id == ImportRecord.id)
         .outerjoin(Account, ImportRecord.account_id == Account.id)
         .filter(
@@ -129,14 +148,32 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     }
     persisted: list[DataIssue] = []
     for issue in issues:
-        if issue.status == "needs_input" and (issue.issue_type, issue.isin) in existing_needs_input:
+        issue_key = _issue_dedupe_key(issue)
+        if issue.status == "needs_input" and issue_key in existing_needs_input:
             continue
         issue.user_id = user_id
         db.add(issue)
         persisted.append(issue)
         if issue.status == "needs_input":
-            existing_needs_input.add((issue.issue_type, issue.isin))
+            existing_needs_input.add(issue_key)
     db.flush()
+
+    recalculate_from_years = []
+    for issue in persisted:
+        if issue.status != "auto_resolved":
+            continue
+        try:
+            year = json.loads(issue.resolution_data or "{}").get(
+                "recalculate_from_year"
+            )
+        except json.JSONDecodeError:
+            year = None
+        if year is not None:
+            recalculate_from_years.append(int(year))
+    if recalculate_from_years:
+        from backend.services.fifo_engine import recalculate_fifo_from_year
+
+        recalculate_fifo_from_year(db, min(recalculate_from_years), user_id)
 
     logger.info(
         "Data supervisor: %d issues found, %d persisted (import_id=%s)",
@@ -145,6 +182,45 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
         import_id,
     )
     return persisted
+
+
+def _check_missing_cost_basis(
+    db: Session,
+    import_id: int | None,
+    user_id: int | None = None,
+) -> list[DataIssue]:
+    """Flag spin-off acquisitions whose inherited basis is not in the source."""
+    q = db.query(Transaction).filter(
+        Transaction.type == TransactionType.SPINOFF.value,
+        Transaction.price <= 0,
+        Transaction.isin.isnot(None),
+        Transaction.isin != "",
+    )
+    if import_id is not None:
+        q = q.filter(Transaction.import_id == import_id)
+    q = _scope_tx_query(q, user_id)
+
+    issues: list[DataIssue] = []
+    for tx in q.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all():
+        issues.append(DataIssue(
+            import_id=tx.import_id,
+            issue_type="missing_cost_basis",
+            severity="warning",
+            isin=tx.isin,
+            name=tx.name,
+            description=(
+                "Acciones recibidas por spin-off sin coste de adquisición. "
+                "La cantidad participa en la cronología FIFO, pero una venta que "
+                "alcance este lote no tendrá ajuste fiscal hasta completar el coste."
+            ),
+            status="needs_input",
+            resolution_data=json.dumps({
+                "tx_id": tx.id,
+                "trade_date": tx.trade_date.isoformat(),
+                "quantity": str(tx.quantity),
+            }),
+        ))
+    return issues
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +266,7 @@ def _check_rights_as_sells(db: Session, import_id: int | None, user_id: int | No
                     "new_type": "DIVIDEND",
                     "old_qty": str(old_qty),
                     "amount": str(tx.net_amount_eur),
+                    "recalculate_from_year": tx.trade_date.year,
                 }),
             )
             issues.append(issue)
@@ -228,7 +305,7 @@ def _check_missing_buys(db: Session, import_id: int | None, user_id: int | None 
 
     # Get all ISINs with BUY transactions for active stocks (exclude derivatives)
     buy_q = db.query(Transaction.isin).filter(
-        Transaction.type == TransactionType.BUY.value,
+        Transaction.type.in_(_ACQUISITION_TYPES),
         Transaction.isin.isnot(None),
         ~Transaction.name.like("[OPT]%"),
         ~Transaction.name.like("[FX]%"),
@@ -325,7 +402,7 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
             .filter(
                 Transaction.account_id == holding.account_id,
                 Transaction.isin == isin,
-                Transaction.type == TransactionType.BUY.value,
+                Transaction.type.in_(_ACQUISITION_TYPES),
                 Transaction.trade_date <= snap_end,
             )
             .scalar()
@@ -398,7 +475,7 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
 
     # From BUY transactions with no matching sell (open positions)
     buy_q = db.query(Transaction.isin).filter(
-        Transaction.type == TransactionType.BUY.value,
+        Transaction.type.in_(_ACQUISITION_TYPES),
         Transaction.isin.isnot(None),
     )
     buy_q = _scope_tx_query(buy_q, user_id)
@@ -499,7 +576,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
         all_isins_for_ticker = ticker_to_isins.get(ticker, [isin])
         first_buy_q = db.query(func.min(Transaction.trade_date)).filter(
             Transaction.isin.in_(all_isins_for_ticker),
-            Transaction.type == TransactionType.BUY.value,
+            Transaction.type.in_(_ACQUISITION_TYPES),
         )
         first_buy = _scope_tx_query(first_buy_q, user_id).scalar()
         if not first_buy:
@@ -519,7 +596,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
                 old_isins = [i for i in all_isins_for_ticker if i != isin]
                 has_old_q = db.query(Transaction).filter(
                     Transaction.isin.in_(old_isins),
-                    Transaction.type == TransactionType.BUY.value,
+                    Transaction.type.in_(_ACQUISITION_TYPES),
                     Transaction.trade_date < split_date,
                 )
                 has_old = _scope_tx_query(has_old_q, user_id).first() is not None
@@ -560,7 +637,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
             pre_split_q = db.query(func.coalesce(func.sum(Transaction.quantity), 0)).filter(
                 Transaction.isin == isin,
-                Transaction.type == TransactionType.BUY.value,
+                Transaction.type.in_(_ACQUISITION_TYPES),
                 Transaction.trade_date < split_date,
             )
             pre_split_qty = _scope_tx_query(pre_split_q, user_id).scalar() or Decimal("0")
@@ -577,7 +654,9 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
             if holding_qty > 0 and abs(holding_qty - expected_after_split) <= tol:
                 # Auto-apply: adjust pre-split BUY/SELL quantities
-                _apply_qty_split(db, isin, split_date, ratio, user_id)
+                recalculate_from_year = _apply_qty_split(
+                    db, isin, split_date, ratio, user_id
+                )
                 issue = DataIssue(
                     import_id=import_id,
                     issue_type="potential_split",
@@ -597,6 +676,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
                         "ratio": str(ratio),
                         "pre_split_qty": str(pre_split_qty),
                         "post_split_qty": str(expected_after_split),
+                        "recalculate_from_year": recalculate_from_year,
                     }),
                 )
                 issues.append(issue)
@@ -634,19 +714,23 @@ def _apply_qty_split(
     split_date: date,
     ratio: Decimal,
     user_id: int,
-) -> None:
+) -> int | None:
     """Adjust pre-split BUY/SELL transaction quantities for a qty-only split.
 
     Cost basis (gross_amount, net_amount_eur) is preserved — only quantity
     and unit price are adjusted: qty × ratio, price / ratio.
     Rows with price = 0 (scrip/free shares) keep price = 0.
     """
-    db.query(Transaction).filter(
+    affected_q = db.query(Transaction).filter(
         Transaction.account_id.in_(db.query(Account.id).filter(Account.user_id == user_id)),
         Transaction.isin == isin,
         Transaction.trade_date < split_date,
-        Transaction.type.in_([TransactionType.BUY.value, TransactionType.SELL.value]),
-    ).update(
+        Transaction.type.in_([*_ACQUISITION_TYPES, TransactionType.SELL.value]),
+    )
+    earliest_date = db.query(func.min(Transaction.trade_date)).filter(
+        Transaction.id.in_(affected_q.with_entities(Transaction.id))
+    ).scalar()
+    affected_q.update(
         {
             "quantity": Transaction.quantity * ratio,
             "price": case(
@@ -657,6 +741,7 @@ def _apply_qty_split(
         synchronize_session=False,
     )
     db.flush()
+    return earliest_date.year if earliest_date is not None else None
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ from backend.models import (
     Base,
     Broker,
     CrossBrokerLot,
+    DataIssue,
     FIFOAdjustment,
     TaxLot,
     Transaction,
@@ -19,7 +20,10 @@ from backend.models import (
     User,
 )
 from backend.api.fiscal import list_cross_broker_lots
-from backend.services.fifo_engine import recalculate_cross_broker_fifo
+from backend.services.fifo_engine import (
+    recalculate_cross_broker_fifo,
+    recalculate_fifo_from_year,
+)
 
 
 @pytest.fixture
@@ -90,6 +94,32 @@ def _make_sell(db, acct: Account, isin: str, trade_date: date,
         gross_amount=qty * price,
         fees=Decimal("0"),
         net_amount_eur=qty * price,
+    )
+    db.add(tx)
+    db.flush()
+    return tx
+
+
+def _make_spinoff(
+    db,
+    acct: Account,
+    isin: str,
+    trade_date: date,
+    qty: Decimal,
+    import_id: int = 1,
+) -> Transaction:
+    tx = Transaction(
+        account_id=acct.id,
+        import_id=import_id,
+        type=TransactionType.SPINOFF.value,
+        trade_date=trade_date,
+        isin=isin,
+        name="SpinCo",
+        quantity=qty,
+        price=Decimal("0"),
+        gross_amount=Decimal("0"),
+        fees=Decimal("0"),
+        net_amount_eur=Decimal("0"),
     )
     db.add(tx)
     db.flush()
@@ -713,3 +743,199 @@ class TestUserIsolation:
         assert db.get(FIFOAdjustment, other_adjustment_id) is not None
         assert db.query(CrossBrokerLot).count() == 2
         assert db.query(FIFOAdjustment).count() == 2
+
+
+class TestDownstreamInvalidation:
+    def test_historical_buy_recalculates_later_sale_year(self, db, user_id):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000201"
+
+        old_buy = _make_buy(
+            db, tr_acct, isin, date(2023, 1, 1), Decimal("10"), Decimal("50")
+        )
+        _make_buy(
+            db, dg_acct, isin, date(2023, 6, 1), Decimal("10"), Decimal("70")
+        )
+        _make_sell(
+            db, dg_acct, isin, date(2025, 6, 1), Decimal("10"), Decimal("80")
+        )
+        _make_broker_lot(
+            db, dg_acct, isin, date(2023, 6, 1), date(2025, 6, 1),
+            Decimal("10"), Decimal("700"), Decimal("800"),
+        )
+
+        recalculate_cross_broker_fifo(db, 2025, user_id)
+        assert db.query(FIFOAdjustment).one().adjustment_eur == Decimal("200")
+
+        old_buy.price = Decimal("60")
+        old_buy.gross_amount = Decimal("600")
+        old_buy.net_amount_eur = Decimal("600")
+        recalculate_fifo_from_year(db, 2023, user_id)
+
+        assert db.query(FIFOAdjustment).one().adjustment_eur == Decimal("100")
+
+    def test_start_year_is_cleared_after_last_sale_disappears(self, db, user_id):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000202"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("1"), Decimal("1"))
+        _make_buy(db, dg_acct, isin, date(2023, 2, 1), Decimal("1"), Decimal("2"))
+        sell = _make_sell(
+            db, dg_acct, isin, date(2025, 1, 1), Decimal("1"), Decimal("3")
+        )
+        _make_broker_lot(
+            db, dg_acct, isin, date(2023, 2, 1), date(2025, 1, 1),
+            Decimal("1"), Decimal("2"), Decimal("3"),
+        )
+        recalculate_cross_broker_fifo(db, 2025, user_id)
+        assert db.query(FIFOAdjustment).count() == 1
+
+        db.query(CrossBrokerLot).filter(CrossBrokerLot.sell_tx_id == sell.id).delete()
+        db.delete(sell)
+        db.flush()
+        recalculate_fifo_from_year(db, 2025, user_id)
+
+        assert db.query(CrossBrokerLot).count() == 0
+        assert db.query(FIFOAdjustment).count() == 0
+
+
+class TestUnknownCostBasis:
+    def test_fee_only_spinoff_remains_unknown_cost(self, db, user_id):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000300"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("5"), Decimal("10"))
+        spinoff = _make_spinoff(
+            db, dg_acct, isin, date(2023, 2, 1), Decimal("5")
+        )
+        spinoff.fees = Decimal("5")
+        spinoff.net_amount_eur = Decimal("5")
+        _make_sell(db, tr_acct, isin, date(2024, 1, 1), Decimal("10"), Decimal("30"))
+
+        result = recalculate_cross_broker_fifo(db, 2024, user_id)
+
+        assert result["lots_created"] == 0
+        assert db.query(CrossBrokerLot).count() == 0
+        assert db.query(DataIssue).one().issue_type == "fifo_missing_cost_basis"
+
+    def test_sale_before_spinoff_keeps_authoritative_fifo(self, db, user_id):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000301"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("5"), Decimal("10"))
+        _make_buy(db, dg_acct, isin, date(2023, 2, 1), Decimal("5"), Decimal("20"))
+        _make_sell(db, tr_acct, isin, date(2024, 1, 1), Decimal("5"), Decimal("30"))
+        _make_spinoff(db, dg_acct, isin, date(2024, 6, 1), Decimal("5"))
+        _make_broker_lot(
+            db, tr_acct, isin, date(2023, 1, 1), date(2024, 1, 1),
+            Decimal("5"), Decimal("50"), Decimal("150"),
+        )
+
+        result = recalculate_cross_broker_fifo(db, 2024, user_id)
+
+        assert result["lots_created"] == 1
+        assert db.query(DataIssue).count() == 0
+
+    def test_sale_reaching_spinoff_fails_closed_and_creates_issue(self, db, user_id):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000302"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("5"), Decimal("10"))
+        spinoff = _make_spinoff(
+            db, dg_acct, isin, date(2023, 2, 1), Decimal("5")
+        )
+        _make_sell(db, tr_acct, isin, date(2024, 1, 1), Decimal("10"), Decimal("30"))
+
+        result = recalculate_cross_broker_fifo(db, 2024, user_id)
+
+        assert result["lots_created"] == 0
+        assert db.query(CrossBrokerLot).count() == 0
+        issue = db.query(DataIssue).one()
+        assert issue.issue_type == "fifo_missing_cost_basis"
+        assert issue.status == "needs_input"
+        assert '"fiscal_year": 2024' in issue.resolution_data
+
+        spinoff.price = Decimal("10")
+        spinoff.gross_amount = Decimal("50")
+        spinoff.net_amount_eur = Decimal("50")
+        recalculate_cross_broker_fifo(db, 2024, user_id)
+        db.refresh(issue)
+        assert issue.status == "resolved"
+        assert db.query(CrossBrokerLot).count() == 2
+
+        spinoff.price = Decimal("0")
+        spinoff.gross_amount = Decimal("0")
+        spinoff.net_amount_eur = Decimal("0")
+        recalculate_cross_broker_fifo(db, 2024, user_id)
+        db.refresh(issue)
+        assert issue.status == "needs_input"
+        assert db.query(CrossBrokerLot).count() == 0
+
+    def test_historical_unknown_consumption_does_not_block_later_known_sale(
+        self, db, user_id
+    ):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000303"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("5"), Decimal("10"))
+        _make_spinoff(db, dg_acct, isin, date(2023, 2, 1), Decimal("5"))
+        _make_sell(db, dg_acct, isin, date(2024, 1, 1), Decimal("10"), Decimal("20"))
+        known_buy = _make_buy(
+            db, tr_acct, isin, date(2025, 1, 1), Decimal("5"), Decimal("30")
+        )
+        _make_sell(db, dg_acct, isin, date(2025, 6, 1), Decimal("5"), Decimal("40"))
+
+        result = recalculate_cross_broker_fifo(db, 2025, user_id)
+
+        assert result["lots_created"] == 1
+        assert db.query(CrossBrokerLot).one().buy_tx_id == known_buy.id
+        assert db.query(DataIssue).count() == 0
+
+
+class TestFiscalRounding:
+    @pytest.mark.parametrize(
+        ("sell_price", "expected_adjustment"),
+        [
+            (Decimal("1.004"), None),
+            (Decimal("1.005"), Decimal("0.01")),
+            (Decimal("0.995"), Decimal("-0.01")),
+        ],
+    )
+    def test_half_up_cent_boundary(self, db, user_id, sell_price, expected_adjustment):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000401"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("1"), Decimal("1"))
+        _make_buy(db, dg_acct, isin, date(2023, 2, 1), Decimal("1"), Decimal("2"))
+        _make_sell(db, dg_acct, isin, date(2024, 1, 1), Decimal("1"), sell_price)
+        _make_broker_lot(
+            db, dg_acct, isin, date(2023, 2, 1), date(2024, 1, 1),
+            Decimal("1"), sell_price, sell_price,
+        )
+
+        recalculate_cross_broker_fifo(db, 2024, user_id)
+
+        adjustment = db.query(FIFOAdjustment).one_or_none()
+        if expected_adjustment is None:
+            assert adjustment is None
+        else:
+            assert adjustment.adjustment_eur == expected_adjustment
+
+    def test_fractional_lots_round_after_box_aggregation(self, db, user_id):
+        tr_acct = _make_account(db, Broker.TR.value, user_id)
+        dg_acct = _make_account(db, Broker.DEGIRO.value, user_id)
+        isin = "US0000000402"
+        _make_buy(db, tr_acct, isin, date(2023, 1, 1), Decimal("1"), Decimal("1"))
+        _make_buy(db, dg_acct, isin, date(2023, 1, 2), Decimal("1"), Decimal("1"))
+        _make_sell(db, dg_acct, isin, date(2024, 1, 1), Decimal("2"), Decimal("1.003"))
+        _make_broker_lot(
+            db, dg_acct, isin, date(2023, 1, 2), date(2024, 1, 1),
+            Decimal("2"), Decimal("2.006"), Decimal("2.006"),
+        )
+
+        recalculate_cross_broker_fifo(db, 2024, user_id)
+
+        adjustment = db.query(FIFOAdjustment).one()
+        assert adjustment.fifo_gains_eur == Decimal("0.01")
+        assert adjustment.adjustment_eur == Decimal("0.01")

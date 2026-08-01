@@ -5,7 +5,7 @@ import logging
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.importers.base import (
@@ -36,7 +36,8 @@ from backend.models import (
     Transaction,
     TransactionType,
 )
-from backend.services.fifo_engine import recalculate_cross_broker_fifo
+from backend.services.fifo_engine import recalculate_fifo_from_year
+from backend.services.db_locks import lock_fifo_recalculation, lock_import_slot
 from backend.services.sql_compat import year_str
 
 logger = logging.getLogger(__name__)
@@ -51,25 +52,21 @@ def _run_supervisor(db: Session, import_id: int) -> list[dict]:
     """Run data supervisor checks and return serialized issues."""
     from backend.services.data_supervisor import run_checks
 
-    try:
-        issues = run_checks(db, import_id=import_id)
-        return [
-            {
-                "id": i.id,
-                "issue_type": i.issue_type,
-                "severity": i.severity,
-                "isin": i.isin,
-                "name": i.name,
-                "description": i.description,
-                "status": i.status,
-                "auto_resolution": i.auto_resolution,
-                "resolution_data": i.resolution_data,
-            }
-            for i in issues
-        ]
-    except Exception:
-        logger.exception("Data supervisor failed for import %d", import_id)
-        return []
+    issues = run_checks(db, import_id=import_id)
+    return [
+        {
+            "id": i.id,
+            "issue_type": i.issue_type,
+            "severity": i.severity,
+            "isin": i.isin,
+            "name": i.name,
+            "description": i.description,
+            "status": i.status,
+            "auto_resolution": i.auto_resolution,
+            "resolution_data": i.resolution_data,
+        }
+        for i in issues
+    ]
 
 
 TX_TYPE_MAP = {
@@ -201,17 +198,38 @@ def _delete_tx_dependents(db: Session, tx_ids: list[int]) -> None:
     ).delete(synchronize_session="fetch")
 
 
-def _delete_import_data(db: Session, import_id: int) -> None:
+def _delete_import_data(
+    db: Session,
+    import_id: int,
+    *,
+    recalculate: bool = True,
+) -> int | None:
     """Cascade-delete all data from a previous import.
 
     Order: TaxLots (via buy/sell tx) → Transactions → TaxResults → ImportRecord.
     """
     import_rec = db.query(ImportRecord).filter(ImportRecord.id == import_id).first()
     if not import_rec:
-        return
+        return None
 
     account_id = import_rec.account_id
     user_id = import_rec.account.user_id
+    if user_id is not None:
+        lock_fifo_recalculation(db, user_id)
+    earliest_affected_year = import_rec.fiscal_year
+    earliest_tx_date = (
+        db.query(func.min(Transaction.trade_date))
+        .filter(
+            Transaction.import_id == import_id,
+            Transaction.account_id == account_id,
+        )
+        .scalar()
+    )
+    if earliest_tx_date is not None:
+        earliest_affected_year = min(
+            earliest_affected_year or earliest_tx_date.year,
+            earliest_tx_date.year,
+        )
 
     tx_ids = [
         t.id for t in
@@ -281,20 +299,29 @@ def _delete_import_data(db: Session, import_id: int) -> None:
     # this is the last import — avoids ghost positions after full broker wipe.
     remaining = db.query(ImportRecord).filter(ImportRecord.account_id == account_id).count()
     if remaining == 0:
-        orphan_tx_ids = [
-            t.id for t in
-            db.query(Transaction.id).filter(
+        orphan_txs = (
+            db.query(Transaction.id, Transaction.trade_date).filter(
                 Transaction.account_id == account_id,
                 Transaction.import_id.is_(None),
             ).all()
-        ]
+        )
+        orphan_tx_ids = [tx.id for tx in orphan_txs]
         if orphan_tx_ids:
+            orphan_start_year = min(tx.trade_date.year for tx in orphan_txs)
+            earliest_affected_year = min(
+                earliest_affected_year or orphan_start_year,
+                orphan_start_year,
+            )
             _delete_tx_dependents(db, orphan_tx_ids)
             db.query(Transaction).filter(
                 Transaction.account_id == account_id,
                 Transaction.import_id.is_(None),
             ).delete(synchronize_session="fetch")
         db.flush()
+
+    if recalculate and earliest_affected_year is not None and user_id is not None:
+        recalculate_fifo_from_year(db, earliest_affected_year, user_id)
+    return earliest_affected_year
 
 
 def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
@@ -307,8 +334,20 @@ def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
     if not account:
         return
 
-    tx_subq = db.query(Transaction.id).filter(Transaction.account_id == account_id).subquery()
-    import_subq = db.query(ImportRecord.id).filter(ImportRecord.account_id == account_id).subquery()
+    lock_fifo_recalculation(db, user_id)
+
+    earliest_tx_date = (
+        db.query(func.min(Transaction.trade_date))
+        .filter(Transaction.account_id == account_id)
+        .scalar()
+    )
+
+    tx_subq = db.query(Transaction.id).filter(
+        Transaction.account_id == account_id
+    ).scalar_subquery()
+    import_subq = db.query(ImportRecord.id).filter(
+        ImportRecord.account_id == account_id
+    ).scalar_subquery()
 
     db.query(CrossBrokerLot).filter(
         CrossBrokerLot.buy_tx_id.in_(tx_subq) | CrossBrokerLot.sell_tx_id.in_(tx_subq)
@@ -318,10 +357,36 @@ def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
     ).delete(synchronize_session=False)
     db.query(Transaction).filter(Transaction.account_id == account_id).delete(synchronize_session=False)
 
+    tax_result_scope = TaxResult.import_id.in_(
+        select(ImportRecord.id).where(ImportRecord.account_id == account_id)
+    )
+    has_other_broker_account = (
+        db.query(Account.id)
+        .filter(
+            Account.user_id == user_id,
+            Account.broker == account.broker,
+            Account.id != account_id,
+        )
+        .first()
+        is not None
+    )
+    if not has_other_broker_account:
+        tax_result_scope = or_(
+            tax_result_scope,
+            and_(
+                TaxResult.import_id.is_(None),
+                TaxResult.broker == account.broker,
+            ),
+        )
     db.query(TaxResult).filter(
-        TaxResult.user_id == user_id, TaxResult.broker == account.broker
+        TaxResult.user_id == user_id,
+        tax_result_scope,
     ).delete(synchronize_session=False)
-    db.query(FIFOAdjustment).filter(FIFOAdjustment.user_id == user_id).delete(synchronize_session=False)
+    if earliest_tx_date is not None:
+        db.query(FIFOAdjustment).filter(
+            FIFOAdjustment.user_id == user_id,
+            FIFOAdjustment.fiscal_year >= earliest_tx_date.year,
+        ).delete(synchronize_session=False)
 
     db.query(OptionAssignmentRecord).filter(
         OptionAssignmentRecord.import_id.in_(import_subq)
@@ -337,6 +402,8 @@ def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
 
     db.delete(account)
     db.flush()
+    if earliest_tx_date is not None:
+        recalculate_fifo_from_year(db, earliest_tx_date.year, user_id)
 
 
 def delete_all_imports(db: Session, user_id: int) -> dict:
@@ -344,14 +411,18 @@ def delete_all_imports(db: Session, user_id: int) -> dict:
     if not db.query(Account).filter(Account.user_id == user_id).first():
         return {"deleted_imports": 0}
 
+    lock_fifo_recalculation(db, user_id)
+
     # Use subqueries to avoid SQLite's 999-parameter IN-clause limit on large datasets.
-    account_subq = db.query(Account.id).filter(Account.user_id == user_id).subquery()
+    account_subq = db.query(Account.id).filter(
+        Account.user_id == user_id
+    ).scalar_subquery()
     import_subq = db.query(ImportRecord.id).filter(
         ImportRecord.account_id.in_(account_subq)
-    ).subquery()
+    ).scalar_subquery()
     tx_subq = db.query(Transaction.id).filter(
         Transaction.account_id.in_(account_subq)
-    ).subquery()
+    ).scalar_subquery()
 
     deleted_count = db.query(ImportRecord).filter(
         ImportRecord.account_id.in_(account_subq)
@@ -533,6 +604,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
 
     Returns summary dict with counts and status.
     """
+    lock_import_slot(db, user_id, Broker.TR.value, report.fiscal_year, file_hash)
     # Check exact file duplicate
     existing = _check_duplicate(db, file_hash, Broker.TR, user_id)
     if existing:
@@ -546,12 +618,14 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     # Keying on the variant lets a migration year's pre- and post-migration
     # reports coexist while re-uploading either one still replaces itself.
     replaced_id = None
+    fifo_start_year = report.fiscal_year
     year_dup = _check_year_duplicate(
         db, Broker.TR, report.fiscal_year, user_id, report.source_variant
     )
     if year_dup:
         replaced_id = year_dup.id
-        _delete_import_data(db, year_dup.id)
+        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
+        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
     # One TR account (like every other broker). The client number changes on a
     # DE→ES migration and the ES report carries none, so keying on it would
@@ -590,7 +664,7 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
     _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
+    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -637,6 +711,7 @@ def import_tr_csv_report(
       (account_id, trade_date, isin, type, quantity);
     - skips holdings / capital_gains / casillas entirely.
     """
+    lock_import_slot(db, user_id, Broker.TR.value, "ledger", file_hash)
     existing = _check_duplicate(db, file_hash, Broker.TR, user_id)
     if existing:
         return {
@@ -693,13 +768,14 @@ def import_tr_csv_report(
     ledger = [t for t in report.transactions if t.tx_type in _LEDGER_TYPES]
     tx_count, tx_skipped = _dedup_insert(ledger)
 
-    # Cross-broker FIFO for every year the ledger touched.
+    # A historical ledger change can alter every later FIFO sale. Recalculate
+    # once from the earliest touched year so later years are not processed twice.
     years = {t.trade_date.year for t in ledger}
-    fifo_lots_created = 0
-    for yr in sorted(years):
-        fifo_lots_created += recalculate_cross_broker_fifo(
-            db, yr, user_id=user_id
-        )["lots_created"]
+    fifo_lots_created = (
+        recalculate_fifo_from_year(db, min(years), user_id=user_id)["lots_created"]
+        if years
+        else 0
+    )
 
     issues = _run_supervisor(db, import_rec.id)
 
@@ -731,8 +807,8 @@ def _create_dg_tax_lots(
     """Create TaxLot entries from DEGIRO gains summary.
 
     For each product with gains/losses, creates synthetic buy/sell
-    transactions and links them in a TaxLot. Cost basis is derived
-    from: cost = proceeds - realized_pl.
+    transactions and links them in a TaxLot. Taxable P/L deducts the report's
+    commission and transaction tax; cost basis is proceeds minus taxable P/L.
     """
     # Index sell transactions by ISIN (for dates and proceeds)
     sells_by_isin: dict[str, list[ParsedTransaction]] = {}
@@ -754,7 +830,12 @@ def _create_dg_tax_lots(
             total_proceeds = g.realized_pl_eur  # fallback
             total_qty = Decimal("1")
 
-        cost_basis = total_proceeds - g.realized_pl_eur
+        taxable_pl = (
+            g.realized_pl_eur
+            - g.commission_eur
+            - g.transaction_tax_eur
+        )
+        cost_basis = total_proceeds - taxable_pl
         country = country_from_isin(g.isin)
 
         # Create synthetic buy transaction
@@ -804,7 +885,7 @@ def _create_dg_tax_lots(
             cost_basis_eur=cost_basis,
             quantity_sold=total_qty,
             proceeds_eur=total_proceeds,
-            realized_pl_eur=g.realized_pl_eur,
+            realized_pl_eur=taxable_pl,
             close_date=sell_date,
         )
         db.add(lot)
@@ -885,6 +966,7 @@ def _compute_broker_casillas(
 
 def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed DEGIRO Annual Report into the database."""
+    lock_import_slot(db, user_id, Broker.DEGIRO.value, report.fiscal_year, file_hash)
     existing = _check_duplicate(db, file_hash, Broker.DEGIRO, user_id)
     if existing:
         return {
@@ -895,10 +977,12 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
 
     # Check if same broker+year already imported → auto-replace
     replaced_id = None
+    fifo_start_year = report.fiscal_year
     year_dup = _check_year_duplicate(db, Broker.DEGIRO, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
-        _delete_import_data(db, year_dup.id)
+        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
+        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
     account = _get_or_create_account(db, Broker.DEGIRO, "DEGIRO", user_id)
 
@@ -935,7 +1019,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
     casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
+    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -962,6 +1046,7 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
 
 def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed ING Información Fiscal PDF into the database."""
+    lock_import_slot(db, user_id, Broker.ING.value, report.fiscal_year, file_hash)
     existing = _check_duplicate(db, file_hash, Broker.ING, user_id)
     if existing:
         return {
@@ -971,10 +1056,12 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
         }
 
     replaced_id = None
+    fifo_start_year = report.fiscal_year
     year_dup = _check_year_duplicate(db, Broker.ING, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
-        _delete_import_data(db, year_dup.id)
+        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
+        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
     account = _get_or_create_account(db, Broker.ING, "ING", user_id)
 
@@ -1031,7 +1118,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
     casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
+    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -1057,6 +1144,7 @@ def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, file
 
 def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed BBVA annual report (from 1-3 PDFs) into the database."""
+    lock_import_slot(db, user_id, Broker.BBVA.value, report.fiscal_year, file_hash)
     existing = _check_duplicate(db, file_hash, Broker.BBVA, user_id)
     if existing:
         return {
@@ -1066,10 +1154,12 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
         }
 
     replaced_id = None
+    fifo_start_year = report.fiscal_year
     year_dup = _check_year_duplicate(db, Broker.BBVA, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
-        _delete_import_data(db, year_dup.id)
+        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
+        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
     account = _get_or_create_account(db, Broker.BBVA, "BBVA", user_id)
 
@@ -1139,7 +1229,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
     casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
+    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -1165,6 +1255,7 @@ def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, fi
 
 def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed eToro annual account statement into the database."""
+    lock_import_slot(db, user_id, Broker.ETORO.value, report.fiscal_year, file_hash)
     existing = _check_duplicate(db, file_hash, Broker.ETORO, user_id)
     if existing:
         return {
@@ -1174,10 +1265,12 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
         }
 
     replaced_id = None
+    fifo_start_year = report.fiscal_year
     year_dup = _check_year_duplicate(db, Broker.ETORO, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
-        _delete_import_data(db, year_dup.id)
+        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
+        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
     account = _get_or_create_account(db, Broker.ETORO, "ETORO", user_id)
 
@@ -1216,7 +1309,7 @@ def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, 
     casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
+    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
@@ -1320,6 +1413,7 @@ def import_ibkr_report(
     db: Session, report: IBKRAnnualReport, file_hash: str, filename: str, user_id: int | None = None
 ) -> dict:
     """Import a parsed IBKR Activity Statement into the database."""
+    lock_import_slot(db, user_id, Broker.IBKR.value, report.fiscal_year, file_hash)
     existing = _check_duplicate(db, file_hash, Broker.IBKR, user_id)
     if existing:
         return {
@@ -1330,10 +1424,12 @@ def import_ibkr_report(
 
     # Check if same broker+year already imported → auto-replace
     replaced_id = None
+    fifo_start_year = report.fiscal_year
     year_dup = _check_year_duplicate(db, Broker.IBKR, report.fiscal_year, user_id)
     if year_dup:
         replaced_id = year_dup.id
-        _delete_import_data(db, year_dup.id)
+        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
+        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
     account = _get_or_create_account(db, Broker.IBKR, report.account_id, user_id)
 
@@ -1394,7 +1490,7 @@ def import_ibkr_report(
     )
 
     # Recalculate cross-broker FIFO
-    fifo_result = recalculate_cross_broker_fifo(db, report.fiscal_year, user_id=user_id)
+    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
 
     # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)

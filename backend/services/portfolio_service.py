@@ -129,7 +129,13 @@ def _apply_tx_to_position(
         pos.quantity += quantity
     elif tx.type == TransactionType.SPINOFF:
         quantity = abs(tx.quantity)
-        lots.append(_CostLot(quantity=quantity, cost_eur=None))
+        net_cost = abs(tx.net_amount_eur)
+        resolved_cost = (
+            net_cost
+            if (tx.price or ZERO) > ZERO and net_cost > ZERO
+            else None
+        )
+        lots.append(_CostLot(quantity=quantity, cost_eur=resolved_cost))
         pos.quantity += quantity
     elif tx.type == TransactionType.SELL:
         sell_qty = abs(tx.quantity)

@@ -1,5 +1,6 @@
 """Multi-user isolation regressions for the data supervisor."""
 
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -233,3 +234,168 @@ def test_auto_split_only_adjusts_transactions_owned_by_user(db, monkeypatch):
     assert tx1.price == Decimal("5")
     assert tx2.quantity == Decimal("7")
     assert tx2.price == Decimal("10")
+
+
+def test_spinoff_missing_cost_basis_is_reported_once(db, monkeypatch):
+    user, account, record = _owner(db, "spin@example.com", "spin")
+    isin = "US0000000601"
+    _transaction(
+        db,
+        account,
+        record,
+        TransactionType.SPINOFF.value,
+        isin,
+        quantity="5",
+        price="0",
+    )
+    monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
+    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+
+    first = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
+    second = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
+
+    assert len([issue for issue in first if issue.issue_type == "missing_cost_basis"]) == 1
+    assert not [issue for issue in second if issue.issue_type == "missing_cost_basis"]
+    stored = db.query(DataIssue).filter(DataIssue.issue_type == "missing_cost_basis").one()
+    assert stored.status == "needs_input"
+
+
+def test_spinoff_cost_issue_is_scoped_to_owner(db, monkeypatch):
+    user1, _, record1 = _owner(db, "spin-one@example.com", "spin-one")
+    _, account2, record2 = _owner(db, "spin-two@example.com", "spin-two")
+    foreign_isin = "US0000000602"
+    _transaction(
+        db,
+        account2,
+        record2,
+        TransactionType.SPINOFF.value,
+        foreign_isin,
+        quantity="5",
+        price="0",
+    )
+    monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
+    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+
+    issues = data_supervisor.run_checks(db, import_id=record1.id, user_id=user1.id)
+
+    assert not [issue for issue in issues if issue.isin == foreign_isin]
+    assert not db.query(DataIssue).filter(DataIssue.isin == foreign_isin).all()
+
+
+def test_spinoff_counts_as_acquisition_for_matching_holding(db, monkeypatch):
+    user, account, record = _owner(db, "spin-holding@example.com", "spin-holding")
+    isin = "US0000000603"
+    _transaction(
+        db,
+        account,
+        record,
+        TransactionType.SPINOFF.value,
+        isin,
+        quantity="5",
+        price="0",
+    )
+    db.add(
+        PortfolioHolding(
+            import_id=record.id,
+            account_id=account.id,
+            fiscal_year=2024,
+            broker="TR",
+            isin=isin,
+            name="Spin holding",
+            currency="EUR",
+            quantity=Decimal("5"),
+            price=Decimal("10"),
+            value_eur=Decimal("50"),
+        )
+    )
+    db.flush()
+    monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
+    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+
+    issues = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
+
+    assert any(issue.issue_type == "missing_cost_basis" for issue in issues)
+    assert not any(issue.issue_type == "missing_buy" for issue in issues)
+    assert not any(issue.issue_type == "holdings_mismatch" for issue in issues)
+
+
+def test_each_unresolved_spinoff_gets_its_own_cost_issue(db, monkeypatch):
+    user, account, record = _owner(db, "spin-many@example.com", "spin-many")
+    isin = "US0000000604"
+    first_tx = _transaction(
+        db,
+        account,
+        record,
+        TransactionType.SPINOFF.value,
+        isin,
+        quantity="2",
+        price="0",
+        trade_date=date(2024, 1, 10),
+    )
+    second_tx = _transaction(
+        db,
+        account,
+        record,
+        TransactionType.SPINOFF.value,
+        isin,
+        quantity="3",
+        price="0",
+        trade_date=date(2024, 2, 10),
+    )
+    monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
+    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+
+    first_run = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
+    cost_issues = [
+        issue for issue in first_run if issue.issue_type == "missing_cost_basis"
+    ]
+    assert {
+        json.loads(issue.resolution_data)["tx_id"] for issue in cost_issues
+    } == {first_tx.id, second_tx.id}
+
+    first_tx.price = Decimal("10")
+    first_tx.gross_amount = Decimal("20")
+    first_tx.net_amount_eur = Decimal("20")
+    next(
+        issue
+        for issue in cost_issues
+        if json.loads(issue.resolution_data)["tx_id"] == first_tx.id
+    ).status = "resolved"
+    db.flush()
+
+    second_run = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
+    assert not [issue for issue in second_run if issue.issue_type == "missing_cost_basis"]
+    pending_ids = {
+        json.loads(issue.resolution_data)["tx_id"]
+        for issue in db.query(DataIssue).filter(
+            DataIssue.issue_type == "missing_cost_basis",
+            DataIssue.status == "needs_input",
+        )
+    }
+    assert pending_ids == {second_tx.id}
+
+
+def test_supervisor_recalculates_after_auto_fixing_historical_rights(db, monkeypatch):
+    user, account, record = _owner(db, "rights@example.com", "rights")
+    tx = _transaction(
+        db,
+        account,
+        record,
+        TransactionType.SELL.value,
+        "ES0000000605",
+        trade_date=date(2022, 5, 1),
+    )
+    tx.name = "Venta de derechos"
+    calls = []
+    monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
+    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(
+        "backend.services.fifo_engine.recalculate_fifo_from_year",
+        lambda _db, year, owner_id: calls.append((year, owner_id)),
+    )
+
+    issues = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
+
+    assert tx.type == TransactionType.DIVIDEND.value
+    assert any(issue.issue_type == "rights_as_sell" for issue in issues)
+    assert calls == [(2022, user.id)]

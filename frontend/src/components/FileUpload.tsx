@@ -131,6 +131,7 @@ function detectBroker(
 
 const ACTIONABLE_TYPES = new Set([
   "zero_price",
+  "missing_cost_basis",
   "missing_buy",
   "potential_split",
   "holdings_mismatch",
@@ -222,8 +223,9 @@ function IssueCard({
         </p>
       )}
 
-      {/* zero_price: ask for the correct purchase price */}
-      {needsInput && issue.issue_type === "zero_price" && (
+      {/* zero_price / missing_cost_basis: ask for per-share acquisition cost */}
+      {needsInput &&
+        (issue.issue_type === "zero_price" || issue.issue_type === "missing_cost_basis") && (
         <div className="mt-2 flex gap-2 items-center flex-wrap">
           <input
             type="number"
@@ -231,7 +233,11 @@ function IssueCard({
             min="0.0001"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="Precio €/acción"
+            placeholder={
+              issue.issue_type === "missing_cost_basis"
+                ? "Coste €/acción"
+                : "Precio €/acción"
+            }
             className={`${inputCls} w-32`}
           />
           <button
@@ -244,7 +250,13 @@ function IssueCard({
             }
             className={applyBtnCls}
           >
-            {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Aplicar precio"}
+            {submitting ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : issue.issue_type === "missing_cost_basis" ? (
+              "Aplicar coste"
+            ) : (
+              "Aplicar precio"
+            )}
           </button>
           <button
             type="button"
