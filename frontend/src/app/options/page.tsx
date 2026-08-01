@@ -173,6 +173,7 @@ interface Calibration {
 
 interface AgentStatus {
   running: boolean;
+  external_scheduler: boolean;
   interval_minutes: number;
   last_cycle: string | null;
   total_cycles: number;
@@ -462,15 +463,16 @@ export default function OptionsPage() {
     setRunning(true);
     try {
       const before = agentStatus?.total_cycles ?? 0;
-      await api.options.runCycle();
-      // The cycle now runs in the background (can take minutes for a large
-      // watchlist) — poll status until total_cycles advances, or give up
-      // after ~5 min so a slow/stuck cycle doesn't spin the button forever.
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        const status = (await api.options.agentStatus()) as AgentStatus;
-        setAgentStatus(status);
-        if (status.total_cycles > before) break;
+      const result = await api.options.runCycle();
+      // Local mode returns immediately and needs polling. Cloud Run returns
+      // only after the request-scoped cycle has completed.
+      if (result.status === "started") {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          const status = (await api.options.agentStatus()) as AgentStatus;
+          setAgentStatus(status);
+          if (status.total_cycles > before) break;
+        }
       }
       await reloadOptions();
       setAnalysisCycle((c) => c + 1);
@@ -791,9 +793,11 @@ export default function OptionsPage() {
               variant={agentStatus?.running ? "destructive" : "default"}
               size="sm"
               onClick={handleToggleAgent}
-              title={agentStatus?.running ? "Stop Auto" : "Auto"}
+              disabled={agentStatus?.external_scheduler}
+              title={agentStatus?.external_scheduler ? "Gestionado por Cloud Scheduler" : agentStatus?.running ? "Stop Auto" : "Auto"}
             >
               {agentStatus?.running ? <Square className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+              {agentStatus?.external_scheduler && <span>Cloud Scheduler</span>}
             </Button>
           </div>
         </div>

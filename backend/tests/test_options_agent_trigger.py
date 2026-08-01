@@ -106,6 +106,41 @@ def test_trigger_cycle_second_call_after_completion_starts_a_new_cycle():
     second_mock.assert_called_once_with(505)
 
 
+def test_request_scoped_trigger_finishes_before_returning(monkeypatch):
+    monkeypatch.setattr(settings, "request_scoped_runtime", True)
+    with patch.object(
+        options_api, "run_cycle", return_value={"status": "ok"}
+    ) as run:
+        result = options_api.trigger_cycle(_user(606))
+
+    assert result.status == "ok"
+    run.assert_called_once_with(606)
+    assert 606 not in options_api._cycles_in_progress
+
+
+def test_request_scoped_trigger_releases_guard_after_failure(monkeypatch):
+    monkeypatch.setattr(settings, "request_scoped_runtime", True)
+    with (
+        patch.object(options_api, "run_cycle", side_effect=RuntimeError("boom")),
+        pytest.raises(RuntimeError),
+    ):
+        options_api.trigger_cycle(_user(607))
+
+    assert 607 not in options_api._cycles_in_progress
+
+
+def test_request_scoped_trigger_reports_cycle_error(monkeypatch):
+    monkeypatch.setattr(settings, "request_scoped_runtime", True)
+    with (
+        patch.object(options_api, "run_cycle", return_value={"status": "error"}),
+        pytest.raises(HTTPException) as exc,
+    ):
+        options_api.trigger_cycle(_user(608))
+
+    assert exc.value.status_code == 500
+    assert 608 not in options_api._cycles_in_progress
+
+
 # ── /options/agent/cron shared-secret auth + in-progress guard ────────
 
 

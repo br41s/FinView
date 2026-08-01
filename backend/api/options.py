@@ -439,10 +439,9 @@ _cycle_lock = threading.Lock()
 def trigger_cycle(user: CurrentUser):
     """Manually trigger one monitoring cycle.
 
-    Runs in a background thread — a large watchlist means fetching every
-    ticker's options chain sequentially, which can take minutes and would
-    otherwise block (and likely time out) this HTTP request. The frontend
-    polls GET /agent/status (total_cycles) to detect completion.
+    Cloud Run finishes the cycle inside the request so request-based billing
+    cannot freeze it after a response. Local runtimes retain the background
+    thread and return ``started`` immediately.
     """
     # FastAPI runs sync def endpoints in a thread pool, so two concurrent
     # requests for the same user could both pass the membership check before
@@ -451,6 +450,16 @@ def trigger_cycle(user: CurrentUser):
         if user.id in _cycles_in_progress:
             return AgentCycleResult(status="already_running")
         _cycles_in_progress.add(user.id)
+
+    if settings.request_scoped_runtime:
+        try:
+            result = run_cycle(user.id)
+        finally:
+            with _cycle_lock:
+                _cycles_in_progress.discard(user.id)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail="Options cycle failed")
+        return AgentCycleResult.model_validate(result)
 
     def _run_in_background(user_id: int) -> None:
         try:
@@ -536,6 +545,7 @@ def agent_status(db: DbSession, user: CurrentUser):
     )
     return AgentStatusOut(
         running=_scheduler_running,
+        external_scheduler=settings.request_scoped_runtime,
         interval_minutes=settings.options_monitor_interval_minutes,
         last_cycle=last_log.timestamp if last_log else None,
         total_cycles=total or 0,
@@ -575,6 +585,11 @@ def agent_last_analysis(db: DbSession, user: CurrentUser):
 @router.post("/agent/start")
 def start_scheduler(user: CurrentUser):
     """Start the APScheduler background job for this user."""
+    if settings.request_scoped_runtime:
+        raise HTTPException(
+            status_code=409,
+            detail="In-process schedulers are disabled on request-scoped runtimes",
+        )
     global _scheduler_running
     from backend.services.options_scheduler import start_user_schedule
 

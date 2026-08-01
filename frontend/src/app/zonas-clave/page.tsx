@@ -113,6 +113,7 @@ export default function ZonasClavePage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [schedulerRunning, setSchedulerRunning] = useState(false);
+  const [externalScheduler, setExternalScheduler] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [portfolioSuggestions, setPortfolioSuggestions] = useState<
@@ -164,6 +165,7 @@ export default function ZonasClavePage() {
         }
         setAnalyses(map);
         setSchedulerRunning(status.running);
+        setExternalScheduler(status.external_scheduler);
         // N5: auto-select from URL param (?ticker=X), fallback to first item
         const params = new URLSearchParams(window.location.search);
         const urlTicker = params.get("ticker")?.toUpperCase();
@@ -257,10 +259,12 @@ export default function ZonasClavePage() {
     const tickers = watchlist.map((w) => w.ticker);
     setAnalyzing(new Set(tickers));
     try {
-      await api.zonasClav.triggerAll();
-      // Poll every 2s up to 10 attempts; break early when all tickers have results
-      for (let i = 0; i < 10; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      const result = await api.zonasClav.triggerAll();
+      const attempts = result.status === "started" ? 10 : 1;
+      for (let i = 0; i < attempts; i++) {
+        if (result.status === "started") {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
         const analysisArr = await api.zonasClav.allAnalyses();
         const map: Record<string, ZcAnalysis> = {};
         for (const a of analysisArr) {
@@ -431,9 +435,10 @@ export default function ZonasClavePage() {
               variant={schedulerRunning ? "destructive" : "default"}
               size="icon"
               onClick={handleToggleScheduler}
-              title={schedulerRunning ? "Parar actualización automática" : "Activar actualización automática (24h)"}
+              disabled={externalScheduler}
+              title={externalScheduler ? "Gestionado por Cloud Scheduler" : schedulerRunning ? "Parar actualización automática" : "Activar actualización automática (24h)"}
             >
-              {schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {externalScheduler ? <span className="text-[10px]">Cloud</span> : schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
           </div>
         </div>

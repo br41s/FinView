@@ -55,7 +55,7 @@ def _classify(vix, spread, stress, hy) -> str:
 
 
 def sync_macro() -> int:
-    """Incremental sync for the macro series. Background thread only.
+    """Incremental sync for the macro series.
 
     No-op (returns 0) when no FRED API key is configured.
     """

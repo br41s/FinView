@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic import model_validator
@@ -11,6 +12,11 @@ class Settings(BaseSettings):
     # Deployment environment: "local", "dev", "test", "staging", "production".
     # Production-like environments enforce secret validation at startup.
     env: str = "local"
+
+    # Cloud Run request-based billing throttles CPU after the response. When
+    # enabled, API work must finish inside the request instead of relying on
+    # daemon threads or in-process schedulers that can be frozen at any time.
+    request_scoped_runtime: bool = False
 
     database_url: str = f"sqlite:///{Path(__file__).parent.parent / 'finview.db'}"
     data_dir: Path = Path(__file__).parent.parent / "data"
@@ -78,6 +84,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _enforce_production_secrets(self) -> "Settings":
         """Block startup if a production-like env runs with insecure/missing secrets."""
+        if os.getenv("K_SERVICE") and self.env.lower() not in PRODUCTION_LIKE_ENVS:
+            raise RuntimeError(
+                "Cloud Run requires FINVIEW_ENV=production; refusing a fail-open "
+                "runtime configuration."
+            )
         if self.env.lower() not in PRODUCTION_LIKE_ENVS:
             return self
 
@@ -92,6 +103,17 @@ class Settings(BaseSettings):
                 f"FINVIEW_ENV={self.env!r} requires secure secrets but the following are "
                 f"missing or still set to the insecure default: {', '.join(offenders)}. "
                 "Set them via environment variables before starting the app."
+            )
+
+        if not self.request_scoped_runtime:
+            raise RuntimeError(
+                "Production requires FINVIEW_REQUEST_SCOPED_RUNTIME=true so work "
+                "cannot escape request-based billing."
+            )
+        if self.database_url.startswith("sqlite"):
+            raise RuntimeError(
+                "Production requires FINVIEW_DATABASE_URL to reference the persistent "
+                "PostgreSQL database, not SQLite."
             )
         return self
 

@@ -42,6 +42,7 @@ Configuradas via `gcloud run services update --set-env-vars`:
 | `FINVIEW_SECRET_KEY` | Firma de JWTs internos | Mismo valor que `AUTH_SECRET` por simplicidad |
 | `FINVIEW_FRONTEND_URL` | CORS y redirects de Stripe | `https://fin-view-topaz.vercel.app` |
 | `FINVIEW_ENV` | Modo de entorno | **Debe ser `production`** en producción para que el validador de secretos se active en startup. Default: `local` (sin validación). |
+| `FINVIEW_REQUEST_SCOPED_RUNTIME` | Impide trabajo fuera de una petición HTTP | **Debe ser `true` en Cloud Run.** Desactiva workers y schedulers en proceso; los endpoints manuales terminan su trabajo antes de responder. |
 | `FINVIEW_RATE_LIMIT_LOGIN` | Límite de intentos de login por IP | Opcional. Default: `5/minute`. |
 | `FINVIEW_RATE_LIMIT_REGISTER` | Límite de intentos de registro por IP | Opcional. Default: `3/minute`. |
 | `FINVIEW_TURNSTILE_SECRET` | Secret key de Cloudflare Turnstile (protección anti-bot en login) | Opcional. **Si está vacío, la verificación se omite** (dev/sin configurar). Empareja con `NEXT_PUBLIC_TURNSTILE_SITE_KEY` del frontend. Obtén el par de claves en Cloudflare → Turnstile. |
@@ -56,6 +57,11 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 ---
 
 ## Cloud Scheduler — los pipelines NO corren sin esto
+
+> **Estado operativo 2026-08-01:** los tres jobs están `PAUSED` como contención del
+> incidente de coste. No reanudarlos hasta que una nueva revisión pase
+> `/api/health/ready`, reciba el 100% del tráfico y el guard confirme facturación por
+> petición, `min=0` y `max=1`.
 
 **La lección más cara del proyecto.** Los tres pipelines (geo, options, zonas-clave) tienen
 un `APScheduler` en proceso con botones de start/stop en la UI. **Eso es una comodidad de
@@ -73,7 +79,7 @@ instancia puede reclamarse tras la respuesta.
 |---|---|---|---|
 | `geo-intel-cycle` | `/api/geo/cron` | `*/10 * * * *` | Los eventos geopolíticos no cierran de noche |
 | `options-agent-cycle` | `/api/options/agent/cron` | `*/15 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer |
-| `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY: todo se calcula sobre barras **diarias**, recalcularlo intradía reescribe los mismos números |
+| `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de 10/15 min |
 
 Listar y comprobar el último intento (`status.code` vacío = OK):
 
@@ -131,29 +137,50 @@ Configuradas en Vercel → Project Settings → Environment Variables:
 
 ### Backend
 - **Cómo:** Cloud Build trigger `finview-api-deploy` escucha GitHub via Cloud Build GitHub App (1ª gen, región `global`).
-- **Disparadores:** push a `main` que toque `backend/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`.
-- **Build + deploy:** definido en [cloudbuild.yaml](../cloudbuild.yaml). Construye imagen Docker, la sube a Artifact Registry, y llama `gcloud run deploy finview-api --image=... --region=europe-west1`. Preserva env vars existentes.
-- **Flags de runtime (críticos):** el deploy fija `--no-cpu-throttling`, `--cpu-boost`, `--min-instances=0` y `--memory=1Gi`. Sin `--no-cpu-throttling` Cloud Run estrangula la CPU fuera de las requests y los hilos de arranque en background (**Eurex RDF ~63s**, ECB FX-sync, catálogo CNMV) nunca terminan → las opciones europeas no cargan. `--memory=1Gi` da margen para parsear el RDF de 27.5 MB (el default 512Mi arriesga OOM). `--min-instances=0` escala a cero en idle (coste ~0), pero cada cold start repaga el preload de Eurex (~63s) → la primera request de opciones europeas tras un idle puede ir lenta. Subir a `--min-instances=1` mantiene una instancia caliente con el chain parseado en memoria (siempre instantáneo) a cambio de ~1 instancia 24/7 (~€45/mes).
-- **Service account del trigger:** `github-actions-deployer@finview-brais-2026.iam.gserviceaccount.com` con roles `run.admin`, `iam.serviceAccountUser`, `cloudbuild.builds.editor`, `storage.admin`, `artifactregistry.writer`, `logging.viewer`, `logging.logWriter`. Proyectos nuevos de GCP **no permiten** usar la SA por defecto (`<PROJECT_NUM>@cloudbuild.gserviceaccount.com`) — siempre user-managed.
-- **Gotcha `includedFiles`:** en la UI del wizard hay que introducir **cada patrón en su propia línea** (Enter entre patrones). Si los pegas separados por espacios se guardan como una sola cadena y el trigger no matchea nada. Si se rompe, exportar con `gcloud beta builds triggers export finview-api-deploy --region=global`, arreglar el YAML y reimportar.
+- **Disparadores:** push a `main` que toque `backend/**`, `scripts/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`.
+- **Build + despliegue seguro:** [cloudbuild.yaml](../cloudbuild.yaml) construye la imagen, demuestra localmente que escucha en `PORT=8080`, crea una revisión candidata privada con **0% de tráfico**, valida configuración y startup, cancela rollouts anteriores del mismo trigger, pausa los tres jobs antes de cambiar tráfico, promueve al 100% y comprueba `/api/health/ready` en la URL pública. Solo el build activo más nuevo puede mutar tráfico; un rollback automático exige que su revisión siga siendo simultáneamente la última creada y la que sirve el 100%, y deja los callers pausados.
+- **Flags de runtime (críticos):** `--cpu-throttling` (facturación por petición), `--min=0`, `--max=1`, `--max-instances=1`, `--memory=1Gi`, `FINVIEW_ENV=production` y `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Producción falla al arrancar si falta ese modo, si los secretos de auth son inseguros o si la base de datos cae al SQLite efímero por defecto. No sustituir `--cpu-throttling` por `--no-cpu-throttling`: con jobs cada 10 minutos y hasta 15 minutos de retención ociosa, la instancia puede quedar facturando continuamente aunque `min=0`.
+- **Trabajo periódico:** Cloud Scheduler llama endpoints síncronos. Cloud Run no inicia AIS, ECB, FRED, CNMV ni preload Eurex como hilos de instancia. Eurex se carga bajo demanda; el job diario de zonas refresca ECB/FRED/CNMV una sola vez y AIS degrada a las fuentes HTTP disponibles.
+- **Guard fail-closed:** [scripts/verify_cloud_run_service.py](../scripts/verify_cloud_run_service.py) rechaza una revisión no lista, facturación por instancia, mínimos distintos de cero, máximos ausentes o mayores de uno, puerto distinto de 8080 y tráfico prematuro. El startup ya ejecuta la inicialización SQL; si Neon no responde, la revisión nunca llega a `Ready=True`. La ruta pública de readiness no consulta la DB en cada llamada para evitar amplificación.
+- **Service account del trigger:** `github-actions-deployer@finview-brais-2026.iam.gserviceaccount.com` con roles `run.admin`, `iam.serviceAccountUser`, `cloudbuild.builds.editor`, `cloudscheduler.admin`, `storage.admin`, `artifactregistry.writer`, `logging.viewer`, `logging.logWriter`. El permiso de Scheduler es necesario para que el rollout pause callers antes de mutar tráfico. Proyectos nuevos de GCP **no permiten** usar la SA por defecto (`<PROJECT_NUM>@cloudbuild.gserviceaccount.com`) — siempre user-managed.
+- **Gotcha `includedFiles`:** el trigger debe incluir también `scripts/**`, porque el guard forma parte del despliegue. En la UI del wizard hay que introducir **cada patrón en su propia línea** (Enter entre patrones). Si los pegas separados por espacios se guardan como una sola cadena y el trigger no matchea nada. Si se rompe, exportar con `gcloud beta builds triggers export finview-api-deploy --region=global`, arreglar el YAML y reimportar.
 
 Monitorizar builds: https://console.cloud.google.com/cloud-build/builds?project=finview-brais-2026
+
+### Controles de coste
+
+- El presupuesto de la cuenta de facturación está activo y cubre todos los proyectos
+  GCP, con umbrales al 50%, 90% y 100%. Es la red de seguridad transversal; no crear
+  presupuestos duplicados por proyecto sin revisar primero este alcance.
+- Cada deploy limita `finview-api` a una instancia a nivel de servicio y revisión.
+- Cada cambio de tráfico pausa los tres jobs. Reanudarlos es un paso manual posterior
+  al guard remoto y a confirmar que la revisión lista es la que sirve el 100%.
+- Si un despliegue no puede verificarse antes de terminar una sesión, pausar primero
+  los jobs que lo invocan y dejar la revisión sin tráfico. Nunca abandonar un candidato
+  fallido con llamadas periódicas activas.
+- Auditoría rápida sin imprimir configuración sensible:
+
+```bash
+gcloud scheduler jobs list --location=europe-west1 --format='table(name.basename(),state,schedule)'
+gcloud run services describe finview-api --region=europe-west1 \
+  --format='table(status.conditions[0].status,status.latestCreatedRevisionName,status.latestReadyRevisionName)'
+python3 scripts/verify_cloud_run_service.py --project=finview-brais-2026 \
+  --region=europe-west1 --service=finview-api --revision=<revision> --phase=live
+```
+
+No usar `gcloud run services describe` sin `--format`: las variables de entorno de
+Cloud Run pueden contener secretos y acabar copiadas a logs o chats.
 
 ### GitHub Actions — no se usa
 Workload Identity Federation quedó pre-configurada por si algún día se rehabilita GitHub Actions en la cuenta (está deshabilitada por GitHub). SA `github-actions-deployer@finview-brais-2026` y pool `github` siguen vivos pero sin workflow activo.
 
-## Deploy manual (fallback)
+## Deploy manual (solo recuperación)
 
-Desde local, si el trigger cae o para un rollback:
+No desplegar `--source` directamente sobre tráfico productivo. Si el trigger cae,
+reproducir su secuencia `candidate` → guard → promoción. El rollback sí es una
+operación aislada y segura:
 
 ```bash
-# Redeploy del código actual local
-gcloud run deploy finview-api \
-  --source . \
-  --region europe-west1 \
-  --project finview-brais-2026 \
-  --allow-unauthenticated
-
 # Actualizar solo env vars sin rebuild
 gcloud run services update finview-api \
   --region europe-west1 \
@@ -181,9 +208,11 @@ Ver revisiones: `gcloud run revisions list --service finview-api --region europe
 | Frontend muestra 400 "Solo PDF" subiendo CSV | `BACKEND_URL` de Vercel apunta a revisión vieja | Actualizar env var en Vercel → Redeploy |
 | "Invalid token" en todos los endpoints | `FINVIEW_AUTH_SECRET` ≠ `AUTH_SECRET` del frontend | Alinear ambos secretos, recargar sesión en navegador |
 | "No hay datos" tras desplegar | Cloud Run sin `FINVIEW_DATABASE_URL` → usa SQLite efímero | Setear env var con la URL de Neon, redeploy |
-| Opciones europeas (.DE/.PA/.AS…) no cargan | Cloud Run estrangula CPU → preload Eurex en background no termina | Verificar que el deploy lleva `--no-cpu-throttling` (ver [cloudbuild.yaml](../cloudbuild.yaml)). Si tarda solo tras un periodo de idle, es el cold start repagando el preload (~63s) por `--min-instances=0` |
+| Opciones europeas (.DE/.PA/.AS…) tardan tras idle | Con facturación por petición, Eurex se carga bajo demanda en el primer acceso | Esperar esa primera carga; no activar CPU permanente para ocultar la latencia |
 | Build rojo en Cloud Build | SA sin permisos o Dockerfile roto | Logs: https://console.cloud.google.com/cloud-build/builds |
-| 500 en `/api/health` | Cold start lento o Neon durmiendo | Esperar 10s; Neon serverless tarda en despertar |
+| Cloud Run dice que no escuchó en `PORT=8080` | Mensaje genérico: el proceso pudo fallar antes de abrir el puerto (por ejemplo, Neon sin cuota) | Leer el traceback de la revisión. La inicialización SQL ocurre antes de que el proceso quede listo |
+| `/api/health` da 200 pero `/api/health/ready` da 503 | Producción arrancó sin `FINVIEW_REQUEST_SCOPED_RUNTIME=true` | Corregir el flag; el pipeline no debe promover esa revisión |
+| `min=0` pero hay una instancia facturable constante | Facturación por instancia más peticiones más frecuentes que la ventana de retención ociosa | Pausar jobs, fijar `--cpu-throttling`, verificar `max=1` y reanudar solo tras el guard |
 | **Una sección lee vacía sin ningún error** (Monitor de opciones, Técnico, Ideas) | El job de Cloud Scheduler no existe, está paused, o su secreto no coincide con Cloud Run → el pipeline no corre. El APScheduler de la UI no cuenta: muere con `--min-instances=0` | `gcloud scheduler jobs list --location=europe-west1` y comparar con los endpoints `/cron` que existen en el código. Ver "Cloud Scheduler" |
 | Cron devuelve **403** | `FINVIEW_CRON_SECRET` de Cloud Run ≠ cabecera `X-Cron-Key` del job (típico: se rotó uno y no los otros) | Rotar de nuevo siguiendo el orden Cloud Run → los tres jobs |
 | Cron devuelve **404** | El endpoint aún no está desplegado (PR mergeado pero Cloud Build sin terminar) | Esperar al build; comprobar `gcloud builds list --limit=1` |

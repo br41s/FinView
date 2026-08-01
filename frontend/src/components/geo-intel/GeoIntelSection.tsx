@@ -120,7 +120,14 @@ export function GeoIntelSection() {
   const runCycle = useCallback(async () => {
     setRunning(true);
     try {
-      await api.geo.run();
+      const result = await api.geo.run();
+      if (result.status === "completed") {
+        const data = await api.geo.signals("all");
+        setSignals(data);
+        setPhase("ready");
+        setRunning(false);
+        return;
+      }
     } catch {
       setRunning(false);
       return;
@@ -170,9 +177,11 @@ export function GeoIntelSection() {
               variant={monitor?.running ? "default" : "outline"}
               size="sm"
               onClick={toggleMonitor}
-              disabled={togglingMonitor || monitor === null}
+              disabled={togglingMonitor || monitor === null || monitor.external_scheduler}
             >
-              {monitor?.running
+              {monitor?.external_scheduler
+                ? "Cloud Scheduler"
+                : monitor?.running
                 ? `Monitor ON · ${monitor.interval_minutes}m`
                 : "Start monitor"}
             </Button>

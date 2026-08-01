@@ -617,8 +617,9 @@ miss one and it 403s silently.
 `services/exchange_rates.py` — official EUR reference rates as an IRPF fallback when a broker
 file omits the rate or for manual entries. Ported from OptionsAI.
 - `ExchangeRate` table (rate_date, currency, rate, source); unique (rate_date, currency).
-- `sync_rates()` runs in a background thread on startup: full ECB history on first boot,
-  then the 90-day feed; skips if already fresh (≤1 day). Never runs inside a request.
+- `sync_rates()` runs from the daily zonas cron on request-scoped production and from
+  a startup thread locally: full ECB history on first boot, then the 90-day feed; skips
+  if already fresh (≤1 day). Never attach it to the 10/15-minute cycles.
 - `get_rate(currency, on)` is DB-only (no HTTP), with ±7-day fallback for weekends/holidays.
   `to_eur(amount, currency, on)` = amount / rate. EUR is always 1.
 - Lookup endpoint: `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`.
@@ -628,8 +629,8 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 ## FRED service — risk-free rate + macro regime
 
 `services/fred_rates.py` + `services/macro_context.py` — St. Louis Fed (FRED) data,
-hand-rolled httpx (not the `fredapi` dep, to match the ECB service). Both sync in the
-same startup background thread (`fred-rate-sync` in app.py). **No-op without
+hand-rolled httpx (not the `fredapi` dep, to match the ECB service). Both sync from the
+daily zonas cron in request-scoped production and a startup thread locally. **No-op without
 `FINVIEW_FRED_API_KEY`** (free key) — degrades to constants/omission like Turnstile/aisstream.
 The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never touches FRED.
 
@@ -824,12 +825,13 @@ replace each other:
   exported from uv.lock). After ANY pyproject.toml dependency change run
   `uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt` and commit
   both files — `backend/tests/test_requirements_sync.py` fails the suite if you forget.
-- Cloud Run runtime flags in cloudbuild.yaml are load-bearing: `--no-cpu-throttling` +
-  `--cpu-boost` + `--memory=1Gi` (+ `--min-instances=0`). Without `--no-cpu-throttling`,
-  CPU is throttled outside requests and the startup background loaders (Eurex RDF ~63s,
-  ECB FX-sync, CNMV catalog) never finish — European options stop loading. Do not remove these.
-  `--min-instances=0` scales to zero (cost ~0) but cold starts re-pay the ~63s Eurex preload;
-  bump to 1 (~€45/mo always-on) only if always-instant European data is worth it.
+- Cloud Run runtime flags in cloudbuild.yaml are load-bearing: `--cpu-throttling` +
+  `--cpu-boost` + `--min=0` + `--max=1` + `--max-instances=1` + `--memory=1Gi`, with
+  `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Production work must finish inside HTTP requests;
+  never restore startup/background workers or `--no-cpu-throttling` to hide cold-start latency.
+- Deploys are candidate-first: image smoke test on `PORT=8080`, private revision with 0% traffic,
+  startup/configuration guard, promotion, public readiness recheck, rollback on failure.
+  A successful build or `gcloud deploy` is not evidence that production is healthy.
 - Full deploy docs: docs/deployment.md
 
 ---
