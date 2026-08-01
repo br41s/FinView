@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (375 backend) · vitest (18 frontend)
+- **Tests:** pytest (478 backend) · vitest (21 frontend)
 
 ## Brokers soportados
 
@@ -264,12 +264,12 @@ Capital comprometido, desembolsado (called), distribuido y NAV actual se guardan
 Tarjetas de resumen + barras de asignación por tipo + tabla de posiciones con métricas por fila + formulario inline para añadir/editar.
 
 ### Buscador (catálogo CNMV)
-Barra de búsqueda en la parte superior: busca fondos registrados en la **CNMV** por nombre o ISIN y, al seleccionar un resultado, pre-rellena el formulario (nombre, tipo, gestora, ISIN; importes siempre manuales). Los datos provienen del registro mensual gratuito "información individual de IIC" de la CNMV (`services/cnmv_catalog.py`) — ~3.000 ISINs de clase sobre ~1.400 fondos — cacheados en la tabla `alt_investment_catalog` y refrescados en segundo plano al arrancar si están obsoletos (>7 días).
+Barra de búsqueda en la parte superior: busca fondos registrados en la **CNMV** por nombre o ISIN y, al seleccionar un resultado, pre-rellena el formulario (nombre, tipo, gestora, ISIN; importes siempre manuales). Los datos provienen del registro mensual gratuito "información individual de IIC" de la CNMV (`services/cnmv_catalog.py`) — ~3.000 ISINs de clase sobre ~1.400 fondos — cacheados en la tabla `alt_investment_catalog`. En Cloud Run se refrescan desde el job diario de zonas si están obsoletos (>7 días); localmente se mantiene el hilo de startup.
 
 Cada fondo se enriquece con su **NAV por participación** y **patrimonio (tamaño del fondo)** del fichero `FONDMENS` (mismo ZIP). Los resultados muestran NAV y patrimonio; se puede **ordenar** por patrimonio/NAV y filtrar por **patrimonio mínimo**, e incluso **explorar** (p. ej. los fondos más grandes) sin escribir un nombre. NAV y patrimonio son los únicos campos que publica una fuente pública gratuita — las métricas de PE (DPI/TVPI/IRR/vintage/commitment/hurdle) son privadas y se introducen a mano. SICAV, IIC inmobiliarias, hedge funds y capital riesgo (PE/VC) están en registros CNMV separados y quedan para fases posteriores.
 
 ### Tipos de cambio (ECB)
-`services/exchange_rates.py` cachea los tipos de referencia oficiales del BCE en la tabla `exchange_rates` como fallback para conversiones IRPF cuando el archivo del broker no trae el tipo (o para entradas manuales). Sincroniza en segundo plano al arrancar (historia completa el primer boot, luego feed de 90 días). `get_rate()` es solo-DB con fallback ±7 días para fines de semana/festivos.
+`services/exchange_rates.py` cachea los tipos de referencia oficiales del BCE en la tabla `exchange_rates` como fallback para conversiones IRPF cuando el archivo del broker no trae el tipo (o para entradas manuales). En Cloud Run sincroniza en el job diario de zonas; localmente, en el startup (historia completa el primer boot, luego feed de 90 días). `get_rate()` es solo-DB con fallback ±7 días para fines de semana/festivos.
 
 ## API
 
@@ -349,7 +349,7 @@ instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
 
 Ver [docs/deployment.md](docs/deployment.md) para el esquema completo (Vercel + Cloud Run + Neon + Cloud Build), env vars requeridas, y cómo actualizar secretos.
 
-**Flujo:** commit local → push a `main` → Vercel redesplaza frontend automáticamente; Cloud Build redesplaza `finview-api` en Cloud Run cuando el push toca `backend/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`. Neon es la base de datos compartida y no se despliega.
+**Flujo:** commit local → push a `main` → Vercel redesplaza frontend automáticamente; Cloud Build crea `finview-api` como candidato privado sin tráfico, valida puerto/configuración/startup y solo entonces lo promueve. Si la validación pública falla, revierte el tráfico. Neon es la base de datos compartida y no se despliega.
 
 En producción, `FINVIEW_ENV=production` activa la validación de secretos en startup y los endpoints de auth están limitados por IP (ver [docs/deployment.md](docs/deployment.md)).
 

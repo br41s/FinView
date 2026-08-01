@@ -2,6 +2,23 @@
 
 Correcciones del usuario → reglas para no repetir el error.
 
+## Un despliegue no termina con el push
+
+**Patrón:** Un trabajo quedó a medias por agotamiento de contexto/tokens. La revisión
+de Cloud Run falló al arrancar, pero no se verificó ni se contuvo el estado externo.
+El servicio siguió consumiendo tiempo de instancia facturable durante semanas.
+
+**Regla:** Todo cambio de despliegue debe terminar en una comprobación remota con
+timeout: revisión `Ready=True`, endpoint de salud correcto, tráfico apuntando a esa
+revisión y ausencia de instancias facturables inesperadas. Si no puede completarse,
+la prioridad es contener coste y dejar el despliegue explícitamente fallido; nunca
+dar por terminado un trabajo solo porque build, push o comando de deploy acabaron.
+
+**Regla transversal:** Los guardas de despliegue deben ser reutilizables y fail-closed:
+un servicio que no escucha en `$PORT`, no pasa salud o mantiene capacidad ociosa no
+puede marcarse como publicado. Ante límite de tiempo/contexto, detener mutaciones y
+entregar un estado operativo verificable antes de continuar con código.
+
 ## Agregados cruzados deben cuadrar
 
 **Patrón:** Al tocar un cálculo que se muestra también en otro sitio

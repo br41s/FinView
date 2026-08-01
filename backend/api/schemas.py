@@ -335,6 +335,7 @@ class AgentCycleResult(BaseModel):
 
 class AgentStatusOut(BaseModel):
     running: bool
+    external_scheduler: bool = False
     interval_minutes: int
     last_cycle: datetime | None = None
     total_cycles: int = 0
@@ -459,6 +460,7 @@ class TechnicalSignalOut(BaseModel):
 
 class ZonasClaveSchedulerStatus(BaseModel):
     running: bool
+    external_scheduler: bool = False
     last_run: datetime | None = None
     total_items: int = 0
 
@@ -517,6 +519,7 @@ class GeoSignalOut(BaseModel):
 
 class GeoSchedulerStatus(BaseModel):
     running: bool
+    external_scheduler: bool = False
     interval_minutes: int
     total_signals: int = 0
     active_signals: int = 0

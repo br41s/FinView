@@ -17,6 +17,7 @@ from backend.api.schemas import (
     GeoSignalOut,
     GeoSignalTickerOut,
 )
+from backend.config import settings
 from backend.database import DbSession
 from backend.models import GeoRuleStat, GeoSignal, GeoSignalStatus
 from backend.services.geo.rules import RULES_BY_ID, effective_confidence
@@ -228,8 +229,19 @@ def get_signal(signal_id: int, db: DbSession, user: CurrentUser):
 
 @router.post("/run", response_model=GeoRunResult)
 def trigger_run(user: CurrentUser):
-    """Fire one pipeline cycle in the background (a cycle takes ~1 min)."""
+    """Run inline on request-scoped runtimes; use a local thread otherwise."""
     from backend.services.geo.orchestrator import run_cycle_for_user
+
+    if settings.request_scoped_runtime:
+        result = run_cycle_for_user(user.id)
+        if result is None:
+            raise HTTPException(status_code=500, detail="Geo cycle failed")
+        return GeoRunResult(
+            status="completed",
+            events=result.events,
+            new_signals=result.new_signals,
+            notified=result.notified,
+        )
 
     threading.Thread(
         target=run_cycle_for_user, args=(user.id,), daemon=True
@@ -246,8 +258,6 @@ def cron_run(request: Request, db: DbSession):
     a shared secret (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables
     the endpoint. Runs synchronously so the instance stays alive for the cycle.
     """
-    from backend.config import settings
-
     secret = settings.cron_secret
     provided = request.headers.get("x-cron-key", "")
     if not secret or not hmac.compare_digest(provided, secret):
@@ -263,9 +273,13 @@ def cron_run(request: Request, db: DbSession):
 
 @router.post("/scheduler/start")
 def start_scheduler(user: CurrentUser):
-    from backend.config import settings
     from backend.services.geo.scheduler import start_user_schedule
 
+    if settings.request_scoped_runtime:
+        raise HTTPException(
+            status_code=409,
+            detail="In-process schedulers are disabled on request-scoped runtimes",
+        )
     start_user_schedule(user.id)
     return {"status": "started", "interval_minutes": settings.geo_monitor_interval_minutes}
 
@@ -280,7 +294,6 @@ def stop_scheduler(user: CurrentUser):
 
 @router.get("/scheduler/status", response_model=GeoSchedulerStatus)
 def scheduler_status(db: DbSession, user: CurrentUser):
-    from backend.config import settings
     from backend.services.geo.scheduler import is_running
 
     base = db.query(GeoSignal).filter(GeoSignal.user_id == user.id)
@@ -289,6 +302,7 @@ def scheduler_status(db: DbSession, user: CurrentUser):
     latest = base.order_by(GeoSignal.created_at.desc()).first()
     return GeoSchedulerStatus(
         running=is_running(user.id),
+        external_scheduler=settings.request_scoped_runtime,
         interval_minutes=settings.geo_monitor_interval_minutes,
         total_signals=total,
         active_signals=active,

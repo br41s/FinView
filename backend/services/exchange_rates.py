@@ -116,7 +116,7 @@ def _cached_date_range(currency: str = "USD") -> tuple[str | None, str | None]:
 
 
 def sync_rates() -> int:
-    """Incremental sync — call from a background thread, NOT from a request.
+    """Incremental sync for startup (local) or request-scoped maintenance (prod).
 
     1. No data in DB → download full history (once ever)
     2. Data exists, stale → download 90-day feed (only new dates upserted)

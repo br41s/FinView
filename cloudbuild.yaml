@@ -11,6 +11,33 @@ steps:
       - push
       - europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/finview-api:$COMMIT_SHA
 
+  # Prove the built image listens on Cloud Run's port before touching the
+  # service. SQLite isolates this contract test from Neon availability.
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        docker run --detach --name finview-api-smoke --publish 8080:8080 \
+          --env PORT=8080 \
+          --env FINVIEW_ENV=test \
+          --env FINVIEW_SECRET_KEY=cloud-build-smoke-secret \
+          --env FINVIEW_AUTH_SECRET=cloud-build-smoke-secret \
+          --env FINVIEW_DATABASE_URL=sqlite:////tmp/finview-smoke.db \
+          --env FINVIEW_REQUEST_SCOPED_RUNTIME=true \
+          europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/finview-api:$COMMIT_SHA
+        for attempt in {1..60}; do
+          if docker exec finview-api-smoke python -c \
+            'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/health/ready", timeout=2)); assert payload["status"] == "ready" and payload["environment"] == "test" and payload["runtime"] == "request-scoped"'; then
+            exit 0
+          fi
+          sleep 1
+        done
+        docker logs finview-api-smoke
+        exit 1
+
+  # Create a candidate revision with no production traffic. Request-based
+  # billing is mandatory: scheduled work executes synchronously in HTTP.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -19,21 +46,121 @@ steps:
       - finview-api
       - --region=europe-west1
       - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/finview-api:$COMMIT_SHA
+      - --revision-suffix=$SHORT_SHA
       - --allow-unauthenticated
-      # CPU always allocated so startup background loaders (Eurex RDF ~63s,
-      # ECB FX sync, CNMV catalog) actually finish instead of being throttled.
-      - --no-cpu-throttling
-      # Startup CPU boost shortens cold-start latency.
+      - --no-traffic
+      - --cpu-throttling
       - --cpu-boost
-      # Scale to zero when idle to avoid 24/7 cost. The background loaders still
-      # run (CPU is allocated while the instance lives), but each cold start
-      # re-pays the ~63s Eurex preload, so the first European-options request
-      # after idle can be slow. Set to 1 if always-instant European data is worth
-      # one always-on instance (~€45/mo).
-      - --min-instances=0
-      # Headroom for parsing the 27.5 MB Eurex RDF (default 512Mi risks OOM).
+      - --min=0
+      - --max=1
+      - --max-instances=1
       - --memory=1Gi
+      - --timeout=1800
+      - --startup-probe=httpGet.path=/api/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=24
+      - --update-env-vars=FINVIEW_ENV=production,FINVIEW_REQUEST_SCOPED_RUNTIME=true
       - --quiet
+
+  # Verify the candidate, shift traffic atomically, verify the public URL, and
+  # rollback automatically if the live check fails.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        # Only the newest active build for this trigger may own a rollout. A
+        # newer build cancels older ones before any traffic mutation.
+        TRIGGER_ID="$$(gcloud builds describe $BUILD_ID \
+          --project=$PROJECT_ID --format='value(buildTriggerId)')"
+        ACTIVE="$$(gcloud builds list --ongoing --project=$PROJECT_ID \
+          --format='json(id,createTime,buildTriggerId)')"
+        NEWEST="$$(printf '%s' "$$ACTIVE" | python3 -c \
+          'import json, sys; trigger = sys.argv[1]; rows = [row for row in json.load(sys.stdin) if row.get("buildTriggerId") == trigger]; print(max(rows, key=lambda row: row["createTime"])["id"])' \
+          "$$TRIGGER_ID")"
+        if [ "$$NEWEST" != "$BUILD_ID" ]; then
+          echo "Build superseded by $$NEWEST; refusing to start a rollout"
+          exit 0
+        fi
+        OLDER="$$(printf '%s' "$$ACTIVE" | python3 -c \
+          'import json, sys; trigger, current = sys.argv[1:]; print(" ".join(row["id"] for row in json.load(sys.stdin) if row.get("buildTriggerId") == trigger and row["id"] != current))' \
+          "$$TRIGGER_ID" "$BUILD_ID")"
+        for OLD_BUILD in $$OLDER; do
+          gcloud builds cancel "$$OLD_BUILD" --project=$PROJECT_ID --quiet
+        done
+        for OLD_BUILD in $$OLDER; do
+          for attempt in {1..60}; do
+            STATUS="$$(gcloud builds describe "$$OLD_BUILD" \
+              --project=$PROJECT_ID --format='value(status)')"
+            if [ "$$STATUS" != "QUEUED" ] && [ "$$STATUS" != "WORKING" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$$STATUS" = "QUEUED" ] || [ "$$STATUS" = "WORKING" ]; then
+            echo "Older build $$OLD_BUILD did not stop; refusing to change traffic"
+            exit 1
+          fi
+        done
+
+        REVISION="finview-api-$SHORT_SHA"
+        PREVIOUS="$$(gcloud run services describe finview-api \
+          --project=$PROJECT_ID --region=europe-west1 \
+          --format='json(status.traffic)' | python3 -c \
+          'import json, sys; rows = json.load(sys.stdin)["status"]["traffic"]; print(next(row["revisionName"] for row in rows if row.get("percent") == 100))')"
+
+        python3 scripts/verify_cloud_run_service.py \
+          --project=$PROJECT_ID --region=europe-west1 --service=finview-api \
+          --revision="$$REVISION" --phase=candidate
+
+        LATEST="$$(gcloud run services describe finview-api \
+          --project=$PROJECT_ID --region=europe-west1 \
+          --format='value(status.latestCreatedRevisionName)')"
+        if [ "$$LATEST" != "$$REVISION" ]; then
+          echo "Deployment superseded by $$LATEST; refusing to change traffic"
+          exit 0
+        fi
+
+        # Any rollout pauses periodic callers before changing traffic. They are
+        # resumed only after an explicit post-deploy verification.
+        for JOB in geo-intel-cycle options-agent-cycle zonas-clave-cycle; do
+          STATE="$$(gcloud scheduler jobs describe "$$JOB" \
+            --project=$PROJECT_ID --location=europe-west1 --format='value(state)')"
+          if [ "$$STATE" != "PAUSED" ]; then
+            gcloud scheduler jobs pause "$$JOB" \
+              --project=$PROJECT_ID --location=europe-west1 --quiet
+          fi
+        done
+
+        gcloud run services update-traffic finview-api \
+          --project=$PROJECT_ID --region=europe-west1 \
+          --to-revisions="$$REVISION=100" --quiet
+
+        LATEST="$$(gcloud run services describe finview-api \
+          --project=$PROJECT_ID --region=europe-west1 \
+          --format='value(status.latestCreatedRevisionName)')"
+        if [ "$$LATEST" != "$$REVISION" ]; then
+          echo "Deployment superseded by $$LATEST after promotion; newer build owns verification"
+          exit 0
+        fi
+
+        if ! python3 scripts/verify_cloud_run_service.py \
+          --project=$PROJECT_ID --region=europe-west1 --service=finview-api \
+          --revision="$$REVISION" --phase=live; then
+          LIVE="$$(gcloud run services describe finview-api \
+            --project=$PROJECT_ID --region=europe-west1 \
+            --format='json(status.traffic)' | python3 -c \
+            'import json, sys; rows = json.load(sys.stdin)["status"]["traffic"]; print(next((row["revisionName"] for row in rows if row.get("percent") == 100), ""))')"
+          LATEST="$$(gcloud run services describe finview-api \
+            --project=$PROJECT_ID --region=europe-west1 \
+            --format='value(status.latestCreatedRevisionName)')"
+          if [ "$$LIVE" = "$$REVISION" ] && [ "$$LATEST" = "$$REVISION" ]; then
+            gcloud run services update-traffic finview-api \
+              --project=$PROJECT_ID --region=europe-west1 \
+              --to-revisions="$$PREVIOUS=100" --quiet
+          else
+            echo "Traffic now belongs to $$LIVE; refusing stale rollback"
+          fi
+          exit 1
+        fi
 
 options:
   logging: CLOUD_LOGGING_ONLY

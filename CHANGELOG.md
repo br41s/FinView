@@ -4,6 +4,24 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Cloud Run cost and deployment safety — 2026-08-01
+
+#### Fixed
+- Cloud Run no longer uses instance-based billing for `finview-api`; scheduled and
+  manual work completes inside the HTTP request so scale-to-zero is reliable.
+- Backend deploys now use a private zero-traffic candidate, startup readiness, automatic
+  traffic rollback, explicit `PORT=8080` smoke testing, and min/max cost guards.
+- Production startup rejects request-unscoped runtimes and ephemeral SQLite.
+  Deterministic revisions and supersession checks prevent stale builds from changing
+  traffic; rollouts pause periodic callers and leave resumption explicit.
+- In-process production schedulers and daemon workers are disabled by
+  `FINVIEW_REQUEST_SCOPED_RUNTIME=true`; local development keeps existing behavior.
+
+#### Operations
+- Root cause documented: the failed revision exited while Neon was over compute
+  quota; Cloud Run's port message was secondary. Continuous billing came from
+  instance billing plus Scheduler requests every 10 minutes, not a revision loop.
+
 ### Retenciones y casillas IRPF
 
 #### Fixed

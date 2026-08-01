@@ -5,6 +5,7 @@ import threading
 from fastapi import APIRouter, HTTPException
 
 from backend.api.auth import CurrentUser
+from backend.config import settings
 from backend.database import DbSession, SessionLocal
 from backend.services.portfolio_service import (
     get_open_positions,
@@ -20,8 +21,8 @@ _warming: set[int] = set()
 _warming_lock = threading.Lock()
 
 
-def _warm_prices_background(user_id: int) -> None:
-    """Fetch and cache prices for all open positions in a background thread."""
+def _warm_prices(user_id: int) -> None:
+    """Fetch and cache prices using an independent database session."""
     try:
         db = SessionLocal()
         try:
@@ -38,18 +39,21 @@ def _warm_prices_background(user_id: int) -> None:
 
 @router.post("/warm-prices")
 def warm_prices(user: CurrentUser):
-    """Trigger background price fetch for all open positions.
+    """Fetch prices inline on request-scoped runtimes, in a local thread otherwise.
 
-    Returns immediately. Prices land in the DB cache so subsequent
-    calls to /positions or /summary are instant.
+    Prices land in the DB cache so subsequent calls are instant.
     """
     with _warming_lock:
         if user.id in _warming:
             return {"status": "already_warming"}
         _warming.add(user.id)
 
+    if settings.request_scoped_runtime:
+        _warm_prices(user.id)
+        return {"status": "warmed"}
+
     thread = threading.Thread(
-        target=_warm_prices_background, args=(user.id,), daemon=True,
+        target=_warm_prices, args=(user.id,), daemon=True,
     )
     thread.start()
     return {"status": "warming"}

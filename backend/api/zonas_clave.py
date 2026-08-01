@@ -38,8 +38,8 @@ class ZcTickerSearchResult(BaseModel):
     exchange: str
 
 
-def _analyze_single_in_background(item_id: int, ticker: str) -> None:
-    """Analyze one ticker and persist the result. Runs in a background thread."""
+def _analyze_single(item_id: int, ticker: str) -> None:
+    """Analyze one ticker and persist the result in an independent session."""
     import json as _json
     from backend.database import SessionLocal
     from backend.models import ZonasClaveAnalysis
@@ -137,10 +137,18 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
         raise HTTPException(status_code=409, detail="Ticker already in Zonas Clave watchlist")
     db.refresh(item)
 
-    # Kick off analysis for this ticker only in background
-    threading.Thread(
-        target=_analyze_single_in_background, args=[item.id, item.ticker], daemon=True
-    ).start()
+    if settings.request_scoped_runtime:
+        try:
+            _analyze_single(item.id, item.ticker)
+        except Exception as exc:  # noqa: BLE001 - resource was already committed
+            logger.warning(
+                "single ticker analysis failed after create: %s",
+                exc.__class__.__name__,
+            )
+    else:
+        threading.Thread(
+            target=_analyze_single, args=[item.id, item.ticker], daemon=True
+        ).start()
 
     return item
 
@@ -256,8 +264,12 @@ def trigger_analysis(ticker: str, db: DbSession, user: CurrentUser):
 
 @router.post("/analyze-all")
 def trigger_all(user: CurrentUser):
-    """Trigger full recalculation for all user's tickers in background."""
+    """Recalculate inline on request-scoped runtimes, in a local thread otherwise."""
     from backend.services.zonas_clave_analyzer import run_analysis_for_user
+
+    if settings.request_scoped_runtime:
+        result = run_analysis_for_user(user.id)
+        return {"status": "completed", **result}
 
     threading.Thread(
         target=run_analysis_for_user, args=[user.id], daemon=True
@@ -285,7 +297,14 @@ def cron_run(request: Request, db: DbSession):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     from backend.models import User
+    from backend.services.reference_data_maintenance import (
+        run_reference_data_maintenance,
+    )
     from backend.services.zonas_clave_analyzer import run_analysis_for_user
+
+    # This job runs once each market day, so reference refreshes stay out of the
+    # 10/15-minute cycles and cannot form a costly retry loop.
+    run_reference_data_maintenance()
 
     user_ids = [uid for (uid,) in db.query(User.id).all()]
     analyzed = signals = alerts = 0
@@ -346,6 +365,11 @@ def list_technical_signals(
 def start_scheduler(user: CurrentUser):
     from backend.services.zonas_clave_scheduler import start_user_schedule
 
+    if settings.request_scoped_runtime:
+        raise HTTPException(
+            status_code=409,
+            detail="In-process schedulers are disabled on request-scoped runtimes",
+        )
     start_user_schedule(user.id)
     return {"status": "started", "interval_hours": 24}
 
@@ -376,6 +400,7 @@ def scheduler_status(db: DbSession, user: CurrentUser):
     )
     return ZonasClaveSchedulerStatus(
         running=is_running(user.id),
+        external_scheduler=settings.request_scoped_runtime,
         last_run=latest_analysis.timestamp if latest_analysis else None,
         total_items=total,
     )

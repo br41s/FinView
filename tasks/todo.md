@@ -1,5 +1,16 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Incidente Cloud Run: crash-loop y prevención de coste — 2026-08-01
+
+- [x] Confirmar qué revisión/servicio mantiene tiempo facturable y aislar la causa
+      real del fallo de arranque de `finview-api`.
+- [x] Contener el gasto sin interrumpir el backend sano ni perder configuración.
+- [ ] Corregir el despliegue y exigir `Ready=True`, tráfico correcto y `/api/health`.
+- [x] Añadir guardas reutilizables contra puerto incorrecto, revisión no lista,
+      billing por instancia y capacidad mínima/máxima inesperada.
+- [x] Ejecutar tests, `/review`, documentar el runbook y verificar el estado remoto.
+- [ ] Publicar PR; no mergear ni desplegar cambios adicionales sin revisión del CEO.
+
 ## PR #190/#191 — resolución de conflictos con main — 2026-08-01
 
 - [x] Rebasar el artículo de riesgo divisa (#190) preservando el índice y estilos

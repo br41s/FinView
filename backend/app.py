@@ -3,7 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -21,7 +21,7 @@ from backend.api.options import router as options_router
 from backend.api.geo import router as geo_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.api.alt_investments import router as alt_investments_router
-from backend.config import settings
+from backend.config import PRODUCTION_LIKE_ENVS, settings
 from backend.database import engine, ensure_columns, ensure_constraints
 from backend.models import Base
 from backend.services.geo.scheduler import shutdown_scheduler as shutdown_geo_scheduler
@@ -43,6 +43,60 @@ ensure_columns()
 ensure_constraints()
 
 
+def _start_instance_background_workers() -> None:
+    """Start workers only on runtimes with CPU outside HTTP requests."""
+    import threading
+
+    from backend.api.options import _invalidate_european_availability_cache
+    from backend.services.geo.ais_collector import start as start_ais_collector
+    from backend.services.options_scraper import _load_eurex_rdf
+
+    _invalidate_european_availability_cache()
+
+    def _preload_eurex():
+        if _load_eurex_rdf():
+            _invalidate_european_availability_cache()
+
+    threading.Thread(target=_preload_eurex, daemon=True, name="eurex-rdf-preload").start()
+    start_ais_collector()
+
+    def _sync_fx_rates():
+        try:
+            from backend.services.exchange_rates import sync_rates
+
+            sync_rates()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            logger.warning("[ecb-sync] skipped: %s", exc)
+
+    threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
+
+    def _sync_fred_rates():
+        try:
+            from backend.services.fred_rates import sync_rates as sync_fred
+            from backend.services.macro_context import sync_macro
+
+            sync_fred()
+            sync_macro()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            logger.warning("[fred-sync] skipped: %s", exc)
+
+    threading.Thread(target=_sync_fred_rates, daemon=True, name="fred-rate-sync").start()
+
+    def _refresh_cnmv_catalog():
+        try:
+            from backend.database import SessionLocal
+            from backend.services.cnmv_catalog import catalog_is_stale, refresh_iic_catalog
+
+            with SessionLocal() as db:
+                stale = catalog_is_stale(db)
+            if stale:
+                refresh_iic_catalog()
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            logger.warning("[cnmv-catalog] skipped: %s", exc)
+
+    threading.Thread(target=_refresh_cnmv_catalog, daemon=True, name="cnmv-catalog-refresh").start()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # One-off data migration: legacy options/zonas watchlists → followed_instruments.
@@ -60,65 +114,12 @@ async def lifespan(app: FastAPI):
         # retries on the next boot. Never take the instance down for this.
         logger.warning("watchlist migration failed — will retry next boot", exc_info=True)
 
-    # Preload Eurex RDF in background so the first European options request is fast
-    import threading
-    from backend.services.options_scraper import _load_eurex_rdf
-    from backend.api.options import _invalidate_european_availability_cache
-
-    # Clear any ISIN entries that may have been wrongly cached as False
-    _invalidate_european_availability_cache()
-
-    def _preload_eurex():
-        if _load_eurex_rdf():
-            _invalidate_european_availability_cache()
-
-    threading.Thread(target=_preload_eurex, daemon=True, name="eurex-rdf-preload").start()
-
-    # Start the global AIS collector (no-op without AISSTREAM_KEY) so maritime
-    # chokepoint data warms up before the first geo cycle.
-    from backend.services.geo.ais_collector import start as start_ais_collector
-
-    start_ais_collector()
-
-    # Sync ECB exchange rates in the background (never blocks requests)
-    def _sync_fx_rates():
-        try:
-            from backend.services.exchange_rates import sync_rates
-
-            sync_rates()
-        except Exception as exc:  # noqa: BLE001 - background best-effort
-            logger.warning("[ecb-sync] skipped: %s", exc)
-
-    threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
-
-    # Sync FRED risk-free rates + macro indicators in the background
-    # (no-op without FRED_API_KEY)
-    def _sync_fred_rates():
-        try:
-            from backend.services.fred_rates import sync_rates as sync_fred
-            from backend.services.macro_context import sync_macro
-
-            sync_fred()
-            sync_macro()
-        except Exception as exc:  # noqa: BLE001 - background best-effort
-            logger.warning("[fred-sync] skipped: %s", exc)
-
-    threading.Thread(target=_sync_fred_rates, daemon=True, name="fred-rate-sync").start()
-
-    # Refresh the CNMV alt-investments catalog if stale (best-effort, never blocks)
-    def _refresh_cnmv_catalog():
-        try:
-            from backend.database import SessionLocal
-            from backend.services.cnmv_catalog import catalog_is_stale, refresh_iic_catalog
-
-            with SessionLocal() as db:
-                stale = catalog_is_stale(db)
-            if stale:
-                refresh_iic_catalog()
-        except Exception as exc:  # noqa: BLE001 - background best-effort
-            logger.warning("[cnmv-catalog] skipped: %s", exc)
-
-    threading.Thread(target=_refresh_cnmv_catalog, daemon=True, name="cnmv-catalog-refresh").start()
+    if settings.request_scoped_runtime:
+        logger.info(
+            "Request-scoped runtime enabled; skipping instance background workers"
+        )
+    else:
+        _start_instance_background_workers()
 
     yield
     shutdown_scheduler()
@@ -162,3 +163,19 @@ app.include_router(alt_investments_router, prefix="/api")
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/health/ready")
+def readiness():
+    """Confirm startup completed; startup itself already requires the database."""
+    if settings.env.lower() in PRODUCTION_LIKE_ENVS and not settings.request_scoped_runtime:
+        raise HTTPException(
+            status_code=503,
+            detail="request-scoped runtime is required in production",
+        )
+    return {
+        "status": "ready",
+        "database": "startup-ok",
+        "environment": settings.env.lower(),
+        "runtime": "request-scoped" if settings.request_scoped_runtime else "local",
+    }

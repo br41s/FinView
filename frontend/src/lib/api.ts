@@ -7,6 +7,7 @@ const BASE = "/api";
 
 export interface GeoSchedulerStatus {
   running: boolean;
+  external_scheduler: boolean;
   interval_minutes: number;
   total_signals: number;
   active_signals: number;
@@ -141,6 +142,7 @@ export interface OhlcBar {
 
 export interface ZcSchedulerStatus {
   running: boolean;
+  external_scheduler: boolean;
   last_run: string | null;
   total_items: number;
 }
@@ -839,7 +841,7 @@ export const api = {
         headers,
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
-      return res.json();
+      return res.json() as Promise<{ status: string }>;
     },
     analyzeTicker: async (ticker: string) => {
       const headers = await authHeaders();
@@ -961,7 +963,7 @@ export const api = {
         headers,
       });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
-      return res.json();
+      return res.json() as Promise<{ status: string }>;
     },
 
     schedulerStatus: () =>
@@ -996,7 +998,7 @@ export const api = {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/geo/run`, { method: "POST", headers });
       if (!res.ok) throw new Error(`Error: ${await res.text()}`);
-      return res.json();
+      return res.json() as Promise<{ status: string }>;
     },
     schedulerStatus: () =>
       fetchJSON<GeoSchedulerStatus>("/geo/scheduler/status"),

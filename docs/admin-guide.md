@@ -255,8 +255,8 @@ Parámetros por defecto: r = 5.3%, q = 1.3%, 252 días de trading.
 |--------|----------|-------------|
 | `POST` | `/options/agent/run` | Ciclo manual inmediato |
 | `GET` | `/options/agent/status` | Estado del scheduler, último ciclo, total ciclos |
-| `POST` | `/options/agent/start` | Arrancar job periódico APScheduler |
-| `POST` | `/options/agent/stop` | Parar job periódico |
+| `POST` | `/options/agent/start` | Arrancar APScheduler local; devuelve 409 en Cloud Run |
+| `POST` | `/options/agent/stop` | Parar APScheduler local |
 
 ### Cascade al eliminar un ticker de cartera
 
@@ -332,8 +332,8 @@ ZcWatchlistItem (DB)
 | `POST` | `/zonas-clave/analyze/{ticker}` | Forzar recálculo de un ticker |
 | `POST` | `/zonas-clave/analyze-all` | Recalcular todos los tickers |
 | `GET` | `/zonas-clave/scheduler/status` | Estado del scheduler |
-| `POST` | `/zonas-clave/scheduler/start` | Arrancar scheduler 24h |
-| `POST` | `/zonas-clave/scheduler/stop` | Parar scheduler |
+| `POST` | `/zonas-clave/scheduler/start` | Arrancar scheduler local 24h; devuelve 409 en Cloud Run |
+| `POST` | `/zonas-clave/scheduler/stop` | Parar scheduler local |
 
 ---
 
@@ -490,7 +490,7 @@ Da de alta fondos españoles regulados buscando por nombre o ISIN y pre-rellena 
 
 - **Fuente**: registro mensual gratuito "información individual de IIC" de la CNMV (XML dentro de ZIP, sin auth). Flujo: página del año → BeautifulSoup del último enlace `lnkZip` (token opaco `verdocumento/ver?e=`) → `_download_zip_members` lee dos XML (1 reintento ante caída transitoria): **FONDREGISTRO** (identidad) → `_parse_registry`, una fila en `alt_investment_catalog` por ISIN de clase; **FONDMENS** (NAV/patrimonio) → `_parse_mens`, fusionado por ISIN.
 - **Enriquecimiento**: `nav` = último VL diario (`VL_DiaN`) de la clase; `fund_size` = suma del último `Patrimonio_DiaN` de todas las clases del fondo; `data_date` del `FechaDatos` raíz. Columnas añadidas vía `_ADDITIVE_COLUMNS` / `ensure_columns()` (la tabla ya existe en prod).
-- `refresh_iic_catalog()` hace upsert del catálogo; corre en un hilo en segundo plano al arrancar cuando `catalog_is_stale` (>7 días). Best-effort, nunca bloquea ni rompe la página, nunca por request.
+- `refresh_iic_catalog()` hace upsert del catálogo cuando `catalog_is_stale` (>7 días). En Cloud Run lo ejecuta el cron diario de zonas; localmente, un hilo de startup. Best-effort y fuera de las requests interactivas.
 - `search_catalog(db, q, type_filter, min_fund_size, max_fund_size, sort, limit)` es solo-DB: ILIKE sobre nombre + ISIN exacto, prefijos primero. `sort` ∈ {name, fund_size_desc, nav_desc, nav_asc}. **Modo explorar**: con `q` corto/vacío devuelve filas si hay filtro o `sort` no por defecto; si no, `[]`.
 - **Cobertura**: el fichero mensual es solo Fondos de Inversión (Tipo=FI) — ~1.400 fondos / ~3.000 ISINs, mapeados a `OTHER`, todos con NAV + patrimonio. SICAV / IIC inmobiliaria / hedge / capital riesgo están en registros CNMV separados (diferido); `_TIPO_MAP` ya contempla FII→REAL_ESTATE, FIL→HEDGE_FUND. Las métricas de PE (DPI/TVPI/IRR/vintage/hurdle) no son públicas — manuales en la posición.
 
@@ -499,7 +499,7 @@ Da de alta fondos españoles regulados buscando por nombre o ISIN y pre-rellena 
 Servicio de tipos de referencia oficiales del BCE como fallback IRPF cuando el archivo del broker no trae el tipo (o en entradas manuales). Portado desde OptionsAI.
 
 - Tabla `exchange_rates` (rate_date, currency, rate, source) con unique (rate_date, currency).
-- `sync_rates()` corre en un hilo en segundo plano al arrancar (`backend/app.py` lifespan): historia completa el primer boot, luego feed de 90 días; se omite si los datos están frescos (≤1 día). **Nunca** se ejecuta dentro de una request.
+- `sync_rates()` corre en el cron diario de zonas en Cloud Run y en un hilo de startup local: historia completa el primer boot, luego feed de 90 días; se omite si los datos están frescos (≤1 día). No se conecta a los ciclos frecuentes de opciones/geo.
 - `get_rate(currency, on)` es solo-DB (sin HTTP) con fallback ±7 días para fines de semana/festivos. `to_eur(amount, currency, on)` = amount / rate. EUR siempre es 1.
 - Endpoint de consulta: `GET /fiscal/fx-rate?currency=USD&on=YYYY-MM-DD`.
 

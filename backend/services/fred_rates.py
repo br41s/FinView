@@ -148,7 +148,7 @@ def _max_cached(series_id: str) -> date | None:
 
 
 def sync_rates() -> int:
-    """Incremental sync for all tracked series. Background thread only.
+    """Incremental sync for all tracked series.
 
     No-op (returns 0) when no FRED API key is configured.
     """
