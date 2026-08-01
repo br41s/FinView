@@ -834,6 +834,15 @@
   justify-content: center;
 }
 
+.postImgRecomprasVsDividendos {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(200deg, rgba(154,107,31,0.16) 0%, rgba(31,27,22,0.04) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .postImgFiscalidadOpciones {
   height: 200px;
   border-radius: 12px 12px 0 0;
