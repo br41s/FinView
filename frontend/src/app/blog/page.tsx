@@ -4,6 +4,29 @@ import styles from './blog.module.css';
 
 // ── Post images ──────────────────────────────────────────────────────────────
 
+function ImgCuentasConjuntas() {
+  return (
+    <div className={styles.postImgCuentasConjuntas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="15" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">TITULARIDAD 50 / 50</text>
+        {/* Shared account block splitting into two owners */}
+        <rect x="66" y="26" width="68" height="20" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="100" y="40" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">CUENTA</text>
+        {/* Split paths */}
+        <path d="M84,46 L84,60 L52,60 L52,72" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <path d="M116,46 L116,60 L148,60 L148,72" stroke="var(--fv-ink-40)" strokeWidth="1.5" fill="none"/>
+        {/* Owner A */}
+        <circle cx="52" cy="86" r="14" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="52" y="90" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">50%</text>
+        {/* Owner B */}
+        <circle cx="148" cy="86" r="14" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="148" y="90" fontSize="10" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">50%</text>
+        <text x="100" y="112" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">IRPF · art. 11.3</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgRiesgoDivisa() {
   return (
     <div className={styles.postImgRiesgoDivisa}>
@@ -1297,6 +1320,16 @@ function ImgRecomprasVsDividendos() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'cuentas-conjuntas-titularidad-dividendos-irpf',
+    tag: 'Fiscalidad',
+    date: '02 ago 2026',
+    readTime: '8 min',
+    title: 'Cuentas conjuntas y titularidad: quién declara los dividendos en el IRPF',
+    excerpt:
+      'Tener la cuenta del broker a nombre de dos personas no es un detalle administrativo. Gananciales, presunción del 50/50, retenciones mal imputadas, cuentas de menores y usufructo: quién declara qué y con qué prueba.',
+    Image: ImgCuentasConjuntas,
+  },
   {
     slug: 'riesgo-divisa-cartera-dividendos',
     tag: 'Estrategia',
