@@ -31,3 +31,8 @@ test_api.py
 .claude/
 **/tsconfig.tsbuildinfo
 .mcp.json
+
+# Claude Code shared rules are tracked; local state is not
+!.claude/
+.claude/*
+!.claude/rules/
