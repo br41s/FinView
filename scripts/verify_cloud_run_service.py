@@ -38,7 +38,7 @@ def validate_service(
         errors.append(
             f"latest created revision is {latest_created!r}, expected {expected_revision!r}"
         )
-    if latest_ready != expected_revision:
+    if phase == "live" and latest_ready != expected_revision:
         errors.append(
             f"latest ready revision is {latest_ready!r}, expected {expected_revision!r}"
         )
@@ -99,6 +99,45 @@ def validate_service(
     return errors
 
 
+def validate_revision(
+    revision: dict[str, Any],
+    *,
+    expected_revision: str,
+) -> list[str]:
+    """Validate the immutable revision rather than service traffic metadata."""
+    errors: list[str] = []
+    name = revision.get("metadata", {}).get("name")
+    if name != expected_revision:
+        errors.append(f"revision name is {name!r}, expected {expected_revision!r}")
+
+    conditions = {
+        row.get("type"): row for row in revision.get("status", {}).get("conditions", [])
+    }
+    ready = conditions.get("Ready", {})
+    if ready.get("status") != "True":
+        errors.append(f"revision Ready is {ready.get('status', 'missing')}")
+
+    annotations = revision.get("metadata", {}).get("annotations", {})
+    if annotations.get("run.googleapis.com/cpu-throttling") != "true":
+        errors.append("revision does not explicitly use request-based billing")
+    revision_min = _annotation_int(annotations, "autoscaling.knative.dev/minScale", 0)
+    if revision_min != 0:
+        errors.append(f"revision minimum instances must be zero (revision={revision_min})")
+    revision_max_raw = annotations.get("autoscaling.knative.dev/maxScale")
+    if revision_max_raw in (None, ""):
+        errors.append("revision maximum instances is not explicitly configured")
+    elif int(revision_max_raw) > 1:
+        errors.append(f"revision maximum instances exceeds cost cap ({revision_max_raw})")
+
+    containers = revision.get("spec", {}).get("containers", [])
+    ports = containers[0].get("ports", []) if containers else []
+    container_port = ports[0].get("containerPort") if ports else None
+    if container_port != 8080:
+        errors.append(f"revision container port is {container_port!r}, expected 8080")
+
+    return errors
+
+
 def _load_service(project: str, region: str, service: str) -> dict[str, Any]:
     fields = (
         "metadata.name,metadata.annotations,spec.template.metadata.annotations,"
@@ -113,6 +152,29 @@ def _load_service(project: str, region: str, service: str) -> dict[str, Any]:
             "services",
             "describe",
             service,
+            f"--project={project}",
+            f"--region={region}",
+            f"--format=json({fields})",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def _load_revision(project: str, region: str, revision: str) -> dict[str, Any]:
+    fields = (
+        "metadata.name,metadata.annotations,spec.containers[].ports,"
+        "status.conditions,status.imageDigest"
+    )
+    result = subprocess.run(
+        [
+            "gcloud",
+            "run",
+            "revisions",
+            "describe",
+            revision,
             f"--project={project}",
             f"--region={region}",
             f"--format=json({fields})",
@@ -167,11 +229,13 @@ def main() -> int:
     args = parser.parse_args()
 
     service = _load_service(args.project, args.region, args.service)
+    revision = _load_revision(args.project, args.region, args.revision)
     errors = validate_service(
         service,
         expected_revision=args.revision,
         phase=args.phase,
     )
+    errors.extend(validate_revision(revision, expected_revision=args.revision))
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

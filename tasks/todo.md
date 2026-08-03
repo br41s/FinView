@@ -9,7 +9,7 @@
 - [x] Añadir guardas reutilizables contra puerto incorrecto, revisión no lista,
       billing por instancia y capacidad mínima/máxima inesperada.
 - [x] Ejecutar tests, `/review`, documentar el runbook y verificar el estado remoto.
-- [ ] Publicar PR; no mergear ni desplegar cambios adicionales sin revisión del CEO.
+- [x] Publicar y mergear el PR #192 tras revisión del CEO.
 
 ## PR #190/#191 — resolución de conflictos con main — 2026-08-01
 

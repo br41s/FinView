@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 
-from scripts.verify_cloud_run_service import validate_service
+from scripts.verify_cloud_run_service import validate_revision, validate_service
 
 
 def _service(phase: str = "live") -> dict:
@@ -47,12 +47,43 @@ def _errors(service: dict, phase: str = "live") -> list[str]:
     )
 
 
+def _revision() -> dict:
+    return {
+        "metadata": {
+            "name": "finview-api-00123-safe",
+            "annotations": {
+                "autoscaling.knative.dev/maxScale": "1",
+                "run.googleapis.com/cpu-throttling": "true",
+            },
+        },
+        "spec": {"containers": [{"ports": [{"containerPort": 8080}]}]},
+        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+    }
+
+
 def test_live_service_passes_all_safety_invariants():
     assert _errors(_service()) == []
 
 
 def test_candidate_passes_without_receiving_production_traffic():
-    assert _errors(_service("candidate"), "candidate") == []
+    service = _service("candidate")
+    service["status"]["latestReadyRevisionName"] = "finview-api-00121-old"
+
+    assert _errors(service, "candidate") == []
+    assert validate_revision(
+        _revision(), expected_revision="finview-api-00123-safe"
+    ) == []
+
+
+def test_candidate_rejects_revision_that_is_not_ready():
+    revision = _revision()
+    revision["status"]["conditions"][0]["status"] = "False"
+
+    errors = validate_revision(
+        revision, expected_revision="finview-api-00123-safe"
+    )
+
+    assert any("revision Ready is False" in error for error in errors)
 
 
 def test_rejects_instance_billing_minimums_scaleout_and_wrong_port():
