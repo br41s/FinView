@@ -125,3 +125,13 @@ Antes de dar algo por funcionando: (1) validar el cuerpo/efecto, no el status;
 (una fila escrita, un mensaje entregado); (3) para entregas externas
 (notificaciones), la única prueba es que el humano lo reciba. No cerrar con
 "parece que va".
+
+## Comprobar contenido trasladado, no solo rutas exactas
+
+**Patrón:** Al revisar si archivos locales ya estaban en `main`, comprobé solo
+si existían las mismas rutas. Los prototipos de `tasks/lovable-geo-intel/` ya
+habían sido integrados bajo `frontend/src/components/geo-intel/` y evolucionados.
+
+**Regla:** Para decidir si un archivo de staging ya está integrado, buscar su
+ruta definitiva, historial y equivalencia funcional. La ausencia de la ruta
+original en `main` no demuestra que el contenido esté pendiente.
