@@ -4,6 +4,34 @@ import styles from './blog.module.css';
 
 // ── Post images ──────────────────────────────────────────────────────────────
 
+function ImgSociedadPatrimonial() {
+  return (
+    <div className={styles.postImgSociedadPatrimonial}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">S.L. · DOS PEAJES</text>
+        {/* Cartera (origen) */}
+        <rect x="10" y="46" width="40" height="30" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="30" y="65" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">CARTERA</text>
+        {/* Peaje 1 */}
+        <path d="M50,61 L74,61" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <polygon points="74,55 90,61 74,67" fill="var(--fv-ochre)"/>
+        <text x="66" y="50" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">25%</text>
+        {/* Sociedad */}
+        <rect x="90" y="40" width="42" height="42" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="111" y="65" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">S.L.</text>
+        {/* Peaje 2 */}
+        <path d="M132,61 L152,61" stroke="var(--fv-ink-40)" strokeWidth="1.5"/>
+        <polygon points="152,55 168,61 152,67" fill="var(--fv-ink-40)"/>
+        <text x="146" y="50" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">21%</text>
+        {/* Bolsillo */}
+        <rect x="168" y="48" width="24" height="26" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="180" y="65" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">TÚ</text>
+        <text x="100" y="104" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">el dividendo tributa dos veces</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgCuentasConjuntas() {
   return (
     <div className={styles.postImgCuentasConjuntas}>
@@ -1320,6 +1348,16 @@ function ImgRecomprasVsDividendos() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'sociedad-patrimonial-dividendos-espana',
+    tag: 'Fiscalidad',
+    date: '04 ago 2026',
+    readTime: '9 min',
+    title: 'Sociedad patrimonial para invertir en dividendos: cuándo compensa y cuándo no',
+    excerpt:
+      'El 25% del Impuesto sobre Sociedades suena mejor que el IRPF hasta que sumas el segundo peaje al repartir, los costes anuales de la S.L. y descubres que la exención del 95% pide un 5% del capital que nunca vas a tener.',
+    Image: ImgSociedadPatrimonial,
+  },
   {
     slug: 'cuentas-conjuntas-titularidad-dividendos-irpf',
     tag: 'Fiscalidad',
