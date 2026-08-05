@@ -73,12 +73,15 @@ def validate_service(
             f"minimum instances must be zero (service={service_min}, revision={revision_min})"
         )
 
-    # `gcloud run deploy --max-instances` writes the revision template annotation.
-    # The service-level annotation only exists when a service-wide maximum was set
-    # separately, so requiring it failed every real deployment. Enforce the cap
-    # wherever it is declared, and require it only where gcloud actually writes it.
+    # `--max` and `--max-instances` are different settings, not aliases: the first
+    # writes the service-level annotation, the second the revision template. The
+    # effective cap is the lower of the two, so an unpinned service-level maximum
+    # drifts on its own -- switching to `--scaling=auto` defaults it -- without any
+    # revision changing. Both scopes must be declared.
     service_max_raw = metadata_annotations.get("run.googleapis.com/maxScale")
     revision_max_raw = template_annotations.get("autoscaling.knative.dev/maxScale")
+    if service_max_raw in (None, ""):
+        errors.append("service maximum instances is not explicitly configured")
     if revision_max_raw in (None, ""):
         errors.append("revision maximum instances is not explicitly configured")
     service_max = int(service_max_raw) if service_max_raw not in (None, "") else 0

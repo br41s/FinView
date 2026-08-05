@@ -53,11 +53,16 @@ def test_deploy_is_request_billed_bounded_and_fail_closed():
     ) in deploy_args
 
 
-def test_deploy_does_not_pass_the_same_maximum_under_two_flag_names():
+def test_deploy_pins_both_service_and_revision_scaling_scopes():
+    """`--min`/`--max` are service-level; `--min-instances`/`--max-instances` are
+    revision-level. They are not aliases -- the effective cap is the lower of the
+    two, so leaving either scope unpinned lets that scope drift."""
     deploy_args = _step("--revision-suffix=$SHORT_SHA")["args"]
 
-    assert not [arg for arg in deploy_args if arg.startswith("--max=")]
-    assert not [arg for arg in deploy_args if arg.startswith("--min=")]
+    assert "--min=0" in deploy_args
+    assert "--max=1" in deploy_args
+    assert "--min-instances=0" in deploy_args
+    assert "--max-instances=1" in deploy_args
 
 
 def test_rollout_serializes_builds_and_pauses_periodic_callers():
