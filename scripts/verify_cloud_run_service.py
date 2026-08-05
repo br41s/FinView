@@ -50,6 +50,20 @@ def validate_service(
     if template_annotations.get("run.googleapis.com/cpu-throttling") == "false":
         errors.append("instance-based billing is enabled (cpu-throttling=false)")
 
+    # Manual scaling overrides every autoscaling annotation checked below, so a
+    # manually scaled service can hold an instance up indefinitely while minScale
+    # and maxScale still read as safe. Reject the mode instead of trusting values
+    # Cloud Run is ignoring.
+    scaling_mode = metadata_annotations.get("run.googleapis.com/scalingMode", "")
+    if scaling_mode.lower() == "manual":
+        manual_count = _annotation_int(
+            metadata_annotations, "run.googleapis.com/manualInstanceCount", 0
+        )
+        errors.append(
+            "service uses manual scaling "
+            f"(manualInstanceCount={manual_count}); autoscaling limits are ignored"
+        )
+
     service_min = _annotation_int(metadata_annotations, "run.googleapis.com/minScale", 0)
     revision_min = _annotation_int(
         template_annotations, "autoscaling.knative.dev/minScale", 0
@@ -59,10 +73,12 @@ def validate_service(
             f"minimum instances must be zero (service={service_min}, revision={revision_min})"
         )
 
+    # `gcloud run deploy --max-instances` writes the revision template annotation.
+    # The service-level annotation only exists when a service-wide maximum was set
+    # separately, so requiring it failed every real deployment. Enforce the cap
+    # wherever it is declared, and require it only where gcloud actually writes it.
     service_max_raw = metadata_annotations.get("run.googleapis.com/maxScale")
     revision_max_raw = template_annotations.get("autoscaling.knative.dev/maxScale")
-    if service_max_raw in (None, ""):
-        errors.append("service maximum instances is not explicitly configured")
     if revision_max_raw in (None, ""):
         errors.append("revision maximum instances is not explicitly configured")
     service_max = int(service_max_raw) if service_max_raw not in (None, "") else 0

@@ -4,6 +4,35 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Endurecimiento de CI y guard de coste — 2026-08-05
+
+#### Fixed
+- El guard de despliegue exigía `run.googleapis.com/maxScale` a nivel de servicio, una
+  anotación que `gcloud run deploy --max-instances` nunca escribe: cualquier despliegue
+  fallaba con "service maximum instances is not explicitly configured". Ahora el máximo
+  obligatorio es el de la revisión y el de servicio solo se valida si existe.
+- El guard rechaza el escalado manual (`run.googleapis.com/scalingMode: manual`), que
+  anula `minScale`/`maxScale` y permitía mantener instancias vivas mientras las
+  anotaciones leídas seguían pareciendo seguras.
+- `cloudbuild.yaml` pasaba el mismo máximo con dos nombres (`--max` y `--max-instances`);
+  se queda el par canónico `--min-instances=0` / `--max-instances=1`.
+
+#### Added
+- La suite backend corre en Cloud Build **antes** de publicar la imagen, dentro del
+  contenedor recién construido y con `/workspace` montado. Hasta ahora nada bloqueaba
+  un commit roto: el único workflow de GitHub es la revisión con IA y el smoke test
+  solo probaba que el proceso arranca.
+- `test_cloudbuild_policy` localiza los pasos por contenido en lugar de por índice, así
+  que insertar un paso ya no reapunta las aserciones a otro.
+
+#### Operations
+- Causa raíz del gasto de julio: el crédito de prueba venció el 18/07/2026 con €224.32
+  sin usar. El derroche de facturación por instancia existía desde finales de junio,
+  pero el crédito lo absorbía (1–17 jul: €26.08 de uso, €0.00 facturados).
+- Los tres jobs de Scheduler estaban `ENABLED` y fallando, no `PAUSED` como decía la
+  documentación. `geo-intel-cycle` pasa a `*/30` para caber en la capa gratuita y los
+  tres exigen `--attempt-deadline=1800s` y `--max-retry-attempts=0`.
+
 ### Cloud Run cost and deployment safety — 2026-08-01
 
 #### Fixed

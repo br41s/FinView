@@ -6,6 +6,11 @@ from scripts.verify_cloud_run_service import validate_revision, validate_service
 
 
 def _service(phase: str = "live") -> dict:
+    """Mirror the shape `gcloud run deploy` actually produces.
+
+    Notably there is no service-level `run.googleapis.com/maxScale`: the
+    `--max-instances` flag writes the revision template annotation only.
+    """
     traffic = [
         {
             "revisionName": "finview-api-00123-safe",
@@ -17,7 +22,7 @@ def _service(phase: str = "live") -> dict:
             {"revisionName": "finview-api-00121-old", "percent": 100},
         ]
     return {
-        "metadata": {"annotations": {"run.googleapis.com/maxScale": "1"}},
+        "metadata": {"annotations": {}},
         "spec": {
             "template": {
                 "metadata": {
@@ -104,17 +109,48 @@ def test_rejects_instance_billing_minimums_scaleout_and_wrong_port():
     assert any("expected 8080" in error for error in errors)
 
 
-def test_rejects_missing_explicit_service_and_revision_maximums():
+def test_rejects_manual_scaling_because_it_overrides_autoscaling_limits():
+    """A manually scaled service pins instances up regardless of minScale, so
+    the annotations this guard reads would report a safe configuration that
+    Cloud Run is not applying."""
     service = _service()
-    del service["metadata"]["annotations"]["run.googleapis.com/maxScale"]
+    service["metadata"]["annotations"].update(
+        {
+            "run.googleapis.com/scalingMode": "manual",
+            "run.googleapis.com/manualInstanceCount": "1",
+        }
+    )
+
+    errors = _errors(service)
+
+    assert any("manual scaling" in error for error in errors)
+
+
+def test_accepts_explicit_automatic_scaling():
+    service = _service()
+    service["metadata"]["annotations"]["run.googleapis.com/scalingMode"] = "automatic"
+
+    assert _errors(service) == []
+
+
+def test_rejects_missing_explicit_revision_maximum():
+    service = _service()
     del service["spec"]["template"]["metadata"]["annotations"][
         "autoscaling.knative.dev/maxScale"
     ]
 
     errors = _errors(service)
 
-    assert any("service maximum" in error for error in errors)
     assert any("revision maximum" in error for error in errors)
+
+
+def test_enforces_service_level_maximum_when_one_is_declared():
+    service = _service()
+    service["metadata"]["annotations"]["run.googleapis.com/maxScale"] = "4"
+
+    errors = _errors(service)
+
+    assert any("cost cap" in error for error in errors)
 
 
 def test_rejects_failed_or_unpromoted_revision():

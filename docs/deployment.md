@@ -58,10 +58,26 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 
 ## Cloud Scheduler — los pipelines NO corren sin esto
 
-> **Estado operativo 2026-08-01:** los tres jobs están `PAUSED` como contención del
-> incidente de coste. No reanudarlos hasta que una nueva revisión pase
-> `/api/health/ready`, reciba el 100% del tráfico y el guard confirme facturación por
-> petición, `min=0` y `max=1`.
+> **Estado operativo 2026-08-05:** los tres jobs están `ENABLED` y fallando: el
+> servicio está en escalado **manual con 0 instancias**, así que cada llamada muere.
+> El estado `PAUSED` que documentaba esta sección el 2026-08-01 ya no es cierto —
+> alguien los reanudó el 3 de agosto. Antes de devolver instancias al servicio hay que
+> fijarles `--attempt-deadline` y desactivar reintentos (ver abajo), o el incidente de
+> coste se reproduce solo.
+
+> **Deadline obligatorio.** Los endpoints `/cron` corren **síncronos**, y el deadline
+> por defecto de un job HTTP de Cloud Scheduler es **180 s**. Un ciclo de opciones
+> puede tardar minutos: al vencer el deadline Scheduler **reintenta** mientras la
+> petición original sigue viva y facturando, y se apilan ciclos duplicados. Cada job
+> necesita `--attempt-deadline=1800s` (el máximo HTTP, y el mismo `--timeout` que usa
+> Cloud Run) y `--max-retry-attempts=0`.
+
+```bash
+for J in geo-intel-cycle options-agent-cycle zonas-clave-cycle; do
+  gcloud scheduler jobs update http $J --location=europe-west1 \
+    --attempt-deadline=1800s --max-retry-attempts=0
+done
+```
 
 **La lección más cara del proyecto.** Los tres pipelines (geo, options, zonas-clave) tienen
 un `APScheduler` en proceso con botones de start/stop en la UI. **Eso es una comodidad de
@@ -77,7 +93,7 @@ instancia puede reclamarse tras la respuesta.
 
 | Job | Endpoint | Horario | Por qué ese horario |
 |---|---|---|---|
-| `geo-intel-cycle` | `/api/geo/cron` | `*/10 * * * *` | Los eventos geopolíticos no cierran de noche |
+| `geo-intel-cycle` | `/api/geo/cron` | `*/30 * * * *` | Los eventos geopolíticos no cierran de noche. A 10 minutos el ciclo consumía ~259k vCPU-s/mes y se salía de la capa gratuita (240k); a 30 cabe con margen incluso con opciones y zonas encima |
 | `options-agent-cycle` | `/api/options/agent/cron` | `*/15 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer |
 | `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de 10/15 min |
 
@@ -139,9 +155,9 @@ Configuradas en Vercel → Project Settings → Environment Variables:
 - **Cómo:** Cloud Build trigger `finview-api-deploy` escucha GitHub via Cloud Build GitHub App (1ª gen, región `global`).
 - **Disparadores:** push a `main` que toque `backend/**`, `scripts/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`.
 - **Build + despliegue seguro:** [cloudbuild.yaml](../cloudbuild.yaml) construye la imagen, demuestra localmente que escucha en `PORT=8080`, crea una revisión candidata privada con **0% de tráfico**, valida configuración y startup, cancela rollouts anteriores del mismo trigger, pausa los tres jobs antes de cambiar tráfico, promueve al 100% y comprueba `/api/health/ready` en la URL pública. Solo el build activo más nuevo puede mutar tráfico; un rollback automático exige que su revisión siga siendo simultáneamente la última creada y la que sirve el 100%, y deja los callers pausados.
-- **Flags de runtime (críticos):** `--cpu-throttling` (facturación por petición), `--min=0`, `--max=1`, `--max-instances=1`, `--memory=1Gi`, `FINVIEW_ENV=production` y `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Producción falla al arrancar si falta ese modo, si los secretos de auth son inseguros o si la base de datos cae al SQLite efímero por defecto. No sustituir `--cpu-throttling` por `--no-cpu-throttling`: con jobs cada 10 minutos y hasta 15 minutos de retención ociosa, la instancia puede quedar facturando continuamente aunque `min=0`.
+- **Flags de runtime (críticos):** `--cpu-throttling` (facturación por petición), `--min-instances=0`, `--max-instances=1`, `--memory=1Gi`, `FINVIEW_ENV=production` y `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Producción falla al arrancar si falta ese modo, si los secretos de auth son inseguros o si la base de datos cae al SQLite efímero por defecto. No sustituir `--cpu-throttling` por `--no-cpu-throttling`: con jobs cada 10 minutos y hasta 15 minutos de retención ociosa, la instancia puede quedar facturando continuamente aunque `min=0`.
 - **Trabajo periódico:** Cloud Scheduler llama endpoints síncronos. Cloud Run no inicia AIS, ECB, FRED, CNMV ni preload Eurex como hilos de instancia. Eurex se carga bajo demanda; el job diario de zonas refresca ECB/FRED/CNMV una sola vez y AIS degrada a las fuentes HTTP disponibles.
-- **Guard fail-closed:** [scripts/verify_cloud_run_service.py](../scripts/verify_cloud_run_service.py) valida directamente la condición `Ready` de la revisión candidata (una candidata a 0% no actualiza todavía `latestReadyRevisionName`) y rechaza facturación por instancia, mínimos distintos de cero, máximos ausentes o mayores de uno, puerto distinto de 8080 y tráfico prematuro. El startup ya ejecuta la inicialización SQL; si Neon no responde, la revisión nunca llega a `Ready=True`. La ruta pública de readiness no consulta la DB en cada llamada para evitar amplificación.
+- **Guard fail-closed:** [scripts/verify_cloud_run_service.py](../scripts/verify_cloud_run_service.py) valida directamente la condición `Ready` de la revisión candidata (una candidata a 0% no actualiza todavía `latestReadyRevisionName`) y rechaza facturación por instancia, **escalado manual** (`run.googleapis.com/scalingMode: manual`, que anula silenciosamente `minScale`/`maxScale`), mínimos distintos de cero, el máximo de revisión ausente o mayor de uno, puerto distinto de 8080 y tráfico prematuro. El máximo **a nivel de servicio** solo se comprueba si existe: `gcloud run deploy --max-instances` escribe la anotación de la plantilla, no la del servicio, y exigirla hacía fallar todos los despliegues reales. El startup ya ejecuta la inicialización SQL; si Neon no responde, la revisión nunca llega a `Ready=True`. La ruta pública de readiness no consulta la DB en cada llamada para evitar amplificación.
 - **Service account del trigger:** `github-actions-deployer@finview-brais-2026.iam.gserviceaccount.com` con roles `run.admin`, `iam.serviceAccountUser`, `cloudbuild.builds.editor`, `cloudscheduler.admin`, `storage.admin`, `artifactregistry.writer`, `logging.viewer`, `logging.logWriter`. El permiso de Scheduler es necesario para que el rollout pause callers antes de mutar tráfico. Proyectos nuevos de GCP **no permiten** usar la SA por defecto (`<PROJECT_NUM>@cloudbuild.gserviceaccount.com`) — siempre user-managed.
 - **Gotcha `includedFiles`:** el trigger debe incluir también `scripts/**`, porque el guard forma parte del despliegue. En la UI del wizard hay que introducir **cada patrón en su propia línea** (Enter entre patrones). Si los pegas separados por espacios se guardan como una sola cadena y el trigger no matchea nada. Si se rompe, exportar con `gcloud beta builds triggers export finview-api-deploy --region=global`, arreglar el YAML y reimportar.
 
@@ -158,6 +174,25 @@ Monitorizar builds: https://console.cloud.google.com/cloud-build/builds?project=
 - Si un despliegue no puede verificarse antes de terminar una sesión, pausar primero
   los jobs que lo invocan y dejar la revisión sin tráfico. Nunca abandonar un candidato
   fallido con llamadas periódicas activas.
+- **El crédito de prueba tapó el problema durante semanas.** Del 1 al 17 de julio de
+  2026 el proyecto consumió €26.08 y facturó €0.00: el Free Trial lo absorbía todo.
+  El crédito venció el **18 de julio de 2026** con €224.32 sin usar y el mismo consumo
+  pasó a costar €26.04 en catorce días. Un gasto que "aparece de golpe" sin ningún
+  cambio de infraestructura suele ser esto. Revisar la página de Créditos antes de
+  buscar una regresión.
+- **La facturación por instancia casi no tiene capa gratuita.** En julio, 1.34M
+  vCPU-s por instancia recibieron €0.39 de descuento sobre €21.18. En agosto, ya con
+  facturación por petición, €1.39 de uso bruto quedaron en €0.01 netos. No es solo
+  "gastar menos": es el nivel de precio en el que esta carga es gratis.
+- **Artifact Registry acumula una imagen por commit.** Hay 123 revisiones y ninguna
+  política de limpieza; el almacenamiento se factura aunque el servicio esté parado.
+  Mantener una política que conserve las últimas 10 versiones.
+- **El trigger compila en `global`.** Empujar la imagen a un registro europeo desde
+  ahí sale a internet: €2.13 de "Network Data Transfer Out ... within North America"
+  en dos semanas. Mover el trigger a `europe-west1` lo elimina.
+- El enforcement de presupuesto de FinView solo cubre **Cloud Run** y mide coste
+  **bruto**, antes de la capa gratuita. Cloud Build, Artifact Registry y Cloud Storage
+  quedan fuera del límite.
 - Auditoría rápida sin imprimir configuración sensible:
 
 ```bash
