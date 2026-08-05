@@ -36,3 +36,6 @@ test_api.py
 !.claude/
 .claude/*
 !.claude/rules/
+
+# Local package store
+.pnpm-store/
