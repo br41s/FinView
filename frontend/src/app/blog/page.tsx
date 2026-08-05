@@ -448,6 +448,26 @@ function ImgPea() {
   );
 }
 
+function ImgBonosRentaFija() {
+  return (
+    <div className={styles.postImgBonosRentaFija}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">BONO · CUPÓN ANUAL</text>
+        {/* Bond block */}
+        <rect x="56" y="26" width="88" height="48" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="100" y="45" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">BONO</text>
+        <text x="100" y="58" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">3,5% anual</text>
+        <text x="100" y="70" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">10.000 €</text>
+        {/* Coupon arrow down with 19% retention */}
+        <line x1="100" y1="76" x2="100" y2="90" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <polygon points="95,86 105,86 100,94" fill="var(--fv-ink-30)"/>
+        <text x="100" y="104" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Cupón 350 € · retención 19% = 66,5 €</text>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">declaras el bruto, no el neto</text>
+      </svg>
+    </div>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 type Post = {
@@ -1348,6 +1368,15 @@ function ImgRecomprasVsDividendos() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'bonos-renta-fija-fiscalidad-irpf',
+    tag: 'Fiscalidad',
+    date: '05 ago 2026',
+    readTime: '11 min',
+    title: 'Bonos y renta fija: cómo tributan tus cupones en el IRPF',
+    excerpt: 'La fiscalidad de los bonos en España no es como la de las acciones: el cupón y la venta van al mismo cajón del IRPF. Te explico con números cómo tributan tus intereses y qué cambia frente a los dividendos.',
+    Image: ImgBonosRentaFija,
+  },
   {
     slug: 'sociedad-patrimonial-dividendos-espana',
     tag: 'Fiscalidad',
