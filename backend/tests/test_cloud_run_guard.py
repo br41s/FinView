@@ -8,8 +8,9 @@ from scripts.verify_cloud_run_service import validate_revision, validate_service
 def _service(phase: str = "live") -> dict:
     """Mirror the shape `gcloud run deploy` actually produces.
 
-    Notably there is no service-level `run.googleapis.com/maxScale`: the
-    `--max-instances` flag writes the revision template annotation only.
+    Both scaling scopes are pinned: `--max` writes the service-level
+    `run.googleapis.com/maxScale`, `--max-instances` writes the revision
+    template's `autoscaling.knative.dev/maxScale`.
     """
     traffic = [
         {
@@ -22,7 +23,7 @@ def _service(phase: str = "live") -> dict:
             {"revisionName": "finview-api-00121-old", "percent": 100},
         ]
     return {
-        "metadata": {"annotations": {}},
+        "metadata": {"annotations": {"run.googleapis.com/maxScale": "1"}},
         "spec": {
             "template": {
                 "metadata": {
@@ -133,24 +134,30 @@ def test_accepts_explicit_automatic_scaling():
     assert _errors(service) == []
 
 
-def test_rejects_missing_explicit_revision_maximum():
+def test_rejects_missing_explicit_service_and_revision_maximums():
     service = _service()
+    del service["metadata"]["annotations"]["run.googleapis.com/maxScale"]
     del service["spec"]["template"]["metadata"]["annotations"][
         "autoscaling.knative.dev/maxScale"
     ]
 
     errors = _errors(service)
 
+    assert any("service maximum" in error for error in errors)
     assert any("revision maximum" in error for error in errors)
 
 
-def test_enforces_service_level_maximum_when_one_is_declared():
+def test_rejects_service_maximum_that_drifted_above_the_revision_cap():
+    """Regression for 2026-08-05: switching the paused service back to
+    `--scaling=auto` set a service-level maximum of 3 while the revision stayed
+    at 1, because #198 had stopped the deploy passing `--max`. The effective cap
+    was still 1, but nothing was pinning the service scope any more."""
     service = _service()
-    service["metadata"]["annotations"]["run.googleapis.com/maxScale"] = "4"
+    service["metadata"]["annotations"]["run.googleapis.com/maxScale"] = "3"
 
     errors = _errors(service)
 
-    assert any("cost cap" in error for error in errors)
+    assert any("cost cap" in error and "service=3" in error for error in errors)
 
 
 def test_rejects_failed_or_unpromoted_revision():

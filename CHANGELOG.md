@@ -7,15 +7,18 @@ All notable changes to FinView are documented here.
 ### Endurecimiento de CI y guard de coste — 2026-08-05
 
 #### Fixed
-- El guard de despliegue exigía `run.googleapis.com/maxScale` a nivel de servicio, una
-  anotación que `gcloud run deploy --max-instances` nunca escribe: cualquier despliegue
-  fallaba con "service maximum instances is not explicitly configured". Ahora el máximo
-  obligatorio es el de la revisión y el de servicio solo se valida si existe.
+- El guard vuelve a exigir el máximo a nivel de servicio. En #198 se eliminó esa
+  comprobación por una lectura incorrecta: la anotación faltaba porque el servicio
+  estaba en escalado manual y pausado cuando se inspeccionó, no porque gcloud no la
+  escriba. `--max` sí la escribe.
 - El guard rechaza el escalado manual (`run.googleapis.com/scalingMode: manual`), que
   anula `minScale`/`maxScale` y permitía mantener instancias vivas mientras las
   anotaciones leídas seguían pareciendo seguras.
-- `cloudbuild.yaml` pasaba el mismo máximo con dos nombres (`--max` y `--max-instances`);
-  se queda el par canónico `--min-instances=0` / `--max-instances=1`.
+- `cloudbuild.yaml` vuelve a fijar los dos ámbitos de escalado. `--min`/`--max` son
+  de servicio y `--min-instances`/`--max-instances` de revisión: no son alias, y el
+  límite efectivo es el menor de los dos. Al dejar de pasar `--max`, el máximo de
+  servicio quedó sin fijar y `--scaling=auto` lo dejó en 3 mientras la revisión seguía
+  en 1. El guard lo detuvo antes de mover tráfico.
 
 #### Added
 - La suite backend corre en Cloud Build **antes** de publicar la imagen, dentro del
