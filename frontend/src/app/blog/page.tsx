@@ -1367,7 +1367,41 @@ function ImgRecomprasVsDividendos() {
   );
 }
 
+function ImgCuentasRemuneradas() {
+  return (
+    <div className={styles.postImgCuentasRemuneradas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">INTERÉS 3 % · RETENCIÓN 19 %</text>
+        {/* Importe bruto */}
+        <circle cx="60" cy="62" r="20" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="60" y="67" fontSize="14" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="60" y="92" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        {/* Split */}
+        <path d="M80,60 L120,44 L120,74" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <polygon points="120,74 113,62 127,62" fill="var(--fv-ochre)"/>
+        {/* Hacienda 19% */}
+        <rect x="120" y="22" width="56" height="20" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="148" y="36" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19 %</text>
+        {/* Neto */}
+        <rect x="120" y="74" width="56" height="20" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="148" y="88" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">2,43 %</text>
+        <text x="100" y="112" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">el banco retiene · Hacienda cobra después</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'intereses-cuentas-remuneradas-depositos-irpf',
+    tag: 'Fiscalidad',
+    date: '07 ago 2026',
+    readTime: '10 min',
+    title: 'Cuentas remuneradas y depósitos: cuánto tributan tus intereses en el IRPF',
+    excerpt:
+      'El primer euro de interés tributa, y el banco ya te retiene el 19 %. Cómo funciona la retención, el lío del límite de 1.600 €, los regalos por domiciliar la nómina y el caso de los neobancos extranjeros.',
+    Image: ImgCuentasRemuneradas,
+  },
   {
     slug: 'bonos-renta-fija-fiscalidad-irpf',
     tag: 'Fiscalidad',
