@@ -1391,7 +1391,45 @@ function ImgCuentasRemuneradas() {
   );
 }
 
+function ImgAmortizarHipotecaVsInvertir() {
+  return (
+    <div className={styles.postImgAmortizarHipotecaVsInvertir}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="20" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">AMORTIZAR vs INVERTIR</text>
+        {/* Savings source */}
+        <rect x="62" y="32" width="76" height="20" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="100" y="46" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">TUS AHORROS</text>
+        {/* Split paths */}
+        <path d="M100,52 L100,62 L45,62 L45,74" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <path d="M100,52 L100,62 L155,62 L155,74" stroke="var(--fv-ink-40)" strokeWidth="1.5" fill="none"/>
+        {/* House (amortizar) */}
+        <polygon points="28,96 45,82 62,96" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <rect x="33" y="95" width="24" height="18" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="45" y="76" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">AMORTIZAR</text>
+        <text x="45" y="118" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">3% garantizado</text>
+        {/* Dividend coins (invertir) */}
+        <circle cx="155" cy="96" r="7" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <circle cx="155" cy="86" r="7" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <circle cx="155" cy="76" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="155" y="79" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="155" y="66" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">INVERTIR</text>
+        <text x="155" y="118" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">8% + dividendo</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'amortizar-hipoteca-vs-invertir',
+    tag: 'Estrategia',
+    date: '08 ago 2026',
+    readTime: '9 min',
+    title: 'Amortizar hipoteca o invertir en dividendos: cómo decidir con números',
+    excerpt:
+      'La pregunta que todo inversor con hipoteca se hace al tener dinero de sobra. Comparo la amortización anticipada con una cartera de dividendos: la rentabilidad garantizada de quitar deuda, el coste fiscal de la bolsa y el plan intermedio que casi nadie plantea.',
+    Image: ImgAmortizarHipotecaVsInvertir,
+  },
   {
     slug: 'intereses-cuentas-remuneradas-depositos-irpf',
     tag: 'Fiscalidad',
