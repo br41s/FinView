@@ -1419,7 +1419,42 @@ function ImgAmortizarHipotecaVsInvertir() {
   );
 }
 
+function ImgAportacionesPeriodicas() {
+  return (
+    <div className={styles.postImgAportacionesPeriodicas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">APORTACIÓN PERIÓDICA · CADA MES</text>
+        {/* Monthly contribution drops */}
+        <circle cx="26" cy="26" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="26" y="29" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <circle cx="44" cy="38" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <circle cx="62" cy="50" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <circle cx="80" cy="62" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <circle cx="98" cy="74" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <path d="M98 74 L122 88" stroke="var(--fv-ochre)" strokeWidth="1.2" strokeDasharray="3 2"/>
+        {/* Dividend snowball: growing staircase */}
+        <rect x="124" y="88" width="14" height="16" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="142" y="80" width="14" height="24" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="160" y="70" width="14" height="34" fill="var(--fv-ochre)" rx="2"/>
+        <rect x="178" y="56" width="14" height="48" fill="var(--fv-ochre)" rx="2"/>
+        <text x="185" y="50" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€€</text>
+        <text x="100" y="116" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">día fijo · importe fijo · el dividendo crece solo</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'aportaciones-periodicas-dca-dividendos',
+    tag: 'Estrategia',
+    date: '11 ago 2026',
+    readTime: '8 min',
+    title: 'Aportaciones periódicas (DCA): la forma más simple de construir tu cartera de dividendos',
+    excerpt:
+      'Deja de esperar el momento perfecto y compra todos los meses, digas lo que digas. Cómo funciona el DCA, qué hace con tu yield on cost y el detalle fiscal que casi nadie cuenta: cada aportación es un lote con su coste.',
+    Image: ImgAportacionesPeriodicas,
+  },
   {
     slug: 'amortizar-hipoteca-vs-invertir',
     tag: 'Estrategia',
