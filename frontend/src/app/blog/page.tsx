@@ -1444,7 +1444,44 @@ function ImgAportacionesPeriodicas() {
   );
 }
 
+function ImgCuandoVender() {
+  return (
+    <div className={styles.postImgCuandoVender}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">GESTIÓN DE CARTERA · CUÁNDO SALIR</text>
+        <rect x="46" y="18" width="108" height="16" rx="8" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="100" y="29" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">VENDER NO ES FRACASAR</text>
+        {/* Exit door */}
+        <rect x="18" y="44" width="36" height="58" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.8" fill="var(--fv-ochre-ghost)"/>
+        <rect x="46" y="62" width="5" height="10" rx="2" fill="var(--fv-ochre)"/>
+        <path d="M36 70 L52 70 M52 70 L46 64 M52 70 L46 76" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <text x="36" y="112" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">VENDER</text>
+        {/* Reinvestment staircase */}
+        <rect x="112" y="94" width="12" height="14" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="128" y="88" width="12" height="20" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="144" y="80" width="12" height="28" fill="var(--fv-ink-40)"/>
+        <rect x="160" y="70" width="12" height="38" fill="var(--fv-ochre)" rx="1.5"/>
+        <text x="140" y="113" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">REINVERTIR</text>
+        {/* coin flowing from door to market */}
+        <circle cx="80" cy="78" r="6" fill="var(--fv-ochre)"/>
+        <text x="80" y="81" fontSize="6" fill="var(--fv-paper,#fff8ec)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <path d="M66 90 C76 100, 94 100, 104 92" stroke="var(--fv-ink-30)" strokeWidth="1.2" strokeDasharray="3 2"/>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'cuando-vender-acciones-dividendos',
+    tag: 'Estrategia',
+    date: '12 ago 2026',
+    readTime: '8 min',
+    title: 'Cuándo vender una acción de dividendos: el lado que nadie te enseña',
+    excerpt:
+      'Toda la doctrina habla de comprar y aguantar. Nadie explica cuándo salir. Te doy las señales objetivas para vender una posición, el coste fiscal de hacerlo en España y por qué no vender también es una decisión.',
+    Image: ImgCuandoVender,
+  },
   {
     slug: 'aportaciones-periodicas-dca-dividendos',
     tag: 'Estrategia',
