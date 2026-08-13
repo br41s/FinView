@@ -1471,7 +1471,47 @@ function ImgCuandoVender() {
   );
 }
 
+function ImgPromediarBaja() {
+  return (
+    <div className={styles.postImgPromediarBaja}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">PROMEDIAR A LA BAJA · GESTIONAR LA CAÍDA</text>
+        {/* Cost average dashed baseline */}
+        <line x1="16" y1="26" x2="184" y2="26" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 3"/>
+        <text x="16" y="33" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui">COSTE MEDIO</text>
+        {/* Falling price staircase */}
+        <path d="M16 30 L30 30 L30 52 L44 52 L44 68 L60 68" stroke="var(--fv-ochre)" strokeWidth="1.8" fill="none" strokeLinejoin="round"/>
+        <path d="M60 68 L60 82 L80 82 L80 96 L98 96" stroke="var(--fv-ochre)" strokeWidth="1.8" fill="none" strokeLinejoin="round"/>
+        {/* Extra buys marked */}
+        <circle cx="44" cy="60" r="5" fill="var(--fv-paper,#fff8ec)" stroke="var(--fv-ochre)" strokeWidth="1.4"/>
+        <text x="44" y="63" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">+</text>
+        <circle cx="80" cy="89" r="5" fill="var(--fv-paper,#fff8ec)" stroke="var(--fv-ochre)" strokeWidth="1.4"/>
+        <text x="80" y="92" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">+</text>
+        {/* Decision point */}
+        <text x="112" y="97" fontSize="20" fontWeight="bold" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">?</text>
+        {/* Split: buy more or stop */}
+        <path d="M120 82 C136 60, 150 54, 162 52" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" strokeDasharray="2 2"/>
+        <path d="M120 110 C136 114, 150 114, 162 114" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" strokeDasharray="2 2"/>
+        <rect x="148" y="40" width="40" height="15" rx="7.5" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.4"/>
+        <text x="168" y="50" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">COMPRAR +</text>
+        <rect x="148" y="106" width="40" height="15" rx="7.5" stroke="var(--fv-ink-40)" strokeWidth="1.3" fill="none"/>
+        <text x="168" y="116" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">PARAR</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'promediar-a-la-baja-dividendos',
+    tag: 'Estrategia',
+    date: '13 ago 2026',
+    readTime: '8 min',
+    title: 'Promediar a la baja en dividendos: la jugada que divide a los inversores',
+    excerpt:
+      'Bajar tu coste medio comprando más cuando el precio cae suena obvio. Pero promediar a la baja esconde una trampa: echar dinero bueno al malo. Te doy las señales para saber cuándo es ganga y cuándo es un negocio roto, con el detalle fiscal en España.',
+    Image: ImgPromediarBaja,
+  },
   {
     slug: 'cuando-vender-acciones-dividendos',
     tag: 'Estrategia',
