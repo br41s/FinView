@@ -1501,7 +1501,49 @@ function ImgPromediarBaja() {
   );
 }
 
+function ImgMudarteExtranjero() {
+  return (
+    <div className={styles.postImgMudarteExtranjero}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">CAMBIO DE RESIDENCIA · IRPF → IRNR</text>
+        {/* Left: Spain / IRPF portfolio */}
+        <rect x="10" y="26" width="74" height="56" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="47" y="40" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">ESPAÑA · IRPF</text>
+        <rect x="18" y="60" width="12" height="16" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="34" y="54" width="12" height="22" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="50" y="48" width="12" height="28" fill="var(--fv-ochre)" rx="1.5"/>
+        <rect x="66" y="44" width="12" height="32" fill="var(--fv-ochre)"/>
+        {/* Arrow crossing to abroad */}
+        <path d="M86 54 L114 54" stroke="var(--fv-ochre)" strokeWidth="1.8"/>
+        <polygon points="114,48 128,54 114,60" fill="var(--fv-ochre)"/>
+        <circle cx="107" cy="46" r="6" fill="var(--fv-paper,#fff8ec)" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        <text x="107" y="49" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19%</text>
+        {/* Right: abroad / IRNR */}
+        <rect x="128" y="26" width="62" height="56" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="159" y="40" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">FUERA · IRNR</text>
+        <circle cx="147" cy="64" r="8" fill="var(--fv-paper,#fff8ec)" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        <text x="147" y="67" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <circle cx="171" cy="64" r="8" fill="var(--fv-paper,#fff8ec)" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        <text x="171" y="67" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        {/* 183 day divider */}
+        <line x1="10" y1="100" x2="190" y2="100" stroke="var(--fv-ink-30)" strokeWidth="1" strokeDasharray="3 3"/>
+        <text x="100" y="114" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">183 DÍAS · ¿DÓNDE ESTÁ TU VIDA REALMENTE?</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'mudarte-al-extranjero-cartera-dividendos',
+    tag: 'Fiscalidad',
+    date: '15 ago 2026',
+    readTime: '9 min',
+    title: 'Mudarte al extranjero con tu cartera de dividendos: lo que Hacienda decide por ti al cambiar de residencia',
+    excerpt:
+      'El día que dejas de residir en España, tu cartera cambia de régimen sin que toques un título. Los 183 días, la retención de dividendos como no residente, el exit tax y el modelo 720 que te persigue cinco años más. Todo lo que nadie te cuenta antes de mudarte.',
+    Image: ImgMudarteExtranjero,
+  },
   {
     slug: 'promediar-a-la-baja-dividendos',
     tag: 'Estrategia',
