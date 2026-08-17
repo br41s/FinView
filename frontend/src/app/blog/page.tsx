@@ -1551,7 +1551,35 @@ function ImgReyesDelDividendo() {
   );
 }
 
+function ImgDividendoMensual() {
+  return (
+    <div className={styles.postImgDividendoMensual}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">12 PAGOS AL AÑO</text>
+        {([12,27,42,57,72,87,102,117,132,147,162,177]).map((x, i) => {
+          const heights = [18,20,19,22,21,24,23,26,25,28,27,30];
+          return (
+            <rect key={x} x={x - 4} y={104 - heights[i]} width="9" height={heights[i]}
+              fill={i === 11 ? 'var(--fv-ochre)' : 'rgba(154,107,31,0.25)'} rx="2"/>
+          );
+        })}
+        <text x="100" y="117" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">enero · febrero · ... · diciembre</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'dividendo-mensual',
+    tag: 'Estrategia',
+    date: '18 ago 2026',
+    readTime: '9 min',
+    title: 'Dividendo mensual: las acciones y ETFs que te pagan cada mes (y cómo tributan en España)',
+    excerpt:
+      'Casi todas las empresas reparten trimestralmente, pero un puñado de acciones y ETFs te ingresa dividendos 12 veces al año. Te enseño cuáles son reales, cuáles dejaron de serlo en 2026 y qué hace Hacienda con ese cobro mensual.',
+    Image: ImgDividendoMensual,
+  },
   {
     slug: 'reyes-del-dividendo',
     tag: 'Estrategia',
