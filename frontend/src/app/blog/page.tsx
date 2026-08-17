@@ -1533,7 +1533,35 @@ function ImgMudarteExtranjero() {
   );
 }
 
+function ImgReyesDelDividendo() {
+  return (
+    <div className={styles.postImgReyesDelDividendo}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">50 AÑOS · MISMO SENTIDO</text>
+        {/* Up arrow = rising dividend */}
+        <polyline points="20,100 50,82 80,66 110,50 140,34 170,20" stroke="var(--fv-ochre)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Year ticks */}
+        <text x="22" y="112" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">1975</text>
+        <text x="168" y="32" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">2026</text>
+        {/* Crown */}
+        <path d="M84,8 L92,20 L100,8 L108,20 L116,8 L116,16 L84,16 Z" fill="var(--fv-ochre)" stroke="var(--fv-ink-30)" strokeWidth="0.5" />
+        <text x="100" y="40" fontSize="6" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">racha nunca rota</text>
+      </svg>
+    </div>
+  );
+}
+
 const POSTS: Post[] = [
+  {
+    slug: 'reyes-del-dividendo',
+    tag: 'Estrategia',
+    date: '17 ago 2026',
+    readTime: '9 min',
+    title: 'Reyes del Dividendo (Dividend Kings): las empresas con 50 años subiendo el pago',
+    excerpt:
+      'Solo 57 empresas en el mundo han subido su dividendo cada año durante más de 50 años. Qué son los Dividend Kings, por qué importa medio siglo de disciplina y cómo tributan en España los que cotizan en EE. UU.',
+    Image: ImgReyesDelDividendo,
+  },
   {
     slug: 'mudarte-al-extranjero-cartera-dividendos',
     tag: 'Fiscalidad',
