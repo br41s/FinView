@@ -1,0 +1,96 @@
+export const metadata = {
+  title: 'Captura de dividendo en España: la trampa fiscal que la hunde — FinView',
+  description: 'Compras antes del dividendo, cobras y vendes al día siguiente. En papel es dinero gratis; en la declaración de la Renta española sale caro por la regla de los dos meses y el límite del 25% a la compensación. Te explico por qué la captura de dividendo no funciona aquí.',
+};
+
+# Captura de dividendo en España: la trampa fiscal que la hunde
+
+> Compras una acción un día antes de que reparta el dividendo, cobras y la vendes al siguiente. Suena a dinero gratis. No lo es: en España esa jugada casi siempre termina con pérdida después de pasar por Hacienda.
+
+---
+
+## 1. Qué es la captura de dividendo (y por qué baja el precio)
+
+La **captura de dividendo** (*dividend capture*) es una estrategia corta: entras en una acción justo antes de que reparta el dividendo, cobras el cupón y sales un día o unos días después. El objetivo es llevarte el dividendo sin quedarte en la empresa a largo plazo.
+
+Para entender por qué falla, primero hay que ver cómo funciona la fecha ex-dividendo. En España el derecho al dividendo se pierde el **día ex-dividendo** (*ex-date*), que suele ser un día hábil antes de la fecha de registro. Quien compra ese día ya no cobra; quien vendía el día anterior, sí.
+
+El mercado no es tonto. El precio de la acción abre el ex-date más bajo, justo por el importe del dividendo. Una acción a 20 € que paga 0,50 € suele abrir el ex-date cerca de 19,50 €. El dividendo se queda con el que vendió; el nuevo comprador no lo recibe, y el precio lo descuenta.
+
+La tentación es real porque el mercado español de 2026 reparte cifras récord: Iberdrola paga 0,68 € por acción, Repsol 1,051 € y Naturgy 1,80 €, según la campaña de resultados de 2025 recogida por Cinco Días. ¿Aprovechar uno de esos cupones y salir? Veámoslo con números.
+
+---
+
+## 2. La jugada sobre el papel (sin meterme con Hacienda)
+
+Pongo un ejemplo redondo para que la mecánica sea clara. Compras **100 acciones a 20 €** de una empresa que paga **0,50 €** por acción.
+
+- Compras las 100 acciones: **−2.000 €**
+- Cobras el dividendo: 100 × 0,50 = **+50 €**
+- Vendes al día siguiente a 19,50 € (el precio ya descontó el cupón): **+1.950 €**
+- **Balance de caja: 0 €**
+
+Es un lavado perfecto. Antes de impuestos no ganas ni un céntimo, porque lo que cobras por el dividendo es exactamente lo que pierdes en la caída del precio. Y eso sin contar las comisiones de las dos operaciones ni el riesgo de que la acción se mueva un día entero por cualquier otra razón.
+
+---
+
+## 3. Lo que Hacienda hace con ese "0 €"
+
+Aquí se rompe la ilusión. El dividendo y la caída de precio no viajan juntos a la declaración: caen en cajones distintos de la base del ahorro.
+
+- El **dividendo de 50 €** es un *rendimiento del capital mobiliario* (RCM). Tributa en la base del ahorro, con retención del 19% en origen y liquidación a tu tipo (entre el 19% y el 30%).
+- La caída de 0,50 € por acción al vender es una **pérdida patrimonial** de 50 € (ganancias y pérdidas patrimoniales, GPP).
+
+La trampa está en cómo se compensan los dos bloques. Según la guía de fiscalidad de la CNMV, un bloque negativo solo puede compensar al positivo **hasta el 25% del importe positivo**. Tu RCM positivo es 50 €, así que solo puedes usar **12,50 €** de tu pérdida patrimonial para restarla del dividendo.
+
+| Concepto | Antes de impuestos | En tu declaración |
+| --- | --- | --- |
+| Dividendo cobrado | +50 € | RCM: tributa en la base del ahorro |
+| Caída al vender | −50 € | Pérdida patrimonial: compensa solo el 25% del RCM |
+| Resultado económico | 0 € | Pagas IRPF sobre 37,50 € del dividendo |
+
+Has generado 50 € de dividendo gravable, pero solo borras 12,50 € con la bajada de precio. Hacienda te grava **37,50 € de un movimiento que en realidad no te dio ni un céntimo**. A eso hay que sumarle la retención: si tu tipo es bajo, el 19% ya retenido puede incluso salir a devolver; si tu tipo es alto (27-30%), la captura te deja a pagar. En cualquier caso, has corrido riesgo y pagado comisiones por un lavado de dinero.
+
+El resto de la pérdida (37,50 €) no se pierde: se arrastra como pérdida patrimonial a los **4 años siguientes**, pero solo contra futuras ganancias patrimoniales.
+
+---
+
+## 4. La regla de los dos meses: la guinda del pastel
+
+Si crees que al menos podrás usar esa pérdida más adelante, cuidado. El artículo 33.5 de la Ley del IRPF (la llamada *norma anti-aplicación*) dice que si recompras valores homogéneos **dentro de los dos meses** antes o después de la venta con pérdida, esa pérdida no se integra. Queda bloqueada hasta que esos títulos salgan de verdad de tu patrimonio sin que vuelvas a comprarlos en plazo.
+
+Para un capturista esto es lo habitual: la estrategia consiste precisamente en volver a entrar en la misma acción poco después para cazar el siguiente cupón, o bien tiene un plan automático de aportaciones (un DCA) que sigue comprando el mismo valor. En ambos casos la pérdida queda congelada. Hasta un dividendo reinvertido (DRIP) cuenta como compra nueva del mismo activo y puede activar la regla. Lo tengo explicado con más detalle en [cómo tributan las plusvalías en España](/blog/plusvalias-espana-irpf-guia).
+
+---
+
+## 5. ¿Cuándo tiene sentido? (la parte honesta)
+
+Para un inversor de dividendos a largo plazo, la captura es irrelevante: tú ya estás en la acción y cobras el cupón como parte del plan, no para escapar al día siguiente. El [Yield on Cost](/blog/yield-on-cost) que construyes año tras año no se consigue saltando de un ex-date a otro, sino aguantando carteras de calidad.
+
+La única situación en la que la captura "funciona" es cuando tienes pérdidas patrimoniales reales de otros años que quieres absorber, o cuando operas en un vehículo sin impuesto sobre el dividendo (no es el caso del accionista minoritario español corriente). Y aun así, la regla de los dos meses te pisa el freno en cuanto recompras. Mi consejo es claro: no pierdas el tiempo persiguiendo cupones de un día. Mejor optimiza la cartera que ya tienes y mira el rendimiento real después de impuestos.
+
+---
+
+## 6. Cómo lo ves en FinView
+
+FinView no te va a decir qué cupón cazar la semana que viene. Lo que sí hace es mostrarte tu Yield on Cost y el ingreso por dividendo real, ya descontada la fiscalidad, sobre las acciones que de verdad sostienes. Así dejas de perseguir fantasmas y ves cuánto cobras por lo que ya tienes.
+
+---
+
+## Preguntas frecuentes
+
+### ¿La captura de dividendo es legal?
+
+Sí, es una operación perfectamente legal. Solo es fiscalmente ineficiente en España, porque el dividendo tributa íntegro mientras la caída de precio apenas compensa.
+
+### ¿Y si vendo la acción con pérdida fuera de la ventana de dos meses?
+
+Entonces la pérdida patrimonial sí es deducible, dentro de las reglas de compensación (el 25% contra el bloque de dividendos y arrastre de 4 años contra ganancias patrimoniales). El problema de la captura es el timing: vendes justo después de cobrar y sueles recomprar pronto.
+
+### ¿Los ETF de dividendos mensuales sirven para hacer captura?
+
+Misma mecánica. El precio del ETF también baja en su ex-date y el dividendo tributa en la base del ahorro. No hay forma de escapar cambiando de instrumento.
+
+### ¿Por qué baja el precio en el día ex-dividendo?
+
+Porque quien compra ese día ya no recibe el dividendo; este se queda con el vendedor. El mercado descuenta ese importe del precio, por eso la acción abre más baja justo después del cupón.

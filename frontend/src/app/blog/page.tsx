@@ -1571,6 +1571,15 @@ function ImgDividendoMensual() {
 
 const POSTS: Post[] = [
   {
+    slug: 'captura-dividendo-irpf-espana',
+    tag: 'Fiscal',
+    date: '18 ago 2026',
+    readTime: '11 min',
+    title: 'Captura de dividendo en España: la trampa fiscal que la hunde',
+    excerpt: 'Compras antes del dividendo, cobras y vendes al día siguiente. En papel es dinero gratis; en la Renta española sale caro por la regla de los dos meses y el límite del 25% a la compensación. Te explico por qué no funciona aquí.',
+    Image: ImgCapturaDividendo,
+  },
+  {
     slug: 'dividendo-mensual',
     tag: 'Estrategia',
     date: '18 ago 2026',
@@ -2246,6 +2255,31 @@ export default function BlogPage() {
       </section>
 
       <PublicFooter />
+    </div>
+  );
+}
+
+function ImgCapturaDividendo() {
+  return (
+    <div className={styles.postImgCapturaDividendo}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">CAPTURA DE DIVIDENDO — IRPF</text>
+        <rect x="14" y="34" width="46" height="40" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="37" y="52" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">COMPRA</text>
+        <text x="37" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ex-date -1d</text>
+        <path d="M60,54 L74,54" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <polygon points="74,49 84,54 74,59" fill="var(--fv-ink-30)"/>
+        <circle cx="92" cy="44" r="9" fill="var(--fv-ochre)"/>
+        <text x="92" y="47" fontSize="7" fill="#fff" fontFamily="system-ui" textAnchor="middle">D</text>
+        <text x="92" y="62" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">dividendo</text>
+        <rect x="104" y="34" width="46" height="40" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="127" y="52" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">VENTA</text>
+        <text x="127" y="64" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">ex-date +1d</text>
+        <rect x="150" y="80" width="44" height="22" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="172" y="90" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Hacienda</text>
+        <text x="172" y="98" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">-7,13 EUR</text>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">0 EUR en bolsillo, impuesto seguro</text>
+      </svg>
     </div>
   );
 }
