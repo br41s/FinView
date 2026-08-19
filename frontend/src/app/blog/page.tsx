@@ -1571,6 +1571,16 @@ function ImgDividendoMensual() {
 
 const POSTS: Post[] = [
   {
+    slug: 'dividendos-vs-alquiler-fiscalidad',
+    tag: 'Fiscal',
+    date: '19 ago 2026',
+    readTime: '9 min',
+    title: 'Dividendos vs alquiler: por qué el mismo euro no tributa igual',
+    excerpt:
+      'Un dividendo y un alquiler de 1.000 € no pagan lo mismo en tu Renta. El dividendo va a la base del ahorro (19-30 %); el alquiler, a la renta general y a tu tipo marginal. Te explico la asimetría que nadie te cuenta.',
+    Image: ImgDividendoVsAlquiler,
+  },
+  {
     slug: 'captura-dividendo-irpf-espana',
     tag: 'Fiscal',
     date: '18 ago 2026',
@@ -2279,6 +2289,32 @@ function ImgCapturaDividendo() {
         <text x="172" y="90" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Hacienda</text>
         <text x="172" y="98" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">-7,13 EUR</text>
         <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">0 EUR en bolsillo, impuesto seguro</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgDividendoVsAlquiler() {
+  return (
+    <div className={styles.postImgDividendoVsAlquiler}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">MISMO EURO · DISTINTA BASE</text>
+        {/* Dividendo column */}
+        <rect x="20" y="28" width="62" height="74" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="51" y="46" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">DIVIDENDO</text>
+        <text x="51" y="60" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Base ahorro</text>
+        <circle cx="51" cy="82" r="9" fill="var(--fv-ochre)"/>
+        <text x="51" y="86" fontSize="9" fill="#fff" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="51" y="100" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">19-21%</text>
+        {/* Alquiler column */}
+        <rect x="118" y="28" width="62" height="74" rx="6" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none"/>
+        <text x="149" y="46" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ALQUILER</text>
+        <text x="149" y="60" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Renta general</text>
+        <circle cx="149" cy="82" r="9" fill="var(--fv-ink-20)"/>
+        <text x="149" y="86" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="149" y="100" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">30-37%</text>
+        {/* Not equal sign between */}
+        <text x="100" y="70" fontSize="14" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">≠</text>
       </svg>
     </div>
   );
