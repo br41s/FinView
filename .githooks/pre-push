@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 #
-# Pre-push guard: refuse to push frontend changes that don't compile.
+# Pre-push guard: refuse to push code that doesn't compile or pass its tests.
 #
-# Why: blog merges have broken the production build 3 times (PRs #59, #64)
-# by fusing per-article blocks in frontend/src/app/blog/page.tsx and
-# blog.module.css. The corruption enters locally (e.g. "git merge main"
-# into a blog branch) and Vercel only fails AFTER it reaches main. This
-# runs the exact build Vercel runs, before the push leaves the machine.
+# Why this and not CI: GitHub Actions is disabled for this repository — the
+# workflow in .github/workflows/ has never produced a run — so nothing checks a
+# push except this hook and the Vercel preview. .github/workflows/ci.yml is in
+# place and takes over the moment Actions is enabled in repo settings; until
+# then this is the only gate that runs.
 #
-# Scope: only triggers when the pushed commits touch frontend/**, so
-# backend/docs pushes stay fast.
+# Originally this only ran the frontend build, because blog merges had broken
+# production three times (PRs #59, #64) by fusing per-article blocks. It now
+# also runs the suites that CI would: ruff + pytest for backend changes,
+# typecheck + vitest for frontend changes.
+#
+# Scope: each half only runs when the pushed commits touch it, so a docs-only
+# push stays instant.
 #
 # Escape hatch: SKIP_BUILD_CHECK=1 git push   (use sparingly)
 #
@@ -18,13 +23,14 @@
 set -euo pipefail
 
 if [ "${SKIP_BUILD_CHECK:-}" = "1" ]; then
-  echo "pre-push: SKIP_BUILD_CHECK=1 set — skipping frontend build check."
+  echo "pre-push: SKIP_BUILD_CHECK=1 set — skipping all checks."
   exit 0
 fi
 
 repo_root="$(git rev-parse --show-toplevel)"
 zero="0000000000000000000000000000000000000000"
 frontend_touched=0
+backend_touched=0
 
 # stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>  (one line per ref)
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -43,25 +49,62 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     range="$remote_sha..$local_sha"
   fi
 
-  if git diff --name-only "$range" -- 'frontend/' | grep -q .; then
-    frontend_touched=1
-    break
-  fi
+  changed="$(git diff --name-only "$range")"
+  echo "$changed" | grep -q '^frontend/' && frontend_touched=1
+  echo "$changed" | grep -qE '^(backend/|pyproject\.toml|requirements\.txt)' && backend_touched=1
 done
 
-if [ "$frontend_touched" -eq 0 ]; then
-  exit 0
-fi
-
-echo "pre-push: frontend changed — running production build (Vercel parity)…"
-echo "          bypass with SKIP_BUILD_CHECK=1 git push"
-
-if ! ( cd "$repo_root/frontend" && pnpm run build ); then
+fail() {
   echo ""
-  echo "❌ pre-push: frontend build FAILED. Push aborted so prod stays green."
-  echo "   Fix the build, or bypass with: SKIP_BUILD_CHECK=1 git push"
+  echo "❌ pre-push: $1 Push aborted."
+  echo "   Fix it, or bypass with: SKIP_BUILD_CHECK=1 git push"
   exit 1
+}
+
+# ── Backend ─────────────────────────────────────────────────────────────
+if [ "$backend_touched" -eq 1 ]; then
+  # Prefer the project venv; fall back to whatever python3 is on PATH.
+  py="$repo_root/.venv/bin/python"
+  [ -x "$py" ] || py="$(command -v python3 || true)"
+
+  # Resolve each tool independently. Missing tooling is a setup gap, not a
+  # broken change: warn and skip that check rather than reporting it as a
+  # failure or blocking a push from an unconfigured machine.
+  if [ -n "$py" ] && "$py" -m ruff --version >/dev/null 2>&1; then
+    ruff_cmd=("$py" -m ruff)
+  elif command -v ruff >/dev/null 2>&1; then
+    ruff_cmd=(ruff)
+  else
+    ruff_cmd=()
+  fi
+
+  if [ ${#ruff_cmd[@]} -gt 0 ]; then
+    echo "pre-push: backend changed — running ruff…"
+    "${ruff_cmd[@]}" check "$repo_root/backend/" || fail "ruff found lint errors."
+  else
+    echo "pre-push: ⚠ ruff not installed — skipping backend lint."
+  fi
+
+  if [ -n "$py" ] && "$py" -c "import pytest" >/dev/null 2>&1; then
+    echo "pre-push: backend changed — running pytest…"
+    ( cd "$repo_root" && "$py" -m pytest -q ) || fail "backend tests failed."
+    echo "✅ pre-push: backend OK."
+  else
+    echo "pre-push: ⚠ pytest not available — skipping backend tests."
+    echo "          set up .venv to have them run (see CLAUDE.md → Dev start)."
+  fi
 fi
 
-echo "✅ pre-push: frontend build OK."
+# ── Frontend ────────────────────────────────────────────────────────────
+if [ "$frontend_touched" -eq 1 ]; then
+  echo "pre-push: frontend changed — typecheck, tests, then production build (Vercel parity)…"
+  echo "          bypass with SKIP_BUILD_CHECK=1 git push"
+
+  ( cd "$repo_root/frontend" && pnpm exec tsc --noEmit ) || fail "frontend typecheck failed."
+  ( cd "$repo_root/frontend" && pnpm test ) || fail "frontend tests failed."
+  ( cd "$repo_root/frontend" && pnpm run build ) || fail "frontend build FAILED, so prod stays green."
+
+  echo "✅ pre-push: frontend OK."
+fi
+
 exit 0
