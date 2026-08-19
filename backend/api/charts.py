@@ -9,6 +9,18 @@ from fastapi import APIRouter, Query
 from sqlalchemy import case, func
 
 from backend.api.auth import CurrentUser
+from backend.api.schemas import (
+    CapitalGainsBreakdownOut,
+    CompanyDividendsYearlyOut,
+    DividendsByCountryOut,
+    DividendsMonthlyOut,
+    DividendYieldOut,
+    FundamentalsOut,
+    OhlcBarOut,
+    PatrimonioCompositionOut,
+    TopDividendPayerOut,
+    WithholdingsByCountryOut,
+)
 from backend.database import DbSession
 from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
 from backend.services.sql_compat import year_month_str, year_range, year_str
@@ -18,7 +30,7 @@ router = APIRouter(prefix="/charts", tags=["charts"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/dividends-by-country")
+@router.get("/dividends-by-country", response_model=list[DividendsByCountryOut])
 def dividends_by_country(
     db: DbSession,
     user: CurrentUser,
@@ -50,7 +62,7 @@ def dividends_by_country(
     ]
 
 
-@router.get("/dividends-monthly")
+@router.get("/dividends-monthly", response_model=list[DividendsMonthlyOut])
 def dividends_monthly(
     db: DbSession,
     user: CurrentUser,
@@ -82,7 +94,7 @@ def dividends_monthly(
     ]
 
 
-@router.get("/top-dividend-payers")
+@router.get("/top-dividend-payers", response_model=list[TopDividendPayerOut])
 def top_dividend_payers(
     db: DbSession,
     user: CurrentUser,
@@ -124,7 +136,7 @@ def top_dividend_payers(
     ]
 
 
-@router.get("/capital-gains-breakdown")
+@router.get("/capital-gains-breakdown", response_model=list[CapitalGainsBreakdownOut])
 def capital_gains_breakdown(
     db: DbSession,
     user: CurrentUser,
@@ -173,7 +185,7 @@ def capital_gains_breakdown(
     ]
 
 
-@router.get("/patrimonio-composition")
+@router.get("/patrimonio-composition", response_model=list[PatrimonioCompositionOut])
 def patrimonio_composition(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """Portfolio composition from Modelo 714 casillas."""
     from backend.models import TaxResult
@@ -369,7 +381,7 @@ def _merge_same_ticker_rows(rows: list[dict]) -> list[dict]:
     return out
 
 
-@router.get("/dividend-yield")
+@router.get("/dividend-yield", response_model=list[DividendYieldOut])
 def dividend_yield(
     db: DbSession,
     user: CurrentUser,
@@ -518,7 +530,7 @@ def dividend_yield(
     return results
 
 
-@router.get("/withholdings-by-country")
+@router.get("/withholdings-by-country", response_model=list[WithholdingsByCountryOut])
 def withholdings_by_country(
     db: DbSession,
     user: CurrentUser,
@@ -543,21 +555,28 @@ def withholdings_by_country(
         func.sum(func.abs(Transaction.withholding_tax)).desc()
     ).all()
 
-    return [
-        {
-            "country": r.country,
-            "gross": str(r.gross or 0),
-            "withholding": str(abs(r.withholding) if r.withholding else 0),
-            "net": str(r.net or 0),
-            "effective_rate": str(
-                round(
-                    (abs(r.withholding) / r.gross * 100) if r.gross and r.gross > 0 else 0,
-                    2,
-                )
-            ),
-        }
-        for r in rows
-    ]
+    out = []
+    for r in rows:
+        # SUM(ABS(x)) and SUM(x) do not come back as the same Python type on
+        # every backend: SQLite hands back a float for the ABS aggregate and a
+        # Decimal for the plain one, so dividing them raised TypeError and 500'd
+        # this endpoint on local dev. Normalise both before any arithmetic.
+        gross = Decimal(str(r.gross)) if r.gross else Decimal("0")
+        withholding = abs(Decimal(str(r.withholding))) if r.withholding else Decimal("0")
+        net = Decimal(str(r.net)) if r.net else Decimal("0")
+        effective_rate = (
+            round(withholding / gross * 100, 2) if gross > 0 else Decimal("0")
+        )
+        out.append(
+            {
+                "country": r.country,
+                "gross": str(gross),
+                "withholding": str(withholding),
+                "net": str(net),
+                "effective_rate": str(effective_rate),
+            }
+        )
+    return out
 
 
 _IBKR_TICKER_RE = re.compile(r"^([A-Z0-9]{1,6})\(")
@@ -584,7 +603,7 @@ def _best_display_name(names: list[str]) -> str:
     return min(names, key=len) if names else ""
 
 
-@router.get("/dividends-by-company-yearly")
+@router.get("/dividends-by-company-yearly", response_model=list[CompanyDividendsYearlyOut])
 def dividends_by_company_yearly(db: DbSession, user: CurrentUser):
     """Dividends per company per year for multi-year timeline chart."""
     rows = (
@@ -660,7 +679,7 @@ _VALID_PERIODS_BY_INTERVAL: dict[str, set[str]] = {
 }
 
 
-@router.get("/price-history")
+@router.get("/price-history", response_model=list[OhlcBarOut])
 def price_history(
     ticker: str,
     user: CurrentUser,
@@ -747,7 +766,7 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str]] = [
 ]
 
 
-@router.get("/fundamentals")
+@router.get("/fundamentals", response_model=FundamentalsOut)
 def fundamentals(ticker: str, user: CurrentUser):
     """Fundamental snapshot for a ticker (yfinance `.info`), for the Ideas desk.
 

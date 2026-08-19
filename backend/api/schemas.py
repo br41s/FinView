@@ -588,3 +588,132 @@ class SavingsEstimateOut(BaseModel):
     result: Decimal  # >0 a ingresar · <0 a devolver
     brackets: list[dict]
     casillas: dict[str, Decimal]  # source casilla totals (brokers + manual)
+
+
+# ── Charts ───────────────────────────────────────────────────────────
+#
+# The chart endpoints fed the dashboard as bare dicts, with the matching shapes
+# hand-declared in frontend/src/lib/types.ts and hand-cast at each call site.
+# CLAUDE.md forbids breaking an API contract without updating those types, but
+# nothing connected the two: renaming a label in a SQL aggregate rendered blank
+# widgets with no type error, no failing test and a green build. These models
+# make the backend the single source of truth and put the shapes in the OpenAPI
+# schema.
+#
+# Money is emitted as a decimal string, not a float, so the exact value the
+# fiscal engine computed survives the wire unrounded. The fields below are `str`
+# because that is what the endpoints already send — do not "fix" them to float.
+
+
+class DividendsByCountryOut(BaseModel):
+    country: str
+    gross: str
+    withholding: str
+    net: str
+    count: int
+
+
+class DividendsMonthlyOut(BaseModel):
+    month: str
+    gross: str
+    withholding: str
+    net: str
+    count: int
+
+
+class TopDividendPayerOut(BaseModel):
+    isin: str | None
+    name: str
+    country: str | None
+    gross: str
+    withholding: str
+    net: str
+    count: int
+
+
+class CapitalGainsBreakdownOut(BaseModel):
+    isin: str | None
+    name: str
+    gains: str
+    losses: str
+    net: str
+    trades: int
+
+
+class PatrimonioCompositionOut(BaseModel):
+    casilla: int
+    description: str | None
+    amount: str
+    fiscal_year: int
+
+
+class DividendYieldOut(BaseModel):
+    isin: str
+    name: str
+    ticker: str | None
+    country: str | None
+    total_dividends: str
+    total_invested: str
+    qty_remaining: str
+    latest_price: str
+    current_value: str
+    yield_on_cost: str
+    yield_on_value: str
+    payment_count: int
+    currency: str
+    # Present only for positions priced in a non-EUR currency.
+    original_price: str | None = None
+    fx_rate: str | None = None
+
+
+class WithholdingsByCountryOut(BaseModel):
+    country: str
+    gross: str
+    withholding: str
+    net: str
+    effective_rate: str
+
+
+class CompanyDividendsYearlyOut(BaseModel):
+    isin: str | None
+    name: str
+    ticker: str
+    # year → gross dividends that year, as a decimal string.
+    years: dict[str, str]
+    total: str
+
+
+class OhlcBarOut(BaseModel):
+    date: str
+    # Epoch seconds, sent only for intraday intervals where several bars share
+    # one calendar day.
+    time: int | None = None
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
+class FundamentalsOut(BaseModel):
+    """yfinance `.info` snapshot — every field optional.
+
+    `.info` is scraped, has no stable contract, and returns a mostly-empty dict
+    for plenty of valid tickers. An empty object means "nothing to show", not
+    "bad ticker": the caller hides the section rather than rendering zeros.
+    """
+
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    currency: str | None = None
+    market_cap: float | None = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    price_to_book: float | None = None
+    dividend_yield: float | None = None
+    profit_margins: float | None = None
+    debt_to_equity: float | None = None
+    return_on_equity: float | None = None
+    revenue_growth: float | None = None
+    beta: float | None = None

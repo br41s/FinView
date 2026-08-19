@@ -18,6 +18,7 @@ import time
 import httpx
 
 from backend.config import settings
+from backend.services.llm_envelope import extract_content
 
 logger = logging.getLogger(__name__)
 
@@ -97,37 +98,6 @@ def _parse(payload: dict) -> dict | None:
     return {"break_probability": prob, "rationale": rationale}
 
 
-def _extract_content(body: dict) -> str | None:
-    """Pull the message text out of an OpenRouter chat completion.
-
-    A 200 does NOT guarantee text. Models can come back with `content: null`
-    (e.g. the whole token budget went to reasoning, or the provider put the
-    answer somewhere else), and the response shape varies by provider. Treat a
-    contentless 200 as "no score" and log enough to diagnose it, rather than
-    letting json.loads(None) raise — which is exactly what it did in prod, once
-    per ticker per cycle, silently producing unscored signals.
-    """
-    try:
-        choices = body.get("choices") or []
-        if not choices:
-            logger.warning("zone scorer: 200 with no choices — keys=%s", sorted(body))
-            return None
-        message = choices[0].get("message") or {}
-        content = message.get("content")
-        if isinstance(content, str) and content.strip():
-            return content
-        logger.warning(
-            "zone scorer: 200 with empty content — finish_reason=%r message_keys=%s usage=%s",
-            choices[0].get("finish_reason"),
-            sorted(message),
-            body.get("usage"),
-        )
-        return None
-    except Exception:
-        logger.warning("zone scorer: unparseable response envelope", exc_info=True)
-        return None
-
-
 def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> dict | None:
     """Score one proximity candidate. Returns {break_probability, rationale} or None.
 
@@ -171,7 +141,7 @@ def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> d
         if resp.status_code != 200:
             logger.warning("zone scorer HTTP %s for %s", resp.status_code, ticker)
             return None
-        content = _extract_content(resp.json())
+        content, _ = extract_content(resp.json(), f"zone scorer {ticker}")
         if content is None:
             return None
         try:

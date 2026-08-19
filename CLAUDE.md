@@ -94,8 +94,13 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   as a JSX tag start and breaks the whole Vercel build (see PR #101 → #105).
   Quick check: `grep -rn '<[0-9]' frontend/src/app/blog/*/page.mdx` must return nothing.
 - Merge gate: before merging ANY PR that touches `frontend/**`, run `gh pr checks <n>` and
-  require the Vercel preview check green. Never merge on a red or pending preview — there
-  are no GitHub Actions and no branch protection here; the merge step is the only gate.
+  require the Vercel preview check green. Never merge on a red or pending preview.
+- **There is no CI and there never will be** — GitHub Actions is not available on this
+  account, so a workflow file is decoration, not a gate. Do not add one. The two real
+  gates are `.githooks/pre-push` (ruff + pytest on backend changes, typecheck + vitest +
+  build on frontend changes) and the Vercel preview. If a check matters, it goes in the
+  hook. Enable it once per clone with `git config core.hooksPath .githooks`; `start.sh`
+  does this for you.
 
 ---
 
@@ -122,14 +127,17 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 584 collected (all under `backend/tests/`). 131 skip when the real
-broker files in `files/` are absent (not in repo — worktrees/CI skip them; the main
-machine runs them).
+Backend: `pytest` — 661 collected (all under `backend/tests/`). 163 skip when the real
+broker files in `files/` are absent (not in repo — worktrees skip them; the main machine
+runs them). Full run is ~20s.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 21 tests over the pure logic in `src/lib/`
-(`optionsWatchlistSync`, `optionsWatchlistRows`). **`vitest` must be installed** or
-`pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
+Frontend: `cd frontend && pnpm test` (vitest) — 28 tests over the pure logic in `src/lib/`
+(`optionsWatchlistSync`, `optionsWatchlistRows`, `apiError`). **`vitest` must be installed**
+or `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.
+
+Nothing runs these for you (see the merge gate above): `.githooks/pre-push` is what
+catches a broken suite before it leaves the machine.
 
 If a test breaks, fix it before committing — no exceptions.
 
