@@ -1,5 +1,6 @@
 """Stripe billing service: checkout sessions, customer portal, webhook handling."""
 
+import logging
 from datetime import datetime
 
 import stripe
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.models import SubscriptionStatus, SubscriptionTier, User
+
+logger = logging.getLogger(__name__)
 
 stripe.api_key = settings.stripe_secret_key
 
@@ -44,6 +47,21 @@ def _build_price_map() -> None:
         PRICE_TO_TIER[settings.stripe_price_unlimited] = SubscriptionTier.UNLIMITED.value
 
 
+def _tier_for_price(price_id: str | None) -> str | None:
+    """Map a Stripe price ID to a tier, or None when it is not one of ours.
+
+    Deliberately has no default. Defaulting an unrecognised price to PRO turned
+    any price ID in the Stripe account — a test price, a retired price, a price
+    belonging to another product — into a free Pro upgrade for whoever checked
+    out with it. An unknown price means we do not know what was bought, so the
+    caller must decline rather than guess.
+    """
+    _build_price_map()
+    if not price_id:
+        return None
+    return PRICE_TO_TIER.get(price_id)
+
+
 # ---------- Stripe customer ----------
 
 
@@ -66,7 +84,15 @@ def get_or_create_stripe_customer(db: Session, user: User) -> str:
 
 
 def create_checkout_session(db: Session, user: User, price_id: str) -> str:
-    """Create a Stripe Checkout Session and return the URL."""
+    """Create a Stripe Checkout Session and return the URL.
+
+    ``price_id`` arrives straight from the client, so it is checked against the
+    configured plans before it reaches Stripe. Without this, a caller could check
+    out against any price in the account and be upgraded on the way back.
+    """
+    if _tier_for_price(price_id) is None:
+        raise ValueError("Unknown plan")
+
     customer_id = get_or_create_stripe_customer(db, user)
 
     session = stripe.checkout.Session.create(
@@ -127,8 +153,6 @@ def _handle_checkout_completed(session_obj: dict) -> dict:
     """Activate subscription after successful checkout."""
     from backend.database import SessionLocal
 
-    _build_price_map()
-
     subscription_id = session_obj.get("subscription")
     if not subscription_id:
         return {"handled": False, "reason": "no subscription in session"}
@@ -136,7 +160,12 @@ def _handle_checkout_completed(session_obj: dict) -> dict:
     subscription = stripe.Subscription.retrieve(subscription_id)
     customer_id = subscription.customer
     price_id = subscription["items"]["data"][0]["price"]["id"]
-    tier = PRICE_TO_TIER.get(price_id, SubscriptionTier.PRO.value)
+    tier = _tier_for_price(price_id)
+    if tier is None:
+        # Grant nothing we cannot price. Reaching here means checkout validation
+        # was bypassed or the plan config changed after the session was created.
+        logger.error("Checkout completed with unrecognised price %s — no tier granted", price_id)
+        return {"handled": False, "reason": "unknown price"}
 
     db = SessionLocal()
     try:
@@ -160,8 +189,6 @@ def _handle_subscription_change(sub_obj: dict) -> dict:
     """Handle subscription updates (upgrade/downgrade/cancel)."""
     from backend.database import SessionLocal
 
-    _build_price_map()
-
     db = SessionLocal()
     try:
         user = (
@@ -175,9 +202,16 @@ def _handle_subscription_change(sub_obj: dict) -> dict:
         stripe_status = sub_obj["status"]
         if stripe_status == "active":
             price_id = sub_obj["items"]["data"][0]["price"]["id"]
-            user.subscription_tier = PRICE_TO_TIER.get(
-                price_id, SubscriptionTier.PRO.value
-            )
+            tier = _tier_for_price(price_id)
+            if tier is None:
+                # The subscription is genuinely active, so status and period still
+                # apply — but an unrecognised price must not move the tier.
+                logger.error(
+                    "Subscription active on unrecognised price %s — tier left unchanged",
+                    price_id,
+                )
+            else:
+                user.subscription_tier = tier
             user.subscription_status = SubscriptionStatus.ACTIVE.value
             user.subscription_current_period_end = datetime.fromtimestamp(
                 sub_obj["current_period_end"]

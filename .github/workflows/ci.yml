@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A superseded run on the same branch has nothing left to tell us.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create environment
+        run: uv venv --python 3.12 .venv
+
+      # requirements.txt is hash-locked and exported without dev extras, so the
+      # test tooling is installed alongside it rather than from it.
+      - name: Install dependencies
+        run: |
+          uv pip install --python .venv/bin/python -r requirements.txt
+          uv pip install --python .venv/bin/python pytest pytest-asyncio ruff
+
+      - name: Lint
+        run: .venv/bin/python -m ruff check backend/
+
+      # 163 tests skip here by design: they need the real broker PDFs/CSVs in
+      # files/, which are not in the repo.
+      - name: Test
+        run: .venv/bin/python -m pytest -q
+
+  frontend:
+    name: Frontend — typecheck + vitest + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        run: pnpm test
+
+      # Also catches the MDX failure mode that only surfaces at build time:
+      # an unescaped "<" before a digit parses as a JSX tag and breaks the build.
+      - name: Build
+        run: pnpm build

@@ -69,8 +69,28 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("options_alerts", "regime_alignment", "VARCHAR(10)"),
 ]
 
+# Foreign-key columns need explicit indexes: PostgreSQL indexes the *referenced*
+# primary key automatically but never the referencing column, so every tenant-scoped
+# join (transactions → accounts → user_id, the hottest path in the app) degrades to a
+# sequential scan as the ledger grows. SQLite behaves the same way. Each entry is a
+# CREATE INDEX IF NOT EXISTS applied at startup, which covers fresh installs and
+# existing production tables alike.
 _ADDITIVE_INDEXES: list[tuple[str, str, str]] = [
     ("data_issues", "ix_data_issues_user_id", "user_id"),
+    ("accounts", "ix_accounts_user_id", "user_id"),
+    ("transactions", "ix_transactions_account_id", "account_id"),
+    ("transactions", "ix_transactions_import_id", "import_id"),
+    ("import_records", "ix_import_records_account_id", "account_id"),
+    ("tax_lots", "ix_tax_lots_buy_tx_id", "buy_tx_id"),
+    ("tax_lots", "ix_tax_lots_sell_tx_id", "sell_tx_id"),
+    ("tax_results", "ix_tax_results_user_id", "user_id"),
+    ("tax_results", "ix_tax_results_import_id", "import_id"),
+    ("cross_broker_lots", "ix_cross_broker_lots_sell_tx_id", "sell_tx_id"),
+    ("portfolio_holdings", "ix_portfolio_holdings_account_id", "account_id"),
+    ("portfolio_holdings", "ix_portfolio_holdings_import_id", "import_id"),
+    ("option_assignments", "ix_option_assignments_import_id", "import_id"),
+    ("options_agent_logs", "ix_options_agent_logs_user_id", "user_id"),
+    ("unusual_activity", "ix_unusual_activity_user_id", "user_id"),
 ]
 
 # Unique constraints that the model dropped but production tables may still
@@ -107,6 +127,12 @@ def ensure_columns() -> None:
     # supervisor; inferring ownership from their contaminated payload is unsafe.
     for table, index_name, column in _ADDITIVE_INDEXES:
         if table not in tables:
+            continue
+        # Re-inspect per table: the ADD COLUMN pass above may have just added the
+        # column this index targets. Indexing a column the table does not have
+        # raises and would take startup down, so skip rather than fail — the next
+        # boot indexes it once the column exists.
+        if column not in {c["name"] for c in inspect(engine).get_columns(table)}:
             continue
         with engine.begin() as conn:
             conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({column})"))
