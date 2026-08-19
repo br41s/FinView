@@ -13,6 +13,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from backend.config import settings
+from backend.services.llm_envelope import extract_content
 from backend.database import SessionLocal
 from backend.models import (
     FollowedInstrument,
@@ -347,7 +348,12 @@ def _run_claude_analysis(
             timeout=60.0,
         )
         response.raise_for_status()
-        text = response.json()["choices"][0]["message"]["content"]
+        # A 200 with content: null must not become (None, None) — that reads to
+        # the UI as "AI not configured" rather than "the call failed".
+        text, envelope_error = extract_content(response.json(), "options agent")
+        if text is None:
+            logger.error("OpenRouter analysis returned no text — %s", envelope_error)
+            return None, envelope_error
         return text, None
     except Exception as exc:
         body = response.text[:500] if response is not None else "no response"
@@ -464,7 +470,10 @@ def _run_ticker_claude_analysis(
             timeout=60.0,
         )
         response.raise_for_status()
-        text = response.json()["choices"][0]["message"]["content"]
+        text, envelope_error = extract_content(response.json(), f"options agent {ticker}")
+        if text is None:
+            logger.error("OpenRouter ticker analysis (%s) returned no text — %s", ticker, envelope_error)
+            return None, envelope_error
         return text, None
     except Exception as exc:
         body = response.text[:500] if response is not None else "no response"

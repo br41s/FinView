@@ -140,6 +140,8 @@ export interface Transaction {
 }
 
 // Chart types
+// Shapes below mirror backend/api/schemas.py; the chart endpoints now declare
+// those models, so this file follows them rather than the other way round.
 export interface DividendsByCountry {
   country: string;
   gross: string;
@@ -157,9 +159,9 @@ export interface DividendsMonthly {
 }
 
 export interface TopDividendPayer {
-  isin: string;
+  isin: string | null;
   name: string;
-  country: string;
+  country: string | null;
   gross: string;
   withholding: string;
   net: string;
@@ -167,7 +169,7 @@ export interface TopDividendPayer {
 }
 
 export interface CapitalGainsBreakdown {
-  isin: string;
+  isin: string | null;
   name: string;
   gains: string;
   losses: string;
@@ -177,7 +179,7 @@ export interface CapitalGainsBreakdown {
 
 export interface PatrimonioComposition {
   casilla: number;
-  description: string;
+  description: string | null;
   amount: string;
   fiscal_year: number;
 }
@@ -186,7 +188,7 @@ export interface DividendYield {
   isin: string;
   name: string;
   ticker: string | null;
-  country: string;
+  country: string | null;
   total_dividends: string;
   total_invested: string;
   qty_remaining: string;
@@ -209,7 +211,7 @@ export interface WithholdingsByCountry {
 }
 
 export interface CompanyDividendsYearly {
-  isin: string;
+  isin: string | null;
   name: string;
   ticker: string;
   years: Record<string, string>;
