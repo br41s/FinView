@@ -5,6 +5,15 @@ set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
+# El hook pre-push es la única puerta de calidad del repo (no hay GitHub Actions
+# en esta cuenta), y solo funciona si core.hooksPath apunta a .githooks. Es por
+# clon, así que se pierde en cada clone nuevo: lo dejamos configurado aquí para
+# que una sesión de desarrollo normal ya quede cubierta.
+if [ "$(git config --get core.hooksPath 2>/dev/null)" != ".githooks" ]; then
+  git config core.hooksPath .githooks 2>/dev/null && \
+    echo "✓ Hooks de git activados (.githooks)"
+fi
+
 # Liberar puertos si están ocupados
 for port in 8000 3000; do
   pid=$(lsof -ti :$port 2>/dev/null || true)

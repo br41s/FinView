@@ -209,6 +209,12 @@ Cloud Run pueden contener secretos y acabar copiadas a logs o chats.
 ### GitHub Actions — no se usa
 Workload Identity Federation quedó pre-configurada por si algún día se rehabilita GitHub Actions en la cuenta (está deshabilitada por GitHub). SA `github-actions-deployer@finview-brais-2026` y pool `github` siguen vivos pero sin workflow activo.
 
+**No añadir workflows.** Un `.github/workflows/*.yml` nunca se ejecuta en esta cuenta:
+parece una barrera de calidad sin serlo. Se intentó una vez (PR #210) y hubo que
+retirarlo. Las dos barreras reales son `.githooks/pre-push` (ruff + pytest en cambios
+de backend; typecheck + vitest + build en frontend) y el preview de Vercel. Si un
+check importa, va en el hook.
+
 ## Deploy manual (solo recuperación)
 
 No desplegar `--source` directamente sobre tráfico productivo. Si el trigger cae,
