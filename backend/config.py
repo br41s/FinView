@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -6,6 +7,11 @@ from pydantic_settings import BaseSettings
 
 INSECURE_DEFAULT_SECRET = "change-me-in-production"  # nosec: sentinel, not a real secret
 PRODUCTION_LIKE_ENVS = {"staging", "production", "prod"}
+# RFC 7518 §3.2: an HMAC key should be at least the hash output size (32 bytes
+# for HS256). PyJWT warns below this.
+MIN_SECRET_BYTES = 32
+
+_logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -104,6 +110,27 @@ class Settings(BaseSettings):
                 f"missing or still set to the insecure default: {', '.join(offenders)}. "
                 "Set them via environment variables before starting the app."
             )
+
+        # Length was never checked, only presence — so FINVIEW_SECRET_KEY=abc
+        # passed and signed every 90-day JWT with a 3-byte HMAC key. RFC 7518
+        # §3.2 wants at least as many key bytes as the hash output (32 for
+        # HS256); PyJWT warns below that.
+        #
+        # Deliberately a warning rather than a RuntimeError: this validator runs
+        # at import, so raising would refuse to boot a running production whose
+        # secret happens to be short. Promote it to `raise` once the deployed
+        # secrets are known to clear the bar.
+        for field in ("secret_key", "auth_secret"):
+            value = getattr(self, field)
+            if len(value.encode()) < MIN_SECRET_BYTES:
+                _logger.warning(
+                    "FINVIEW_%s is %d bytes; HS256 wants at least %d (RFC 7518 §3.2). "
+                    "Generate one with: python -c "
+                    "'import secrets; print(secrets.token_urlsafe(32))'",
+                    field.upper(),
+                    len(value.encode()),
+                    MIN_SECRET_BYTES,
+                )
 
         if not self.request_scoped_runtime:
             raise RuntimeError(
