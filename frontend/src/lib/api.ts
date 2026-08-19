@@ -1,7 +1,8 @@
 import { getSession } from "next-auth/react";
 
 import type { GeoSignal } from "@/lib/geo";
-import type { SavingsEstimate } from "@/lib/types";
+import type { ImportResult, SavingsEstimate } from "@/lib/types";
+import { apiError } from "@/lib/apiError";
 
 const BASE = "/api";
 
@@ -275,8 +276,28 @@ async function fetchJSON<T>(
     clearAuthToken();
     return fetchJSON<T>(path, init, true);
   }
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
-  return res.json();
+  if (!res.ok) throw await apiError(res);
+  // 204 carries no body; res.json() would throw on the empty payload.
+  return res.status === 204 ? (undefined as T) : res.json();
+}
+
+/**
+ * POST a multipart body through fetchJSON, so uploads inherit its stale-token
+ * retry. The six broker uploads each rebuilt this by hand and therefore skipped
+ * that retry: a cached token that expired mid-session turned a recoverable
+ * request into a failed import.
+ *
+ * Content-Type is deliberately unset — the browser adds it with the multipart
+ * boundary, and naming it here would corrupt the body.
+ */
+async function postForm<T>(path: string, files: File | File[], field = "file"): Promise<T> {
+  const form = new FormData();
+  for (const file of Array.isArray(files) ? files : [files]) {
+    form.append(field, file);
+  }
+  const data = await fetchJSON<T>(path, { method: "POST", body: form });
+  invalidateCache();
+  return data;
 }
 
 async function fetchCached<T>(path: string): Promise<T> {
@@ -287,112 +308,27 @@ async function fetchCached<T>(path: string): Promise<T> {
   return data;
 }
 
-export async function uploadTRReport(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/tr`, {
-    method: "POST",
-    body: form,
-    headers,
-  });
-  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
-  invalidateCache();
-  return res.json();
-}
-
-export async function uploadDGReport(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/degiro`, {
-    method: "POST",
-    body: form,
-    headers,
-  });
-  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
-  invalidateCache();
-  return res.json();
-}
-
-export async function uploadIBKRReport(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/ibkr`, {
-    method: "POST",
-    body: form,
-    headers,
-  });
-  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
-  invalidateCache();
-  return res.json();
-}
-
-export async function uploadINGReport(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/ing`, {
-    method: "POST",
-    body: form,
-    headers,
-  });
-  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
-  invalidateCache();
-  return res.json();
-}
-
-export async function uploadBBVAReport(files: File[]) {
-  const form = new FormData();
-  for (const file of files) {
-    form.append("files", file);
-  }
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/bbva`, {
-    method: "POST",
-    body: form,
-    headers,
-  });
-  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
-  invalidateCache();
-  return res.json();
-}
-
-export async function uploadEToroReport(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/etoro`, {
-    method: "POST",
-    body: form,
-    headers,
-  });
-  if (!res.ok) throw new Error(`Import error: ${await res.text()}`);
-  invalidateCache();
-  return res.json();
-}
+// Every broker import returns the same envelope; the uploads used to be six
+// byte-identical functions returning implicit `any`.
+export const uploadTRReport = (file: File) => postForm<ImportResult>("/imports/tr", file);
+export const uploadDGReport = (file: File) => postForm<ImportResult>("/imports/degiro", file);
+export const uploadIBKRReport = (file: File) => postForm<ImportResult>("/imports/ibkr", file);
+export const uploadINGReport = (file: File) => postForm<ImportResult>("/imports/ing", file);
+export const uploadEToroReport = (file: File) => postForm<ImportResult>("/imports/etoro", file);
+// BBVA takes 1-3 PDFs in one submission, under a plural field name.
+export const uploadBBVAReport = (files: File[]) =>
+  postForm<ImportResult>("/imports/bbva", files, "files");
 
 export async function deleteImport(importId: number) {
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/${importId}`, {
-    method: "DELETE",
-    headers,
-  });
-  if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
+  const data = await fetchJSON(`/imports/${importId}`, { method: "DELETE" });
   invalidateCache();
-  return res.json();
+  return data;
 }
 
 export async function deleteAllImports() {
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/all`, {
-    method: "DELETE",
-    headers,
-  });
-  if (!res.ok) throw new Error(`Delete error: ${await res.text()}`);
+  const data = await fetchJSON("/imports/all", { method: "DELETE" });
   invalidateCache();
-  return res.json();
+  return data;
 }
 
 export async function resolveIssue(
@@ -406,7 +342,7 @@ export async function resolveIssue(
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ action, data }),
   });
-  if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+  if (!res.ok) throw await apiError(res);
   invalidateCache();
   return res.json();
 }
@@ -515,7 +451,7 @@ export const api = {
       cache: "no-store",
       headers,
     });
-    if (!res.ok) throw new Error(`Export error: ${await res.text()}`);
+    if (!res.ok) throw await apiError(res);
     if (format === "csv") {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -561,7 +497,7 @@ export const api = {
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+    if (!res.ok) throw await apiError(res);
     invalidateCache(`/fiscal/estimate/${year}`);
     return res.json();
   },
@@ -579,16 +515,19 @@ export const api = {
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+    if (!res.ok) throw await apiError(res);
     invalidateCache(`/fiscal/estimate/${body.fiscal_year}`);
     return res.json();
   },
   deleteManualIncome: async (id: number, year: number) => {
     const headers = await authHeaders();
-    await fetch(`${BASE}/fiscal/manual-income/${id}`, {
+    const res = await fetch(`${BASE}/fiscal/manual-income/${id}`, {
       method: "DELETE",
       headers,
     });
+    // Without this the request could 404 or 500 and the UI would still report
+    // the entry as deleted, then show it again on the next load.
+    if (!res.ok) throw await apiError(res);
     invalidateCache(`/fiscal/estimate/${year}`);
   },
   savingsEstimate: (year: number): Promise<SavingsEstimate> =>
@@ -599,7 +538,7 @@ export const api = {
       cache: "no-store",
       headers,
     });
-    if (!res.ok) throw new Error(`Export error: ${await res.text()}`);
+    if (!res.ok) throw await apiError(res);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -645,7 +584,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     update: async (id: number, data: { name?: string; currency?: string }) => {
@@ -655,7 +594,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     delete: async (id: number) => {
@@ -664,7 +603,7 @@ export const api = {
         method: "DELETE",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
     },
   },
 
@@ -678,7 +617,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ price_id: priceId }),
       });
-      if (!res.ok) throw new Error(`Checkout error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ url: string }>;
     },
     portal: async () => {
@@ -687,7 +626,7 @@ export const api = {
         method: "POST",
         headers: { ...headers },
       });
-      if (!res.ok) throw new Error(`Portal error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ url: string }>;
     },
   },
@@ -728,7 +667,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ ticker, name }),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       invalidateCache("/options/watchlist");
       return res.json();
     },
@@ -738,7 +677,7 @@ export const api = {
         method: "PATCH",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       invalidateCache("/options/watchlist");
       return res.json();
     },
@@ -783,7 +722,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ tickers }),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ has_options: string[]; no_options: string[] }>;
     },
     alerts: (ticker?: string, unread?: boolean, days = 7) =>
@@ -800,7 +739,7 @@ export const api = {
         method: "PATCH",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     ackAllAlerts: async () => {
@@ -809,7 +748,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     unusual: (ticker?: string, days = 7) =>
@@ -840,7 +779,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ status: string }>;
     },
     analyzeTicker: async (ticker: string) => {
@@ -850,7 +789,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ ticker }),
       });
-      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<TickerAnalysis>;
     },
     startAgent: async () => {
@@ -859,7 +798,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     stopAgent: async () => {
@@ -868,7 +807,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     backtestSignals: (params?: { ticker?: string; days?: number }) =>
@@ -897,7 +836,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     ask: async (question: string, history: { role: string; content: string }[] = []) => {
@@ -907,7 +846,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ question, history }),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ answer: string }>;
     },
   },
@@ -926,7 +865,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ ticker, name }),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<ZcWatchlistItem>;
     },
 
@@ -952,7 +891,7 @@ export const api = {
         `${BASE}/zonas-clave/analyze/${encodeURIComponent(ticker)}`,
         { method: "POST", headers },
       );
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<ZcAnalysis>;
     },
 
@@ -962,7 +901,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ status: string }>;
     },
 
@@ -975,7 +914,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
 
@@ -985,7 +924,7 @@ export const api = {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
   },
@@ -997,7 +936,7 @@ export const api = {
     run: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/geo/run`, { method: "POST", headers });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<{ status: string }>;
     },
     schedulerStatus: () =>
@@ -1005,13 +944,13 @@ export const api = {
     startScheduler: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/geo/scheduler/start`, { method: "POST", headers });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     stopScheduler: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/geo/scheduler/stop`, { method: "POST", headers });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
   },
@@ -1037,7 +976,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<AltInvestment>;
     },
     update: async (id: number, data: Partial<AltInvestmentInput>) => {
@@ -1047,7 +986,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
       return res.json() as Promise<AltInvestment>;
     },
     delete: async (id: number) => {
@@ -1056,7 +995,7 @@ export const api = {
         method: "DELETE",
         headers,
       });
-      if (!res.ok) throw new Error(`Error: ${await res.text()}`);
+      if (!res.ok) throw await apiError(res);
     },
   },
 };
