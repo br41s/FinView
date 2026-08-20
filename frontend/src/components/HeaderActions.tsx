@@ -4,14 +4,15 @@ import { signOut } from "next-auth/react";
 import { Eye, EyeOff, CreditCard, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { clearAuthToken, invalidateCache } from "@/lib/api";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface HeaderActionsProps {
   privacy: boolean;
   onTogglePrivacy: () => void;
 }
 
-// The 3 upper-right actions shared by every top-level page: hide/show
-// balances, jump to billing, and sign out.
+// The upper-right actions shared by every top-level page: hide/show balances,
+// switch theme, jump to billing, and sign out.
 export function HeaderActions({ privacy, onTogglePrivacy }: HeaderActionsProps) {
   return (
     <div className="flex items-center gap-1">
@@ -25,6 +26,7 @@ export function HeaderActions({ privacy, onTogglePrivacy }: HeaderActionsProps) 
       >
         {privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </Button>
+      <ThemeToggle />
       <Button
         variant="ghost"
         size="icon"

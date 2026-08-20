@@ -4,6 +4,7 @@ import { Geist, Fraunces, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/auth-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { SITE_URL } from "@/lib/site";
 
@@ -50,10 +51,12 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <AuthProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster richColors position="bottom-right" />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster richColors position="bottom-right" />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
