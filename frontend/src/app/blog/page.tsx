@@ -4,6 +4,36 @@ import styles from './blog.module.css';
 
 // ── Post images ──────────────────────────────────────────────────────────────
 
+function ImgSplitsFusiones() {
+  return (
+    <div className={styles.postImgSplitsFusiones}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">RATIO 4 : 1</text>
+        {/* One big share block on the left */}
+        <rect x="14" y="42" width="34" height="46" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <text x="31" y="69" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">1</text>
+        {/* Splitting fan of lines */}
+        <path d="M48,65 L74,44" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        <path d="M48,65 L74,58" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        <path d="M48,65 L74,72" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        <path d="M48,65 L74,86" stroke="var(--fv-ochre)" strokeWidth="1.2"/>
+        {/* Four smaller blocks */}
+        <rect x="76" y="38" width="16" height="14" rx="2" fill="var(--fv-ochre)"/>
+        <rect x="76" y="54" width="16" height="14" rx="2" fill="rgba(154,107,31,0.55)"/>
+        <rect x="76" y="70" width="16" height="14" rx="2" fill="rgba(154,107,31,0.35)"/>
+        <rect x="76" y="86" width="16" height="14" rx="2" fill="rgba(154,107,31,0.2)"/>
+        {/* Equals sign */}
+        <path d="M102,62 L114,62 M102,70 L114,70" stroke="var(--fv-ink-40)" strokeWidth="1.5"/>
+        {/* Cost box unchanged */}
+        <rect x="124" y="44" width="62" height="44" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="155" y="62" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">COSTE TOTAL</text>
+        <text x="155" y="78" fontSize="11" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">40.000 €</text>
+        <text x="100" y="112" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">más títulos, mismo dinero invertido</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgSociedadPatrimonial() {
   return (
     <div className={styles.postImgSociedadPatrimonial}>
@@ -1570,6 +1600,16 @@ function ImgDividendoMensual() {
 }
 
 const POSTS: Post[] = [
+  {
+    slug: 'splits-fusiones-canje-acciones-irpf',
+    tag: 'Fiscal',
+    date: '21 ago 2026',
+    readTime: '8 min',
+    title: 'Splits, contrasplits y fusiones: qué le pasa a tu coste de adquisición en el IRPF',
+    excerpt:
+      'Un split no te hace más rico, pero te rompe el coste medio. Y un canje por fusión no siempre está exento. Cómo recalcular el coste de tus acciones tras splits, contrasplits, fusiones y spin-offs antes de que el FIFO arrastre el error.',
+    Image: ImgSplitsFusiones,
+  },
   {
     slug: 'dividendos-vs-alquiler-fiscalidad',
     tag: 'Fiscal',

@@ -1,0 +1,122 @@
+export const metadata = {
+  title: "Splits, contrasplits y fusiones: qué le pasa a tu coste de adquisición en el IRPF — FinView",
+  description: "Un split no te hace más rico y un canje por fusión no siempre está exento. Cómo recalcular el coste de adquisición de tus acciones tras splits, contrasplits, fusiones y spin-offs, y qué tienes que declarar en el IRPF.",
+};
+
+# Splits, contrasplits y fusiones: qué le pasa a tu coste de adquisición en el IRPF
+
+> Una mañana abres el broker y tienes el triple de acciones a un tercio de precio. No has ganado ni un euro, pero acabas de romper el coste medio de tu cartera. Y si no lo arreglas, el día que vendas la declaración te va a salir mal.
+
+---
+
+## 1. Lo que un split cambia y lo que no
+
+Un split (desdoblamiento) multiplica el número de acciones y divide el precio en la misma proporción. Apple hizo un 4:1 en agosto de 2020: quien tenía 100 acciones a 500 $ pasó a tener 400 a 125 $. El valor de mercado, idéntico. Tu porcentaje de la empresa, idéntico.
+
+Fiscalmente esto es lo más aburrido que puede pasarte, y es buena noticia: **un split no genera ganancia ni pérdida patrimonial**. No hay nada que declarar el año del split. No hay alteración en la composición del patrimonio en el sentido del artículo 33 de la Ley del IRPF: sigues teniendo lo mismo, troceado distinto.
+
+Lo que sí cambia es el número que tienes que guardar. Tu coste de adquisición total se mantiene, pero el coste **por acción** se divide entre el factor del split:
+
+| Concepto | Antes del split 4:1 | Después |
+|---|---|---|
+| Acciones | 100 | 400 |
+| Coste por acción | 400 € | 100 € |
+| Coste total | 40.000 € | 40.000 € |
+
+Fecha de adquisición: la original. Esto importa más de lo que parece, porque la antigüedad es la que ordena tu FIFO.
+
+---
+
+## 2. El contrasplit y el problema de los picos
+
+El contrasplit (o reverse split) va al revés: agrupa acciones. Un 1:10 convierte 500 acciones a 2 € en 50 acciones a 20 €. Lo hacen empresas que han caído mucho y quieren salir del rango de precio de "chicharro", o cumplir requisitos mínimos de cotización. Telefónica, Deutsche Bank, ArcelorMittal (1:3 en 2017) han pasado por ahí.
+
+Mismo tratamiento: neutro, sin ganancia ni pérdida. Con una trampa. Si tenías 507 acciones y el canje es 1:10, te quedan 50 acciones y sobran 7 que no completan un lote. Esos **picos** se liquidan en efectivo.
+
+Y ese efectivo sí es una transmisión. Las 7 acciones sobrantes se consideran vendidas: ganancia o pérdida patrimonial, base del ahorro, casilla de transmisiones de acciones cotizadas. Suelen ser importes de risa —20, 40 euros— y precisamente por eso nadie los declara. Es el típico descuadre que luego no cuadra con la información que tu broker manda a Hacienda.
+
+No te mentiré: por 15 euros de pico nadie va a recibir una paralela. Pero si el pico es de 800 € porque tenías una posición grande, eso es una venta con todas las letras.
+
+---
+
+## 3. Fusiones y canjes: el régimen de neutralidad
+
+Aquí se pone interesante. Cuando la empresa que tienes se fusiona con otra y te dan acciones de la resultante, hay dos escenarios muy distintos.
+
+**Canje puro de acciones por acciones.** Se aplica el régimen especial de neutralidad fiscal (fusiones, escisiones y canje de valores, Capítulo VII del Título VII de la Ley del Impuesto sobre Sociedades, al que remite el IRPF). Efecto: el diferimiento. No tributas ahora. Las acciones nuevas heredan **el coste de adquisición y la fecha de adquisición** de las antiguas. Pagas cuando vendas, no cuando te canjean.
+
+**Canje con dinero en medio.** Si parte de la contraprestación es efectivo —lo habitual en las OPAs mixtas—, ese trozo en efectivo tributa como ganancia patrimonial en el ejercicio del canje. La proporción en acciones sigue diferida; la proporción en cash, no.
+
+Ejemplo real de estructura: te ofrecen por cada acción 0,7 acciones de la compradora más 3 € en efectivo. Tenías 1.000 acciones con coste total de 9.000 €. Los 3.000 € de efectivo corresponden a una parte de tu inversión, y esa parte se considera transmitida. El resto de tu coste se traslada a las 700 acciones nuevas.
+
+El reparto se hace de forma proporcional al valor de cada componente. Si tu broker no te lo desglosa en el informe fiscal —y muchos brokers extranjeros no lo hacen—, te toca reconstruirlo con el folleto de la operación. Es tedioso y es donde se pierde la trazabilidad de las carteras largas.
+
+---
+
+## 4. Spin-offs: la operación que más cuesta reconstruir
+
+Un spin-off entrega acciones de una filial que se separa. Kellogg's escindiendo Kellanova, GE partiéndose en tres, Siemens con Siemens Energy. De golpe tienes un ISIN nuevo que no compraste nunca.
+
+El problema técnico es este: tienes cantidad, pero no tienes coste. Si el spin-off se acoge al régimen de neutralidad, tu coste original se **reparte** entre la matriz y la filial en proporción al valor de mercado de cada una en la fecha de la operación. Si no se acoge, o si el reparto no está documentado, puedes acabar con acciones de coste desconocido.
+
+Y coste desconocido no significa coste cero. Declarar coste cero es regalarle a Hacienda una ganancia que no has tenido. Lo correcto es reconstruir el reparto con la información de la operación (las empresas publican el ratio y la valoración de referencia; la propia CNMV o los hechos relevantes lo recogen).
+
+En FinView un spin-off entra en la cartera aportando cantidad y marcado como coste desconocido a propósito: hasta que le asignas el coste heredado, el motor FIFO no publica ningún ajuste fiscal sobre esa posición. Preferimos avisarte de que falta un dato que darte un número inventado. Es la misma filosofía que aplicamos a los [totales de cartera](/blog/plusvalias-espana-irpf-guia): un dato desconocido invalida el subtotal, no se rellena con un cero.
+
+---
+
+## 5. Por qué esto rompe tu FIFO años después
+
+En España las acciones homogéneas se venden por FIFO obligatorio: las primeras que compraste son las primeras que vendes. Eso significa que tu declaración de 2026 depende del coste de una compra de 2014.
+
+Ahora suma capas: compraste en 2014, hubo split en 2018, contrasplit parcial en 2021, fusión con canje mixto en 2023. Vendes en 2026. Si en cualquiera de esos pasos no ajustaste el coste por acción, el FIFO arrastra el error hasta hoy, multiplicado.
+
+Tres consecuencias prácticas:
+
+- Un ajuste retroactivo obliga a recalcular **desde el año más antiguo afectado**, no solo el año de la venta. Recalcular solo 2026 deja mal los años intermedios.
+- Los brokers no siempre trasladan el histórico cuando haces un [traspaso entre brokers](/blog/traspaso-acciones-entre-brokers). Si el traspaso pierde el coste ajustado, tu informe fiscal nuevo empieza en falso.
+- El mismo valor puede tener varios ISIN a lo largo de su vida por corporate actions. Para el FIFO siguen siendo la misma posición encadenada.
+
+Lo que te salva aquí no es una hoja de cálculo bonita. Es guardar, operación por operación, el ratio aplicado y el coste resultante el mismo día en que ocurre.
+
+---
+
+## 6. Qué hacer el día que te llega la notificación
+
+Un protocolo corto que funciona:
+
+1. Identifica el tipo de operación (split, contrasplit, fusión con o sin efectivo, spin-off). El correo del broker suele decirlo mal o en inglés genérico; el hecho relevante de la empresa lo dice bien.
+2. Apunta el ratio exacto y la fecha efectiva.
+3. Recalcula el coste por acción y **no toques el coste total** salvo que haya entrado efectivo.
+4. Si hay efectivo o picos, sepáralo: eso es una venta parcial que va a la base del ahorro.
+5. Conserva el documento. Diez años después, tu palabra no vale nada; el folleto sí.
+
+Aburrido, sí. Pero cinco minutos ese día te ahorran una tarde de arqueología en abril.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Tengo que declarar algo el año de un split?
+
+No, si es un split limpio de acciones por acciones. No hay ganancia ni pérdida. Lo único que haces es actualizar tu registro interno de coste por acción.
+
+### ¿Y si el contrasplit me liquida picos en efectivo?
+
+Ese efectivo es una transmisión parcial: ganancia o pérdida patrimonial en la base del ahorro del año en que se liquida. El coste a imputar es el proporcional a las acciones sobrantes.
+
+### En una fusión, ¿pierdo la antigüedad de mis acciones?
+
+No, si aplica el régimen de neutralidad. Las acciones nuevas conservan fecha y coste de las antiguas. Esa antigüedad es la que usa tu FIFO.
+
+### ¿Puedo poner coste cero a las acciones de un spin-off para no complicarme?
+
+Puedes, y estarás pagando impuestos por una ganancia ficticia. El coste correcto es la parte de tu inversión original que se reasigna a la filial según el valor relativo en la fecha de la escisión.
+
+### ¿El broker me lo ajusta solo?
+
+Los brokers españoles suelen ajustarlo bien en su informe fiscal. Los extranjeros ajustan el número de acciones pero no siempre el coste fiscal a efectos españoles, y casi nunca desglosan la parte en efectivo de un canje mixto. Revísalo tú.
+
+### ¿Afecta esto a las [pérdidas que quiero compensar](/blog/compensar-perdidas-ganancias-irpf)?
+
+Sí, indirectamente. Un coste mal ajustado cambia el importe de la pérdida o ganancia que declaras, y con ello la base que puedes compensar en los cuatro ejercicios siguientes.
