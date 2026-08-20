@@ -148,7 +148,8 @@
   bottom: 24px;
   right: 24px;
   z-index: 50;
-  background: rgba(245, 241, 232, 0.92);
+  /* Reads against whichever theme is active instead of always being paper. */
+  background: color-mix(in srgb, var(--fv-paper) 92%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--fv-ink-15);
   border-radius: 999px;

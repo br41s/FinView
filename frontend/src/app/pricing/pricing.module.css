@@ -118,8 +118,8 @@
 }
 
 .planCardHighlight {
-  background: var(--fv-ink);
-  border: none;
+  background: var(--fv-invert-bg);
+  border: 1px solid var(--fv-invert-border);
   border-radius: 20px;
   padding: 40px 32px;
   position: relative;
@@ -155,7 +155,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(245,241,232,0.5);
+  color: var(--fv-invert-ink-50);
   margin: 0 0 12px;
 }
 
@@ -173,7 +173,7 @@
 .planPriceHighlight {
   font-family: var(--fv-font-display);
   font-size: 40px;
-  color: var(--fv-paper);
+  color: var(--fv-invert-ink);
   line-height: 1;
 }
 
@@ -185,7 +185,7 @@
 
 .planPeriodHighlight {
   font-size: 15px;
-  color: rgba(245,241,232,0.6);
+  color: var(--fv-invert-ink-60);
   margin-left: 4px;
 }
 
@@ -200,7 +200,7 @@
 .planDescHighlight {
   font-size: 13px;
   line-height: 1.5;
-  color: rgba(245,241,232,0.65);
+  color: var(--fv-invert-ink-65);
   margin: 0 0 28px;
   min-height: 40px;
 }
@@ -229,7 +229,7 @@
   cursor: pointer;
   margin-bottom: 28px;
   background: var(--fv-ochre);
-  color: var(--fv-paper);
+  color: var(--fv-invert-ink);
   border: none;
 }
 
@@ -260,7 +260,7 @@
   align-items: flex-start;
   gap: 10px;
   font-size: 13px;
-  color: rgba(245,241,232,0.8);
+  color: var(--fv-invert-ink-80);
 }
 
 .featureIcon {
