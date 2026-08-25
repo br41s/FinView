@@ -40,6 +40,7 @@ class SubscriptionResponse(BaseModel):
     label: str
     max_accounts: int
     max_imports_per_month: int
+    imports_this_month: int | None = None
     current_period_end: str | None
     has_stripe_subscription: bool
 
@@ -48,9 +49,9 @@ class SubscriptionResponse(BaseModel):
 
 
 @router.get("/subscription", response_model=SubscriptionResponse)
-def get_subscription(user: CurrentUser):
-    """Return the current user's subscription details."""
-    return get_user_subscription(user)
+def get_subscription(db: DbSession, user: CurrentUser):
+    """Return the current user's subscription details, with usage against the plan."""
+    return get_user_subscription(user, db)
 
 
 @router.post(

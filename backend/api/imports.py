@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import and_, or_
 
 from backend.api.auth import CurrentUser
@@ -36,6 +36,7 @@ from backend.importers.tr_csv import (
     parse_tr_csv,
 )
 from backend.models import Account, DataIssue, ImportRecord
+from backend.services.billing_service import count_imports_this_month, import_allowance
 from backend.services.import_service import (
     import_bbva_report,
     import_dg_report,
@@ -51,7 +52,32 @@ from backend.services.import_service import (
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 
-@router.post("/tr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF o CSV"}, 422: {"description": "Error al procesar el archivo"}})
+def enforce_import_quota(db: DbSession, user: CurrentUser) -> None:
+    """Reject an upload once the plan's monthly import allowance is spent.
+
+    `max_imports_per_month` was advertised on the billing page and returned by
+    /billing/subscription, but nothing consulted it — every import endpoint
+    accepted uploads regardless of plan. Applied via the route decorator rather
+    than a parameter so it is visible on each route and cannot be forgotten in
+    the body of a new one.
+    """
+    used = count_imports_this_month(db, user)
+    allowed = import_allowance(user)
+    if used < allowed:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"Has alcanzado el límite de {allowed} importaciones al mes de tu plan "
+            f"({used} este mes). Mejora tu plan para importar más."
+        ),
+    )
+
+
+ImportQuota = Depends(enforce_import_quota)
+
+
+@router.post("/tr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF o CSV"}, 422: {"description": "Error al procesar el archivo"}})
 def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a Trade Republic Tax Report PDF or Transaction export CSV.
 
@@ -91,7 +117,7 @@ def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
         tmp_path.unlink(missing_ok=True)
 
 
-@router.post("/degiro", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post("/degiro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
 def upload_dg_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a DEGIRO Annual Report PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -113,7 +139,7 @@ def upload_dg_report(file: UploadFile, db: DbSession, user: CurrentUser):
         tmp_path.unlink(missing_ok=True)
 
 
-@router.post("/ibkr", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos CSV"}, 422: {"description": "Error al procesar el CSV"}})
+@router.post("/ibkr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos CSV"}, 422: {"description": "Error al procesar el CSV"}})
 def upload_ibkr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an IBKR Activity Statement CSV."""
     if not file.filename or not file.filename.lower().endswith(".csv"):
@@ -135,7 +161,7 @@ def upload_ibkr_report(file: UploadFile, db: DbSession, user: CurrentUser):
         tmp_path.unlink(missing_ok=True)
 
 
-@router.post("/ing", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post("/ing", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
 def upload_ing_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an ING Información Fiscal PDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -157,7 +183,7 @@ def upload_ing_report(file: UploadFile, db: DbSession, user: CurrentUser):
         tmp_path.unlink(missing_ok=True)
 
 
-@router.post("/bbva", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar los PDFs"}})
+@router.post("/bbva", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar los PDFs"}})
 def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3 BBVA PDFs")], db: DbSession, user: CurrentUser):
     """Upload 1-3 BBVA PDFs (operaciones, dividendos, patrimonio)."""
     if not files or len(files) > 3:
@@ -187,7 +213,7 @@ def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3
             p.unlink(missing_ok=True)
 
 
-@router.post("/etoro", response_model=ImportResult, responses={400: {"description": "Solo se aceptan archivos XLSX"}, 422: {"description": "Error al procesar el XLSX"}})
+@router.post("/etoro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos XLSX"}, 422: {"description": "Error al procesar el XLSX"}})
 def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an eToro annual account statement XLSX."""
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
