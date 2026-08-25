@@ -1,7 +1,7 @@
 """Stripe billing service: checkout sessions, customer portal, webhook handling."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import stripe
 from sqlalchemy.orm import Session
@@ -255,8 +255,12 @@ def _handle_payment_failed(invoice_obj: dict) -> dict:
 # ---------- query helpers ----------
 
 
-def get_user_subscription(user: User) -> dict:
-    """Return current subscription info for a user."""
+def get_user_subscription(user: User, db: Session | None = None) -> dict:
+    """Return current subscription info for a user.
+
+    `imports_this_month` is only filled when a session is passed — without it
+    the caller gets None rather than a wrong zero.
+    """
     tier = user.subscription_tier or SubscriptionTier.FREE.value
     limits = PLAN_LIMITS.get(tier, PLAN_LIMITS[SubscriptionTier.FREE.value])
 
@@ -266,6 +270,7 @@ def get_user_subscription(user: User) -> dict:
         "label": limits["label"],
         "max_accounts": limits["max_accounts"],
         "max_imports_per_month": limits["max_imports_per_month"],
+        "imports_this_month": count_imports_this_month(db, user) if db is not None else None,
         "current_period_end": (
             user.subscription_current_period_end.isoformat()
             if user.subscription_current_period_end
@@ -283,3 +288,45 @@ def check_account_limit(db: Session, user: User) -> bool:
     limits = PLAN_LIMITS.get(tier, PLAN_LIMITS[SubscriptionTier.FREE.value])
     count = db.query(Account).filter(Account.user_id == user.id).count()
     return count < limits["max_accounts"]
+
+
+def _limits_for(user: User) -> dict:
+    tier = user.subscription_tier or SubscriptionTier.FREE.value
+    return PLAN_LIMITS.get(tier, PLAN_LIMITS[SubscriptionTier.FREE.value])
+
+
+def import_allowance(user: User) -> int:
+    """Imports per month the user's plan permits. An unreadable tier gets Free."""
+    return _limits_for(user)["max_imports_per_month"]
+
+
+def count_imports_this_month(db: Session, user: User) -> int:
+    """Imports the user has made since the start of the current UTC month.
+
+    Counted from ImportRecord, which is the row an import actually creates, so
+    a re-upload of a file already imported does not add to the total — the
+    (file_hash, broker) unique constraint means it never produced a second row.
+    """
+    from sqlalchemy import func
+
+    from backend.models import Account, ImportRecord
+
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return (
+        db.query(func.count(ImportRecord.id))
+        .join(Account, ImportRecord.account_id == Account.id)
+        .filter(Account.user_id == user.id, ImportRecord.imported_at >= month_start)
+        .scalar()
+        or 0
+    )
+
+
+def check_import_limit(db: Session, user: User) -> bool:
+    """Return True if the user can import another file within their plan.
+
+    The limit was advertised on the billing page and returned by the API but
+    never enforced anywhere — every import endpoint accepted uploads without
+    consulting it.
+    """
+    return count_imports_this_month(db, user) < import_allowance(user)

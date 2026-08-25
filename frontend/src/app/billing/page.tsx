@@ -16,6 +16,8 @@ interface Subscription {
   label: string;
   max_accounts: number;
   max_imports_per_month: number;
+  /** Null when the server could not count usage; render the limit alone. */
+  imports_this_month: number | null;
   current_period_end: string | null;
   has_stripe_subscription: boolean;
 }
@@ -130,8 +132,16 @@ function BillingContent() {
             <div>
               <p className="text-muted-foreground">Importaciones/mes</p>
               <p className="font-medium">
-                Máx. {sub?.max_imports_per_month || 5}
+                {typeof sub?.imports_this_month === "number"
+                  ? `${sub.imports_this_month} / ${sub.max_imports_per_month}`
+                  : `Máx. ${sub?.max_imports_per_month || 5}`}
               </p>
+              {typeof sub?.imports_this_month === "number" &&
+                sub.imports_this_month >= sub.max_imports_per_month && (
+                  <p className="text-xs text-destructive mt-0.5">
+                    Límite alcanzado este mes
+                  </p>
+                )}
             </div>
             {sub?.status && (
               <div>
