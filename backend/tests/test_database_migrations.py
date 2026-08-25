@@ -1,5 +1,6 @@
 """Regression tests for FinView's additive startup migrations."""
 
+import pytest
 from sqlalchemy import create_engine, inspect, text
 
 from backend import database
@@ -150,3 +151,46 @@ def test_ensure_columns_creates_indexes_on_preexisting_tables(monkeypatch):
     assert "ix_transactions_account_id" in {
         index["name"] for index in inspect(engine).get_indexes("transactions")
     }
+
+
+def test_ticker_map_is_created_by_create_all():
+    """New tables need no additive step — create_all builds them whole.
+
+    ticker_map arrived after the tables already in production, so this pins the
+    one thing that must hold for it to appear there: that it is reachable from
+    Base.metadata, with its unique index, without an entry in _ADDITIVE_COLUMNS.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    inspector = inspect(engine)
+    assert "ticker_map" in inspector.get_table_names()
+    assert {c["name"] for c in inspector.get_columns("ticker_map")} >= {
+        "isin", "yahoo_ticker", "source", "name", "created_at", "updated_at",
+    }
+    assert any(
+        index["column_names"] == ["isin"] and index["unique"]
+        for index in inspector.get_indexes("ticker_map")
+    )
+
+
+def test_one_isin_cannot_map_to_two_tickers():
+    """The unique constraint is what makes `remember` an upsert rather than a pile."""
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm import sessionmaker
+
+    from backend.models import TickerMap
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    db.add(TickerMap(isin="US0378331005", yahoo_ticker="AAPL"))
+    db.commit()
+
+    db.add(TickerMap(isin="US0378331005", yahoo_ticker="AAPL.MX"))
+    try:
+        with pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.rollback()
+        db.close()

@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
-from backend.services import exchange_rates
+from backend.services import exchange_rates, ticker_map
 
 logger = logging.getLogger(__name__)
 
@@ -30,112 +30,18 @@ def _ticker_currency(ticker: str) -> str:
             return currency
     return "USD"  # US stocks have no suffix
 
-# ISIN → Yahoo Finance ticker mapping for stocks that don't auto-resolve
-_ISIN_TICKER_MAP: dict[str, str] = {
-    # Spain
-    "ES0132105018": "ACX.MC",     # Acerinox
-    "ES0125220311": "ANA.MC",     # Acciona
-    "ES0105027009": "LOG.MC",     # Logista
-    "ES0105223004": "GEST.MC",    # Gestamp
-    "ES0116870314": "NTGY.MC",    # Naturgy
-    "ES0113860A34": "SAB.MC",     # Banco Sabadell
-    "ES0112501012": "EBRO.MC",    # Ebro Foods
-    "ES0130960018": "ENG.MC",     # Enagas
-    "ES0105546008": "LDA.MC",     # Linea Directa
-    "ES0180907000": "UNI.MC",     # Unicaja
-    "ES0112320009": "CNTE.MC",    # Catenon
-    "ES0122060314": "FCC.MC",     # FCC
-    "ES0139140174": "COL.MC",     # Inmobiliaria Colonial
-    "ES0178430E18": "TEF.MC",     # Telefonica
-    "ES0113679I37": "BKT.MC",     # Bankinter
-    "ES0105046009": "AENA.MC",    # AENA (pre-split, 1:10 hasta 2025)
-    "ES0105046017": "AENA.MC",    # AENA (post-split 2025)
-    "ES0109067019": "AMS.MC",     # Amadeus
-    "ES0113211835": "BBVA.MC",    # BBVA
-    "ES0113900J37": "SAN.MC",     # Banco Santander
-    "ES0130670112": "ELE.MC",     # Endesa
-    "ES0144580Y14": "IBE.MC",     # Iberdrola
-    "ES0148396007": "ITX.MC",     # Inditex
-    "ES0173093024": "RED.MC",     # Redeia Corporacion
-    "ES0173516115": "REP.MC",     # Repsol
-    "ES0105684007": "IFLEX.MC",   # Iflex (Industria de Diseno)
-    "ES0169350016": "PVA.MC",     # Pescanova
-    # Germany
-    "DE000PAG9113": "P911.DE",    # Porsche AG
-    "DE0008404005": "ALV.DE",     # Allianz
-    "DE0007100000": "MBG.DE",     # Mercedes-Benz
-    "DE0007236101": "SIE.DE",     # Siemens
-    "DE000BASF111": "BAS.DE",     # BASF
-    "DE0005190003": "BMW.DE",     # BMW
-    "DE000BAY0017": "BAYN.DE",    # Bayer
-    "DE0005552004": "DHL.DE",     # DHL Group
-    "DE000ENAG999": "EOAN.DE",    # E.ON
-    "DE0006048408": "HEN.DE",     # Henkel
-    "DE000DTR0CK8": "DTG.DE",    # Daimler Truck
-    # France
-    "FR0000120628": "CS.PA",      # AXA
-    "FR0000120172": "CA.PA",      # Carrefour
-    "FR0000133308": "ORA.PA",     # Orange
-    "FR0000125486": "DG.PA",      # VINCI
-    "FR0013447729": "VRLA.PA",    # Verallia
-    "FR0010208488": "ENGI.PA",    # Engie
-    # UK
-    "GB0006731235": "ABF.L",      # Associated British Foods
-    "GB00BPQY8M80": "AV.L",      # Aviva
-    "GB0030913577": "BT-A.L",    # BT Group
-    "GB0031743007": "BRBY.L",    # Burberry
-    "GB0002374006": "DGE.L",     # Diageo
-    "GB0005603997": "LGEN.L",    # Legal & General
-    "GB00BDR05C01": "NG.L",      # National Grid
-    "GB00BH4HKS39": "VOD.L",    # Vodafone
-    "GB00B1FH8J72": "SVT.L",    # Severn Trent
-    "GB00B39J2M42": "UU.L",     # United Utilities
-    "GB00BZ3CNK81": "TORM.CO",   # TORM (Copenhagen)
-    # Singapore
-    "SG1M31001969": "U11.SI",     # UOB (United Overseas Bank)
-    # US
-    "US62914V1061": "NIO",        # NIO Inc ADR
-    "US91332U1016": "U",          # Unity Software
-    "US88579Y1010": "MMM",        # 3M
-    "US7134481081": "PEP",        # PepsiCo
-    "US5007541064": "KHC",        # Kraft Heinz
-    "US6092071058": "MDLZ",       # Mondelez
-    "US3703341046": "GIS",        # General Mills
-    "US4581401001": "INTC",       # Intel
-    "US4404521001": "HRL",        # Hormel Foods
-    "US9024941034": "TSN",        # Tyson Foods
-    "US9113121068": "UPS",        # UPS
-    "US50155Q1004": "KD",         # Kyndryl
-    "US19260Q1076": "COIN",       # Coinbase
-    "US66987V1098": "NVS",        # Novartis ADR
-    "US00206R1023": "T",          # AT&T
-    "US0394831020": "ADM",        # Archer Daniels Midland
-    "US45841N1072": "IBKR",       # Interactive Brokers
-    "US49177J1025": "KVUE",       # Kenvue
-    "US5949181045": "MSFT",       # Microsoft
-    "US92343V1044": "VZ",         # Verizon
-    # Netherlands
-    "NL0010773842": "NN.AS",      # NN Group
-    "NL0000379121": "RAND.AS",    # Randstad
-    # Brazil
-    "BRPETRACNOR9": "PETR3.SA",   # Petrobras ORD (Bovespa)
-    # Portugal
-    "PTREL0AM0008": "EDPR.LS",    # Redes Energeticas
-    # Austria
-    "AT0000831706": "WIE.VI",     # Wienerberger
-    # Canada
-    "CA22717L1013": "CRON",       # Cronos
-    # ETFs
-    "IE00B4L5Y983": "IWDA.AS",   # iShares Core MSCI World
-    "IE00BYWQWR46": "ESPO.L",    # VanEck Video Gaming
-    "IE00BMW3QX54": "ROBO.L",    # L&G ROBO
-}
-
 
 def _resolve_ticker(isin: str, db: Session) -> str | None:
-    """Resolve ISIN to Yahoo Finance ticker using mapping or DB cache."""
-    if isin in _ISIN_TICKER_MAP:
-        return _ISIN_TICKER_MAP[isin]
+    """Resolve ISIN to Yahoo Finance ticker: curated map, learned map, then cache.
+
+    The PriceCache fallback only ever held tickers that came from one of the
+    first two, so on its own it could never widen coverage — an ISIN nothing
+    resolved was never fetched, so it never got a cache row to be found in.
+    It stays as a fallback for installations whose cache predates `ticker_map`.
+    """
+    resolved = ticker_map.resolve(db, isin)
+    if resolved:
+        return resolved
 
     cached = (
         db.query(PriceCache.yahoo_ticker)
@@ -322,7 +228,7 @@ def get_currency_info(db: Session, isins: list[str]) -> dict[str, dict]:
     """Get currency info for ISINs from today's cache.
 
     Returns dict[isin, {currency, original_price, fx_rate}].
-    Falls back to _ISIN_TICKER_MAP when cache has no original_currency.
+    Falls back to the ticker map when cache has no original_currency.
     """
     today = date.today()
     rows = (
@@ -348,9 +254,10 @@ def get_currency_info(db: Session, isins: list[str]) -> dict[str, dict]:
         }
 
     # For ISINs not in today's cache, derive from ticker map
+    known = ticker_map.effective_map(db) if len(result) < len(isins) else {}
     for isin in isins:
         if isin not in result:
-            ticker = _ISIN_TICKER_MAP.get(isin)
+            ticker = known.get(isin)
             ccy = _ticker_currency(ticker) if ticker else "EUR"
             result[isin] = {"currency": ccy, "original_price": None, "fx_rate": None}
 

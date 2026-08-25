@@ -18,6 +18,7 @@ from backend.models import (
     Transaction,
     TransactionType,
 )
+from backend.services import ticker_map
 from backend.services.prices import fetch_and_cache_prices
 
 logger = logging.getLogger(__name__)
@@ -286,7 +287,7 @@ def _reconcile(
 
 
 def _fill_tickers_from_cache(db: Session, positions: list[Position]) -> None:
-    """Fill ticker from PriceCache.yahoo_ticker for positions missing a ticker."""
+    """Fill ticker for positions missing one, from the ticker map or PriceCache."""
     missing_isins = [p.isin for p in positions if not p.ticker]
     if not missing_isins:
         return
@@ -298,6 +299,9 @@ def _fill_tickers_from_cache(db: Session, positions: list[Position]) -> None:
     )
     # Rows are oldest to newest, so a later cache correction wins per ISIN.
     isin_to_ticker = {r.isin: r.yahoo_ticker for r in rows}
+    # The map is authoritative over the cache: a manual correction should show
+    # immediately rather than after the next price fetch overwrites the cache.
+    isin_to_ticker.update(ticker_map.effective_map(db))
     for p in positions:
         if not p.ticker and p.isin in isin_to_ticker:
             p.ticker = isin_to_ticker[p.isin]

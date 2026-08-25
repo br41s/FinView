@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 from sqlalchemy import case, func
+from sqlalchemy.orm import Session
 
 from backend.api.auth import CurrentUser
 from backend.api.schemas import (
@@ -322,7 +323,7 @@ def _first_per_key(rows, key_attr: str, val_attr: str) -> dict:
     return result
 
 
-def _merge_same_ticker_rows(rows: list[dict]) -> list[dict]:
+def _merge_same_ticker_rows(rows: list[dict], db: Session) -> list[dict]:
     """Merge rows that share the same Yahoo Finance ticker.
 
     After a stock split with an ISIN change, old and new ISINs appear as
@@ -330,7 +331,9 @@ def _merge_same_ticker_rows(rows: list[dict]) -> list[dict]:
     by summing additive fields and recalculating derived ratios.
     """
     try:
-        from backend.services.prices import _ISIN_TICKER_MAP
+        from backend.services import ticker_map
+
+        known = ticker_map.effective_map(db)
     except Exception:
         return rows
 
@@ -340,7 +343,7 @@ def _merge_same_ticker_rows(rows: list[dict]) -> list[dict]:
 
     for row in rows:
         isin = row["isin"]
-        key = _ISIN_TICKER_MAP.get(isin, isin)
+        key = known.get(isin, isin)
         div = Decimal(row["total_dividends"])
         cost = Decimal(row["total_invested"])
         qty = Decimal(row["qty_remaining"])
@@ -525,7 +528,7 @@ def dividend_yield(
         row["fx_rate"] = ci.get("fx_rate")
         results.append(row)
 
-    results = _merge_same_ticker_rows(results)
+    results = _merge_same_ticker_rows(results, db)
     results.sort(key=lambda x: float(x["yield_on_cost"]), reverse=True)
     return results
 
