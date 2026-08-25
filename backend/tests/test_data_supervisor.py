@@ -18,7 +18,7 @@ from backend.models import (
     TransactionType,
     User,
 )
-from backend.services import data_supervisor
+from backend.services import data_supervisor, split_history
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def test_import_run_derives_owner_for_cross_dataset_checks(db, monkeypatch):
     _transaction(db, account2, import2, TransactionType.DIVIDEND.value, isin)
 
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     issues1 = data_supervisor.run_checks(db, import_id=import1.id)
     issues2 = data_supervisor.run_checks(db, import_id=import2.id)
@@ -127,7 +127,7 @@ def test_issue_deduplication_is_scoped_to_owner(db, monkeypatch):
     db.flush()
 
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     issues = data_supervisor.run_checks(db, import_id=import1.id, user_id=user1.id)
 
@@ -140,7 +140,7 @@ def test_full_audit_issues_keep_owner_and_deduplicate(db, monkeypatch):
     _transaction(db, account, record, TransactionType.DIVIDEND.value, isin)
 
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     first = data_supervisor.run_checks(db, user_id=user.id)
     second = data_supervisor.run_checks(db, user_id=user.id)
@@ -175,7 +175,7 @@ def test_full_audit_does_not_include_other_users_active_isins(db, monkeypatch):
     db.flush()
 
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     issues = data_supervisor.run_checks(db, user_id=user1.id)
 
@@ -220,9 +220,7 @@ def test_auto_split_only_adjusts_transactions_owned_by_user(db, monkeypatch):
     )
     db.flush()
     monkeypatch.setattr(
-        data_supervisor,
-        "_get_splits_from_yfinance",
-        lambda _ticker: [(date(2020, 6, 1), Decimal("2"))],
+        split_history, "_fetch", lambda _ticker: [(date(2020, 6, 1), Decimal("2"))]
     )
 
     issues = data_supervisor._check_split_candidates(db, import1.id, user1.id)
@@ -249,7 +247,7 @@ def test_spinoff_missing_cost_basis_is_reported_once(db, monkeypatch):
         price="0",
     )
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     first = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
     second = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
@@ -274,7 +272,7 @@ def test_spinoff_cost_issue_is_scoped_to_owner(db, monkeypatch):
         price="0",
     )
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     issues = data_supervisor.run_checks(db, import_id=record1.id, user_id=user1.id)
 
@@ -310,7 +308,7 @@ def test_spinoff_counts_as_acquisition_for_matching_holding(db, monkeypatch):
     )
     db.flush()
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     issues = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
 
@@ -343,7 +341,7 @@ def test_each_unresolved_spinoff_gets_its_own_cost_issue(db, monkeypatch):
         trade_date=date(2024, 2, 10),
     )
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
     first_run = data_supervisor.run_checks(db, import_id=record.id, user_id=user.id)
     cost_issues = [
@@ -388,7 +386,7 @@ def test_supervisor_recalculates_after_auto_fixing_historical_rights(db, monkeyp
     tx.name = "Venta de derechos"
     calls = []
     monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance", lambda _ticker: [])
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
     monkeypatch.setattr(
         "backend.services.fifo_engine.recalculate_fifo_from_year",
         lambda _db, year, owner_id: calls.append((year, owner_id)),
