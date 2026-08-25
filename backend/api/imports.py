@@ -278,7 +278,12 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user:
     """Resolve a pending data issue, applying the appropriate data correction."""
     from datetime import date as date_type
     from decimal import Decimal
-    from backend.services.issue_resolver import resolve_zero_price, resolve_add_buy, resolve_apply_split
+    from backend.services.issue_resolver import (
+        resolve_add_buy,
+        resolve_apply_split,
+        resolve_set_ticker,
+        resolve_zero_price,
+    )
 
     issue = (
         db.query(DataIssue)
@@ -314,6 +319,10 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user:
                 price=Decimal(str(body.data["price"])),
                 acquisition_date=date_type.fromisoformat(str(body.data["acquisition_date"])),
             )
+        elif body.action == "set_ticker":
+            if not body.data or "ticker" not in body.data:
+                raise HTTPException(400, "Se requiere 'ticker' en data")
+            resolve_set_ticker(db, issue, str(body.data["ticker"]))
         elif body.action == "apply_split":
             resolve_apply_split(db, issue)
         else:

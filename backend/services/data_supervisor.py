@@ -461,9 +461,12 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
     """Detect ISINs not in the Yahoo Finance ticker map.
 
     These will show "—" for current price in the UI.
-    Auto-resolution: try yfinance search.
+    Auto-resolution: try yfinance search, and persist the answer so the price
+    layer can use it and the next import does not repeat the lookup.
     """
-    from backend.services.prices import _ISIN_TICKER_MAP
+    from backend.services import ticker_map
+
+    known = ticker_map.effective_map(db)
 
     # Get all active ISINs (have holdings or open buy positions)
     active_isins = set()
@@ -488,7 +491,7 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
 
     missing = []
     for isin in sorted(active_isins):
-        if not isin or isin in _ISIN_TICKER_MAP:
+        if not isin or isin in known:
             continue
 
         # Skip derivatives and bonds — they don't have stock tickers
@@ -496,15 +499,19 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
         if _DERIVATIVE_PATTERNS.search(name) or _BOND_PATTERNS.search(name):
             continue
 
-        # Try to auto-resolve via yfinance
+        # Try to auto-resolve via yfinance. `name` is already in hand from the
+        # derivative check above — it used to be re-queried three more times
+        # per ISIN to build these two issues.
         ticker = _try_resolve_ticker(isin)
         if ticker:
+            ticker_map.remember(db, isin, ticker, name=name)
+            known[isin] = ticker
             issue = DataIssue(
                 import_id=import_id,
                 issue_type="missing_ticker",
                 severity="info",
                 isin=isin,
-                name=_get_name_for_isin(db, isin, user_id),
+                name=name,
                 description=(
                     f"ISIN {isin} no estaba en el mapa de tickers. "
                     f"Resuelto automáticamente: {ticker}"
@@ -520,9 +527,9 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
                 issue_type="missing_ticker",
                 severity="warning",
                 isin=isin,
-                name=_get_name_for_isin(db, isin, user_id),
+                name=name,
                 description=(
-                    f"ISIN {isin} ({_get_name_for_isin(db, isin, user_id)}) no tiene ticker de Yahoo Finance. "
+                    f"ISIN {isin} ({name}) no tiene ticker de Yahoo Finance. "
                     f"Los precios actuales no se mostrarán en la UI."
                 ),
                 status="needs_input",
@@ -546,24 +553,29 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
       transaction quantities and mark as auto_resolved.
     - Otherwise flag as needs_input for manual review.
     """
-    from backend.services.prices import _ISIN_TICKER_MAP
+    from backend.services import ticker_map
+
+    # Every ISIN the installation can resolve, not just the curated ones —
+    # this check used to be blind to anything outside the hardcoded map, so a
+    # split in a security the supervisor had itself resolved went undetected.
+    known = ticker_map.effective_map(db)
 
     # Build reverse map: ticker → [ISINs]
     ticker_to_isins: dict[str, list[str]] = {}
-    for isin, ticker in _ISIN_TICKER_MAP.items():
+    for isin, ticker in known.items():
         ticker_to_isins.setdefault(ticker, []).append(isin)
 
     issues = []
     active_isins = set()
     holding_isin_q = _scope_holding_query(db.query(PortfolioHolding.isin), user_id)
     for row in holding_isin_q.distinct().all():
-        if row[0] in _ISIN_TICKER_MAP:
+        if row[0] in known:
             active_isins.add(row[0])
 
     processed_tickers: set[str] = set()
 
     for isin in sorted(active_isins):
-        ticker = _ISIN_TICKER_MAP.get(isin)
+        ticker = known.get(isin)
         if not ticker or ticker in processed_tickers:
             continue
         processed_tickers.add(ticker)

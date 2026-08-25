@@ -396,6 +396,40 @@ class PriceCache(Base):
     )
 
 
+class TickerMap(Base):
+    """ISIN → Yahoo Finance ticker, learned at runtime.
+
+    `prices._ISIN_TICKER_MAP` is a hand-curated list of ISINs that Yahoo cannot
+    resolve on its own. Everything outside it used to be a dead end: the data
+    supervisor would look a ticker up via yfinance, write the answer into a
+    DataIssue description, and throw it away. Nothing read it back, so prices
+    stayed "—" forever, the same lookup ran again on every import, and split
+    detection — which iterates the curated map — never saw the security at all.
+
+    Rows here are what the app has learned. The curated map still wins on
+    conflict: it encodes corporate actions (AENA pre/post split ISINs sharing
+    one ticker) that a symbol lookup cannot know. `source` records where a row
+    came from, and a 'manual' row is a correction a user made through the
+    issue resolver.
+
+    Not user-scoped: an ISIN maps to one security for everybody.
+    """
+
+    __tablename__ = "ticker_map"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    isin: Mapped[str] = mapped_column(String(12), nullable=False, unique=True, index=True)
+    yahoo_ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="yfinance")
+    name: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 # ── Options Monitor Models ───────────────────────────────────────────
 
 

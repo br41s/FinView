@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -15,6 +16,7 @@ from backend.models import (
     Transaction,
     TransactionType,
 )
+from backend.services import ticker_map
 from backend.services.db_locks import lock_fifo_recalculation
 from backend.services.fifo_engine import recalculate_fifo_from_year
 from backend.services.transaction_amounts import trade_net_amount
@@ -46,6 +48,42 @@ def _issue_owner(db: Session, issue: DataIssue) -> tuple[int | None, int]:
     if issue.user_id is not None and issue.user_id != user_id:
         raise ValueError(f"Issue {issue.id} owner does not match its import")
     return account_id, user_id
+
+
+_TICKER_RE = re.compile(r"^[A-Z0-9]{1,10}(?:[.\-][A-Z]{1,4})?$")
+
+
+def resolve_set_ticker(db: Session, issue: DataIssue, ticker: str) -> None:
+    """Record the Yahoo ticker for an ISIN the app could not resolve on its own.
+
+    `missing_ticker` issues had no resolution before this — the only action the
+    UI offered was "dismiss", which left the position priceless and raised the
+    same issue on the next import. The correction is stored as `manual`, so a
+    later yfinance lookup does not overwrite it.
+    """
+    normalized = (ticker or "").strip().upper()
+    if not _TICKER_RE.match(normalized):
+        raise ValueError(
+            "El ticker debe ser alfanumérico, opcionalmente con sufijo de mercado (p. ej. SAN.MC)"
+        )
+
+    if issue.issue_type != "missing_ticker":
+        raise ValueError(f"La incidencia {issue.issue_type} no permite fijar un ticker")
+
+    isin = issue.isin
+    if not isin:
+        raise ValueError("La incidencia no tiene ISIN")
+
+    # Ownership is checked for consistency with the other resolvers even though
+    # the ticker map is global: it is what proves the caller may act on this issue.
+    _issue_owner(db, issue)
+
+    ticker_map.remember(db, isin, normalized, source=ticker_map.MANUAL, name=issue.name)
+
+    issue.status = "resolved"
+    issue.auto_resolution = f"Ticker {normalized} asignado manualmente"
+    issue.resolution_data = json.dumps({"isin": isin, "ticker": normalized})
+    logger.info("Issue %s resolved: ISIN %s → %s", issue.id, isin, normalized)
 
 
 def resolve_zero_price(db: Session, issue: DataIssue, price_per_share: Decimal) -> None:

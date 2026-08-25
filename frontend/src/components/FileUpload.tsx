@@ -133,9 +133,15 @@ const ACTIONABLE_TYPES = new Set([
   "zero_price",
   "missing_cost_basis",
   "missing_buy",
+  "missing_ticker",
   "potential_split",
   "holdings_mismatch",
 ]);
+
+// Same shape the backend enforces: letters and digits, optionally a market
+// suffix (SAN.MC, BRK-B). Checked here only to disable the button — the
+// backend rejects anything malformed regardless.
+const TICKER_RE = /^[A-Za-z0-9]{1,10}([.-][A-Za-z]{1,4})?$/;
 
 function IssueCard({
   issue,
@@ -149,6 +155,7 @@ function IssueCard({
   const [qty, setQty] = useState("");
   const [buyPrice, setBuyPrice] = useState("");
   const [buyDate, setBuyDate] = useState("");
+  const [ticker, setTicker] = useState("");
 
   const resData = useMemo(() => {
     try {
@@ -257,6 +264,37 @@ function IssueCard({
             ) : (
               "Aplicar precio"
             )}
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => handleAction("dismiss")}
+            className={dismissBtnCls}
+          >
+            Ignorar
+          </button>
+        </div>
+      )}
+
+      {/* missing_ticker: the app could not resolve this ISIN — name the ticker */}
+      {needsInput && issue.issue_type === "missing_ticker" && (
+        <div className="mt-2 flex gap-2 items-center flex-wrap">
+          <input
+            type="text"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+            placeholder="Ticker Yahoo (p. ej. SAN.MC)"
+            className={`${inputCls} w-48`}
+            spellCheck={false}
+            autoCapitalize="characters"
+          />
+          <button
+            type="button"
+            disabled={submitting || !TICKER_RE.test(ticker.trim())}
+            onClick={() => handleAction("set_ticker", { ticker: ticker.trim() })}
+            className={applyBtnCls}
+          >
+            {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Guardar ticker"}
           </button>
           <button
             type="button"
