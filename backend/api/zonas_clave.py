@@ -1,17 +1,16 @@
 """Zonas Clave API — watchlist CRUD, analysis retrieval, manual trigger, scheduler control."""
 
-import hmac
 import json
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from backend.api.auth import CurrentUser
+from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     TechnicalSignalOut,
     ZcZoneOut,
@@ -277,25 +276,17 @@ def trigger_all(user: CurrentUser):
     return {"status": "started"}
 
 
-@router.post("/cron", include_in_schema=False)
-def cron_run(request: Request, db: DbSession):
+@router.post("/cron", include_in_schema=False, dependencies=[CronKey])
+def cron_run(db: DbSession):
     """External-cron entry (Cloud Scheduler / any cron): one analysis per user.
 
-    Third instance of the same rule as /api/geo/cron and /api/options/agent/cron:
-    the in-process APScheduler dies whenever Cloud Run scales to zero, so prod
-    periodicity comes from an external scheduler. Auth is the shared secret
-    (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables the endpoint. Runs
-    synchronously so the instance stays alive for the work.
+    Runs synchronously so the instance stays alive for the work. Auth is the
+    shared cron secret — see `require_cron_key`.
 
     This only started mattering once the technical analysis began emitting
     signals — before that a missed cycle cost nothing, since nobody was waiting
     on the output.
     """
-    secret = settings.cron_secret
-    provided = request.headers.get("x-cron-key", "")
-    if not secret or not hmac.compare_digest(provided, secret):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
     from backend.models import User
     from backend.services.reference_data_maintenance import (
         run_reference_data_maintenance,

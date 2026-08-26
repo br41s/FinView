@@ -1,14 +1,13 @@
 """Geo-Intel API — signal listing, detail, manual trigger, scheduler control."""
 
-import hmac
 import json
 import logging
 import threading
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
-from backend.api.auth import CurrentUser
+from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     GeoCheckpointOut,
     GeoRuleOut,
@@ -249,20 +248,13 @@ def trigger_run(user: CurrentUser):
     return GeoRunResult(status="started")
 
 
-@router.post("/cron", include_in_schema=False)
-def cron_run(request: Request, db: DbSession):
+@router.post("/cron", include_in_schema=False, dependencies=[CronKey])
+def cron_run(db: DbSession):
     """External-cron entry (Cloud Scheduler / any cron): one cycle per user.
 
-    The in-process APScheduler dies whenever Cloud Run scales to zero, so prod
-    periodicity comes from an external scheduler hitting this endpoint. Auth is
-    a shared secret (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables
-    the endpoint. Runs synchronously so the instance stays alive for the cycle.
+    Runs synchronously so the instance stays alive for the cycle. Auth is the
+    shared cron secret — see `require_cron_key`.
     """
-    secret = settings.cron_secret
-    provided = request.headers.get("x-cron-key", "")
-    if not secret or not hmac.compare_digest(provided, secret):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
     from backend.models import User
     from backend.services.geo.orchestrator import run_cycle_for_user
 

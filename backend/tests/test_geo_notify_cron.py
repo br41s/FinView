@@ -1,7 +1,6 @@
 """Tests for geo notifications (channel fan-out, Telegram escaping) and /geo/cron."""
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -171,29 +170,6 @@ def test_has_active_signal_gates_known_events(db):
 # ── /geo/cron shared-secret auth ──────────────────────────────────────
 
 
-class _Req:
-    def __init__(self, key: str | None):
-        self.headers = {"x-cron-key": key} if key is not None else {}
-
-
-def test_cron_rejected_without_secret_configured(db, monkeypatch):
-    from backend.config import settings
-
-    monkeypatch.setattr(settings, "cron_secret", "")
-    with pytest.raises(HTTPException) as exc:
-        cron_run(_Req("anything"), db)
-    assert exc.value.status_code == 403
-
-
-def test_cron_rejected_with_wrong_key(db, monkeypatch):
-    from backend.config import settings
-
-    monkeypatch.setattr(settings, "cron_secret", "s3cret")
-    with pytest.raises(HTTPException) as exc:
-        cron_run(_Req("wrong"), db)
-    assert exc.value.status_code == 403
-
-
 def test_cron_runs_cycle_per_user(db, monkeypatch):
     from backend.config import settings
     from backend.services.geo import orchestrator
@@ -208,7 +184,7 @@ def test_cron_runs_cycle_per_user(db, monkeypatch):
     db.add(User(email="b@x.com"))
     db.commit()
 
-    result = cron_run(_Req("s3cret"), db)
+    result = cron_run(db)
     assert result["users"] == 2
     assert result["cycles_ok"] == 2
     assert sorted(ran) == [1, 2]
