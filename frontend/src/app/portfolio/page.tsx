@@ -21,6 +21,7 @@ import {
 
 import { toast } from "sonner";
 import { api, type OhlcBar } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
 import type { GeoSignal } from "@/lib/geo";
 import { getAccountValueDisplay } from "@/lib/portfolioValues";
 import { PriceChart } from "@/components/charts/PriceChart";
@@ -173,7 +174,7 @@ function PortfolioContent() {
     api.zonasClav
       .watchlist()
       .then((items) => setZcWatchlist(new Set(items.map((i) => i.ticker))))
-      .catch(() => {});
+      .catch(bestEffort("zonas watchlist membership"));
   }, []);
 
   // Keep only the highest-importance active signal per ticker so the badge
@@ -194,7 +195,7 @@ function PortfolioContent() {
         }
         setGeoByTicker(byTicker);
       })
-      .catch(() => {});
+      .catch(bestEffort("geo signal badges"));
   }, []);
 
   useEffect(() => {

@@ -20,6 +20,7 @@ import {
   type ZcTickerSearchResult,
   type OhlcBar,
 } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
 import { SCOPE_PARAMS } from "@/lib/chartMarkers";
 import { ZonasClaveChart } from "@/components/charts/ZonasClaveChart";
 import {
@@ -138,14 +139,14 @@ export default function ZonasClavePage() {
             .map((x) => ({ ticker: x.ticker!.toUpperCase(), name: x.name, isin: x.isin })),
         );
       })
-      .catch(() => {});
+      .catch(bestEffort("portfolio tickers for autocomplete"));
   }, []);
 
   // Options lens info for the per-row "Opciones" toggles — best-effort
   useEffect(() => {
     (api.options.watchlist() as Promise<{ id: number; ticker: string }[]>)
       .then((wl) => setOptionsMap(new Map(wl.map((w) => [w.ticker, w.id]))))
-      .catch(() => {});
+      .catch(bestEffort("options lens map for the row toggles"));
   }, []);
 
   // Initial load

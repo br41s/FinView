@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Fundamentals } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
 
 /**
  * Fundamental context for a ticker on the Ideas desk.
@@ -43,7 +44,7 @@ export function FundamentalsCard({ symbol }: { symbol: string }) {
       })
       // Best-effort by design: a failure and "this ticker has no fundamentals"
       // are the same outcome here — show nothing.
-      .catch(() => {})
+      .catch(bestEffort("fundamentals for the signal panel"))
       .finally(() => {
         if (!cancelled) setState("done");
       });

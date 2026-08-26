@@ -40,6 +40,7 @@ import {
   Cell,
 } from "recharts";
 import { api, type TechnicalSignal } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
 import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
 import {
@@ -306,7 +307,7 @@ export default function OptionsPage() {
     api.zonasClav
       .watchlist()
       .then((items) => setZonasMap(new Map(items.map((i) => [i.ticker, i.id]))))
-      .catch(() => {});
+      .catch(bestEffort("zonas lens map for the watchlist"));
   }, []);
 
   // Which tickers have an active geo signal — decides whether an alert offers an
@@ -322,7 +323,7 @@ export default function OptionsPage() {
         }
         setGeoTickers(withSignal);
       })
-      .catch(() => {});
+      .catch(bestEffort("geo signals for the Ideas links"));
   }, []);
 
   // Technical (zone-break) signals. These come from Zonas Clave, the trigger
@@ -332,7 +333,7 @@ export default function OptionsPage() {
     api.zonasClav
       .signals()
       .then(setTechSignals)
-      .catch(() => {});
+      .catch(bestEffort("technical signals panel"));
   }, [retryOptions]);
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
