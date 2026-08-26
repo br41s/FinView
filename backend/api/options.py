@@ -1,6 +1,5 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
-import hmac
 import json
 import threading
 import time
@@ -9,12 +8,12 @@ import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from backend.api.auth import CurrentUser
+from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     AgentCycleResult,
     AgentStatusOut,
@@ -477,24 +476,17 @@ def trigger_cycle(user: CurrentUser):
     return AgentCycleResult(status="started")
 
 
-@router.post("/agent/cron", include_in_schema=False)
-def cron_run(request: Request, db: DbSession):
+@router.post("/agent/cron", include_in_schema=False, dependencies=[CronKey])
+def cron_run(db: DbSession):
     """External-cron entry (Cloud Scheduler / any cron): one cycle per user.
 
-    The in-process APScheduler dies whenever Cloud Run scales to zero, so prod
-    periodicity comes from an external scheduler hitting this endpoint. Auth is
-    a shared secret (X-Cron-Key == FINVIEW_CRON_SECRET); empty secret disables
-    the endpoint. Runs synchronously so the instance stays alive for the cycle.
+    Runs synchronously so the instance stays alive for the cycle. Auth is the
+    shared cron secret — see `require_cron_key`.
 
     Mirrors /api/geo/cron, but honours the same _cycles_in_progress guard as the
     manual /agent/run: a cron tick landing on top of a manual run would other-
     wise double-fetch every chain and write duplicate snapshots.
     """
-    secret = settings.cron_secret
-    provided = request.headers.get("x-cron-key", "")
-    if not secret or not hmac.compare_digest(provided, secret):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
     user_ids = [uid for (uid,) in db.query(User.id).all()]
     ok = skipped = 0
     for uid in user_ids:

@@ -1,5 +1,6 @@
 """Auth API: register, login, current-user."""
 
+import hmac
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -73,20 +74,26 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def get_optional_user(
-    db: DbSession,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
-) -> User | None:
-    """Like get_current_user but returns None if no token (for migration period)."""
-    if credentials is None:
-        return None
-    payload = decode_access_token(credentials.credentials)
-    if payload is None:
-        return None
-    return db.query(User).filter(User.id == int(payload["sub"])).first()
+def require_cron_key(request: Request) -> None:
+    """Gate an endpoint on the shared cron secret (`X-Cron-Key`).
+
+    Cloud Run scales to zero, so periodicity comes from an external scheduler
+    hitting the /cron endpoints rather than from an in-process job. Their only
+    protection is this secret, and the check was copy-pasted into all three of
+    them — one definition of a security rule is worth more than three chances
+    to get `hmac.compare_digest` or the empty-secret case subtly wrong.
+
+    An unset secret disables the endpoints entirely rather than opening them.
+    Applied as a route dependency so a new cron endpoint cannot forget it in
+    its body, and so a test can assert every cron route carries it.
+    """
+    secret = settings.cron_secret
+    provided = request.headers.get("x-cron-key", "")
+    if not secret or not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
-OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+CronKey = Depends(require_cron_key)
 
 
 # --------------- routes ---------------

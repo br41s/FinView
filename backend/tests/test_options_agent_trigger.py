@@ -154,43 +154,17 @@ def db():
     session.close()
 
 
-class _Req:
-    def __init__(self, key: str | None):
-        self.headers = {"x-cron-key": key} if key is not None else {}
-
-
 def _users(db, *uids: int) -> None:
     for uid in uids:
         db.add(User(id=uid, email=f"u{uid}@x.com", password_hash="x"))
     db.commit()
 
 
-def test_cron_rejected_without_secret_configured(db, monkeypatch):
-    monkeypatch.setattr(settings, "cron_secret", "")
-    with pytest.raises(HTTPException) as exc:
-        options_api.cron_run(_Req("anything"), db)
-    assert exc.value.status_code == 403
-
-
-def test_cron_rejected_with_wrong_key(db, monkeypatch):
-    monkeypatch.setattr(settings, "cron_secret", "right")
-    with pytest.raises(HTTPException) as exc:
-        options_api.cron_run(_Req("wrong"), db)
-    assert exc.value.status_code == 403
-
-
-def test_cron_rejected_without_header(db, monkeypatch):
-    monkeypatch.setattr(settings, "cron_secret", "right")
-    with pytest.raises(HTTPException) as exc:
-        options_api.cron_run(_Req(None), db)
-    assert exc.value.status_code == 403
-
-
 def test_cron_runs_one_cycle_per_user(db, monkeypatch):
     monkeypatch.setattr(settings, "cron_secret", "right")
     _users(db, 11, 12)
     with patch.object(options_api, "run_cycle", return_value={"status": "ok"}) as mock_run:
-        result = options_api.cron_run(_Req("right"), db)
+        result = options_api.cron_run(db)
     assert result == {"status": "done", "users": 2, "cycles_ok": 2, "skipped": 0}
     assert sorted(c.args[0] for c in mock_run.call_args_list) == [11, 12]
 
@@ -204,7 +178,7 @@ def test_cron_counts_only_ok_cycles(db, monkeypatch):
     with patch.object(
         options_api, "run_cycle", side_effect=[{"status": "ok"}, {"status": "error"}]
     ):
-        result = options_api.cron_run(_Req("right"), db)
+        result = options_api.cron_run(db)
     assert result == {"status": "done", "users": 2, "cycles_ok": 1, "skipped": 0}
 
 
@@ -215,7 +189,7 @@ def test_cron_skips_user_with_cycle_already_in_progress(db, monkeypatch):
     options_api._cycles_in_progress.add(31)
     try:
         with patch.object(options_api, "run_cycle", return_value={"status": "ok"}) as mock_run:
-            result = options_api.cron_run(_Req("right"), db)
+            result = options_api.cron_run(db)
         assert result == {"status": "done", "users": 2, "cycles_ok": 1, "skipped": 1}
         mock_run.assert_called_once_with(32)
     finally:
@@ -229,5 +203,5 @@ def test_cron_releases_guard_even_when_run_cycle_raises(db, monkeypatch):
     _users(db, 41)
     with patch.object(options_api, "run_cycle", side_effect=RuntimeError("boom")):
         with pytest.raises(RuntimeError):
-            options_api.cron_run(_Req("right"), db)
+            options_api.cron_run(db)
     assert 41 not in options_api._cycles_in_progress

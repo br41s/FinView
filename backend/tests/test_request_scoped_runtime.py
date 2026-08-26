@@ -57,15 +57,13 @@ def test_zonas_cycle_runs_inline(monkeypatch):
 
 
 def test_daily_zonas_cron_runs_reference_maintenance_once(monkeypatch):
-    monkeypatch.setattr(settings, "cron_secret", "right")
-    request = SimpleNamespace(headers={"x-cron-key": "right"})
     db = MagicMock()
     db.query.return_value.all.return_value = []
 
     with patch(
         "backend.services.reference_data_maintenance.run_reference_data_maintenance"
     ) as maintain:
-        result = zonas_api.cron_run(request, db)
+        result = zonas_api.cron_run(db)
 
     maintain.assert_called_once_with()
     assert result["users"] == 0
