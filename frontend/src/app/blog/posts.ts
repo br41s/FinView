@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'prima-asistencia-junta-accionistas-irpf',
+    tag: 'Fiscal',
+    date: '25 ago 2026',
+    readTime: '8 min',
+    title: 'Prima de asistencia a juntas: cómo tributa en el IRPF',
+    excerpt:
+      'Ese pequeño pago por votar en una junta también tributa. Cómo declarar primas de asistencia, regalos en especie y pagos de brokers extranjeros sin duplicar datos.',
+  },
+  {
     slug: 'splits-fusiones-canje-acciones-irpf',
     tag: 'Fiscal',
     date: '21 ago 2026',
