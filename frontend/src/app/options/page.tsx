@@ -17,7 +17,6 @@ import {
   MessageSquare,
   Pause,
   Play,
-  Send,
   Sparkles,
   Square,
   RefreshCw,
@@ -27,40 +26,23 @@ import {
   TrendingDown,
   Zap,
   AlertCircle,
-  XCircle,
 } from "lucide-react";
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as ChartTooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
 import { api, type TechnicalSignal } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
+
+import { AgentChat } from "./AgentChat";
+import { AnalysisTab } from "./AnalysisTab";
+import { BacktestTab } from "./BacktestTab";
+import { fmt } from "./format";
+import { useBacktest } from "./useBacktest";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
 import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 import { LoadingDots } from "@/components/loading-dots";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
@@ -126,52 +108,6 @@ interface Unusual {
   last_price: string | number | null;
 }
 
-interface BacktestSignal {
-  id: number;
-  recorded_at: string;
-  ticker: string;
-  signal_type: string;
-  direction: string;
-  price_at_signal: string | number;
-  alert_message: string;
-  price_at_1d: string | number | null;
-  price_at_3d: string | number | null;
-  price_at_7d: string | number | null;
-  outcome_1d: string | null;
-  outcome_3d: string | null;
-  outcome_7d: string | null;
-}
-
-interface BacktestHorizonStats {
-  evaluated: number;
-  correct: number;
-  incorrect: number;
-  neutral: number;
-  accuracy_pct: number | null;
-}
-
-interface BacktestStats {
-  total: number;
-  evaluated: number;
-  by_horizon: Record<string, BacktestHorizonStats>;
-  by_signal_type: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
-  by_alignment?: Record<string, { correct: number; total: number; accuracy_pct: number | null }>;
-}
-
-type AlignBucket = { correct: number; total: number; accuracy_pct: number | null };
-interface Calibration {
-  window_days: number;
-  since: string;
-  total: number;
-  evaluated_7d: number;
-  newest: string | null;
-  by_type_alignment: Record<string, Record<string, AlignBucket>>;
-  dedup_health: Record<
-    string,
-    { rows: number; ticker_days: number; rows_per_ticker_day: number | null }
-  >;
-}
-
 interface AgentStatus {
   running: boolean;
   external_scheduler: boolean;
@@ -189,16 +125,6 @@ interface WatchlistItem {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-function fmt(n: number | string | null | undefined, d = 2): string {
-  if (n == null) return "—";
-  const v = typeof n === "string" ? parseFloat(n) : n;
-  if (isNaN(v)) return "—";
-  return v.toLocaleString("es-ES", {
-    minimumFractionDigits: d,
-    maximumFractionDigits: d,
-  });
-}
 
 function severityColor(s: string) {
   switch (s) {
@@ -259,6 +185,7 @@ const MEFF_TICKERS: { ticker: string; name: string }[] = [
 
 export default function OptionsPage() {
   const { privacy, togglePrivacy } = usePrivacyToggle();
+  const backtest = useBacktest();
   const [positions, setPositions] = useState<Position[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -277,11 +204,6 @@ export default function OptionsPage() {
   const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
   const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
   const [availabilityChecked, setAvailabilityChecked] = useState(false);
-  const [backtestSignals, setBacktestSignals] = useState<BacktestSignal[]>([]);
-  const [backtestStats, setBacktestStats] = useState<BacktestStats | null>(null);
-  const [calibration, setCalibration] = useState<Calibration | null>(null);
-  const [loadingBacktest, setLoadingBacktest] = useState(false);
-  const [evaluating, setEvaluating] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
   const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual" | "technical">("alerts");
   const [techSignals, setTechSignals] = useState<TechnicalSignal[]>([]);
@@ -659,34 +581,6 @@ export default function OptionsPage() {
     setAlerts((prev) => prev.map((a) => ({ ...a, acknowledged: true })));
   }
 
-  async function loadBacktest() {
-    setLoadingBacktest(true);
-    try {
-      const [sigs, stats, calib] = await Promise.all([
-        api.options.backtestSignals({ days: 30 }) as Promise<BacktestSignal[]>,
-        api.options.backtestStats() as Promise<BacktestStats>,
-        api.options.backtestCalibration(30) as Promise<Calibration>,
-      ]);
-      setBacktestSignals(sigs);
-      setBacktestStats(stats);
-      setCalibration(calib);
-    } catch (e) {
-      console.error("Failed to load backtest data:", e);
-    } finally {
-      setLoadingBacktest(false);
-    }
-  }
-
-  async function handleEvaluate() {
-    setEvaluating(true);
-    try {
-      await api.options.backtestEvaluate();
-      await loadBacktest();
-    } finally {
-      setEvaluating(false);
-    }
-  }
-
   // Group latest snapshot per ticker
   const latestByTicker = new Map<string, Snapshot>();
   for (const s of snapshots) {
@@ -904,7 +798,7 @@ export default function OptionsPage() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="backtest" onClick={() => { if (!backtestStats) loadBacktest(); }}>
+          <TabsTrigger value="backtest" onClick={() => { if (!backtest.stats) backtest.load(); }}>
             <FlaskConical className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">Backtesting</span>
           </TabsTrigger>
@@ -1639,326 +1533,10 @@ export default function OptionsPage() {
           )}
         </TabsContent>
         {/* ── Backtesting Tab ── */}
-        <TabsContent value="backtest" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">Backtesting de señales</h3>
-              <p className="text-sm text-muted-foreground">Precisión histórica de las alertas a +1D / +3D / +7D</p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={loadBacktest} disabled={loadingBacktest}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${loadingBacktest ? "animate-spin" : ""}`} />
-                Actualizar
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleEvaluate} disabled={evaluating}>
-                <Target className={`mr-2 h-4 w-4 ${evaluating ? "animate-spin" : ""}`} />
-                <span className="sm:hidden">Evaluar</span>
-                <span className="hidden sm:inline">Evaluar pendientes</span>
-              </Button>
-            </div>
-          </div>
-
-          {calibration && <CalibrationPanel calibration={calibration} />}
-
-          {loadingBacktest ? (
-            <div className="flex min-h-[20vh] items-center justify-center">
-              <LoadingDots text="Cargando backtesting" />
-            </div>
-          ) : !backtestStats ? (
-            <Card>
-              <CardContent className="py-10 text-center text-muted-foreground">
-                <FlaskConical className="mx-auto mb-3 h-8 w-8 opacity-40" />
-                <p>Abre esta pestaña para cargar los datos de backtesting.</p>
-                <Button className="mt-4" size="sm" onClick={loadBacktest}>Cargar</Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              {/* Accuracy stats by horizon */}
-              <div className="grid gap-4 sm:grid-cols-3">
-                {(["1d", "3d", "7d"] as const).map((h) => {
-                  const s = backtestStats.by_horizon[h];
-                  const acc = s?.accuracy_pct;
-                  const color = acc == null ? "text-muted-foreground" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                  return (
-                    <Card key={h}>
-                      <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">Precisión {h.toUpperCase()}</CardTitle>
-                        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className={`text-2xl font-bold ${color}`}>
-                          {acc != null ? `${acc}%` : "—"}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {s?.evaluated ?? 0} evaluadas · {s?.correct ?? 0} correctas
-                        </p>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              {/* Accuracy by signal type — chart + table */}
-              {Object.keys(backtestStats.by_signal_type).length > 0 && (() => {
-                const signalChartData = Object.entries(backtestStats.by_signal_type).map(
-                  ([type, v]) => ({ type, accuracy: v.accuracy_pct ?? 0, total: v.total }),
-                );
-                return (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Precisión por tipo de señal (7D)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pb-2">
-                    <ResponsiveContainer width="100%" height={Math.max(120, signalChartData.length * 36)}>
-                      <BarChart data={signalChartData} layout="vertical" margin={{ left: 8, right: 32, top: 0, bottom: 0 }}>
-                        <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => `${v}%`} />
-                        <YAxis type="category" dataKey="type" width={120} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
-                        <ChartTooltip
-                          contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                          formatter={(value, _name, props) => [`${value}% (${props.payload.total} señales)`, "Precisión"]}
-                        />
-                        <Bar dataKey="accuracy" radius={[0, 4, 4, 0]}>
-                          {signalChartData.map((entry, i) => (
-                            <Cell
-                              key={i}
-                              fill={entry.accuracy >= 60 ? "#22c55e" : entry.accuracy >= 45 ? "#f59e0b" : "#ef4444"}
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                  <CardContent className="p-0">
-                    {/* Mobile */}
-                    <div className="divide-y sm:hidden">
-                      {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
-                        const acc = v.accuracy_pct;
-                        const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                        return (
-                          <div key={type} className="flex items-center justify-between p-3 text-sm">
-                            <Badge variant="outline" className="text-[10px] whitespace-nowrap">{type}</Badge>
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              <span>{v.correct}/{v.total}</span>
-                              <span className={`font-semibold ${color}`}>
-                                {acc != null ? `${acc}%` : "—"}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {/* Desktop */}
-                    <div className="hidden overflow-x-auto sm:block">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-right">Correctas</TableHead>
-                            <TableHead className="text-right">Precisión</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {Object.entries(backtestStats.by_signal_type).map(([type, v]) => {
-                            const acc = v.accuracy_pct;
-                            const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                            return (
-                              <TableRow key={type}>
-                                <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{type}</Badge></TableCell>
-                                <TableCell className="text-right">{v.total}</TableCell>
-                                <TableCell className="text-right">{v.correct}</TableCell>
-                                <TableCell className={`text-right font-semibold ${color}`}>
-                                  {acc != null ? `${acc}%` : "—"}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-                );
-              })()}
-
-              {/* Aligned vs counter accuracy (Phase 2b) */}
-              {backtestStats.by_alignment &&
-                Object.keys(backtestStats.by_alignment).length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Precisión por régimen macro (7D)</CardTitle>
-                    <CardDescription>
-                      ¿Las señales a favor del régimen aciertan más que las que van en contra?
-                      Instrumentación — no altera qué alertas se emiten.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    {/* Mobile */}
-                    <div className="divide-y sm:hidden">
-                      {(["aligned", "counter", "neutral"] as const)
-                        .filter((k) => backtestStats.by_alignment?.[k])
-                        .map((k) => {
-                          const v = backtestStats.by_alignment![k];
-                          const acc = v.accuracy_pct;
-                          const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                          const label = k === "aligned" ? "A favor (aligned)" : k === "counter" ? "En contra (counter)" : "Neutral";
-                          return (
-                            <div key={k} className="flex items-center justify-between p-3 text-sm">
-                              <Badge variant="outline" className="text-[10px] whitespace-nowrap">{label}</Badge>
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                <span>{v.correct}/{v.total}</span>
-                                <span className={`font-semibold ${color}`}>
-                                  {acc != null ? `${acc}%` : "—"}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                    {/* Desktop */}
-                    <div className="hidden overflow-x-auto sm:block">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Alineación</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-right">Correctas</TableHead>
-                            <TableHead className="text-right">Precisión</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(["aligned", "counter", "neutral"] as const)
-                            .filter((k) => backtestStats.by_alignment?.[k])
-                            .map((k) => {
-                              const v = backtestStats.by_alignment![k];
-                              const acc = v.accuracy_pct;
-                              const color = acc == null ? "" : acc >= 60 ? "text-emerald-600" : acc >= 45 ? "text-amber-500" : "text-red-600";
-                              const label = k === "aligned" ? "A favor (aligned)" : k === "counter" ? "En contra (counter)" : "Neutral";
-                              return (
-                                <TableRow key={k}>
-                                  <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{label}</Badge></TableCell>
-                                  <TableCell className="text-right">{v.total}</TableCell>
-                                  <TableCell className="text-right">{v.correct}</TableCell>
-                                  <TableCell className={`text-right font-semibold ${color}`}>
-                                    {acc != null ? `${acc}%` : "—"}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Signals table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Señales recientes (30d)</CardTitle>
-                  <CardDescription>{backtestSignals.length} señales registradas</CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {backtestSignals.length === 0 ? (
-                    <div className="py-8 text-center text-muted-foreground">
-                      Sin señales registradas. Ejecuta un ciclo del agente para empezar a acumular datos.
-                    </div>
-                  ) : (
-                    <>
-                      {/* Mobile: vertical cards */}
-                      <div className="flex flex-col divide-y sm:hidden">
-                        {backtestSignals.map((s) => (
-                          <div key={s.id} className="flex flex-col gap-2 px-4 py-3">
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">{s.ticker}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge>
-                              {s.direction === "BULLISH" ? (
-                                <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-                                  <TrendingUp className="h-3 w-3" /> BULLISH
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
-                                  <TrendingDown className="h-3 w-3" /> BEARISH
-                                </span>
-                              )}
-                              <span className="ml-auto tabular-nums text-xs">{fmt(s.price_at_signal)} $</span>
-                            </div>
-                            <div className="flex gap-4">
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-[10px] text-muted-foreground">+1D</span>
-                                {outcomeCell(s.outcome_1d, s.price_at_1d)}
-                              </div>
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-[10px] text-muted-foreground">+3D</span>
-                                {outcomeCell(s.outcome_3d, s.price_at_3d)}
-                              </div>
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-[10px] text-muted-foreground">+7D</span>
-                                {outcomeCell(s.outcome_7d, s.price_at_7d)}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Desktop: table */}
-                      <div className="hidden overflow-x-auto sm:block">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Fecha</TableHead>
-                              <TableHead>Ticker</TableHead>
-                              <TableHead>Tipo</TableHead>
-                              <TableHead>Dirección</TableHead>
-                              <TableHead className="text-right">Precio</TableHead>
-                              <TableHead className="text-center">+1D</TableHead>
-                              <TableHead className="text-center">+3D</TableHead>
-                              <TableHead className="text-center">+7D</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {backtestSignals.map((s) => (
-                              <TableRow key={s.id}>
-                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {new Date(s.recorded_at).toLocaleString("es-ES", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                                </TableCell>
-                                <TableCell className="font-medium">{s.ticker}</TableCell>
-                                <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
-                                <TableCell>
-                                  {s.direction === "BULLISH" ? (
-                                    <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-                                      <TrendingUp className="h-3 w-3" /> BULLISH
-                                    </span>
-                                  ) : (
-                                    <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
-                                      <TrendingDown className="h-3 w-3" /> BEARISH
-                                    </span>
-                                  )}
-                                </TableCell>
-                                <TableCell className="text-right tabular-nums">{fmt(s.price_at_signal)} $</TableCell>
-                                <TableCell className="text-center">{outcomeCell(s.outcome_1d, s.price_at_1d)}</TableCell>
-                                <TableCell className="text-center">{outcomeCell(s.outcome_3d, s.price_at_3d)}</TableCell>
-                                <TableCell className="text-center">{outcomeCell(s.outcome_7d, s.price_at_7d)}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </TabsContent>
 
         {/* ── IA Tab (Análisis + Agente) ── */}
+        <BacktestTab backtest={backtest} />
+
         <TabsContent value="ia">
           <Tabs defaultValue="informe">
             <TabsList className="mb-4">
@@ -1979,171 +1557,6 @@ export default function OptionsPage() {
         </TabsContent>
       </Tabs>
     </div>
-  );
-}
-
-// ── Agent Chat component ─────────────────────────────────────────────────────
-
-type ChatMsg = { role: "user" | "assistant"; content: string };
-
-function AgentChat() {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  async function sendMessage() {
-    const q = input.trim();
-    if (!q || loading) return;
-    setInput("");
-    setError(null);
-    const nextMessages: ChatMsg[] = [...messages, { role: "user", content: q }];
-    setMessages(nextMessages);
-    setLoading(true);
-    try {
-      const { answer } = await api.options.ask(
-        q,
-        messages.map((m) => ({ role: m.role, content: m.content })),
-      );
-      setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error desconocido");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Card className="flex flex-col" style={{ height: "65vh" }}>
-      <CardHeader className="border-b pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <MessageSquare className="h-4 w-4" />
-          Agente de opciones
-        </CardTitle>
-        <CardDescription className="text-xs">
-          Pregunta sobre tus posiciones, alertas activas o señales de mercado.
-          El contexto se construye con los datos más recientes del agente.
-        </CardDescription>
-      </CardHeader>
-
-      {/* Messages */}
-      <CardContent className="flex-1 overflow-y-auto space-y-3 py-4">
-        {messages.length === 0 && (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            Empieza con una pregunta — p.ej. &ldquo;¿Qué ticker tiene la IV más alta?&rdquo;
-          </p>
-        )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`flex ${
-              m.role === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
-            <div
-              className={`max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                m.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-foreground"
-              }`}
-            >
-              {m.content}
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
-              Analizando...
-            </div>
-          </div>
-        )}
-        {error && (
-          <div className="flex justify-center">
-            <p className="text-xs text-destructive">{error}</p>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </CardContent>
-
-      {/* Input */}
-      <div className="border-t p-3 flex gap-2">
-        <input
-          className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          placeholder="Escribe tu pregunta..."
-          value={input}
-          disabled={loading}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              sendMessage();
-            }
-          }}
-        />
-        <Button size="sm" disabled={loading || !input.trim()} onClick={sendMessage}>
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-// ── Analysis Tab component ────────────────────────────────────────────────────
-
-type LastAnalysis = {
-  timestamp: string | null;
-  cycle: number | null;
-  tickers_analyzed: number | null;
-  alerts: number | null;
-  unusual: number | null;
-  market_sentiment: string | null;
-  claude_analysis: string | null;
-  ai_configured: boolean;
-  macro: {
-    regime: string;
-    vix: number | null;
-    yield_spread: number | null;
-    financial_stress: number | null;
-    hy_spread: number | null;
-    as_of: string | null;
-  } | null;
-};
-
-/** Macro-regime annotation badge (FRED). Annotation only — does not affect signals. */
-function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {
-  if (!macro) return null;
-  const label =
-    macro.regime === "risk_off"
-      ? "Risk-off"
-      : macro.regime === "risk_on"
-        ? "Risk-on"
-        : "Neutral";
-  const color =
-    macro.regime === "risk_off"
-      ? "bg-red-500/10 text-red-600 border-red-500/20"
-      : macro.regime === "risk_on"
-        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-        : "bg-muted text-muted-foreground border-border";
-  const fmt = (v: number | null, suffix = "") =>
-    v == null ? "n/d" : `${v.toFixed(2)}${suffix}`;
-  const title =
-    `Régimen macro (FRED${macro.as_of ? `, ${macro.as_of}` : ""}) — ` +
-    `VIX ${fmt(macro.vix)} · Curva 10a-2a ${fmt(macro.yield_spread, "%")} · ` +
-    `Estrés ${fmt(macro.financial_stress)} · HY ${fmt(macro.hy_spread, "%")}`;
-  return (
-    <span
-      title={title}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${color}`}
-    >
-      Macro: {label}
-      <span className="text-muted-foreground font-normal">VIX {fmt(macro.vix)}</span>
-    </span>
   );
 }
 
@@ -2215,243 +1628,3 @@ function AlignmentTag({ alignment }: { alignment?: string | null }) {
   );
 }
 
-/** Calibration digest: dedup health + aligned-vs-counter edge per signal type. */
-function CalibrationPanel({ calibration }: { calibration: Calibration }) {
-  const { by_type_alignment, dedup_health } = calibration;
-  const worst = Math.max(
-    0,
-    ...Object.values(dedup_health).map((d) => d.rows_per_ticker_day ?? 0),
-  );
-  const healthy = worst <= 2; // ~1/ticker-day is clean; high = re-recording per cycle
-  const types = Object.keys(by_type_alignment);
-  const fmt = (b?: AlignBucket) =>
-    b && b.accuracy_pct != null ? `${b.accuracy_pct}% (${b.total})` : "—";
-
-  return (
-    <Card className="border-dashed">
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-sm">Calibración · últimos {calibration.window_days}d</CardTitle>
-          <span
-            title="Filas por ticker-día: ~1 = sano; alto = la misma condición se re-registra cada ciclo"
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${
-              healthy
-                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                : "bg-red-500/10 text-red-600 border-red-500/20"
-            }`}
-          >
-            Dedup {healthy ? "✓" : "✗"} · {worst.toFixed(1)}/ticker-día
-          </span>
-        </div>
-        <CardDescription>
-          {calibration.evaluated_7d} evaluadas (7d) de {calibration.total} señales · desde {calibration.since}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        {types.length === 0 ? (
-          <p className="px-6 pb-4 text-xs text-muted-foreground">
-            Aún sin señales alineadas/contrarias evaluadas en la ventana — se llenan al madurar (7d).
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead className="text-right">A favor</TableHead>
-                  <TableHead className="text-right">En contra</TableHead>
-                  <TableHead className="text-right">Ventaja</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {types.map((t) => {
-                  const a = by_type_alignment[t].aligned;
-                  const c = by_type_alignment[t].counter;
-                  const edge =
-                    a?.accuracy_pct != null && c?.accuracy_pct != null
-                      ? Math.round((a.accuracy_pct - c.accuracy_pct) * 10) / 10
-                      : null;
-                  const edgeColor =
-                    edge == null ? "" : edge >= 10 ? "text-emerald-600" : edge <= -10 ? "text-red-600" : "text-muted-foreground";
-                  return (
-                    <TableRow key={t}>
-                      <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{t}</Badge></TableCell>
-                      <TableCell className="text-right">{fmt(a)}</TableCell>
-                      <TableCell className="text-right">{fmt(c)}</TableCell>
-                      <TableCell className={`text-right font-semibold ${edgeColor}`}>
-                        {edge == null ? "—" : `${edge > 0 ? "+" : ""}${edge}pts`}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Parse a Markdown string with "## N. Title\n..." into [{title, body}] sections. */
-function parseAnalysisSections(text: string): { title: string; body: string }[] {
-  const parts = text.split(/(?=^## \d+\.)/m);
-  return parts
-    .map((part) => {
-      const firstNewline = part.indexOf("\n");
-      if (firstNewline === -1) return null;
-      const title = part.slice(0, firstNewline).replace(/^##\s*/, "").trim();
-      const body = part.slice(firstNewline + 1).trim();
-      return { title, body };
-    })
-    .filter(Boolean) as { title: string; body: string }[];
-}
-
-function AnalysisTab() {
-  const [analysis, setAnalysis] = useState<LastAnalysis | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.options
-      .lastAnalysis()
-      .then((data) => setAnalysis(data))
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "Error cargando análisis")
-      )
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="space-y-3 p-4">
-        {new Array(4).fill(null).map((_: null, i: number) => (
-          <Skeleton key={`skel-${i}`} className="h-28 w-full rounded-xl" />
-        ))}
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <Card className="p-6 text-center">
-        <p className="text-sm text-destructive">{error}</p>
-      </Card>
-    );
-  }
-
-  if (!analysis?.claude_analysis) {
-    const hasRun = analysis?.cycle != null;
-    const configured = analysis?.ai_configured ?? false;
-    return (
-      <Card className="p-6 text-center space-y-2">
-        {analysis?.macro && (
-          <div className="flex justify-center pb-1">
-            <MacroBadge macro={analysis.macro} />
-          </div>
-        )}
-        {!hasRun && (
-          <p className="text-sm text-muted-foreground">
-            No hay análisis disponible. Ejecuta un ciclo del agente para generar el informe.
-          </p>
-        )}
-        {hasRun && !configured && (
-          <p className="text-sm text-destructive font-medium">
-            API key no configurada. Establece <code className="text-xs bg-muted px-1 rounded">FINVIEW_OPENROUTER_API_KEY</code> en las variables de entorno del servidor.
-          </p>
-        )}
-        {hasRun && configured && (
-          <p className="text-sm text-muted-foreground">
-            Ciclo #{analysis!.cycle} completado ({analysis!.alerts ?? 0} alertas) — el análisis IA falló o no hubo alertas.
-          </p>
-        )}
-        {hasRun && configured && (analysis!.alerts ?? 0) === 0 && (
-          <p className="text-xs text-muted-foreground">
-            El análisis sólo se genera cuando el ciclo produce alertas. Añade tickers activos al watchlist.
-          </p>
-        )}
-      </Card>
-    );
-  }
-
-  const sections = parseAnalysisSections(analysis.claude_analysis);
-  let sentimentColor = "text-muted-foreground";
-  if (analysis.market_sentiment === "alcista") sentimentColor = "text-emerald-600";
-  else if (analysis.market_sentiment === "bajista") sentimentColor = "text-red-500";
-
-  return (
-    <div className="space-y-4">
-      {/* Meta header */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-base">Informe VolatilityEdge</CardTitle>
-                <MacroBadge macro={analysis.macro} />
-              </div>
-              <CardDescription>
-                {analysis.timestamp
-                  ? `Ciclo #${analysis.cycle ?? "—"} · ${new Date(analysis.timestamp).toLocaleString("es-ES")}`
-                  : "Fecha desconocida"}
-              </CardDescription>
-            </div>
-            <div className="flex gap-4 text-sm">
-              <span>
-                <span className="text-muted-foreground">Tickers: </span>
-                <span className="font-medium">{analysis.tickers_analyzed ?? "—"}</span>
-              </span>
-              <span>
-                <span className="text-muted-foreground">Alertas: </span>
-                <span className="font-medium">{analysis.alerts ?? "—"}</span>
-              </span>
-              <span>
-                <span className="text-muted-foreground">Sentimiento: </span>
-                <span className={`font-medium capitalize ${sentimentColor}`}>
-                  {analysis.market_sentiment ?? "—"}
-                </span>
-              </span>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Sections */}
-      {sections.map(({ title, body }) => (
-        <Card key={title}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-wrap text-sm text-foreground/90 leading-relaxed">
-              {body}
-            </p>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function outcomeCell(outcome: string | null, price: string | number | null) {
-  if (outcome === null) {
-    return <span className="text-xs text-muted-foreground">—</span>;
-  }
-  if (outcome === "CORRECT") {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600">
-        <CheckCircle2 className="h-3 w-3" />
-        {price != null ? fmt(price) : ""}
-      </span>
-    );
-  }
-  if (outcome === "INCORRECT") {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-xs font-medium text-red-600">
-        <XCircle className="h-3 w-3" />
-        {price != null ? fmt(price) : ""}
-      </span>
-    );
-  }
-  return <span className="text-xs text-muted-foreground">{price != null ? fmt(price) : "~"}</span>;
-}
