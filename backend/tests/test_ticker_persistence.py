@@ -24,7 +24,7 @@ from backend.models import (
     TransactionType,
     User,
 )
-from backend.services import data_supervisor, issue_resolver, ticker_map
+from backend.services import data_supervisor, issue_resolver, split_history, ticker_map
 
 UNKNOWN_ISIN = "US0378331005"
 
@@ -124,8 +124,8 @@ def test_split_detection_sees_a_learned_ticker(db, monkeypatch):
     user, account, record = _owner(db)
     _holding(db, account, record, UNKNOWN_ISIN)
     seen: list[str] = []
-    monkeypatch.setattr(data_supervisor, "_get_splits_from_yfinance",
-                        lambda ticker: seen.append(ticker) or {})
+    monkeypatch.setattr(split_history, "_fetch",
+                        lambda ticker: seen.append(ticker) or [])
 
     data_supervisor._check_split_candidates(db, record.id, user.id)
     assert seen == []

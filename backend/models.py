@@ -430,6 +430,33 @@ class TickerMap(Base):
     )
 
 
+class SplitHistoryCache(Base):
+    """Yahoo split history per ticker, so the supervisor stops re-asking.
+
+    `_check_split_candidates` called yfinance once per distinct ticker in the
+    portfolio, uncached, on the import path — a 50-position portfolio meant 50
+    sequential network calls inside one HTTP request, on a Cloud Run revision
+    with CPU throttling and a single instance.
+
+    A company's split history changes a few times per decade, so it is cached
+    for `split_history.TTL`. `splits` is a JSON list of [iso_date, ratio]; an
+    empty list is a real answer (most tickers have never split) and is cached
+    like any other. A failed fetch is not cached at all — otherwise one Yahoo
+    outage would pin "no splits" for a month.
+
+    Not user-scoped: a ticker's split history is the same for everybody.
+    """
+
+    __tablename__ = "split_history_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
+    splits: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
 # ── Options Monitor Models ───────────────────────────────────────────
 
 

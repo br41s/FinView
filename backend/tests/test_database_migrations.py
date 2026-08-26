@@ -194,3 +194,19 @@ def test_one_isin_cannot_map_to_two_tickers():
     finally:
         db.rollback()
         db.close()
+
+
+def test_split_history_cache_is_created_by_create_all():
+    """Another new table, so create_all builds it whole — no additive step."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    inspector = inspect(engine)
+    assert "split_history_cache" in inspector.get_table_names()
+    assert {c["name"] for c in inspector.get_columns("split_history_cache")} >= {
+        "ticker", "splits", "fetched_at",
+    }
+    assert any(
+        index["column_names"] == ["ticker"] and index["unique"]
+        for index in inspector.get_indexes("split_history_cache")
+    )
