@@ -61,13 +61,13 @@ def get_current_user(
 ) -> User:
     """Extract and validate JWT from Authorization header."""
     if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No has iniciado sesión")
     payload = decode_access_token(credentials.credentials)
     if payload is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida")
     user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
     return user
 
 
@@ -113,9 +113,9 @@ def _user_dict(user: User) -> dict:
 @limiter.limit(settings.rate_limit_register)
 def register(request: Request, body: RegisterRequest, db: DbSession):
     if get_user_by_email(db, body.email):
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail="Ese email ya está registrado")
     if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
     user = create_user(db, email=body.email, name=body.name, password=body.password)
     token = create_access_token(user.id, user.email)
     return {"user": _user_dict(user), "token": token}
@@ -125,14 +125,14 @@ def register(request: Request, body: RegisterRequest, db: DbSession):
 @limiter.limit(settings.rate_limit_login)
 def login(request: Request, body: LoginRequest, db: DbSession):
     if not verify_turnstile(body.turnstile_token, client_ip(request)):
-        raise HTTPException(status_code=403, detail="Captcha verification failed")
+        raise HTTPException(status_code=403, detail="No se pudo verificar el captcha")
     user = get_user_by_email(db, body.email)
     if not user or not user.password_hash:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
     if not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
     if not user.is_active:
-        raise HTTPException(status_code=403, detail="Account disabled")
+        raise HTTPException(status_code=403, detail="Cuenta desactivada")
     token = create_access_token(user.id, user.email)
     return {"user": _user_dict(user), "token": token}
 

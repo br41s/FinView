@@ -6,6 +6,7 @@ import { FilterBar, CATEGORIES, type DirectionFilter } from "./FilterBar";
 import { MapLoading, MapEmpty, MapError } from "./MapStates";
 import { type GeoSignal } from "@/lib/geo";
 import { api, type GeoSchedulerStatus } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
 import { Button } from "@/components/ui/button";
 import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
@@ -42,7 +43,7 @@ export function GeoIntelSection() {
     api.geo
       .schedulerStatus()
       .then(setMonitor)
-      .catch(() => {});
+      .catch(bestEffort("geo monitor status"));
   }, []);
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function GeoIntelSection() {
           setSignals(data);
           setPhase((p) => (p === "error" ? "ready" : p));
         })
-        .catch(() => {});
+        .catch(bestEffort("geo signals refresh"));
       loadMonitor();
     }, 60_000);
     return () => clearInterval(id);

@@ -222,7 +222,7 @@ def get_signal(signal_id: int, db: DbSession, user: CurrentUser):
         .first()
     )
     if signal is None:
-        raise HTTPException(status_code=404, detail="Signal not found")
+        raise HTTPException(status_code=404, detail="Señal no encontrada")
     return _serialize(signal, _load_rule_stats(db, [signal]))
 
 
@@ -234,7 +234,7 @@ def trigger_run(user: CurrentUser):
     if settings.request_scoped_runtime:
         result = run_cycle_for_user(user.id)
         if result is None:
-            raise HTTPException(status_code=500, detail="Geo cycle failed")
+            raise HTTPException(status_code=500, detail="El ciclo de Geo-Intel ha fallado")
         return GeoRunResult(
             status="completed",
             events=result.events,

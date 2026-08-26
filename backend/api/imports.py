@@ -325,9 +325,9 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user:
         .first()
     )
     if not issue:
-        raise HTTPException(status_code=404, detail="Issue no encontrado")
+        raise HTTPException(status_code=404, detail="Incidencia no encontrada")
     if issue.status not in ("pending", "needs_input"):
-        raise HTTPException(status_code=400, detail=f"Issue ya está en estado '{issue.status}'")
+        raise HTTPException(status_code=400, detail=f"La incidencia ya está en estado '{issue.status}'")
 
     try:
         if body.action == "dismiss":

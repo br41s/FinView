@@ -123,7 +123,7 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
         .first()
     )
     if existing:
-        raise HTTPException(status_code=409, detail="Ticker already in Zonas Clave watchlist")
+        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist de Zonas Clave")
 
     _, item = watchlist_service.enable_zonas(db, user.id, body.ticker, body.name)
     try:
@@ -133,7 +133,7 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
         # e.g. the options auto-sync following the same new ticker. Treat as
         # already-followed, same as the pre-check.
         db.rollback()
-        raise HTTPException(status_code=409, detail="Ticker already in Zonas Clave watchlist")
+        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist de Zonas Clave")
     db.refresh(item)
 
     if settings.request_scoped_runtime:
@@ -171,7 +171,7 @@ def remove_ticker(item_id: int, db: DbSession, user: CurrentUser):
         .first()
     )
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Elemento no encontrado")
     watchlist_service.disable_zonas(db, user.id, item)
     db.commit()
 
@@ -190,11 +190,11 @@ def get_analysis(ticker: str, db: DbSession, user: CurrentUser):
         .first()
     )
     if not item:
-        raise HTTPException(status_code=404, detail="Ticker not in Zonas Clave watchlist")
+        raise HTTPException(status_code=404, detail="El ticker no está en la watchlist de Zonas Clave")
 
     row = _latest_analysis(db, item.id)
     if not row:
-        raise HTTPException(status_code=404, detail="No analysis computed yet")
+        raise HTTPException(status_code=404, detail="Todavía no hay ningún análisis calculado")
 
     return _parse_analysis(row)
 
@@ -235,13 +235,13 @@ def trigger_analysis(ticker: str, db: DbSession, user: CurrentUser):
         .first()
     )
     if not item:
-        raise HTTPException(status_code=404, detail="Ticker not in Zonas Clave watchlist")
+        raise HTTPException(status_code=404, detail="El ticker no está en la watchlist de Zonas Clave")
 
     from backend.services.zonas_clave_analyzer import analyze_ticker
 
     result = analyze_ticker(item.ticker)
     if not result:
-        raise HTTPException(status_code=502, detail="Analysis failed — check ticker validity")
+        raise HTTPException(status_code=502, detail="El análisis ha fallado — comprueba que el ticker sea válido")
 
     row = ZonasClaveAnalysis(
         watchlist_item_id=item.id,

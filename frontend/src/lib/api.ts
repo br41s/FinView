@@ -1,4 +1,5 @@
 import { getSession } from "next-auth/react";
+import { bestEffort } from "./bestEffort";
 
 import type { GeoSignal } from "@/lib/geo";
 import type { ImportResult, SavingsEstimate } from "@/lib/types";
@@ -565,8 +566,12 @@ export const api = {
         : fetchJSON(`/portfolio/summary`),
     positionDetail: (isin: string) =>
       fetchJSON(`/portfolio/positions/${encodeURIComponent(isin)}`),
+    // Fire-and-forget cache warm: the caller does not await it and the pages
+    // work without it, so a failure only costs a slower first price load.
     warmPrices: () =>
-      fetchJSON("/portfolio/warm-prices", { method: "POST" }).catch(() => {}),
+      fetchJSON("/portfolio/warm-prices", { method: "POST" }).catch(
+        bestEffort("portfolio price cache warm"),
+      ),
   },
 
   // Accounts

@@ -105,7 +105,7 @@ def list_watchlist(db: DbSession, user: CurrentUser):
 def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
     existing = watchlist_service.get_followed(db, user.id, body.ticker)
     if existing is not None and existing.options_enabled:
-        raise HTTPException(status_code=409, detail="Ticker already in watchlist")
+        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist")
 
     item = watchlist_service.enable_options(db, user.id, body.ticker, body.name)
     try:
@@ -115,7 +115,7 @@ def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
         # auto-sync and a manual add firing together. Same outcome as the
         # pre-check: it's already followed.
         db.rollback()
-        raise HTTPException(status_code=409, detail="Ticker already in watchlist")
+        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist")
     db.refresh(item)
     return _to_watchlist_out(item)
 
@@ -124,7 +124,7 @@ def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
 def toggle_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
     item = _get_options_item(db, user.id, item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Elemento no encontrado")
     item.options_paused = not item.options_paused
     db.commit()
     return {"id": item.id, "enabled": not item.options_paused}
@@ -134,7 +134,7 @@ def toggle_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
 def remove_watchlist_item(item_id: int, db: DbSession, user: CurrentUser):
     item = _get_options_item(db, user.id, item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Elemento no encontrado")
     ticker = item.ticker
     watchlist_service.disable_options(db, item)
     db.query(OptionsAlert).filter(
@@ -177,7 +177,7 @@ def get_ticker_expirations(ticker: str, user: CurrentUser):
     """Return available expiration dates for a ticker (no chain data fetched for Yahoo)."""
     expirations = fetch_expirations(ticker.upper())
     if not expirations:
-        raise HTTPException(status_code=404, detail="No expirations found for this ticker")
+        raise HTTPException(status_code=404, detail="No hay vencimientos para este ticker")
     return {"ticker": ticker.upper(), "expirations": expirations}
 
 
@@ -193,7 +193,7 @@ def get_ticker_chain(ticker: str, user: CurrentUser, expiration: str | None = No
     else:
         data = fetch_options(ticker.upper())
     if not data:
-        raise HTTPException(status_code=404, detail="No options data found for this ticker")
+        raise HTTPException(status_code=404, detail="No hay datos de opciones para este ticker")
     return {
         "ticker": data["ticker"],
         "timestamp": data["timestamp"],
@@ -210,7 +210,7 @@ def get_snapshot_chain(snapshot_id: int, db: DbSession, user: CurrentUser):
         .first()
     )
     if not snap:
-        raise HTTPException(status_code=404, detail="Snapshot not found")
+        raise HTTPException(status_code=404, detail="Snapshot no encontrado")
     chain = json.loads(snap.chain_data) if snap.chain_data else {"calls": [], "puts": []}
     return {"ticker": snap.ticker, "timestamp": snap.timestamp, **chain}
 
@@ -249,7 +249,7 @@ def acknowledge_alert(alert_id: int, db: DbSession, user: CurrentUser):
         .first()
     )
     if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
+        raise HTTPException(status_code=404, detail="Alerta no encontrada")
     alert.acknowledged = True
     db.commit()
     return {"id": alert.id, "acknowledged": True}
@@ -457,7 +457,7 @@ def trigger_cycle(user: CurrentUser):
             with _cycle_lock:
                 _cycles_in_progress.discard(user.id)
         if result.get("status") == "error":
-            raise HTTPException(status_code=500, detail="Options cycle failed")
+            raise HTTPException(status_code=500, detail="El ciclo de opciones ha fallado")
         return AgentCycleResult.model_validate(result)
 
     def _run_in_background(user_id: int) -> None:
@@ -518,7 +518,7 @@ def analyze_ticker_on_demand(body: WatchlistItemIn, user: CurrentUser):
 
     result = analyze_single_ticker(body.ticker)
     if result.get("status") == "no_data":
-        raise HTTPException(status_code=404, detail="No options data for this ticker")
+        raise HTTPException(status_code=404, detail="No hay datos de opciones para este ticker")
     return result
 
 
@@ -710,7 +710,7 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
         )
 
     if not body.question.strip():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Empty question.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La pregunta está vacía.")
 
     # ── Build context ──────────────────────────────────────────────
     ctx_parts: list[str] = []
