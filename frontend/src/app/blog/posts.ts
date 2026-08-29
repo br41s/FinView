@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-franceses-espana',
+    tag: 'Fiscal',
+    date: '29 ago 2026',
+    readTime: '10 min',
+    title: 'Dividendos franceses en España: cómo recuperar la retención',
+    excerpt: 'Francia puede retenerte más del 15 % permitido por convenio. Cómo declarar el dividendo, reclamar el exceso con los modelos 5000 y 5001 y no perder el plazo.',
+  },
+  {
     slug: 'prima-asistencia-junta-accionistas-irpf',
     tag: 'Fiscal',
     date: '25 ago 2026',
