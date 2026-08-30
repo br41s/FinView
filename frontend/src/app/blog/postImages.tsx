@@ -1623,6 +1623,34 @@ function ImgYoc() {
   );
 }
 
+function ImgModelo718GrandesFortunas() {
+  return (
+    <div className={styles.postImgModelo718GrandesFortunas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">MODELO 718 · 3,7 M€</text>
+        {/* Portfolio entering the tax form */}
+        <path d="M24 38 L24 94 L76 94 L76 38" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none"/>
+        <path d="M18 38 L50 20 L82 38" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <rect x="31" y="58" width="10" height="28" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="46" y="48" width="10" height="38" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1"/>
+        <rect x="61" y="40" width="10" height="46" fill="var(--fv-ochre)" rx="1"/>
+        <text x="50" y="108" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">cartera</text>
+        {/* Arrow */}
+        <path d="M86 64 H108" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="3 2"/>
+        <path d="m104 59 7 5-7 5" fill="var(--fv-ochre)"/>
+        {/* Form and deduction */}
+        <rect x="112" y="27" width="76" height="67" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="150" y="44" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">718</text>
+        <line x1="123" y1="53" x2="177" y2="53" stroke="var(--fv-ink-30)" strokeWidth="1"/>
+        <text x="150" y="66" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ITSGF</text>
+        <text x="150" y="78" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">− Modelo 714</text>
+        <text x="150" y="89" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">cuota final</text>
+        <text x="100" y="117" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">patrimonio neto · 31 diciembre · presentación telemática</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgPrimaAsistenciaJunta() {
   return (
     <div className={styles.postImgPrimaAsistenciaJunta}>
@@ -1644,6 +1672,7 @@ function ImgPrimaAsistenciaJunta() {
 }
 
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'modelo-718-grandes-fortunas': ImgModelo718GrandesFortunas,
   'prima-asistencia-junta-accionistas-irpf': ImgPrimaAsistenciaJunta,
   'splits-fusiones-canje-acciones-irpf': ImgSplitsFusiones,
   'dividendos-vs-alquiler-fiscalidad': ImgDividendoVsAlquiler,
