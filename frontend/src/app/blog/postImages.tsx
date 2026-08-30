@@ -1643,7 +1643,30 @@ function ImgPrimaAsistenciaJunta() {
   );
 }
 
+function ImgTradeRepublicRenta() {
+  return (
+    <div className={styles.postImgTradeRepublicRenta}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DOS PERIODOS · UN BORRADOR</text>
+        <rect x="12" y="27" width="67" height="62" rx="5" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="45.5" y="39" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">IBAN DE</text>
+        <path d="M24 50h43M24 59h31M24 68h37" stroke="var(--fv-ink-40)" strokeWidth="1.5" strokeLinecap="round" />
+        <text x="45.5" y="82" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">extractos</text>
+        <path d="M84 58h29" stroke="var(--fv-ochre)" strokeWidth="2" strokeDasharray="3 2" />
+        <path d="m108 52 8 6-8 6" fill="var(--fv-ochre)" />
+        <rect x="121" y="27" width="67" height="62" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" />
+        <text x="154.5" y="39" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">IBAN ES</text>
+        <path d="M133 50h43M133 59h31M133 68h37" stroke="var(--fv-ink-40)" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="171" cy="77" r="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.2" />
+        <path d="m168 77 2 2 4-5" stroke="var(--fv-ochre)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="100" y="108" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">CUADRA · REVISA · DECLARA</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'trade-republic-renta-20260830': ImgTradeRepublicRenta,
   'prima-asistencia-junta-accionistas-irpf': ImgPrimaAsistenciaJunta,
   'splits-fusiones-canje-acciones-irpf': ImgSplitsFusiones,
   'dividendos-vs-alquiler-fiscalidad': ImgDividendoVsAlquiler,
