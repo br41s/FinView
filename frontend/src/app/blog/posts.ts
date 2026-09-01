@@ -52,6 +52,14 @@ export const POST_META = [
     excerpt: 'Francia puede retenerte más del 15 % permitido por convenio. Cómo declarar el dividendo, reclamar el exceso con los modelos 5000 y 5001 y no perder el plazo.',
   },
   {
+    slug: 'modelo-718-grandes-fortunas',
+    tag: 'Fiscal',
+    date: '27 ago 2026',
+    readTime: '10 min',
+    title: 'Modelo 718 en 2026: la guía que necesita tu cartera cuando supera 3 millones',
+    excerpt: 'Qué es el Modelo 718, quién debe presentarlo y cómo afecta a una cartera de acciones, ETFs y dividendos. La novedad de 2026, los tramos y la deducción del Patrimonio.',
+  },
+  {
     slug: 'prima-asistencia-junta-accionistas-irpf',
     tag: 'Fiscal',
     date: '25 ago 2026',
