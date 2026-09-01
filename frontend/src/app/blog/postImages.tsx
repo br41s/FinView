@@ -1671,7 +1671,28 @@ function ImgPrimaAsistenciaJunta() {
   );
 }
 
+function ImgDividendosFranceses() {
+  return (
+    <div className={styles.postImgDividendosFranceses}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DIVIDENDO FRANCÉS · 15 % CDI</text>
+        <rect x="20" y="31" width="38" height="57" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <rect x="58" y="31" width="38" height="57" fill="var(--fv-paper)" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <rect x="96" y="31" width="38" height="57" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="39" y="57" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">100 €</text>
+        <text x="77" y="57" fontSize="8" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">−15 %</text>
+        <text x="115" y="57" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">85 €</text>
+        <path d="M140 59 H177 M168 50 L177 59 L168 68" stroke="var(--fv-ink-40)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="158" cy="91" r="13" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="158" y="94" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">5000</text>
+        <text x="100" y="111" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">exceso · 5001 · devolución</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-franceses-espana': ImgDividendosFranceses,
   'modelo-718-grandes-fortunas': ImgModelo718GrandesFortunas,
   'prima-asistencia-junta-accionistas-irpf': ImgPrimaAsistenciaJunta,
   'splits-fusiones-canje-acciones-irpf': ImgSplitsFusiones,
