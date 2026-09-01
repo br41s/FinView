@@ -52,6 +52,14 @@ export const POST_META = [
     excerpt: 'El cambio de IBAN alemán a español partió el año fiscal en dos. Cómo leer el informe de Trade Republic, revisar intereses y dividendos, y corregir ventas mal clasificadas.',
   },
   {
+    slug: 'dividendos-franceses-espana',
+    tag: 'Fiscal',
+    date: '29 ago 2026',
+    readTime: '10 min',
+    title: 'Dividendos franceses en España: cómo recuperar la retención',
+    excerpt: 'Francia puede retenerte más del 15 % permitido por convenio. Cómo declarar el dividendo, reclamar el exceso con los modelos 5000 y 5001 y no perder el plazo.',
+  },
+  {
     slug: 'modelo-718-grandes-fortunas',
     tag: 'Fiscal',
     date: '27 ago 2026',
