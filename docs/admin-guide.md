@@ -116,6 +116,8 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `option_assignments` | Asignaciones de opciones detectadas en IBKR |
 | `portfolio_holdings` | Holdings a fin de año por broker |
 | `price_cache` | Cache de precios Yahoo Finance |
+| `ticker_map` | ISIN → ticker de Yahoo aprendidos en ejecución (`source`: `yfinance` o `manual`); complementa a `ticker_map.CURATED` |
+| `split_history_cache` | Histórico de splits por ticker, TTL 30 días; evita una llamada a yfinance por ticker en cada importación |
 | `data_issues` | Avisos del supervisor de datos por importación |
 | `watchlist_items` | Tickers en watchlist por usuario (monitor de opciones) |
 | `options_snapshots` | Snapshots de cadena de opciones por ciclo |
@@ -164,7 +166,7 @@ Se invoca automáticamente al final de cada importación de cualquier broker.
 | `rights_as_sell` | SELL cuyo nombre contiene "derechos/rights/drets" | Reclasifica a DIVIDEND, qty = 0 |
 | `missing_buys` | Holdings sin transacciones de compra | Aviso `needs_input` |
 | `holdings_mismatch` | Qty en broker ≠ qty calculada de transacciones | Aviso `needs_input`; si coincide con un split conocido, se resuelve en `potential_split` |
-| `missing_ticker` | ISIN sin ticker en Yahoo Finance | Búsqueda automática en yfinance; si falla, aviso `needs_input` |
+| `missing_ticker` | ISIN sin ticker en Yahoo Finance | Búsqueda automática en yfinance y **se persiste** en `ticker_map`; si falla, aviso `needs_input` resoluble a mano con la acción `set_ticker` |
 | `potential_split` | Split detectado vía yfinance con ratio fuera de [0.9, 1.1] | **Tres casos:** |
 | | → Mismo ticker, múltiples ISINs con compras en ambos lados | `auto_resolved` — datos ya correctos |
 | | → Mismo ISIN, qty × ratio ≈ holdings (±5%) | `auto_resolved` — ajusta qty y precio en las transacciones previas |
@@ -381,7 +383,7 @@ Cuando dos ISINs distintos mapean al mismo ticker de Yahoo Finance (split con ca
 ## 10. Tests
 
 ```bash
-# Todos los tests (estado tras integridad FIFO residual: 453 passed, 131 skipped sin fixtures reales)
+# Todos los tests (685 passed, 163 skipped sin los ficheros reales de broker en files/)
 pytest backend/tests/ -v
 
 # Solo un módulo
@@ -538,7 +540,11 @@ El proxy `allorigins.win` puede estar caído. El agente hace fallback a Yahoo Fi
 
 **Empresa duplicada en Rendimiento (ej. Aena)**  
 Causa: dos ISINs para la misma empresa (pre/post-split) con dividendos en ambos.  
-Resolución automática: `_merge_same_ticker_rows` los consolida si ambos ISINs están en `_ISIN_TICKER_MAP` con el mismo ticker. Si el ticker no está mapeado, añadirlo en `backend/services/prices.py → _ISIN_TICKER_MAP`.
+Resolución automática: `_merge_same_ticker_rows` los consolida si ambos ISINs resuelven al mismo ticker. El mapa efectivo es `ticker_map.effective_map()`: las entradas curadas de `backend/services/ticker_map.py → CURATED` más lo que la app ha aprendido, con precedencia **manual > CURATED > yfinance**.
+
+Para añadir un ticker hay ahora tres vías, de menos a más invasiva: resolver el aviso `missing_ticker` desde la UI (queda guardado como `manual` y ninguna búsqueda posterior lo sobrescribe), dejar que el supervisor lo encuentre solo en la siguiente importación, o —solo para acciones societarias que una búsqueda por símbolo no puede conocer, como los ISINs pre/post-split de AENA compartiendo ticker— añadirlo a `CURATED` y desplegar.
 
 **Split no detectado automáticamente**  
-El check `potential_split` solo actúa sobre ISINs presentes en `portfolio_holdings`. Si el ISIN ya no tiene holdings activos, no se comprueba. Verificar manualmente en el extracto del broker.
+El check `potential_split` solo actúa sobre ISINs presentes en `portfolio_holdings` **y que resuelvan a un ticker**. Si el ISIN ya no tiene holdings activos, no se comprueba. Verificar manualmente en el extracto del broker.
+
+El histórico de splits se cachea 30 días en `split_history_cache`. Un fallo de Yahoo no se cachea: devuelve la entrada anterior y reintenta en el siguiente ciclo, porque guardar "sin splits" por un fallo de red dejaría al supervisor ciego un mes.

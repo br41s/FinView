@@ -26,6 +26,12 @@ Todas las páginas tienen un grupo de **6 iconos de acceso rápido** en la esqui
 
 El icono de la página actual aparece en color sólido para indicar dónde estás.
 
+### Tema claro y oscuro
+
+El botón de sol/luna en la cabecera cambia entre modo claro y oscuro. Por defecto FinView
+sigue la preferencia de tu sistema operativo; en cuanto pulsas el botón, tu elección manda
+y se recuerda en ese navegador.
+
 ---
 
 ## 3. Importar archivos de broker
@@ -39,6 +45,11 @@ El icono de la página actual aparece en color sólido para indicar dónde está
 
 > **Duplicados:** Si subes el mismo archivo dos veces, FinView lo rechaza automáticamente.  
 > **Reemplazo:** Si subes un archivo nuevo del mismo broker y año, reemplaza la importación anterior automáticamente.
+
+> **Límite mensual:** tu plan incluye un número de importaciones al mes (5 en el plan Free).
+> Puedes ver cuántas llevas en **Facturación**, junto al límite. Volver a subir un archivo
+> que ya habías importado **no consume** ninguna: al estar deduplicado, nunca llegó a contar.
+> El contador se reinicia el día 1 de cada mes.
 
 ### 3.2 Formatos por broker
 
@@ -63,7 +74,7 @@ Al importar, el agente supervisor detecta y resuelve automáticamente las incons
 | **Scrip dividend** | Las acciones gratuitas con precio €0 se reconocen y marcan como válidas. |
 | **Split con cambio de ISIN** | Si el mismo ticker tiene dos ISINs (antes y después del split), se detecta y confirma automáticamente sin acción del usuario. |
 | **Split de cantidad** | Si el ratio del split coincide con la discrepancia en holdings (±5%), las cantidades se ajustan automáticamente (qty × ratio, precio / ratio). |
-| **Ticker desconocido** | Se intenta resolver el ticker en Yahoo Finance automáticamente. |
+| **Ticker desconocido** | Se intenta resolver el ticker en Yahoo Finance automáticamente, y **se recuerda**: a partir de ahí el precio aparece y no se vuelve a buscar. Si no se encuentra, el aviso te deja escribirlo a mano (p. ej. `SAN.MC`) y esa corrección tiene prioridad sobre cualquier búsqueda posterior. |
 
 Cuando no es posible resolver automáticamente, aparece un aviso de color **amarillo o rojo** tras la importación con el problema y los datos disponibles para que puedas revisarlo.
 

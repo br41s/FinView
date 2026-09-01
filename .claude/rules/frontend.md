@@ -5,6 +5,41 @@ paths:
   - "frontend/src/app/**"
 ---
 
+## Theming
+
+`next-themes` is mounted in `app/layout.tsx` via `components/theme-provider.tsx` with
+`attribute="class"`, matching the `@custom-variant dark (&:is(.dark *))` in `globals.css`.
+Default is `system`; `ThemeToggle` in the header makes it an explicit choice.
+
+- **Never hardcode a palette literal.** Every colour goes through a token — shadcn's
+  (`--background`, `--card`, …) or FinView's `--fv-*`, which is what all 66 CSS modules
+  read. A baked-in `rgba(245,241,232,…)` looked fine until dark mode turned on and the
+  featured pricing card rendered light text on a light card.
+- A surface that inverts against the page uses the `--fv-invert-*` pair, which each theme
+  defines for itself, rather than assuming which theme is active.
+- Canvas cannot read CSS variables, so `PriceChart` reads the resolved theme from
+  `useTheme()` and passes colours in explicitly.
+
+## Failed enrichment fetches
+
+`bestEffort("label")` from `src/lib/bestEffort.ts`, never a bare `.catch(() => {})`.
+It swallows exactly as before but logs with `console.warn`, so a persistent failure is
+findable. `console.error` is reserved for the dashboard's primary loads — the two should
+stay distinguishable in a console. `bestEffort.test.ts` fails if a bare swallow returns.
+
+Use it only where the page is genuinely fine without the data (badges, lens toggles,
+autocomplete). A fetch whose absence a user would misread as "you have none" needs a real
+error state instead.
+
+## Options page layout
+
+`app/options/page.tsx` was 2,457 lines; the self-contained parts now sit beside it:
+`BacktestTab.tsx`, `AgentChat.tsx`, `AnalysisTab.tsx`, `useBacktest.ts`, `types.ts`,
+`format.ts`. The watchlist and monitor tabs are still inline — they read 26 and 15
+bindings from the component, so extracting them means untangling shared state, not moving
+code. `useBacktest` is held by the page, not the tab: Radix unmounts inactive
+`TabsContent`, so owning it in the tab would refetch on every tab switch.
+
 ## Price charts (lightweight-charts) — shared infra
 
 `components/charts/PriceChart.tsx` is the one generic price chart used everywhere

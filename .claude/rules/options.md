@@ -44,7 +44,9 @@ can be reclaimed after the response.
   days, so with no cycles running the UI has nothing to show.
 - All three pipelines now have a cron entry (geo, options, zonas-clave). If you add a fourth
   scheduled thing, it needs one too — APScheduler alone is a dev convenience, never the prod
-  mechanism.
+  mechanism, and its start endpoints 409 when `request_scoped_runtime` is set.
+- The shared-secret check is one route dependency (`dependencies=[CronKey]`), not a line in
+  each handler. See `.claude/rules/auth-security.md`.
 
 ### Claude analysis prompt
 Agent persona: *VolatilityEdge* (quant analyst, senior). Spanish only. Structured as exactly 7 sections:

@@ -4,6 +4,85 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Auditoría completa: arquitectura, UX, diseño y refactorización — 2026-08-26
+
+Barrido de la aplicación a todos los niveles (#210–#223). Lo que sigue son los
+cambios con consecuencias, no la lista de PRs.
+
+#### Fixed
+- **El índice del blog enlazaba a dos artículos que nunca existieron** (404 en
+  producción) y ocultaba otros dos que sí existían pero no tenían tarjeta. El array
+  estaba mantenido a mano sin nada que lo atara a `app/blog/`. `blogPosts()` ahora
+  falla el build cuando el índice y el sistema de ficheros no coinciden, en cualquiera
+  de los dos sentidos. Cinco entradas estaban además fuera de orden en una lista que
+  dice ser cronológica; el orden sale ahora de `date`.
+- **Un ticker resuelto se tiraba a la basura.** El supervisor buscaba el ISIN en
+  yfinance, escribía la respuesta en la descripción de un `DataIssue` y nadie la volvía
+  a leer: el precio seguía en `—` para siempre, la búsqueda se repetía en cada
+  importación y la detección de splits —que recorre el mapa curado— ni veía el valor.
+  Nueva tabla `ticker_map` con precedencia `manual > CURATED > yfinance`.
+- **El límite de importaciones del plan no se aplicaba en ningún sitio.** Estaba en
+  `PLAN_LIMITS`, lo devolvía `/billing/subscription` y se pintaba en Facturación, pero
+  los seis endpoints de subida aceptaban ficheros al margen del plan.
+- **El modo oscuro estaba construido y nunca se encendía**: `globals.css` definía el
+  bloque `.dark` completo, `next-themes` era dependencia y `useTheme()` tenía consumidores,
+  pero nadie montaba el provider. La paleta era además shadcn de serie —grises con
+  primario azul— sobre un producto cuya identidad es tinta cálida y ocre.
+- `get_optional_user` no tenía consumidores y era peligroso adquirir uno: a diferencia
+  de `get_current_user` nunca comprobaba `is_active`, y devolvía `None` ante un token
+  inválido en vez de 401.
+- Los mensajes de error de la API estaban en inglés en una aplicación íntegramente en
+  español (uno era las dos cosas a la vez: "Issue no encontrado"). 31 cadenas traducidas;
+  las nueve de operador que quedan están listadas explícitamente.
+
+#### Performance
+- El supervisor de datos hacía trabajo por posición dentro de la petición de importación:
+  una llamada a yfinance por ticker sin cache, dos agregados por holding y cuatro consultas
+  por ISIN sin compra. Medido sobre el mismo banco de pruebas, 50 ISINs, segunda ejecución:
+  **116 SELECT + 50 llamadas de red → 20 + 0** en una cartera sana, **266 + 50 → 22 + 0**
+  cuando falta la compra de cada ISIN. Y plano de 5 a 50 posiciones en vez de lineal.
+- Catorce índices de clave foránea añadidos (Postgres no los crea solos).
+
+#### Added
+- `split_history_cache` (TTL 30 días). Un fallo de Yahoo **no** se cachea: devuelve la
+  entrada anterior y reintenta, porque guardar "sin splits" por un corte de red dejaría
+  al supervisor ciego un mes. Un resultado vacío sí se cachea: es el caso común.
+- Acción `set_ticker` en el resolutor de incidencias. Los avisos `missing_ticker` solo
+  ofrecían "ignorar", que dejaba la posición sin precio y reaparecía en la siguiente
+  importación.
+- Guardas estructurales en test, todas verificadas rompiéndolas a propósito: toda ruta
+  `/cron` lleva el secreto compartido y ninguna otra lo lleva; los seis endpoints de
+  subida llevan la cuota; el coste en SELECT del supervisor no crece con la cartera;
+  ninguna cadena de error de usuario está en inglés fuera de la lista de operador;
+  ningún `.catch(() => {})` desnudo vuelve al frontend.
+- Modo oscuro real, derivado del tono de marca con los contrastes calculados (el par más
+  débil, óxido sobre `muted`, da 4.70:1 — AA), más el conmutador de cabecera.
+
+#### Changed
+- El chequeo del secreto de cron era el mismo bloque copiado en los tres endpoints. Ahora
+  es una dependencia de ruta: un endpoint nuevo no puede olvidarlo y un test lo comprueba.
+- `options/page.tsx` pasa de 2.457 a 1.630 líneas (`BacktestTab`, `AgentChat`,
+  `AnalysisTab`, `useBacktest`). Watchlist y monitor siguen dentro a propósito: leen 26 y
+  15 enlaces del componente, así que extraerlos es desenredar estado, no mover código.
+- El blog pierde 9.928 líneas al compartir el shell de artículo: 58 layouts y 58 hojas de
+  estilo casi idénticas.
+
+#### Removed
+- Diez scripts de un solo uso. Seis eran depuración de un cálculo de rentabilidad —tres
+  con `/Users/brais/VSCODE/FinView` a fuego, así que no corrían en ninguna otra máquina—
+  y cuatro correcciones de datos ya aplicadas, dos de ellas escribiendo en Neon.
+- El workflow de GitHub Actions, que nunca podría ejecutarse en esta cuenta.
+
+#### Notes
+- **ARC-6 era un error del informe.** Los wrappers de APScheduler no están muertos: ambos
+  endpoints de arranque devuelven 409 con `request_scoped_runtime` y el frontend desactiva
+  el conmutador y lo etiqueta "Cloud Scheduler". Funcionalidad de desarrollo con su guarda
+  de producción correcta; se deja como está.
+- **UX-5 estaba exagerado.** Los once `.catch(() => {})` degradaban en silencio *a propósito*
+  —cargan insignias, conmutadores y sugerencias—, y un cartel de error porque no carga una
+  insignia sería peor que la insignia ausente. Lo que sí estaba mal es que un fallo
+  persistente no dejaba rastro en ninguna parte: ahora pasan por `bestEffort(label)`.
+
 ### Endurecimiento de CI y guard de coste — 2026-08-05
 
 #### Fixed
