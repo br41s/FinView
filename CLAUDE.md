@@ -30,7 +30,7 @@ need it before touching code.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 584 collected (453 pass, 131 skip without real broker PDFs/CSVs in files/) · vitest · 21 frontend tests |
+| Tests | pytest · 848 collected (685 pass, 163 skip without real broker PDFs/CSVs in files/) · vitest · 47 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -78,6 +78,16 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   the whole portfolio.
 - Portfolio price resolution is one ticker to many ISINs. Corporate-action ISINs that
   share a Yahoo ticker must all receive the fetched price and cache row.
+- ISIN→ticker resolution lives in `services/ticker_map.py`, not in `prices.py`. Precedence
+  is **manual > CURATED > yfinance**: an automatic lookup must not overwrite curated
+  knowledge about a corporate action (AENA's pre/post-split ISINs share one ticker on
+  purpose), and a user correction must beat both or a wrongly curated ISIN could only be
+  fixed by a deploy. What the data supervisor resolves is persisted, so coverage widens
+  with use instead of requiring a code change.
+- Split history is cached in `split_history_cache` for 30 days. A failed Yahoo fetch is
+  **not** cached — it returns the stale entry and retries next run. Caching a failure
+  would pin "never split" on a real security for a month and the supervisor would miss
+  the split it exists to catch. An empty result *is* cached: most tickers never split.
 - DB schema: there is **no Alembic**. New tables auto-create via
   `Base.metadata.create_all` on startup. `create_all` does NOT alter existing tables, so
   adding a column to a table that already exists in prod requires registering it in
@@ -86,6 +96,12 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `database._DROP_UNIQUE_CONSTRAINTS` (applied by `ensure_constraints()`); SQLite tables
   are rebuilt from the model and never carry it.
 - No breaking changes to API contracts without updating frontend src/lib/ types.
+- API error `detail` a user can reach is written in Spanish; operator-only paths (cron
+  rejection, Stripe webhook, `FINVIEW_*` config errors) stay English and are listed in
+  `test_error_copy.py`, which fails the suite on an unlisted English string.
+- Never `.catch(() => {})` in the frontend. Use `bestEffort("label")` from
+  `src/lib/bestEffort.ts` — it still swallows, but logs, so a persistent failure is
+  findable. `bestEffort.test.ts` fails if a bare swallow comes back.
 - options_scraper.py cache TTL (5 min) must not be removed — MEFF rate-limits scraping.
 - Premium spike baselines are in-memory only. Do not try to persist them to DB.
 - Claude analysis is fire-and-forget; non-availability must never break the agent cycle.
@@ -93,6 +109,12 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 - Blog/MDX: in `.mdx` prose always escape `<` as `&lt;` — MDX parses `<1` (e.g. "FCF <1,2x")
   as a JSX tag start and breaks the whole Vercel build (see PR #101 → #105).
   Quick check: `grep -rn '<[0-9]' frontend/src/app/blog/*/page.mdx` must return nothing.
+- A new blog post is **three** edits, and the build enforces it: the `page.mdx` directory,
+  an entry in `app/blog/posts.ts`, and an illustration in `app/blog/postImages.tsx`.
+  `blogPosts()` runs during static prerender and throws when the index and the filesystem
+  disagree in either direction; a missing illustration is a `tsc` error. This exists because
+  both had drifted: two cards linked to articles that never existed and two articles had no
+  card. Order comes from `date`, so entry position does not matter.
 - Merge gate: before merging ANY PR that touches `frontend/**`, run `gh pr checks <n>` and
   require the Vercel preview check green. Never merge on a red or pending preview.
 - **There is no CI and there never will be** — GitHub Actions is not available on this
@@ -127,12 +149,13 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 661 collected (all under `backend/tests/`). 163 skip when the real
+Backend: `pytest` — 848 collected (all under `backend/tests/`). 163 skip when the real
 broker files in `files/` are absent (not in repo — worktrees skip them; the main machine
 runs them). Full run is ~20s.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 28 tests over the pure logic in `src/lib/`
-(`optionsWatchlistSync`, `optionsWatchlistRows`, `apiError`). **`vitest` must be installed**
+Frontend: `cd frontend && pnpm test` (vitest) — 47 tests over pure logic: `src/lib/`
+(`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`)
+plus `src/app/blog/posts.test.ts`. **`vitest` must be installed**
 or `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.
 
