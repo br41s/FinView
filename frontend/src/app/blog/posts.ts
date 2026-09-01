@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'fiscalidad-crowdlending-p2p-20260902',
+    tag: 'Fiscalidad',
+    date: '02 sep 2026',
+    readTime: '10 min',
+    title: 'Fiscalidad del crowdlending y P2P en España: cómo declararlo',
+    excerpt: 'Los intereses P2P tributan aunque nadie te retenga. Cómo declarar plataformas extranjeras, reinversiones, impagos y el posible Modelo 720 sin mezclar conceptos.',
+  },
+  {
     slug: 'trade-republic-renta-20260830',
     tag: 'Fiscalidad',
     date: '30 ago 2026',
