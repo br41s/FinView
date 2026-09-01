@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'trade-republic-renta-20260830',
+    tag: 'Fiscalidad',
+    date: '30 ago 2026',
+    readTime: '10 min',
+    title: 'Trade Republic y la Renta: cómo declarar dividendos e inversiones',
+    excerpt: 'El cambio de IBAN alemán a español partió el año fiscal en dos. Cómo leer el informe de Trade Republic, revisar intereses y dividendos, y corregir ventas mal clasificadas.',
+  },
+  {
     slug: 'dividendos-franceses-espana',
     tag: 'Fiscal',
     date: '29 ago 2026',
