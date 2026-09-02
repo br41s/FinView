@@ -1713,7 +1713,28 @@ function ImgDividendosFranceses() {
   );
 }
 
+function ImgFiscalidadCrowdlendingP2p() {
+  return (
+    <div className={styles.postImgFiscalidadCrowdlendingP2p}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">INTERÉS P2P · IRPF</text>
+        <circle cx="42" cy="57" r="24" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="42" y="61" fontSize="12" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="42" y="91" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">inversor</text>
+        <path d="M69 57H126" stroke="var(--fv-ochre)" strokeWidth="2" strokeDasharray="4 3" />
+        <path d="m119 50 9 7-9 7" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="135" y="31" width="48" height="52" rx="5" fill="var(--fv-paper)" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="159" y="47" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">P2P</text>
+        <text x="159" y="60" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">+9 %</text>
+        <text x="159" y="72" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−19 %</text>
+        <text x="100" y="108" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">bruto · retención · Modelo 100</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'fiscalidad-crowdlending-p2p-20260902': ImgFiscalidadCrowdlendingP2p,
   'trade-republic-renta-20260830': ImgTradeRepublicRenta,
   'dividendos-franceses-espana': ImgDividendosFranceses,
   'modelo-718-grandes-fortunas': ImgModelo718GrandesFortunas,
