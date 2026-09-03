@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-alemanes-espana',
+    tag: 'Fiscalidad',
+    date: '03 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos alemanes en España: cómo recuperar la retención',
+    excerpt: 'Alemania puede retener el 26,375 % de tus dividendos. Cómo declarar el bruto, aplicar la deducción en España y reclamar el exceso del 15 % mediante el portal BOP.',
+  },
+  {
     slug: 'fiscalidad-crowdlending-p2p-20260902',
     tag: 'Fiscalidad',
     date: '02 sep 2026',

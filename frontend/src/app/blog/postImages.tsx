@@ -1733,7 +1733,31 @@ function ImgFiscalidadCrowdlendingP2p() {
   );
 }
 
+function ImgDividendosAlemanes() {
+  return (
+    <div className={styles.postImgDividendosAlemanes}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">DIVIDENDO ALEMÁN · 26,375 %</text>
+        <rect x="15" y="30" width="62" height="56" rx="5" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="46" y="49" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1.000 €</text>
+        <text x="46" y="63" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        <text x="46" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Alemania</text>
+        <path d="M83 58H108" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m103 52 7 6-7 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M126 30V86" stroke="var(--fv-ochre)" strokeWidth="5" strokeLinecap="round" />
+        <path d="M126 30V62" stroke="var(--fv-ink-30)" strokeWidth="5" strokeLinecap="round" />
+        <text x="126" y="101" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">15 % convenio</text>
+        <rect x="143" y="38" width="42" height="42" rx="5" fill="var(--fv-paper)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="164" y="55" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">BOP</text>
+        <text x="164" y="68" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">+113,75 €</text>
+        <text x="100" y="116" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">reclama el exceso sobre el 15 %</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-alemanes-espana': ImgDividendosAlemanes,
   'fiscalidad-crowdlending-p2p-20260902': ImgFiscalidadCrowdlendingP2p,
   'trade-republic-renta-20260830': ImgTradeRepublicRenta,
   'dividendos-franceses-espana': ImgDividendosFranceses,
