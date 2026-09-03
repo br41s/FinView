@@ -1756,7 +1756,29 @@ function ImgDividendosAlemanes() {
   );
 }
 
+function ImgDividendosItalianos() {
+  return (
+    <div className={styles.postImgDividendosItalianos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DIVIDENDOS ITALIANOS · IRPF</text>
+        <rect x="25" y="32" width="54" height="44" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)"/>
+        <text x="52" y="51" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">26%</text>
+        <text x="52" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Italia</text>
+        <path d="M82 54 H116" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2"/>
+        <polygon points="116,49 126,54 116,59" fill="var(--fv-ink-30)"/>
+        <rect x="126" y="32" width="50" height="44" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none"/>
+        <text x="151" y="51" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">15%</text>
+        <text x="151" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">convenio</text>
+        <circle cx="100" cy="94" r="10" fill="var(--fv-ochre)"/>
+        <text x="100" y="98" fontSize="8" fill="#fff" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="100" y="116" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">reclama el exceso en Pescara</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-italianos-espana': ImgDividendosItalianos,
   'dividendos-alemanes-espana': ImgDividendosAlemanes,
   'fiscalidad-crowdlending-p2p-20260902': ImgFiscalidadCrowdlendingP2p,
   'trade-republic-renta-20260830': ImgTradeRepublicRenta,
