@@ -65,6 +65,22 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 > fijarles `--attempt-deadline` y desactivar reintentos (ver abajo), o el incidente de
 > coste se reproduce solo.
 
+> **El rollout los pausa y ahora los reanuda él mismo (2026-09-04).** El paso de
+> tráfico de `cloudbuild.yaml` pausa los tres jobs antes de mover tráfico, y **nada
+> los reanudaba**: cada despliegue dejaba producción sin periodicidad con el build
+> en verde. El síntoma no es un error, es una sección que deja de actualizarse.
+> Ahora la reanudación es un `trap ... EXIT`, así que cubre también el camino de
+> rollback y el de build superseded, y el build **falla** si algún job no vuelve a
+> `ENABLED`. Tras cualquier despliegue, comprobar:
+>
+> ```bash
+> gcloud scheduler jobs list --location=europe-west1 \
+>   --format='table(name.basename(),state,schedule,lastAttemptTime)'
+> ```
+>
+> Si alguno quedó `PAUSED` de un despliegue anterior a este cambio:
+> `gcloud scheduler jobs resume <job> --location=europe-west1`.
+
 > **Deadline obligatorio.** Los endpoints `/cron` corren **síncronos**, y el deadline
 > por defecto de un job HTTP de Cloud Scheduler es **180 s**. Un ciclo de opciones
 > puede tardar minutos: al vencer el deadline Scheduler **reintenta** mientras la
@@ -255,6 +271,7 @@ Ver revisiones: `gcloud run revisions list --service finview-api --region europe
 | `/api/health` da 200 pero `/api/health/ready` da 503 | Producción arrancó sin `FINVIEW_REQUEST_SCOPED_RUNTIME=true` | Corregir el flag; el pipeline no debe promover esa revisión |
 | `min=0` pero hay una instancia facturable constante | Facturación por instancia más peticiones más frecuentes que la ventana de retención ociosa | Pausar jobs, fijar `--cpu-throttling`, verificar `max=1` y reanudar solo tras el guard |
 | **Una sección lee vacía sin ningún error** (Monitor de opciones, Técnico, Ideas) | El job de Cloud Scheduler no existe, está paused, o su secreto no coincide con Cloud Run → el pipeline no corre. El APScheduler de la UI no cuenta: muere con `--min-instances=0` | `gcloud scheduler jobs list --location=europe-west1` y comparar con los endpoints `/cron` que existen en el código. Ver "Cloud Scheduler" |
+| **Ideas no produce señales nuevas** | Empezar por la cabecera de `/geo-intel`: la línea de estado dice cuándo corrió el último ciclo, si falló y qué ingirió. Sin ejecuciones o muy antiguas → es el job de Scheduler; ejecuciones recientes con **todas las fuentes a cero** → salida de red o claves de ingesta; ejecución fallida → el error va en la propia línea | `GET /api/geo/scheduler/status` devuelve lo mismo (`last_run`) sin abrir la UI. `POST /api/geo/cron` responde **500** si ningún ciclo termina, así que un job en rojo es diagnóstico, no ruido |
 | Cron devuelve **403** | `FINVIEW_CRON_SECRET` de Cloud Run ≠ cabecera `X-Cron-Key` del job (típico: se rotó uno y no los otros) | Rotar de nuevo siguiendo el orden Cloud Run → los tres jobs |
 | Cron devuelve **404** | El endpoint aún no está desplegado (PR mergeado pero Cloud Build sin terminar) | Esperar al build; comprobar `gcloud builds list --limit=1` |
 | Señales técnicas todas "sin puntuar" | El scorer LLM falla: sin `FINVIEW_OPENROUTER_API_KEY`, o el modelo devolvió 200 con cuerpo vacío | `gcloud logging read '... textPayload:"zone scoring failed"'`. El log incluye `finish_reason` y `usage`. **`break_probability = NULL` es correcto en ese caso** — nunca se coerciona a 0, que leería como "seguro que no rompe" |

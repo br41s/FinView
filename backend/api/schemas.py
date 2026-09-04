@@ -517,6 +517,25 @@ class GeoSignalOut(BaseModel):
     sourceUrl: str | None = None  # link to the underlying source event, when captured
 
 
+class GeoCycleRunOut(BaseModel):
+    """The last execution of the geo pipeline — its liveness, not its output.
+
+    The date of the newest signal cannot distinguish a stopped pipeline from a
+    quiet one, which is why Ideas could sit dead for weeks looking merely calm.
+    """
+
+    started_at: datetime
+    finished_at: datetime
+    ok: bool
+    events: int = 0
+    new_signals: int = 0
+    notified: int = 0
+    checkpoints_evaluated: int = 0
+    persist_failures: int = 0
+    sources: dict[str, int] = {}
+    error: str | None = None
+
+
 class GeoSchedulerStatus(BaseModel):
     running: bool
     external_scheduler: bool = False
@@ -524,6 +543,7 @@ class GeoSchedulerStatus(BaseModel):
     total_signals: int = 0
     active_signals: int = 0
     last_signal_at: datetime | None = None
+    last_run: GeoCycleRunOut | None = None
 
 
 class GeoRunResult(BaseModel):

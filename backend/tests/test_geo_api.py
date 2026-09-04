@@ -12,8 +12,16 @@ from backend.api.geo import (
     _load_rule_stats,
     _matched_rules,
     _serialize,
+    _serialize_run,
 )
-from backend.models import Base, GeoCheckpoint, GeoRuleStat, GeoSignal, GeoSignalTicker
+from backend.models import (
+    Base,
+    GeoCheckpoint,
+    GeoCycleRun,
+    GeoRuleStat,
+    GeoSignal,
+    GeoSignalTicker,
+)
 
 
 @pytest.fixture
@@ -232,3 +240,62 @@ def test_serialize_orders_checkpoints_by_target_at(db):
 
     out = _serialize(s, {})
     assert [c.horizon for c in out.checkpoints] == ["1h", "1d"]
+
+
+# ── _serialize_run (pipeline heartbeat) ─────────────────────────────
+
+
+def test_serialize_run_is_none_without_a_recorded_cycle():
+    """A user who has never run a cycle reads as unknown, not as healthy."""
+    assert _serialize_run(None) is None
+
+
+def test_serialize_run_exposes_source_counts(db):
+    run = GeoCycleRun(
+        user_id=1,
+        started_at=datetime(2026, 9, 4, 10, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 4, 10, 1, tzinfo=timezone.utc),
+        ok=True,
+        events=31,
+        new_signals=4,
+        sources=json.dumps({"earthquakes": 9, "events": 22}),
+    )
+    out = _serialize_run(run)
+    assert out.ok is True
+    assert out.events == 31 and out.new_signals == 4
+    assert out.sources == {"earthquakes": 9, "events": 22}
+
+
+def test_serialize_run_survives_malformed_source_json(db):
+    """The counts are diagnostics; a broken payload must not 500 the status call."""
+    run = GeoCycleRun(
+        user_id=1,
+        started_at=datetime(2026, 9, 4, 10, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 9, 4, 10, 1, tzinfo=timezone.utc),
+        ok=False,
+        sources="not-json",
+        error="IntegrityError: UNIQUE constraint failed",
+    )
+    out = _serialize_run(run)
+    assert out.sources == {}
+    assert out.ok is False
+    assert "IntegrityError" in out.error
+
+
+def test_serialize_run_marks_naive_timestamps_as_utc(db):
+    """The DB columns are naive; the browser must not read them as local time.
+
+    `new Date("2026-09-04T10:00:00")` is local in every browser, so an unstamped
+    timestamp would shift the age of the last cycle by the viewer's offset — the
+    exact number the health line is there to report.
+    """
+    run = GeoCycleRun(
+        user_id=1,
+        started_at=datetime(2026, 9, 4, 10, 0),  # naive, as read back from the DB
+        finished_at=datetime(2026, 9, 4, 10, 1),
+        ok=True,
+    )
+    out = _serialize_run(run)
+    assert out.started_at.tzinfo is not None
+    assert out.started_at.utcoffset().total_seconds() == 0
+    assert out.model_dump_json().startswith('{"started_at":"2026-09-04T10:00:00Z"')

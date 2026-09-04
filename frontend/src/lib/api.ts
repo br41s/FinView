@@ -4,6 +4,7 @@ import { bestEffort } from "./bestEffort";
 import type { GeoSignal } from "@/lib/geo";
 import type { ImportResult, SavingsEstimate } from "@/lib/types";
 import { apiError } from "@/lib/apiError";
+import type { GeoCycleRun } from "@/lib/geoHealth";
 
 const BASE = "/api";
 
@@ -14,6 +15,16 @@ export interface GeoSchedulerStatus {
   total_signals: number;
   active_signals: number;
   last_signal_at: string | null;
+  // The pipeline's own heartbeat. `last_signal_at` cannot distinguish a stopped
+  // cycle from a quiet one; this can. See lib/geoHealth.ts.
+  last_run: GeoCycleRun | null;
+}
+
+export interface GeoRunResult {
+  status: string;
+  events?: number | null;
+  new_signals?: number | null;
+  notified?: number | null;
 }
 
 export interface TickerAnalysis {
@@ -942,7 +953,7 @@ export const api = {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/geo/run`, { method: "POST", headers });
       if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ status: string }>;
+      return res.json() as Promise<GeoRunResult>;
     },
     schedulerStatus: () =>
       fetchJSON<GeoSchedulerStatus>("/geo/scheduler/status"),

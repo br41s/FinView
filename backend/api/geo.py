@@ -3,6 +3,7 @@
 import json
 import logging
 import threading
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     GeoCheckpointOut,
+    GeoCycleRunOut,
     GeoRuleOut,
     GeoRunResult,
     GeoSchedulerStatus,
@@ -18,7 +20,7 @@ from backend.api.schemas import (
 )
 from backend.config import settings
 from backend.database import DbSession
-from backend.models import GeoRuleStat, GeoSignal, GeoSignalStatus
+from backend.models import GeoCycleRun, GeoRuleStat, GeoSignal, GeoSignalStatus
 from backend.services.geo.rules import RULES_BY_ID, effective_confidence
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,50 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
     )
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Stamp UTC on a timestamp read back from the DB.
+
+    The columns are naive (`DateTime`, written from `datetime.now(timezone.utc)`),
+    so without this the API serializes "2026-09-04T10:00:00" and the browser reads
+    it as *local* time — the age of the last cycle would be off by the viewer's
+    offset, which is the one number the health line exists to get right.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _serialize_run(run: GeoCycleRun | None) -> GeoCycleRunOut | None:
+    """Expose one cycle's outcome, including its per-source ingest counts.
+
+    A run whose sources are all zero is an ingest outage rather than a quiet
+    world — no calm day leaves USGS, EONET and GDELT simultaneously empty — so
+    the counts travel with the run instead of staying in the logs.
+    """
+    if run is None:
+        return None
+    sources: dict[str, int] = {}
+    if run.sources:
+        try:
+            parsed = json.loads(run.sources)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            sources = {k: int(v) for k, v in parsed.items() if isinstance(v, int)}
+    return GeoCycleRunOut(
+        started_at=_as_utc(run.started_at),
+        finished_at=_as_utc(run.finished_at),
+        ok=bool(run.ok),
+        events=run.events or 0,
+        new_signals=run.new_signals or 0,
+        notified=run.notified or 0,
+        checkpoints_evaluated=run.checkpoints_evaluated or 0,
+        persist_failures=run.persist_failures or 0,
+        sources=sources,
+        error=run.error,
+    )
+
+
 def _balance_ids_by_category(rows: list[tuple[int, object]], limit: int) -> list[int]:
     """Fair, category-balanced pick of at most ``limit`` signal ids.
 
@@ -254,13 +300,29 @@ def cron_run(db: DbSession):
 
     Runs synchronously so the instance stays alive for the cycle. Auth is the
     shared cron secret — see `require_cron_key`.
+
+    A cycle that fails is swallowed by `run_cycle_for_user`, which is right for
+    one user out of many but wrong for the caller: this endpoint used to answer
+    200 "done" while every cycle blew up, so Cloud Scheduler recorded success and
+    the pipeline could stay dead indefinitely without a single failed run. If
+    there are users and not one cycle completed, the job hears about it.
     """
     from backend.models import User
     from backend.services.geo.orchestrator import run_cycle_for_user
 
     user_ids = [uid for (uid,) in db.query(User.id).all()]
     ok = sum(1 for uid in user_ids if run_cycle_for_user(uid) is not None)
-    return {"status": "done", "users": len(user_ids), "cycles_ok": ok}
+    if user_ids and not ok:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Every geo cycle failed ({len(user_ids)} users); see logs",
+        )
+    return {
+        "status": "done",
+        "users": len(user_ids),
+        "cycles_ok": ok,
+        "cycles_failed": len(user_ids) - ok,
+    }
 
 
 @router.post("/scheduler/start")
@@ -286,12 +348,26 @@ def stop_scheduler(user: CurrentUser):
 
 @router.get("/scheduler/status", response_model=GeoSchedulerStatus)
 def scheduler_status(db: DbSession, user: CurrentUser):
+    """Signal counts plus the pipeline's own heartbeat.
+
+    ``last_signal_at`` alone cannot say whether the pipeline is alive: a cycle
+    that runs and matches nothing leaves exactly the same trace as one that never
+    ran. ``last_run`` is the cycle itself — when it ran, whether it finished, what
+    each source returned — so a stopped pipeline is visible in the UI on the next
+    poll instead of six weeks later.
+    """
     from backend.services.geo.scheduler import is_running
 
     base = db.query(GeoSignal).filter(GeoSignal.user_id == user.id)
     total = base.count()
     active = base.filter(GeoSignal.status == GeoSignalStatus.ACTIVE.value).count()
     latest = base.order_by(GeoSignal.created_at.desc()).first()
+    run = (
+        db.query(GeoCycleRun)
+        .filter(GeoCycleRun.user_id == user.id)
+        .order_by(GeoCycleRun.started_at.desc())
+        .first()
+    )
     return GeoSchedulerStatus(
         running=is_running(user.id),
         external_scheduler=settings.request_scoped_runtime,
@@ -299,4 +375,5 @@ def scheduler_status(db: DbSession, user: CurrentUser):
         total_signals=total,
         active_signals=active,
         last_signal_at=latest.created_at if latest else None,
+        last_run=_serialize_run(run),
     )

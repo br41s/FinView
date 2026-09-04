@@ -75,6 +75,40 @@ ejecutar `rm`, sin excepciones por "es mi fichero".
 del proyecto. Si un temporal acaba en el repo por error, pedir al humano que
 lo borre — no ejecutar `rm` "porque es inofensivo".
 
+## Si el índice no dice lo mismo que el código, el índice gana
+
+**Patrón:** El advisor deduplicaba señales geo solo contra las **ACTIVE**, porque el
+auditor resuelve a +7d y un evento puede volver a seguirse. La tabla, en cambio,
+era UNIQUE sobre todo el historial. Las dos reglas convivieron hasta que un evento
+resuelto reapareció —cosa garantizada: EONET mantiene eventos abiertos meses y los
+ids meteo/AIS/incendios van por región— y entonces `IntegrityError` mató el ciclo
+antes de la fase del auditor. Resultado: ni señales nuevas ni resoluciones durante
+seis semanas, con el cron devolviendo 200 y los tests en verde, porque ninguno
+cubría la segunda aparición del mismo id.
+
+**Regla:** Cuando el código filtra por un estado para decidir si algo es duplicado,
+la restricción de la base de datos tiene que llevar ese mismo filtro (índice único
+parcial). Y el caso de prueba no es "se inserta"; es "se inserta, se resuelve y
+vuelve". Además: una escritura por elemento va en su propio SAVEPOINT si el bucle
+tiene que sobrevivir a un elemento malo, y las fases posteriores (aquí el auditor)
+no pueden colgar de que la anterior no falle.
+
+## Lo que un despliegue pausa, un despliegue lo reanuda
+
+**Patrón:** El rollout pausaba los tres jobs de Cloud Scheduler antes de mover
+tráfico "y se reanudan solo tras una verificación explícita". Esa verificación no
+existía en ninguna parte: `gcloud scheduler jobs resume` no aparecía en el repo.
+Cada despliegue terminaba en verde dejando producción sin periodicidad, y el
+síntoma no era un error sino tres secciones que dejaban de actualizarse. Había
+incluso un test que exigía la pausa; nadie notó que no exigía lo contrario.
+
+**Regla:** Un paso de despliegue que apaga algo tiene que volver a encenderlo por
+la ruta que sea —promoción, rollback, build superseded o fallo inesperado—, y eso
+es un `trap ... EXIT`, no una línea al final. Verificar el estado final, no el
+código de salida del comando de reanudación. Y en cuanto un test afirme "esto se
+pausa", tiene que afirmar también "esto se reanuda": una guarda a medias da
+confianza sin dar cobertura.
+
 ## Un 200 de un LLM no garantiza que haya texto
 
 **Patrón:** El scorer de zonas se fue a prod sin un solo test. El primer ciclo real

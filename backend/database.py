@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import Depends, Query
@@ -6,6 +7,8 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.config import settings
+
+_logger = logging.getLogger(__name__)
 
 connect_args = {}
 # pool_pre_ping stays on: Neon autosuspends idle computes, so a connection can
@@ -101,6 +104,24 @@ _DROP_UNIQUE_CONSTRAINTS: list[tuple[str, frozenset[str]]] = [
     # tax_results once required one casilla row per (broker, year); migration
     # years legitimately need two, so the rows are now scoped by import_id.
     ("tax_results", frozenset({"user_id", "fiscal_year", "broker", "modelo", "casilla"})),
+    # geo_signals was unique on the event id for all time, which contradicted a
+    # pipeline that resolves a signal at +7d while the feeds keep publishing the
+    # same id. The first recurrence raised IntegrityError and killed the cycle.
+    # Replaced by uq_geo_sig_active_dedup below (see GeoSignal.__table_args__).
+    ("geo_signals", frozenset({"user_id", "source", "external_id"})),
+]
+
+# Partial unique indexes: `create_all` never touches a table that already exists,
+# and _ADDITIVE_INDEXES only emits plain indexes. Each entry is a
+# CREATE UNIQUE INDEX IF NOT EXISTS with a WHERE clause -- identical syntax on
+# SQLite and PostgreSQL -- applied after the obsolete constraints are dropped.
+_ADDITIVE_UNIQUE_INDEXES: list[tuple[str, str, str, str]] = [
+    (
+        "geo_signals",
+        "uq_geo_sig_active_dedup",
+        "user_id, source, external_id",
+        "status = 'active'",
+    ),
 ]
 
 
@@ -139,24 +160,50 @@ def ensure_columns() -> None:
 
 
 def ensure_constraints() -> None:
-    """Drop obsolete unique constraints from existing tables (idempotent).
+    """Reconcile unique constraints on existing tables (idempotent).
 
-    SQLite can't ALTER away a constraint, but its tables are recreated from the
-    model so they never carry it — this only needs to run on Postgres.
+    Drops the obsolete ones and creates the partial unique indexes that replaced
+    them, in that order — a table still carrying the old constraint would keep
+    rejecting the rows the new index is meant to allow.
+
+    Dropping is PostgreSQL-only: SQLite can't ALTER a constraint away. A fresh
+    SQLite file is rebuilt from the model and never carries one, but a dev
+    database created before the change does, so say so out loud instead of
+    letting local behaviour silently diverge from production.
     """
-    if engine.dialect.name != "postgresql":
-        return
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
+    is_postgres = engine.dialect.name == "postgresql"
+
     for table, columns in _DROP_UNIQUE_CONSTRAINTS:
         if table not in tables:
             continue
         for uc in inspector.get_unique_constraints(table):
-            if frozenset(uc["column_names"]) == columns and uc.get("name"):
-                with engine.begin() as conn:
-                    conn.execute(
-                        text(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{uc["name"]}"')
-                    )
+            if frozenset(uc["column_names"]) != columns or not uc.get("name"):
+                continue
+            if not is_postgres:
+                _logger.warning(
+                    "%s still carries the obsolete unique constraint %s; SQLite cannot "
+                    "drop it. Recreate the local database file to match production.",
+                    table,
+                    uc["name"],
+                )
+                continue
+            with engine.begin() as conn:
+                conn.execute(
+                    text(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{uc["name"]}"')
+                )
+
+    for table, index_name, columns, where in _ADDITIVE_UNIQUE_INDEXES:
+        if table not in tables:
+            continue
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                    f"ON {table} ({columns}) WHERE {where}"
+                )
+            )
 
 
 # Annotated type aliases for FastAPI dependency injection

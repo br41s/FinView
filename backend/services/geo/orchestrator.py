@@ -7,14 +7,16 @@ Async at the ingest boundary (httpx); the DB/scoring work is synchronous (SQLAlc
 """
 
 import asyncio
+import json
 import logging
 import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from backend.models import GeoRuleStat, GeoSignal, GeoSignalStatus
+from backend.models import GeoCycleRun, GeoRuleStat, GeoSignal, GeoSignalStatus
 
 from . import sentinel
 from .advisor import IMPORTANCE_THRESHOLD, SignalResult, compute_importance, generate_signal
@@ -38,12 +40,25 @@ _COMPOUND_BUCKETS = {
 }
 
 
+# Ingest keys counted into GeoCycleRun.sources (SourceBundle attribute names).
+_SOURCE_KEYS = (
+    "earthquakes", "events", "fires", "meteo", "flights", "gdelt", "acled", "vessels",
+)
+_RUN_RETENTION_DAYS = 7
+
+
 @dataclass
 class CycleResult:
     events: int
     new_signals: int
     notified: int
     checkpoints_evaluated: int
+    # Item count per ingest source, for the health record. Every source at zero
+    # is an ingest outage; the pipeline cannot tell that from a calm day, but a
+    # human reading the run row can.
+    sources: dict[str, int] = field(default_factory=dict)
+    # Signals dropped by the persist phase. A cycle can finish with work lost.
+    persist_failures: int = 0
 
 
 def _load_stats(db: Session) -> dict[str, GeoRuleStat]:
@@ -152,17 +167,37 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     prices = fetch_ticker_prices(symbols) if symbols else {}
 
     # Phase E: persist signals + checkpoints, collect notifications.
+    #
+    # Each signal writes inside its own SAVEPOINT. A single bad row used to take
+    # the whole cycle down from inside generate_signal's flush — and with it
+    # Phase F, so nothing was ever resolved again either. One event is allowed to
+    # fail; the cycle is not.
     results: list[SignalResult] = []
+    persist_failures = 0
     for a in enriched:
         if not a.tickers:
             continue  # nothing actionable
-        res = generate_signal(db, user_id=user_id, analysis=a, prices=prices)
-        if res.is_new:
-            db.flush()
-            create_checkpoints(db, res.signal)
+        try:
+            with db.begin_nested():
+                res = generate_signal(db, user_id=user_id, analysis=a, prices=prices)
+                if res.is_new:
+                    db.flush()
+                    create_checkpoints(db, res.signal)
+        except SQLAlchemyError:
+            persist_failures += 1
+            logger.exception(
+                "geo cycle user=%s: dropped signal for event %s", user_id, a.event.id
+            )
+            continue
         results.append(res)
 
-    db.commit()
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        persist_failures += len(results)
+        results = []
+        logger.exception("geo cycle user=%s: commit failed, no signals persisted", user_id)
 
     notified = 0
     for res in results:
@@ -170,29 +205,78 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
             notify_signal(res.signal, res.importance)
             notified += 1
 
-    # Phase F: evaluate any due outcome checkpoints.
+    # Phase F: evaluate any due outcome checkpoints. Runs even when the persist
+    # phase lost everything — the auditor is what resolves the signals already on
+    # the board, and it must never be blocked by a write that failed upstream.
     checkpoints = evaluate_pending(db, user_id)
 
     new_signals = sum(1 for r in results if r.is_new)
     logger.info(
-        "geo cycle user=%s done: %d new signals, %d notified, %d checkpoints",
-        user_id, new_signals, notified, checkpoints,
+        "geo cycle user=%s done: %d new signals, %d notified, %d checkpoints, "
+        "%d persist failures",
+        user_id, new_signals, notified, checkpoints, persist_failures,
     )
     return CycleResult(
         events=len(events),
         new_signals=new_signals,
         notified=notified,
         checkpoints_evaluated=checkpoints,
+        sources={key: len(getattr(bundle, key, []) or []) for key in _SOURCE_KEYS},
+        persist_failures=persist_failures,
     )
+
+
+def _record_run(
+    db: Session,
+    user_id: int,
+    started_at: datetime,
+    result: CycleResult | None,
+    error: str | None,
+) -> None:
+    """Persist the cycle's outcome. Best-effort: never raises into the cycle.
+
+    This is the only durable trace a cycle leaves when it produces nothing, and
+    without it "the pipeline is dead" and "nothing happened today" are the same
+    observation from every surface the owner actually looks at.
+    """
+    try:
+        db.rollback()  # the cycle may have left the session dirty
+        db.add(
+            GeoCycleRun(
+                user_id=user_id,
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                ok=error is None,
+                events=result.events if result else 0,
+                new_signals=result.new_signals if result else 0,
+                notified=result.notified if result else 0,
+                checkpoints_evaluated=result.checkpoints_evaluated if result else 0,
+                persist_failures=result.persist_failures if result else 0,
+                sources=json.dumps(result.sources) if result and result.sources else None,
+                error=error[:500] if error else None,
+            )
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=_RUN_RETENTION_DAYS)
+        db.query(GeoCycleRun).filter(
+            GeoCycleRun.user_id == user_id, GeoCycleRun.started_at < cutoff
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("geo cycle: could not record run for user %s", user_id, exc_info=True)
 
 
 def run_cycle_for_user(user_id: int) -> CycleResult | None:
     """Scheduler/background entry: manages its own DB session, never raises."""
     from backend.database import SessionLocal
 
+    started_at = datetime.now(timezone.utc)
     with SessionLocal() as db:
         try:
-            return run_cycle(db, user_id)
-        except Exception:
+            result = run_cycle(db, user_id)
+        except Exception as exc:
             logger.exception("geo cycle failed for user %s", user_id)
+            _record_run(db, user_id, started_at, None, f"{type(exc).__name__}: {exc}")
             return None
+        _record_run(db, user_id, started_at, result, None)
+        return result
