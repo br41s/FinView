@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-italianos-espana',
+    tag: 'Fiscalidad',
+    date: '03 sep 2026',
+    readTime: '9 min',
+    title: 'Dividendos italianos en España: cómo recuperar la retención',
+    excerpt: 'Italia puede retener un 26 % de tus dividendos. Cómo declarar el bruto, aplicar la deducción en España y reclamar el exceso sobre el 15 % mediante el Modelo A.',
+  },
+  {
     slug: 'dividendos-alemanes-espana',
     tag: 'Fiscalidad',
     date: '03 sep 2026',
