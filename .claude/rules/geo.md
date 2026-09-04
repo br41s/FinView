@@ -97,6 +97,12 @@ deploy silently ended production periodicity on a green build. The resume is an 
 — `test_cloudbuild_policy.py` asserts the pause/resume pair over the same job list. A new
 scheduled pipeline goes in that list, not just in a new job.
 
+**Timestamps leave `api/geo.py` through `_as_utc`.** The DateTime columns are naive
+(written from `datetime.now(timezone.utc)`), and `new Date("…T12:00:00")` is *local* in
+every browser — so an unstamped field shifts every age the page renders by the viewer's
+offset. That is not cosmetic here: the feed's "Nh ago", the staleness read and the
+checkpoint clock are all derived from it. A new timestamp field goes through the helper.
+
 ### Frontend — /geo-intel (labelled "Ideas")
 **The thesis desk**, not an event feed: geopolitics is what seeds it today, but
 the page's job is the investment/speculation case. Route, table and API prefix

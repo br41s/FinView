@@ -1,5 +1,7 @@
 """Tests for geo notifications (channel fan-out, Telegram escaping) and /geo/cron."""
 
+from datetime import datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -231,3 +233,22 @@ def test_cron_with_no_users_is_not_a_failure(db, monkeypatch):
 
     monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid: None)
     assert cron_run(db)["users"] == 0
+
+
+def test_scheduler_status_stamps_utc_on_the_last_signal(db, monkeypatch):
+    """`last_signal_at` feeds the header stat and the staleness read; naive would
+    shift both by the viewer's offset."""
+    from backend.api.geo import scheduler_status
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "request_scoped_runtime", True)
+    user = User(email="a@x.com")
+    db.add(user)
+    signal = _signal()
+    signal.created_at = datetime(2026, 9, 4, 12, 0)  # naive, as read back from the DB
+    db.add(signal)
+    db.commit()
+
+    status = scheduler_status(db, user)
+
+    assert status.last_signal_at.utcoffset().total_seconds() == 0
