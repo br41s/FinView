@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -860,7 +861,31 @@ class GeoSignal(Base):
 
     __table_args__ = (
         Index("ix_geo_sig_user_created", "user_id", "created_at"),
-        UniqueConstraint("user_id", "source", "external_id", name="uq_geo_sig_dedup"),
+        # Dedup is per *active* signal, not per event id for all time. The whole
+        # table was once unique on (user_id, source, external_id), which
+        # contradicted the pipeline: the advisor only dedups against ACTIVE rows
+        # because the auditor resolves a signal at +7d, and most feeds keep
+        # emitting the same id long after that (an EONET event stays open for
+        # months, `wx-*`/`ais-*`/`fire-cluster-*` ids are region-keyed and never
+        # rotate). So the first recurrence of a resolved event raised
+        # IntegrityError inside generate_signal's flush, which killed the cycle
+        # before the auditor ran -- no new signals and no resolutions, ever
+        # again, while /geo/cron kept answering 200.
+        #
+        # A partial unique index says what was actually meant: at most one ACTIVE
+        # signal per (user, event), while resolved sightings stay as history and
+        # a live event may be tracked again later. Existing installations drop the
+        # old constraint and gain this index at startup (see
+        # database._DROP_UNIQUE_CONSTRAINTS / _ADDITIVE_UNIQUE_INDEXES).
+        Index(
+            "uq_geo_sig_active_dedup",
+            "user_id",
+            "source",
+            "external_id",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
 
@@ -938,6 +963,45 @@ class GeoRuleStat(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
+
+
+class GeoCycleRun(Base):
+    """One execution of the geo pipeline for one user — the section's heartbeat.
+
+    Ideas can stop producing without anything saying so: the orchestrator logs a
+    failed cycle and returns None, ``/geo/cron`` answers 200 either way, and the
+    UI only ever knew the date of the newest signal — which is also what a
+    genuinely quiet week looks like. That ambiguity is what let a dead pipeline
+    sit unnoticed for six weeks. A row per cycle answers "when did this last run,
+    what did it ingest, and did it fail" from the API, with no log access.
+
+    Rows are pruned to the last ``_RUN_RETENTION_DAYS`` days on write: this is a
+    liveness record, not an audit trail.
+    """
+
+    __tablename__ = "geo_cycle_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    finished_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    events: Mapped[int] = mapped_column(Integer, default=0)
+    new_signals: Mapped[int] = mapped_column(Integer, default=0)
+    notified: Mapped[int] = mapped_column(Integer, default=0)
+    checkpoints_evaluated: Mapped[int] = mapped_column(Integer, default=0)
+    # Signals the persist phase had to skip. Non-zero means the cycle finished
+    # but lost work, which a green `ok` would otherwise hide.
+    persist_failures: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Per-source item counts as JSON, e.g. {"earthquakes": 12, "events": 40, ...}.
+    # All-zero is the signature of an ingest outage (dead egress, expired keys)
+    # as opposed to a genuinely calm day, which never has every source empty.
+    sources: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (Index("ix_geo_run_user_started", "user_id", "started_at"),)
 
 
 # ── Exchange Rates (ECB) ─────────────────────────────────────────────

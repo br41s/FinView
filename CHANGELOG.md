@@ -4,6 +4,49 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Ideas (geo-intel) volvía a estar muerta — 2026-09-04
+
+La sección llevaba seis semanas sin una señal nueva y sin un solo error a la vista.
+Eran dos fallos independientes, y cada uno bastaba por sí solo.
+
+#### Fixed
+- **Un evento que reaparecía tras resolverse tumbaba el ciclo entero, para siempre.**
+  `geo_signals` era UNIQUE por `(user_id, source, external_id)` sobre toda la tabla,
+  pero el advisor solo deduplica contra señales **ACTIVE** porque el auditor resuelve a
+  +7d. Las fuentes no rotan sus ids —un evento de EONET sigue abierto durante meses y
+  `wx-*`, `ais-*`, `fire-cluster-*` y `*-escalation-*` van por región—, así que la
+  primera reaparición lanzaba `IntegrityError` dentro del `flush` de `generate_signal`.
+  El ciclo moría **antes** de la fase del auditor: ni señales nuevas ni resoluciones
+  nunca más, con `/geo/cron` devolviendo 200. Ahora el índice dice lo que el código
+  quería decir: único **parcial** sobre `status='active'`. Una señal resuelta puede
+  volver a seguirse como fila nueva; dos ACTIVE del mismo evento siguen siendo
+  imposibles. Cada señal se escribe en su propio SAVEPOINT, así que un fallo cuesta una
+  señal y no el ciclo, y el auditor corre aunque la escritura falle.
+- **Cada despliegue dejaba producción sin periodicidad.** El paso de tráfico de
+  `cloudbuild.yaml` pausa `geo-intel-cycle`, `options-agent-cycle` y `zonas-clave-cycle`
+  antes de mover tráfico y **nada los reanudaba**: el build terminaba en verde con los
+  tres en `PAUSED` y los tres pipelines callados. La reanudación es ahora un `trap ...
+  EXIT` —cubre promoción, rollback y build superseded— y el build falla si algún job no
+  vuelve a `ENABLED`. `test_cloudbuild_policy` exige el par pausa/reanudación sobre la
+  misma lista de jobs.
+
+#### Added
+- `geo_cycle_runs`: una fila por ciclo (ok/error, eventos por fuente, señales nuevas,
+  descartes al guardar; se podan a 7 días). `GET /geo/scheduler/status` la devuelve como
+  `last_run`. La fecha de la última señal no distingue un pipeline parado de una semana
+  tranquila, y esa ambigüedad es justo lo que dejó a Ideas muerta seis semanas.
+- Línea de estado en la cabecera de `/geo-intel`: nunca ejecutado / última ejecución
+  fallida con su error / demasiado antigua / **ninguna fuente devolvió nada** (corte de
+  red o claves, nunca un día tranquilo) / señales descartadas / sano con lo que ingirió.
+  La lógica vive en `lib/geoHealth.ts`, pura y con tests.
+- "Run cycle" dice qué hizo el ciclo ("0 eventos" separa un problema de ingesta de un día
+  sin coincidencias) y muestra el error en vez de tragárselo.
+
+#### Changed
+- `POST /geo/cron` responde **500** cuando hay usuarios y ningún ciclo termina. Antes
+  devolvía 200 "done" sobre un pipeline que fallaba en todas las llamadas, así que Cloud
+  Scheduler registraba éxito indefinidamente.
+
 ### Auditoría completa: arquitectura, UX, diseño y refactorización — 2026-08-26
 
 Barrido de la aplicación a todos los niveles (#210–#223). Lo que sigue son los

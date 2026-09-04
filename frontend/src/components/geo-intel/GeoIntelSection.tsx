@@ -5,6 +5,7 @@ import { SignalPanel } from "./SignalPanel";
 import { FilterBar, CATEGORIES, type DirectionFilter } from "./FilterBar";
 import { MapLoading, MapEmpty, MapError } from "./MapStates";
 import { type GeoSignal } from "@/lib/geo";
+import { geoHealth } from "@/lib/geoHealth";
 import { api, type GeoSchedulerStatus } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,9 @@ export function GeoIntelSection() {
   const [running, setRunning] = useState(false);
   const [monitor, setMonitor] = useState<GeoSchedulerStatus | null>(null);
   const [togglingMonitor, setTogglingMonitor] = useState(false);
+  // Outcome of the last manual run. A cycle that ingests nothing is a result,
+  // not silence, and the button used to report both the same way: by stopping.
+  const [runOutcome, setRunOutcome] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setPhase("loading");
@@ -115,21 +119,38 @@ export function GeoIntelSection() {
   const lastSignal = monitor?.last_signal_at
     ? new Date(monitor.last_signal_at).toLocaleString()
     : "—";
+  // Recomputed on every poll (the status refetches on the same 60s tick), so a
+  // pipeline that stops during the session shows up without a reload.
+  const health = useMemo(() => geoHealth(monitor), [monitor]);
 
   const retry = load;
 
   const runCycle = useCallback(async () => {
     setRunning(true);
+    setRunOutcome(null);
     try {
       const result = await api.geo.run();
       if (result.status === "completed") {
         const data = await api.geo.signals("all");
         setSignals(data);
         setPhase("ready");
+        // Say what the cycle did. "0 eventos" is the fastest way to tell an
+        // ingest problem from a rules-matched-nothing day, and the button
+        // returning to its idle label said neither.
+        setRunOutcome(
+          `Ciclo completado: ${result.events ?? 0} eventos, ` +
+            `${result.new_signals ?? 0} señales nuevas.`,
+        );
+        loadMonitor();
         setRunning(false);
         return;
       }
-    } catch {
+    } catch (error) {
+      // The cycle failing is the single most useful thing this page can tell
+      // its owner; swallowing it is what let a dead pipeline look idle.
+      setRunOutcome(
+        error instanceof Error ? error.message : "No se pudo ejecutar el ciclo.",
+      );
       setRunning(false);
       return;
     }
@@ -152,7 +173,7 @@ export function GeoIntelSection() {
         }
       }
     }, 12000);
-  }, []);
+  }, [loadMonitor]);
 
   return (
     <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
@@ -194,6 +215,16 @@ export function GeoIntelSection() {
             </div>
           </div>
         </div>
+        {(health || runOutcome) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+            {health && (
+              <span className={HEALTH_TONE[health.tone]} role="status">
+                {health.tone === "ok" ? "●" : "▲"} {health.message}
+              </span>
+            )}
+            {runOutcome && <span className="text-muted-foreground">{runOutcome}</span>}
+          </div>
+        )}
       </header>
 
       <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
@@ -238,6 +269,15 @@ export function GeoIntelSection() {
     </section>
   );
 }
+
+// The section paints its own warm canvas rather than using theme tokens, so the
+// health line follows it: ochre for "look at this", the map's bearish red for
+// "it is broken".
+const HEALTH_TONE = {
+  ok: "text-[rgba(31,27,22,0.6)]",
+  warn: "text-[#825416]",
+  down: "text-[#9B3D2C]",
+} as const;
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

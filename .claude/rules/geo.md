@@ -56,8 +56,25 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **LLM token gating**: the OpenRouter call fires only on first sighting — skipped when
   the user already has an ACTIVE signal for the event, and results are cached in-memory
   per event id (6h TTL) so N users cost one call. Long-lived feed events cost ~1 call total.
-- **Dedup**: per-user by (source, external_id) on ACTIVE signals. Existing signals get
-  confidence/importance refreshed; they only re-notify when confidence shifts ≥ 15.
+- **Dedup**: per-user by (source, external_id) on ACTIVE signals — and the DB index says
+  the same thing (`uq_geo_sig_active_dedup`, partial on `status='active'`). It used to be
+  a plain UNIQUE over the whole table, which contradicted the pipeline: the auditor
+  resolves at +7d while most feeds keep publishing the same id (EONET events stay open
+  for months; `wx-*`, `ais-*`, `fire-cluster-*` and `*-escalation-*` ids are region-keyed
+  and never rotate). The first recurrence raised IntegrityError inside `generate_signal`
+  and killed the cycle **before the auditor ran** — no new signals and no resolutions
+  again, ever, while `/geo/cron` answered 200. A resolved signal may now be tracked again
+  as a new row; two ACTIVE rows for one event are still impossible. Each signal is
+  persisted in its own SAVEPOINT, so one bad write costs one signal, not the cycle.
+  Existing signals get confidence/importance refreshed; they only re-notify when
+  confidence shifts ≥ 15.
+- **Liveness**: every cycle writes a `GeoCycleRun` (ok/error, per-source ingest counts,
+  new signals, persist failures; pruned to 7 days) and `/geo/scheduler/status` returns the
+  latest as `last_run`. `last_signal_at` alone cannot tell a stopped pipeline from a quiet
+  one — that ambiguity is what let Ideas sit dead for six weeks. Every source at zero is
+  an ingest outage, never a calm day. The header of `/geo-intel` renders this
+  (`lib/geoHealth.ts`), and `/geo/cron` answers **500** when no user's cycle completes so
+  Cloud Scheduler records a failure instead of a green run.
 - **Notify gate**: importance = round(confidence × risk/10) ≥ 60 → ntfy + Telegram + email
   via `geo/notify.py` (Telegram text is Markdown-escaped — external headlines contain
   `*_[` and would 400 the Bot API otherwise; keep the escaping).
@@ -67,11 +84,18 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 ### Scheduling — prod runs on external cron, NOT APScheduler
 The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives
 while the instance is alive — with `--min-instances=0` it dies on scale-to-zero.
-**Prod periodicity = Cloud Scheduler → `POST /api/geo/cron` every 10 min**, authenticated
+**Prod periodicity = Cloud Scheduler → `POST /api/geo/cron` every 30 min**, authenticated
 by header `X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret
 disables the endpoint). The endpoint runs one cycle per user synchronously so Cloud Run
 keeps CPU until it finishes. Don't convert it to fire-and-forget threads — the instance
 can be reclaimed after the response.
+
+**The rollout pauses `geo-intel-cycle` and must resume it.** `cloudbuild.yaml` pauses the
+three Scheduler jobs before switching traffic; for a month nothing resumed them, so every
+deploy silently ended production periodicity on a green build. The resume is an EXIT trap
+(covers rollback and supersession) and the build fails if a job doesn't come back ENABLED
+— `test_cloudbuild_policy.py` asserts the pause/resume pair over the same job list. A new
+scheduled pipeline goes in that list, not just in a new job.
 
 ### Frontend — /geo-intel (labelled "Ideas")
 **The thesis desk**, not an event feed: geopolitics is what seeds it today, but
@@ -80,9 +104,13 @@ keep the `geo` name — only the user-facing label changed (renaming the route
 breaks deep links; renaming tables is DDL in prod without Alembic).
 
 Map (react-simple-maps) + signal feed + detail panel. Header: "Run cycle" (manual,
-polls until signals land), "Monitor" toggle (in-process scheduler — dev convenience,
-not the prod mechanism), Active/Tracked/Regions/Last-signal stats. Signals silently
-re-fetch every 60s. Reads `?ticker=` to select the newest signal affecting it.
+polls until signals land, and **reports what the cycle did** — "0 eventos" is how you
+tell an ingest problem from a day the rules matched nothing; a failure is shown, never
+swallowed), "Monitor" toggle (in-process scheduler — dev convenience, not the prod
+mechanism), Active/Tracked/Regions/Last-signal stats, and a health line derived from
+`last_run` (`lib/geoHealth.ts`, pure and unit-tested: never run / failed / stale / no
+source returned anything / signals dropped / healthy). Signals silently re-fetch every
+60s. Reads `?ticker=` to select the newest signal affecting it.
 
 In the detail panel (`components/geo-intel/SignalPanel.tsx`): stats
 (importance/confidence/risk/direction), **"Why this was triggered"** (the matched

@@ -136,9 +136,40 @@ steps:
           exit 0
         fi
 
-        # Any rollout pauses periodic callers before changing traffic. They are
-        # resumed only after an explicit post-deploy verification.
-        for JOB in geo-intel-cycle options-agent-cycle zonas-clave-cycle; do
+        # Any rollout pauses periodic callers before changing traffic, and must
+        # put them back before this step ends. Nothing used to resume them, so
+        # every rollout left production without periodicity on a green build:
+        # /api/geo/cron, /api/options/agent/cron and /api/zonas-clave/cron were
+        # never called again and Ideas, Monitor de opciones and Zonas Clave went
+        # quiet with no error anywhere. The resume is an EXIT trap so it also
+        # covers the supersession short-circuit, the rollback path and any
+        # unexpected failure of this step; a job that does not come back ENABLED
+        # fails the build instead of leaving a silent outage behind.
+        SCHEDULER_JOBS="geo-intel-cycle options-agent-cycle zonas-clave-cycle"
+
+        resume_periodic_callers() {
+          NOT_RUNNING=""
+          for JOB in $$SCHEDULER_JOBS; do
+            # resume returns FAILED_PRECONDITION on an already-ENABLED job, so
+            # the state check below — not the exit code — is the assertion.
+            gcloud scheduler jobs resume "$$JOB" \
+              --project=$PROJECT_ID --location=europe-west1 --quiet || true
+            STATE="$$(gcloud scheduler jobs describe "$$JOB" \
+              --project=$PROJECT_ID --location=europe-west1 \
+              --format='value(state)' || echo MISSING)"
+            if [ "$$STATE" != "ENABLED" ]; then
+              NOT_RUNNING="$$NOT_RUNNING $$JOB=$$STATE"
+            fi
+          done
+          if [ -n "$$NOT_RUNNING" ]; then
+            echo "Periodic callers are not running after the rollout:$$NOT_RUNNING"
+            return 1
+          fi
+          echo "Periodic callers resumed: $$SCHEDULER_JOBS"
+        }
+        trap 'resume_periodic_callers || exit 1' EXIT
+
+        for JOB in $$SCHEDULER_JOBS; do
           STATE="$$(gcloud scheduler jobs describe "$$JOB" \
             --project=$PROJECT_ID --location=europe-west1 --format='value(state)')"
           if [ "$$STATE" != "PAUSED" ]; then

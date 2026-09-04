@@ -210,3 +210,74 @@ def test_split_history_cache_is_created_by_create_all():
         index["column_names"] == ["ticker"] and index["unique"]
         for index in inspector.get_indexes("split_history_cache")
     )
+
+
+def test_ensure_constraints_adds_the_active_only_geo_dedup_index(monkeypatch):
+    """An existing geo_signals table must gain the partial unique index.
+
+    `create_all` never touches a table that already exists and `_ADDITIVE_INDEXES`
+    only emits plain indexes, so without this the fix would apply to fresh
+    installs and skip the one database that actually has the problem. The table
+    here has no table-level constraint, which is the shape production is left in
+    once `_DROP_UNIQUE_CONSTRAINTS` has removed the obsolete one.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE geo_signals ("
+            "id INTEGER PRIMARY KEY, user_id INTEGER, source TEXT, "
+            "external_id TEXT, status TEXT)"
+        ))
+    monkeypatch.setattr(database, "engine", engine)
+
+    database.ensure_constraints()
+    database.ensure_constraints()  # idempotent
+
+    indexes = {index["name"]: index for index in inspect(engine).get_indexes("geo_signals")}
+    assert "uq_geo_sig_active_dedup" in indexes
+    assert indexes["uq_geo_sig_active_dedup"]["unique"]
+    assert indexes["uq_geo_sig_active_dedup"]["column_names"] == [
+        "user_id", "source", "external_id",
+    ]
+
+    # A resolved signal may be tracked again; a second ACTIVE one for the same
+    # event may not. That pair is the whole point of the partial index.
+    with engine.begin() as connection:
+        connection.execute(text(
+            "INSERT INTO geo_signals VALUES (1, 1, 'eonet', 'evt-1', 'resolved')"
+        ))
+        connection.execute(text(
+            "INSERT INTO geo_signals VALUES (2, 1, 'eonet', 'evt-1', 'active')"
+        ))
+    with pytest.raises(Exception):
+        with engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO geo_signals VALUES (3, 1, 'eonet', 'evt-1', 'active')"
+            ))
+
+
+def test_sqlite_says_so_when_it_cannot_drop_an_obsolete_constraint(monkeypatch, caplog):
+    """SQLite can't ALTER a constraint away, and silence would let a local dev
+    database keep rejecting rows production accepts."""
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE geo_signals ("
+            "id INTEGER PRIMARY KEY, user_id INTEGER, source TEXT, "
+            "external_id TEXT, status TEXT, "
+            "CONSTRAINT uq_geo_sig_dedup UNIQUE (user_id, source, external_id))"
+        ))
+    monkeypatch.setattr(database, "engine", engine)
+
+    with caplog.at_level("WARNING"):
+        database.ensure_constraints()
+
+    assert "uq_geo_sig_dedup" in caplog.text
+
+
+def test_ensure_constraints_skips_tables_that_do_not_exist(monkeypatch):
+    """A fresh install runs the same startup path with nothing to reconcile."""
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(database, "engine", engine)
+
+    database.ensure_constraints()  # must not raise

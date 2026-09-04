@@ -73,3 +73,32 @@ def test_rollout_serializes_builds_and_pauses_periodic_callers():
     assert "gcloud scheduler jobs pause" in rollout
     assert '"$$LIVE" = "$$REVISION"' in rollout
     assert '"$$LATEST" = "$$REVISION"' in rollout
+
+
+def test_rollout_resumes_every_periodic_caller_it_pauses():
+    """A rollout that pauses the Scheduler jobs must put every one of them back.
+
+    Nothing did. Each deploy paused `geo-intel-cycle`, `options-agent-cycle` and
+    `zonas-clave-cycle` before switching traffic and the build ended green with
+    all three still PAUSED, so production stopped calling the `/cron` endpoints
+    entirely: Ideas, Monitor de opciones and Zonas Clave quietly stopped
+    producing and no log, check or status anywhere said why.
+    """
+    rollout = _step("update-traffic")["args"][-1]
+
+    assert "gcloud scheduler jobs resume" in rollout
+    # Both loops read the same list, so a fourth pipeline cannot be paused
+    # without also being resumed.
+    assert rollout.count("for JOB in $$SCHEDULER_JOBS; do") == 2
+    for job in ("geo-intel-cycle", "options-agent-cycle", "zonas-clave-cycle"):
+        assert job in rollout
+
+    # An EXIT trap, not a trailing command: the rollback path exits non-zero and
+    # the supersession path exits early, and both must still leave the jobs running.
+    trap_index = rollout.index("trap 'resume_periodic_callers || exit 1' EXIT")
+    assert trap_index < rollout.index("gcloud scheduler jobs pause")
+
+    # Resuming is not evidence of running: FAILED_PRECONDITION on an already
+    # ENABLED job is expected, so the state is what the build asserts on.
+    assert '"$$STATE" != "ENABLED"' in rollout
+    assert "Periodic callers are not running after the rollout" in rollout

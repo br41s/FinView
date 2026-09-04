@@ -28,6 +28,10 @@ OPERATOR_ONLY = frozenset({
     "Telegram not configured — set FINVIEW_TELEGRAM_BOT_TOKEN and FINVIEW_TELEGRAM_CHAT_ID.",
     "Telegram delivery failed — check bot token and chat ID.",
     "FINVIEW_OPENROUTER_API_KEY not configured.",
+    # Returned to Cloud Scheduler, never to a browser: /geo/cron answers 500 when
+    # no user's cycle completed, so a dead pipeline shows up as a failed job
+    # instead of a green one. Listed as the raw source literal, f-string and all.
+    "Every geo cycle failed ({len(user_ids)} users); see logs",
 })
 
 # Function words that appear in English copy and never in Spanish copy. Nouns

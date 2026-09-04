@@ -188,3 +188,46 @@ def test_cron_runs_cycle_per_user(db, monkeypatch):
     assert result["users"] == 2
     assert result["cycles_ok"] == 2
     assert sorted(ran) == [1, 2]
+
+
+def test_cron_reports_failure_when_no_cycle_completes(db, monkeypatch):
+    """Cloud Scheduler only sees the status code.
+
+    `run_cycle_for_user` swallows its exception and returns None, so this
+    endpoint answered 200 "done" over a pipeline that failed on every call —
+    every scheduled run looked successful while Ideas produced nothing for weeks.
+    """
+    from fastapi import HTTPException
+
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid: None)
+    db.add(User(email="a@x.com"))
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        cron_run(db)
+    assert exc.value.status_code == 500
+
+
+def test_cron_succeeds_when_at_least_one_cycle_completes(db, monkeypatch):
+    """One user's blow-up must not fail the whole job — the count carries it."""
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(
+        orchestrator, "run_cycle_for_user", lambda uid: None if uid == 1 else object()
+    )
+    db.add(User(email="a@x.com"))
+    db.add(User(email="b@x.com"))
+    db.commit()
+
+    result = cron_run(db)
+    assert result["cycles_ok"] == 1
+    assert result["cycles_failed"] == 1
+
+
+def test_cron_with_no_users_is_not_a_failure(db, monkeypatch):
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid: None)
+    assert cron_run(db)["users"] == 0
