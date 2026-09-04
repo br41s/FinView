@@ -42,6 +42,17 @@ Eran dos fallos independientes, y cada uno bastaba por sí solo.
 - "Run cycle" dice qué hizo el ciclo ("0 eventos" separa un problema de ingesta de un día
   sin coincidencias) y muestra el error en vez de tragárselo.
 
+#### Fixed (seguimiento)
+- **Todas las antigüedades de `/geo-intel` estaban desplazadas por la zona horaria del
+  navegador.** `created_at`, `target_at` y `evaluated_at` salían sin zona ("…T12:00:00"),
+  y `new Date(...)` los interpreta como hora **local**: desde Madrid una señal de dos
+  horas se leía como de cuatro, y el reloj de los checkpoints derivaba igual. Al añadir
+  `last_run` se le puso el sello UTC y a los campos anteriores no, así que quedó a medias.
+  Ahora todo lo que sale de `api/geo.py` pasa por `_as_utc`. Sin cambios en el frontend:
+  `relTime` calcula bien en cuanto la cadena lleva `Z`.
+  *(Queda el mismo patrón en `options.py` y `fiscal.py`, donde solo se pintan fechas
+  absolutas y el desplazamiento no se ve; fuera del alcance de este cambio.)*
+
 #### Changed
 - `POST /geo/cron` responde **500** cuando hay usuarios y ningún ciclo termina. Antes
   devolvía 200 "done" sobre un pipeline que fallaba en todas las llamadas, así que Cloud

@@ -37,6 +37,23 @@ def _ev(value) -> str:
     return value.value if hasattr(value, "value") else value
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Stamp UTC on a timestamp read back from the DB.
+
+    Every DateTime column here is naive and written from
+    `datetime.now(timezone.utc)`, so an unstamped value serializes as
+    "2026-09-04T10:00:00" and `new Date(...)` in the browser reads it as *local*
+    time. Every age the page renders was therefore off by the viewer's offset:
+    from Madrid a signal two hours old showed as four, and the checkpoint clock
+    drifted the same way. Any timestamp leaving this module goes through here.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[GeoRuleOut]:
     """Matched rules with their learned (not just base) confidence.
 
@@ -131,32 +148,19 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
         checkpoints=[
             GeoCheckpointOut(
                 horizon=_ev(c.horizon),
-                targetAt=c.target_at,
+                targetAt=_as_utc(c.target_at),
                 score=float(c.score) if c.score is not None else None,
                 outcome=_ev(c.outcome) if c.outcome is not None else None,
                 detail=c.detail,
-                evaluatedAt=c.evaluated_at,
+                evaluatedAt=_as_utc(c.evaluated_at),
             )
             for c in checkpoints
         ],
-        timestamp=signal.created_at,
+        timestamp=_as_utc(signal.created_at),
         status=_ev(signal.status),
         source=signal.source or "",
         sourceUrl=_source_url(signal.raw_json),
     )
-
-
-def _as_utc(value: datetime) -> datetime:
-    """Stamp UTC on a timestamp read back from the DB.
-
-    The columns are naive (`DateTime`, written from `datetime.now(timezone.utc)`),
-    so without this the API serializes "2026-09-04T10:00:00" and the browser reads
-    it as *local* time — the age of the last cycle would be off by the viewer's
-    offset, which is the one number the health line exists to get right.
-    """
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
 
 
 def _serialize_run(run: GeoCycleRun | None) -> GeoCycleRunOut | None:
@@ -374,6 +378,6 @@ def scheduler_status(db: DbSession, user: CurrentUser):
         interval_minutes=settings.geo_monitor_interval_minutes,
         total_signals=total,
         active_signals=active,
-        last_signal_at=latest.created_at if latest else None,
+        last_signal_at=_as_utc(latest.created_at) if latest else None,
         last_run=_serialize_run(run),
     )

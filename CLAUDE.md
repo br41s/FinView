@@ -30,7 +30,7 @@ need it before touching code.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 868 collected (705 pass, 163 skip without real broker PDFs/CSVs in files/) · vitest · 59 frontend tests |
+| Tests | pytest · 872 collected (709 pass, 163 skip without real broker PDFs/CSVs in files/) · vitest · 59 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -149,7 +149,7 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 868 collected (all under `backend/tests/`). 163 skip when the real
+Backend: `pytest` — 872 collected (all under `backend/tests/`). 163 skip when the real
 broker files in `files/` are absent (not in repo — worktrees skip them; the main machine
 runs them). Full run is ~20s.
 

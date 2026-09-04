@@ -1,13 +1,14 @@
 """Tests for geo-intel API serialization: matched rules and null-safe checkpoints/tickers."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.api.geo import (
+    _as_utc,
     _balance_ids_by_category,
     _load_rule_stats,
     _matched_rules,
@@ -299,3 +300,59 @@ def test_serialize_run_marks_naive_timestamps_as_utc(db):
     assert out.started_at.tzinfo is not None
     assert out.started_at.utcoffset().total_seconds() == 0
     assert out.model_dump_json().startswith('{"started_at":"2026-09-04T10:00:00Z"')
+
+
+# ── UTC on every timestamp the API emits ────────────────────────────
+
+
+def test_serialize_stamps_utc_on_signal_and_checkpoint_times(db):
+    """Naive timestamps make the browser compute every age wrong.
+
+    `new Date("2026-09-04T12:00:00")` is local in every browser, so from Madrid
+    a signal two hours old rendered as four in the feed, and the checkpoint clock
+    drifted by the same offset. Only `last_run` was stamped when it was added;
+    the fields that predate it were not.
+    """
+    signal = _signal()
+    signal.created_at = datetime(2026, 9, 4, 12, 0)  # naive, as read back
+    signal.checkpoints.append(
+        GeoCheckpoint(
+            signal_id=1,
+            user_id=1,
+            horizon="1h",
+            target_at=datetime(2026, 9, 4, 13, 0),
+            evaluated_at=datetime(2026, 9, 4, 13, 5),
+        )
+    )
+    db.add(signal)
+    db.commit()
+
+    out = _serialize(signal, {})
+
+    assert out.timestamp.utcoffset().total_seconds() == 0
+    assert out.checkpoints[0].targetAt.utcoffset().total_seconds() == 0
+    assert out.checkpoints[0].evaluatedAt.utcoffset().total_seconds() == 0
+    assert '"timestamp":"2026-09-04T12:00:00Z"' in out.model_dump_json()
+
+
+def test_serialize_keeps_a_pending_checkpoint_unevaluated(db):
+    """The UTC stamp must not turn "not evaluated yet" into a date."""
+    signal = _signal()
+    signal.created_at = datetime(2026, 9, 4, 12, 0)
+    signal.checkpoints.append(
+        GeoCheckpoint(
+            signal_id=1, user_id=1, horizon="7d", target_at=datetime(2026, 9, 11, 12, 0)
+        )
+    )
+    db.add(signal)
+    db.commit()
+
+    assert _serialize(signal, {}).checkpoints[0].evaluatedAt is None
+
+
+def test_as_utc_does_not_shift_an_already_aware_timestamp():
+    """Idempotent: a value that already carries an offset keeps its instant."""
+    madrid = timezone(timedelta(hours=2))
+    aware = datetime(2026, 9, 4, 14, 0, tzinfo=madrid)
+    assert _as_utc(aware) == datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+    assert _as_utc(None) is None
