@@ -104,6 +104,15 @@
 }
 
 /* Post image containers */
+.postImgAccionesFraccionadas {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: radial-gradient(circle at 72% 44%, rgba(154,107,31,0.18) 0 18%, transparent 19%), linear-gradient(135deg, rgba(154,107,31,0.07) 0%, rgba(31,27,22,0.06) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .postImgDividendosFranceses {
   height: 200px;
   border-radius: 12px 12px 0 0;

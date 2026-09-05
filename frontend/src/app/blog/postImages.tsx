@@ -1777,7 +1777,34 @@ function ImgDividendosItalianos() {
   );
 }
 
+function ImgAccionesFraccionadas() {
+  return (
+    <div className={styles.postImgAccionesFraccionadas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ACCIÓN ENTERA · FRACCIONES · IRPF</text>
+        <rect x="18" y="30" width="54" height="56" rx="7" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="45" y="51" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1,00</text>
+        <text x="45" y="65" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acción</text>
+        <text x="45" y="77" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">custodia</text>
+        <path d="M78 58H110" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m104 52 7 6-7 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <g>
+          <circle cx="134" cy="43" r="13" fill="var(--fv-ochre)" />
+          <text x="134" y="47" fontSize="8" fill="#fff" fontFamily="system-ui" textAnchor="middle">0,4</text>
+          <circle cx="161" cy="43" r="13" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+          <text x="161" y="47" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0,3</text>
+          <circle cx="147" cy="76" r="13" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+          <text x="147" y="80" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0,3</text>
+        </g>
+        <text x="147" y="103" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">FIFO + dividendos</text>
+        <text x="100" y="116" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">la fracción no elimina el hecho fiscal</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'acciones-fraccionadas-irpf-espana': ImgAccionesFraccionadas,
   'dividendos-italianos-espana': ImgDividendosItalianos,
   'dividendos-alemanes-espana': ImgDividendosAlemanes,
   'fiscalidad-crowdlending-p2p-20260902': ImgFiscalidadCrowdlendingP2p,

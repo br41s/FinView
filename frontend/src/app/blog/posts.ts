@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'acciones-fraccionadas-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '04 sep 2026',
+    readTime: '10 min',
+    title: 'Acciones fraccionadas en España: cómo tributan en el IRPF',
+    excerpt: 'Comprar 0,17 acciones no cambia las reglas de Hacienda. Cómo distinguir una acción real de un derivado, aplicar FIFO, declarar dividendos y revisar el Modelo 720.',
+  },
+  {
     slug: 'dividendos-italianos-espana',
     tag: 'Fiscalidad',
     date: '03 sep 2026',
