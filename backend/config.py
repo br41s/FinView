@@ -69,7 +69,13 @@ class Settings(BaseSettings):
     # degrades that single source to empty rather than failing the cycle.
     firms_map_key: str = ""        # NASA FIRMS (wildfires)
     windy_api_key: str = ""        # Windy point-forecast (meteo)
-    opensky_username: str = ""     # OpenSky Network (flights) — optional auth
+    # OpenSky Network (flights). The portal issues OAuth2 client credentials;
+    # the username/password pair below is the legacy basic-auth path, kept as a
+    # fallback for accounts that still have it. Anonymous works but is heavily
+    # rate-limited, which is indistinguishable from "no flights today".
+    opensky_client_id: str = ""
+    opensky_client_secret: str = ""
+    opensky_username: str = ""     # legacy basic auth
     opensky_password: str = ""
     acled_email: str = ""          # ACLED (armed conflict) — needs email + key
     acled_key: str = ""

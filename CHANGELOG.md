@@ -4,6 +4,24 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### OpenSky: credenciales OAuth2 — 2026-09-05
+
+#### Fixed
+- **La autenticación de vuelos no podía funcionar.** El portal de OpenSky emite
+  `client_id` + `client_secret`, y `flights.py` mandaba basic auth con usuario y
+  contraseña. Sin auth válida la API es anónima y está limitada de forma agresiva, así que
+  la fuente leía «sin vuelos» casi siempre — indistinguible de un cielo tranquilo — y las
+  8 reglas `airspace_closure` / `military_surge` parecían muertas sin estarlo. Ahora se
+  intercambian las credenciales por un bearer token (cacheado hasta un minuto antes de
+  caducar) con vuelta atrás a basic auth heredado y, si no, a anónimo. Un fallo del
+  intercambio degrada la fuente; nunca rompe el ciclo.
+- `fetch_json` admite cuerpos `application/x-www-form-urlencoded`: los endpoints OAuth2
+  rechazan JSON.
+
+#### Notes
+- Claves nuevas: `FINVIEW_OPENSKY_CLIENT_ID` y `FINVIEW_OPENSKY_CLIENT_SECRET`, **solo en
+  Cloud Run**. Ninguna clave de ingesta va en Vercel: el frontend no habla con las fuentes.
+
 ### Ideas (geo-intel) volvía a estar muerta — 2026-09-04
 
 La sección llevaba seis semanas sin una señal nueva y sin un solo error a la vista.

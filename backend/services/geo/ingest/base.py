@@ -49,18 +49,24 @@ async def fetch_json(
     method: str = "GET",
     params: dict | None = None,
     json_body: dict | None = None,
+    data: dict | None = None,
     headers: dict | None = None,
     auth: tuple[str, str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> Any | None:
-    """Fetch and JSON-decode a URL. Returns the parsed body, or None on any failure."""
+    """Fetch and JSON-decode a URL. Returns the parsed body, or None on any failure.
+
+    ``data`` sends a form-encoded body (OAuth2 token endpoints want
+    application/x-www-form-urlencoded, not JSON); ``json_body`` sends JSON.
+    """
     merged = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     if headers:
         merged.update(headers)
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             resp = await client.request(
-                method, url, params=params, json=json_body, headers=merged, auth=auth
+                method, url, params=params, json=json_body, data=data,
+                headers=merged, auth=auth,
             )
         if resp.status_code != 200:
             logger.warning("geo ingest %s → HTTP %s", url, resp.status_code)

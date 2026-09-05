@@ -3,12 +3,18 @@
 WorldHawk's route was viewport-driven (adsb.fi primary, OpenSky fallback). The
 server-side geo cycle has no viewport, so we scan the fixed set of regions the
 airspace_closure / military_surge rules care about, via OpenSky's bounding-box
-``states/all`` query, and dedup by icao24. Auth is optional (anonymous OpenSky is
-heavily rate-limited; OPENSKY_USERNAME/PASSWORD lifts the limit).
+``states/all`` query, and dedup by icao24.
+
+Auth is optional but close to mandatory in practice: anonymous OpenSky is rate-limited
+hard enough that the source reads as "no flights" most cycles, which is
+indistinguishable from a quiet sky. OpenSky issues **OAuth2 client credentials**
+(client id + secret), exchanged here for a bearer token; the older
+username/password basic auth is kept as a fallback for accounts that still have it.
 """
 
 import asyncio
 import logging
+import time
 
 from backend.config import settings
 
@@ -18,8 +24,18 @@ from .types import FlightData
 logger = logging.getLogger(__name__)
 
 _OPENSKY_API = "https://opensky-network.org/api/states/all"
+# Keycloak client-credentials endpoint. If OpenSky moves it, this is the one line
+# to change — a wrong URL degrades to anonymous rather than breaking the cycle.
+_TOKEN_URL = (
+    "https://auth.opensky-network.org/auth/realms/opensky-network/"
+    "protocol/openid-connect/token"
+)
+_TOKEN_MARGIN = 60  # refresh this many seconds before the token actually expires
+_DEFAULT_TOKEN_TTL = 1800  # OpenSky's tokens last ~30 min; used if expires_in is absent
 _CACHE_TTL = 60  # 1 minute
 _cache = TTLCache()
+# (access_token, monotonic deadline). Process-local, like every other geo cache.
+_token: tuple[str, float] | None = None
 
 # Regions referenced by air-* rules: (lamin, lamax, lomin, lomax).
 _SCAN_BOXES: dict[str, tuple[float, float, float, float]] = {
@@ -114,10 +130,54 @@ def _transform(states: list[list]) -> list[FlightData]:
     return out
 
 
-async def _fetch_box(box: tuple[float, float, float, float], auth) -> list[FlightData]:
+async def _access_token() -> str | None:
+    """OAuth2 client-credentials bearer token, cached until shortly before expiry.
+
+    Returns None whenever credentials are absent or the exchange doesn't yield a
+    usable token — the caller then falls back to legacy basic auth or anonymous.
+    A token failure must degrade the source, never raise into the cycle.
+    """
+    global _token
+    if not (settings.opensky_client_id and settings.opensky_client_secret):
+        return None
+    if _token is not None and time.monotonic() < _token[1]:
+        return _token[0]
+
+    body = await fetch_json(
+        _TOKEN_URL,
+        method="POST",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": settings.opensky_client_id,
+            "client_secret": settings.opensky_client_secret,
+        },
+    )
+    # A 200 is not a token: validate the shape before trusting it (the same rule
+    # that zone_scorer learned the hard way).
+    if not isinstance(body, dict):
+        logger.warning("OpenSky token exchange failed — falling back to anonymous")
+        return None
+    token = body.get("access_token")
+    if not isinstance(token, str) or not token.strip():
+        logger.warning(
+            "OpenSky token response carried no access_token (keys=%s)", sorted(body)
+        )
+        return None
+
+    try:
+        ttl = float(body.get("expires_in") or _DEFAULT_TOKEN_TTL)
+    except (TypeError, ValueError):
+        ttl = _DEFAULT_TOKEN_TTL
+    _token = (token, time.monotonic() + max(ttl - _TOKEN_MARGIN, 30))
+    return token
+
+
+async def _fetch_box(
+    box: tuple[float, float, float, float], auth, headers: dict | None = None
+) -> list[FlightData]:
     lamin, lamax, lomin, lomax = box
     params = {"lamin": lamin, "lamax": lamax, "lomin": lomin, "lomax": lomax}
-    data = await fetch_json(_OPENSKY_API, params=params, auth=auth)
+    data = await fetch_json(_OPENSKY_API, params=params, auth=auth, headers=headers)
     if not data:
         return []
     return _transform(data.get("states") or [])
@@ -128,12 +188,16 @@ async def fetch_flights() -> list[FlightData]:
     if cached is not None:
         return cached
 
+    headers: dict | None = None
     auth = None
-    if settings.opensky_username and settings.opensky_password:
+    token = await _access_token()
+    if token:
+        headers = {"Authorization": f"Bearer {token}"}
+    elif settings.opensky_username and settings.opensky_password:
         auth = (settings.opensky_username, settings.opensky_password)
 
     settled = await asyncio.gather(
-        *(_fetch_box(box, auth) for box in _SCAN_BOXES.values()),
+        *(_fetch_box(box, auth, headers) for box in _SCAN_BOXES.values()),
         return_exceptions=True,
     )
 
