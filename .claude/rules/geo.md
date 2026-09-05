@@ -140,7 +140,12 @@ a miss, not a result.
 
 ### Env keys (Cloud Run)
 Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KEY`,
-`FINVIEW_ACLED_EMAIL/KEY`, `FINVIEW_OPENSKY_USERNAME/PASSWORD` (all optional).
+`FINVIEW_ACLED_EMAIL/KEY`, `FINVIEW_OPENSKY_CLIENT_ID/SECRET` (all optional).
+OpenSky moved to **OAuth2 client credentials**: `flights.py` exchanges them for a bearer
+token at `_TOKEN_URL` (cached until ~1 min before expiry) and falls back to the legacy
+`FINVIEW_OPENSKY_USERNAME/PASSWORD` basic auth, then to anonymous. Anonymous is
+rate-limited hard enough to read as "no flights", which is why 8 air-* rules can look
+dead with nothing wrong. **Every ingest key is backend-only — Cloud Run, never Vercel.**
 Notifications: `FINVIEW_NTFY_TOPIC`, `FINVIEW_TELEGRAM_BOT_TOKEN/CHAT_ID`,
 `FINVIEW_NOTIFY_EMAIL_FROM/TO/PASSWORD` — unset = channel silently no-ops.
 Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header). One secret, shared by

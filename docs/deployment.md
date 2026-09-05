@@ -54,6 +54,23 @@ Configuradas via `gcloud run services update --set-env-vars`:
 
 Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes geo) declaradas en [backend/config.py](../backend/config.py). `gcloud run deploy` preserva las env vars existentes si no se pasa `--set-env-vars` ni `--clear-env-vars`.
 
+> **Las claves de ingesta van solo aquí, nunca en Vercel.** El frontend no habla con
+> ninguna fuente: el navegador llama a `/api`, eso va a `BACKEND_URL` y el ciclo geo corre
+> en Cloud Run. Vercel solo necesita `BACKEND_URL`, `AUTH_SECRET`, `NEXT_PUBLIC_SITE_URL`,
+> los dos `NEXT_PUBLIC_STRIPE_PRICE_*` y `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (la clave
+> *pública* de Turnstile; el secreto es de backend).
+>
+> Tras un `gcloud run services update --update-env-vars`, **comprueba qué revisión sirve**:
+> el rollout fija el tráfico con `--to-revisions`, así que la revisión nueva puede quedarse
+> a 0 % y las claves no llegan a producción. `--to-latest` lo resuelve.
+
+| Clave de fuente | Qué desbloquea | Sin ella |
+|---|---|---|
+| `FINVIEW_FIRMS_MAP_KEY` | 5 reglas de incendio | `fire` no se emite nunca |
+| `FINVIEW_OPENSKY_CLIENT_ID` + `_SECRET` | 8 reglas de espacio aéreo y presencia militar | Anónimo: limitado hasta leerse como «sin vuelos» |
+| `FINVIEW_WINDY_API_KEY` | 11 reglas de clima extremo | Ninguna se evalúa. ~480 llamadas/día de un presupuesto de ~500 |
+| `FINVIEW_ACLED_EMAIL` + `_KEY` | 0 reglas en exclusiva | GDELT ya cubre sus 6 categorías; ACLED solo añade precisión |
+
 ---
 
 ## Cloud Scheduler — los pipelines NO corren sin esto
