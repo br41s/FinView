@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-britanicos-espana',
+    tag: 'Fiscalidad',
+    date: '06 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos británicos en España: el 0 % de retención tiene una excepción',
+    excerpt: 'Las acciones británicas suelen pagar sin retención, pero los REIT pueden descontar por sus PID. Cómo distinguir ambos cobros y reclamar el exceso a HMRC.',
+  },
+  {
     slug: 'acciones-fraccionadas-irpf-espana',
     tag: 'Fiscalidad',
     date: '04 sep 2026',
