@@ -1777,6 +1777,28 @@ function ImgDividendosItalianos() {
   );
 }
 
+function ImgDividendosBritanicos() {
+  return (
+    <div className={styles.postImgDividendosBritanicos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">REINO UNIDO · 0 % vs PID</text>
+        <path d="M18 92h164" stroke="var(--fv-ink-20)" strokeWidth="1" />
+        <rect x="24" y="35" width="62" height="57" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="55" y="51" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">ORDINARIO</text>
+        <text x="55" y="67" fontSize="13" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0 %</text>
+        <text x="55" y="82" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">sin retención</text>
+        <path d="M96 64h18" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m110 58 7 6-7 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="120" y="27" width="58" height="65" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="149" y="45" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">REIT · PID</text>
+        <path d="M137 75V55M149 75V49M161 75V59" stroke="var(--fv-ochre)" strokeWidth="5" strokeLinecap="round" />
+        <text x="149" y="87" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">15 % convenio</text>
+        <text x="100" y="111" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">mira el tax voucher antes de declarar</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgAccionesFraccionadas() {
   return (
     <div className={styles.postImgAccionesFraccionadas}>
@@ -1804,6 +1826,7 @@ function ImgAccionesFraccionadas() {
 }
 
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-britanicos-espana': ImgDividendosBritanicos,
   'acciones-fraccionadas-irpf-espana': ImgAccionesFraccionadas,
   'dividendos-italianos-espana': ImgDividendosItalianos,
   'dividendos-alemanes-espana': ImgDividendosAlemanes,

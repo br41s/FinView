@@ -1064,3 +1064,12 @@
   align-items: center;
   justify-content: center;
 }
+
+.postImgDividendosBritanicos {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(35deg, rgba(154,107,31,0.14) 0%, rgba(31,27,22,0.05) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
