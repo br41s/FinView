@@ -4,6 +4,43 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### El auditor puntuaba mal: 0% de acierto por construcción — 2026-09-06
+
+#### Fixed
+- **Un precio que no se mueve contaba como fallo.** `prices.py` devuelve el **cierre
+  diario**, así que en los checkpoints de +1h y +6h el auditor comparaba ese cierre
+  consigo mismo: variación exactamente 0,00%. Esa cifra entraba en el denominador y no
+  podía entrar nunca en el numerador, así que la cesta puntuaba 0 y **dos de los cinco
+  checkpoints salían en rojo por construcción**. La precisión leía 0% sin que ninguna
+  tesis hubiera fallado. Ahora un movimiento por debajo del umbral legible queda **fuera
+  de la cesta** en vez de contar en contra: si nada se movió, el checkpoint es NEUTRAL
+  («sin nada medible»), que es lo que de verdad ocurrió.
+- **El silencio se castigaba igual que el error.** El checkpoint de +7d resolvía la señal
+  y llamaba a `_update_rule_stats` con `is_correct=False` incluso cuando no había
+  puntuación, restando 0,03 de confianza a cada regla implicada. Una docena de esas y la
+  regla quedaba clavada en el suelo de −0,30, con menos importancia y por debajo del
+  umbral de aviso. Ahora solo aprende de resoluciones con puntuación real.
+
+#### Added
+- **Precios intradía para geo.** `fetch_ticker_prices` resuelve primero barras de 5
+  minutos (5 sesiones, para cubrir fines de semana y festivos) y cae al cierre diario
+  **por símbolo**, no por lote: un valor poco líquido sin barras intradía conserva precio
+  en vez de desaparecer de la cesta. Ahora los dos extremos de cada medición —el precio
+  que se estampa en la señal y el que el auditor compara— son intradía, así que +1h y +6h
+  miden por fin un movimiento real. La ruta de cartera **sigue en cierres diarios**: su
+  caché es una fila por ISIN y día emparejada con el tipo del BCE de ese mismo día.
+- El manejo de formas de columna de yfinance (Serie con un ticker, DataFrame MultiIndex
+  con varios) se extrae a `_last_closes`, compartido por ambas resoluciones y con tests
+  de las formas reales, incluida una columna entera a NaN.
+
+#### Notes
+- Los checkpoints ya evaluados conservan su veredicto: se puntúan una sola vez y
+  repuntuarlos hoy mediría una ventana distinta. Lo que sí conviene revisar es
+  `geo_rule_stats.confidence_mod`, que arrastra el castigo acumulado.
+- Un movimiento de una hora suele quedar por debajo del ±0,1% legible, así que +1h seguirá
+  siendo NEUTRAL a menudo — pero ahora porque el mercado no se movió, no porque el
+  puntuador no supiera mirar.
+
 ### OpenSky: credenciales OAuth2 — 2026-09-05
 
 #### Fixed

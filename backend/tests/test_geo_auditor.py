@@ -146,3 +146,93 @@ def test_non_final_horizon_evaluates_but_leaves_signal_active(db, monkeypatch):
     assert chk.outcome is not None
     signal = db.get(GeoSignal, signal_id)
     assert _status(signal) == GeoSignalStatus.ACTIVE.value
+
+
+# ── A flat price is undetermined, not wrong ──────────────────────────
+
+
+def _ticker(symbol="XLE", direction="bullish", price_at_signal=100.0):
+    return GeoSignalTicker(
+        symbol=symbol, direction=direction, price_at_signal=price_at_signal, resolved=True
+    )
+
+
+def _basket(*tickers):
+    signal = GeoSignal(
+        user_id=1,
+        event_type="earthquake",
+        display_category="earthquake",
+        source="usgs",
+        external_id="ev-score",
+        headline="M6.4 quake",
+        location="chile",
+        lat=-23.0,
+        lng=-70.0,
+        importance=60,
+        confidence=0.7,
+        risk_score=6,
+        direction="bullish",
+        status="active",
+    )
+    for t in tickers:
+        signal.tickers.append(t)
+    return signal
+
+
+def test_an_unmoved_price_is_not_scored_as_a_miss():
+    """The +1h and +6h checkpoints were unwinnable.
+
+    prices.py returns the last *daily close*, so an intraday checkpoint compares
+    that close against itself: change is exactly 0.00%. That counted in the
+    denominator without ever counting as correct, so every basket scored 0 and
+    both intraday horizons went red by construction.
+    """
+    signal = _basket(_ticker(price_at_signal=100.0))
+
+    score, detail, total = auditor._score_basket(signal, {"XLE": 100.0})
+
+    assert score is None, "a flat close is undetermined, not incorrect"
+    assert total == 0
+    assert "XLE: +0.00%" in detail, "the move is still reported"
+
+
+def test_a_move_inside_the_dead_zone_is_excluded_too():
+    signal = _basket(_ticker(price_at_signal=100.0))
+    score, _, total = auditor._score_basket(signal, {"XLE": 100.05})
+    assert (score, total) == (None, 0)
+
+
+def test_only_the_tickers_that_moved_form_the_denominator():
+    """One real hit and one flat ticker is 100%, not 50%."""
+    signal = _basket(
+        _ticker("XLE", "bullish", 100.0),
+        _ticker("USO", "bullish", 50.0),
+    )
+
+    score, _, total = auditor._score_basket(signal, {"XLE": 103.0, "USO": 50.0})
+
+    assert total == 1
+    assert score == 100.0
+
+
+def test_a_real_move_the_wrong_way_still_counts_against_the_thesis():
+    signal = _basket(_ticker("XLE", "bearish", 100.0))
+    score, _, total = auditor._score_basket(signal, {"XLE": 104.0})
+    assert (score, total) == (0.0, 1)
+
+
+def test_an_unmeasurable_resolution_does_not_punish_the_rules(db, monkeypatch):
+    """Silence is not failure: a +7d checkpoint that cannot be scored must leave
+    confidence_mod alone rather than charging the rule 0.03 for it."""
+    db.add(GeoRuleStat(rule_id="eq-chile-copper", category="earthquake",
+                       base_confidence=0.7, confidence_mod=0))
+    # price_now == price_at_signal: nothing moved, so nothing is measurable.
+    _mature_signal(db, monkeypatch, GeoHorizon.D7.value, price_now=100.0)
+
+    auditor.evaluate_pending(db, user_id=1)
+
+    stat = db.get(GeoRuleStat, "eq-chile-copper")
+    assert float(stat.confidence_mod) == 0.0
+    assert stat.total_signals == 0
+    # The signal still resolves — it just teaches nothing.
+    assert _status(db.query(GeoSignal).one()) == "resolved"

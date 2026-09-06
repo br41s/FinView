@@ -80,6 +80,17 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   `*_[` and would 400 the Bot API otherwise; keep the escaping).
 - **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
   checkpoint resolves the signal and feeds confidence_mod back into geo_rule_stats.
+  **A ticker that didn't move is excluded from the basket, not counted against it**, and a
+  checkpoint with nothing measurable is NEUTRAL and teaches the rules nothing. Both used to
+  read as failure, and the pair made the accuracy 0% with no thesis having failed: prices
+  were daily closes, so +1h and +6h compared a close against itself (0.00%), scored 0, went
+  red by construction — and the +7d resolution then charged every matched rule 0.03 for the
+  unscored outcome, pinning rules at the -0.30 floor.
+  Both ends of a measurement now come from intraday bars: `fetch_ticker_prices` resolves
+  5-minute bars first and falls back to the daily close **per symbol**, so a thin listing
+  keeps a price instead of leaving the basket. The portfolio path
+  (`fetch_and_cache_prices`) stays on daily closes — one row per ISIN per day paired with
+  that day's ECB rate. Don't switch it.
 
 ### Scheduling — prod runs on external cron, NOT APScheduler
 The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives
