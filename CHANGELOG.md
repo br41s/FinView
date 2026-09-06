@@ -4,6 +4,30 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### El auditor puntuaba mal: 0% de acierto por construcción — 2026-09-06
+
+#### Fixed
+- **Un precio que no se mueve contaba como fallo.** `prices.py` devuelve el **cierre
+  diario**, así que en los checkpoints de +1h y +6h el auditor comparaba ese cierre
+  consigo mismo: variación exactamente 0,00%. Esa cifra entraba en el denominador y no
+  podía entrar nunca en el numerador, así que la cesta puntuaba 0 y **dos de los cinco
+  checkpoints salían en rojo por construcción**. La precisión leía 0% sin que ninguna
+  tesis hubiera fallado. Ahora un movimiento por debajo del umbral legible queda **fuera
+  de la cesta** en vez de contar en contra: si nada se movió, el checkpoint es NEUTRAL
+  («sin nada medible»), que es lo que de verdad ocurrió.
+- **El silencio se castigaba igual que el error.** El checkpoint de +7d resolvía la señal
+  y llamaba a `_update_rule_stats` con `is_correct=False` incluso cuando no había
+  puntuación, restando 0,03 de confianza a cada regla implicada. Una docena de esas y la
+  regla quedaba clavada en el suelo de −0,30, con menos importancia y por debajo del
+  umbral de aviso. Ahora solo aprende de resoluciones con puntuación real.
+
+#### Notes
+- Los checkpoints ya evaluados conservan su veredicto: se puntúan una sola vez y
+  repuntuarlos hoy mediría una ventana distinta. Lo que sí conviene revisar es
+  `geo_rule_stats.confidence_mod`, que arrastra el castigo acumulado.
+- Con este cambio +1h y +6h quedarán casi siempre en NEUTRAL: un cierre diario no puede
+  medir una hora. Puntuarlos de verdad exige un precio intradía — cambio aparte.
+
 ### OpenSky: credenciales OAuth2 — 2026-09-05
 
 #### Fixed

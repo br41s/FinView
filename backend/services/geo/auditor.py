@@ -35,7 +35,9 @@ _HORIZON_DELAYS: dict[str, timedelta] = {
     GeoHorizon.D7.value: timedelta(days=7),
 }
 _FINAL_HORIZON = GeoHorizon.D7.value
-_MIN_MOVE_PCT = 0.1  # % move to count a ticker as directionally correct
+# Below this move a ticker is unreadable rather than wrong: it is excluded from
+# the basket instead of counting against it.
+_MIN_MOVE_PCT = 0.1  # % move for a ticker to count at all
 _CONFIDENCE_MOD_CLAMP = 0.3
 
 
@@ -70,10 +72,17 @@ def _score_basket(signal: GeoSignal, prices: dict[str, float]) -> tuple[float | 
         direction = getattr(t.direction, "value", t.direction)
         if direction == "neutral":
             continue
+        # A move too small to read is *undetermined*, not wrong, so it stays out of
+        # the denominator entirely. It used to count as a miss, which made the
+        # intraday checkpoints unwinnable: prices.py returns the last **daily
+        # close**, so at +1h and +6h `cur` is the very same close the signal was
+        # priced at, change is exactly 0.00%, and every basket scored 0 → INCORRECT.
+        # Two of the five checkpoints were red by construction, the accuracy read
+        # 0%, and the +7d resolution fed that back into the rules as failure.
+        if abs(change) <= _MIN_MOVE_PCT:
+            continue
         total += 1
-        if (direction == "bullish" and change > _MIN_MOVE_PCT) or (
-            direction == "bearish" and change < -_MIN_MOVE_PCT
-        ):
+        if (direction == "bullish" and change > 0) or (direction == "bearish" and change < 0):
             correct += 1
     if total == 0:
         return None, ", ".join(parts), 0
@@ -150,7 +159,13 @@ def evaluate_pending(db: Session, user_id: int) -> int:
         # +7d resolution branch never ran. Normalize like api/geo.py's _ev() helper.
         if getattr(chk.horizon, "value", chk.horizon) == _FINAL_HORIZON:
             signal.status = GeoSignalStatus.RESOLVED.value
-            _update_rule_stats(db, signal, is_correct=(score is not None and score >= 50))
+            # Only a measurable outcome teaches the rules anything. An unscored
+            # basket (nothing moved, or no price resolved) used to arrive here as
+            # `is_correct=False` and cost every matched rule 0.03 of confidence —
+            # so silence was punished exactly like being wrong, and a dozen of them
+            # pinned a rule at the -0.30 floor.
+            if score is not None:
+                _update_rule_stats(db, signal, is_correct=score >= 50)
 
     if evaluated:
         try:
