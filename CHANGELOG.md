@@ -21,12 +21,25 @@ All notable changes to FinView are documented here.
   regla quedaba clavada en el suelo de −0,30, con menos importancia y por debajo del
   umbral de aviso. Ahora solo aprende de resoluciones con puntuación real.
 
+#### Added
+- **Precios intradía para geo.** `fetch_ticker_prices` resuelve primero barras de 5
+  minutos (5 sesiones, para cubrir fines de semana y festivos) y cae al cierre diario
+  **por símbolo**, no por lote: un valor poco líquido sin barras intradía conserva precio
+  en vez de desaparecer de la cesta. Ahora los dos extremos de cada medición —el precio
+  que se estampa en la señal y el que el auditor compara— son intradía, así que +1h y +6h
+  miden por fin un movimiento real. La ruta de cartera **sigue en cierres diarios**: su
+  caché es una fila por ISIN y día emparejada con el tipo del BCE de ese mismo día.
+- El manejo de formas de columna de yfinance (Serie con un ticker, DataFrame MultiIndex
+  con varios) se extrae a `_last_closes`, compartido por ambas resoluciones y con tests
+  de las formas reales, incluida una columna entera a NaN.
+
 #### Notes
 - Los checkpoints ya evaluados conservan su veredicto: se puntúan una sola vez y
   repuntuarlos hoy mediría una ventana distinta. Lo que sí conviene revisar es
   `geo_rule_stats.confidence_mod`, que arrastra el castigo acumulado.
-- Con este cambio +1h y +6h quedarán casi siempre en NEUTRAL: un cierre diario no puede
-  medir una hora. Puntuarlos de verdad exige un precio intradía — cambio aparte.
+- Un movimiento de una hora suele quedar por debajo del ±0,1% legible, así que +1h seguirá
+  siendo NEUTRAL a menudo — pero ahora porque el mercado no se movió, no porque el
+  puntuador no supiera mirar.
 
 ### OpenSky: credenciales OAuth2 — 2026-09-05
 

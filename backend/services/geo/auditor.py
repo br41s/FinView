@@ -26,7 +26,8 @@ from backend.services.prices import fetch_ticker_prices
 logger = logging.getLogger(__name__)
 
 # Horizon → wait delay (calendar). Intraday horizons are evaluated by the next
-# scheduler tick after they mature (live price), matching WorldHawk's model.
+# scheduler tick after they mature, against an intraday price (prices.py resolves
+# 5-minute bars first) — on daily closes +1h compared a close against itself.
 _HORIZON_DELAYS: dict[str, timedelta] = {
     GeoHorizon.H1.value: timedelta(hours=1),
     GeoHorizon.H6.value: timedelta(hours=6),

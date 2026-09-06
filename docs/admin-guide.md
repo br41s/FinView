@@ -383,7 +383,7 @@ Cuando dos ISINs distintos mapean al mismo ticker de Yahoo Finance (split con ca
 ## 10. Tests
 
 ```bash
-# Todos los tests (723 passed, 163 skipped sin los ficheros reales de broker en files/)
+# Todos los tests (734 passed, 163 skipped sin los ficheros reales de broker en files/)
 pytest backend/tests/ -v
 
 # Solo un módulo
