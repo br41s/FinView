@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-belgas-espana',
+    tag: 'Fiscalidad',
+    date: '07 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos belgas en España: cómo recuperar la retención',
+    excerpt: 'Bélgica puede retener el 30 % de tus dividendos, aunque el convenio con España limita la retención al 15 %. Cómo declarar el bruto y reclamar la diferencia con el formulario 276DIV.',
+  },
+  {
     slug: 'dividendos-britanicos-espana',
     tag: 'Fiscalidad',
     date: '06 sep 2026',

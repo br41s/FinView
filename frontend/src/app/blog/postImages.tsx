@@ -1825,7 +1825,31 @@ function ImgAccionesFraccionadas() {
   );
 }
 
+function ImgDividendosBelgas() {
+  return (
+    <div className={styles.postImgDividendosBelgas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">BÉLGICA · DIVIDENDO · 276DIV</text>
+        <rect x="20" y="34" width="64" height="38" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="52" y="50" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1.000 €</text>
+        <text x="52" y="63" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        <path d="M88 53h25" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m107 47 7 6-7 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="118" y="27" width="62" height="52" rx="6" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="149" y="43" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">30 %</text>
+        <rect x="127" y="49" width="44" height="8" rx="2" fill="var(--fv-ink-30)" />
+        <rect x="127" y="49" width="22" height="8" rx="2" fill="var(--fv-ochre)" />
+        <text x="149" y="70" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">15 % convenio</text>
+        <path d="M100 82v17" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m95 94 5 6 5-6" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="100" y="113" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">reclamas el exceso con 276DIV</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-belgas-espana': ImgDividendosBelgas,
   'dividendos-britanicos-espana': ImgDividendosBritanicos,
   'acciones-fraccionadas-irpf-espana': ImgAccionesFraccionadas,
   'dividendos-italianos-espana': ImgDividendosItalianos,
