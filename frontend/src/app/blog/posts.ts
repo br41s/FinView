@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-suizos-espana',
+    tag: 'Fiscalidad',
+    date: '06 sep 2026',
+    readTime: '9 min',
+    title: 'Dividendos suizos en España: cómo recuperar el 20 % retenido de más',
+    excerpt: 'Suiza retiene el 35 % de los dividendos, pero el convenio con España limita la retención al 15 %. Cómo declarar el bruto y pedir la devolución del exceso.',
+  },
+  {
     slug: 'dividendos-britanicos-espana',
     tag: 'Fiscalidad',
     date: '06 sep 2026',
