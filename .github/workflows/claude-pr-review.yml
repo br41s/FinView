@@ -9,6 +9,10 @@ permissions:
   pull-requests: write
 
 jobs:
+  # This job's status IS the merge gate. Enforcement lives in the final step
+  # rather than a dependent job on purpose: a dependent job is *skipped* when
+  # its `needs` fails, and GitHub can count a skipped check as satisfied.
+  # One job means a failed review can never read as a pass.
   claude-review:
     runs-on: ubuntu-latest
     env:
@@ -23,9 +27,14 @@ jobs:
           fetch-depth: 0
 
       - name: Claude review
-        uses: anthropics/claude-code-action@beta
+        id: review
+        # Pinned to v1: `structured_output` does not exist on the old `beta` tag,
+        # and a moving tag has no business gating merges.
+        uses: anthropics/claude-code-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["pass","fail"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}}},"required":["verdict","summary"]}'
           prompt: |
             Review this pull request as a pragmatic senior engineer.
 
@@ -39,3 +48,54 @@ jobs:
             Keep feedback concise and actionable.
             Do not invent problems.
             If the PR looks good, say so clearly.
+
+            Then return structured output:
+            - verdict: "fail" ONLY if this PR has a blocking defect — a
+              correctness bug, a security issue, or a regression. Style
+              preferences, nits, and "could be nicer" observations are NOT
+              blocking. When in doubt, "pass" and say it in the review.
+            - summary: one sentence explaining the verdict.
+            - blocking_issues: one entry per blocking defect. Empty when passing.
+
+      - name: Enforce auditor verdict
+        if: always() && steps.review.conclusion != 'cancelled'
+        env:
+          # Model output reaches the shell through the environment, never
+          # interpolated into the script body: `${{ }}` inside `run:` is
+          # substituted before bash parses, so a crafted review string would
+          # execute as code.
+          REVIEW_JSON: ${{ steps.review.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${REVIEW_JSON:-}" ]; then
+            echo "::error::Auditor produced no structured output — treating as FAIL."
+            echo "### Auditor: FAIL (no verdict produced)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if ! printf '%s' "$REVIEW_JSON" | jq -e . >/dev/null 2>&1; then
+            echo "::error::Auditor output was not valid JSON — treating as FAIL."
+            echo "### Auditor: FAIL (malformed output)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          verdict=$(printf '%s' "$REVIEW_JSON" | jq -r '.verdict // "fail"')
+          summary=$(printf '%s' "$REVIEW_JSON" | jq -r '.summary // "no summary"')
+
+          {
+            echo "### Auditor verdict: \`${verdict}\`"
+            echo ""
+            echo "${summary}"
+            printf '%s' "$REVIEW_JSON" | jq -r '
+              (.blocking_issues // [])
+              | if length == 0 then empty
+                else "", "**Blocking:**", (.[] | "- " + .)
+                end'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$verdict" != "pass" ]; then
+            echo "::error::Auditor verdict is '${verdict}': ${summary}"
+            exit 1
+          fi
+          echo "Auditor passed: ${summary}"
