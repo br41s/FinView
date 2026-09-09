@@ -1,0 +1,30 @@
+# Paths auto-merge is NEVER allowed to touch.
+#
+# A PR changing any of these must be merged by a human, even when the auditor
+# passes and every check is green. One glob per line; blank lines and #comments
+# ignored. Matched with `git diff --name-only base...head` against each pattern.
+#
+# ---- THIS LIST IS YOURS TO OWN ----
+# These are starting suggestions inferred from the repo, not a considered
+# answer. Add anything whose breakage you would not want an unattended merge
+# to cause; remove anything that is just noise.
+
+# CI and the gate itself — a PR must never be able to weaken its own review.
+.github/**
+
+# Deploy and infrastructure config.
+cloudbuild.yaml
+Dockerfile
+**/Dockerfile
+
+# The Cloud Run guard rails and the tests that pin them. These exist because
+# a redeploy once dropped every env var in production.
+scripts/verify_cloud_run_service.py
+backend/tests/test_cloud_run_guard.py
+backend/tests/test_cloudbuild_policy.py
+
+# Dependency manifests — supply chain.
+**/requirements*.txt
+**/package.json
+**/package-lock.json
+**/pyproject.toml

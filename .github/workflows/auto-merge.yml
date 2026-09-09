@@ -1,0 +1,117 @@
+name: Auto-merge on green
+
+# Fallback gate for repos that cannot use branch protection (private repos on
+# the free GitHub plan). On a plan with branch protection, prefer a required
+# `claude-review` check plus native auto-merge and delete this workflow.
+#
+# SECURITY NOTES — read before editing:
+#
+# 1. `workflow_run` deliberately, not `pull_request`. A workflow_run job runs
+#    the DEFAULT BRANCH's copy of this file and of the guard script, so a pull
+#    request cannot edit the merge rules that judge it. Never convert this to
+#    `pull_request`, and never add `ref:` to the checkout below — the default
+#    checkout for a workflow_run event is already the default branch.
+#
+# 2. No PR-controlled string is ever interpolated into a `run:` body. `${{ }}`
+#    substitutes before bash parses, so a crafted branch name or title would
+#    execute as code. Everything reaches the shell through `env:`.
+
+on:
+  workflow_run:
+    workflows: ["Claude PR Review"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+
+      - name: Resolve the pull request
+        id: pr
+        run: |
+          set -euo pipefail
+          num=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/pulls" \
+                  --jq '[.[] | select(.state == "open")][0].number // empty')
+          if [ -z "$num" ]; then
+            echo "No open PR for ${HEAD_SHA}; nothing to merge."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pr=$num" >> "$GITHUB_OUTPUT"
+          echo "Resolved PR #$num"
+
+      - name: Check opt-in label and draft state
+        if: steps.pr.outputs.skip != 'true'
+        id: optin
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          # The `auto-merge` label IS the authorization. Applying a label needs
+          # write access to this repo, so an outside contributor cannot opt
+          # their own PR in — which is why there is no separate author allowlist.
+          is_draft=$(gh pr view "$PR" --repo "$REPO" --json isDraft --jq '.isDraft')
+          labels=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          echo "draft=$is_draft labels=$labels"
+          if [ "$is_draft" = "true" ]; then
+            echo "PR is a draft — not merging."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case ",$labels," in
+            *,auto-merge,*) : ;;
+            *)
+              echo "No 'auto-merge' label — leaving for a human."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+      - name: Guard protected paths
+        if: steps.pr.outputs.skip != 'true' && steps.optin.outputs.skip != 'true'
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          gh pr diff "$PR" --repo "$REPO" --name-only \
+            | python3 .github/scripts/auto_merge_guard.py .github/auto-merge-protected-paths.txt
+
+      - name: Require every other check to be green
+        if: steps.pr.outputs.skip != 'true' && steps.optin.outputs.skip != 'true'
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          # No branch protection means nothing enforces the other checks for
+          # us — so verify them explicitly. Anything still pending counts as
+          # not-green: better to miss a merge than to make a blind one.
+          checks=$(gh pr checks "$PR" --repo "$REPO" --json name,state 2>/dev/null || echo '[]')
+          bad=$(printf '%s' "$checks" | jq -r '[.[] | select(.state != "SUCCESS" and .state != "SKIPPED")] | .[] | "  \(.name): \(.state)"')
+          if [ -n "$bad" ]; then
+            echo "Not merging — checks not green:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "All checks green."
+
+      - name: Merge
+        if: steps.pr.outputs.skip != 'true' && steps.optin.outputs.skip != 'true'
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
+          echo "Merged PR #${PR}" >> "$GITHUB_STEP_SUMMARY"
