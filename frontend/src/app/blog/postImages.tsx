@@ -1845,7 +1845,28 @@ function ImgDividendosSuizos() {
   );
 }
 
+function ImgDividendosBelgas() {
+  return (
+    <div className={styles.postImgDividendosBelgas}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">BÉLGICA · 30 % → 15 % CDI</text>
+        <rect x="24" y="34" width="64" height="42" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="56" y="51" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">30 %</text>
+        <text x="56" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retención</text>
+        <path d="M94 55H135" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="4 3" />
+        <path d="M128 49L136 55L128 61" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" />
+        <rect x="142" y="34" width="34" height="42" rx="4" fill="var(--fv-ochre)" />
+        <text x="159" y="52" fontSize="8" fill="var(--fv-paper)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        <text x="159" y="64" fontSize="5.5" fill="var(--fv-paper)" fontFamily="system-ui" textAnchor="middle">convenio</text>
+        <path d="M42 94H158" stroke="var(--fv-ink-30)" strokeWidth="1" />
+        <text x="100" y="110" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">reclama el exceso con 276DIV</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-belgas-espana': ImgDividendosBelgas,
   'dividendos-suizos-espana': ImgDividendosSuizos,
   'dividendos-britanicos-espana': ImgDividendosBritanicos,
   'acciones-fraccionadas-irpf-espana': ImgAccionesFraccionadas,
