@@ -15,7 +15,9 @@ jobs:
       ANTHROPIC_BASE_URL: https://openrouter.ai/api
       ANTHROPIC_AUTH_TOKEN: ${{ secrets.OPENROUTER_API_KEY }}
       ANTHROPIC_API_KEY: ""
-      ANTHROPIC_MODEL: anthropic/claude-3.7-sonnet
+      # anthropic/claude-3.7-sonnet was retired from OpenRouter. Pinned to a
+      # dated snapshot rather than the floating -latest alias.
+      ANTHROPIC_MODEL: deepseek/deepseek-v4-flash-0731
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Claude review
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
