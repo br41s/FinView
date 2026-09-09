@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-neerlandeses-espana',
+    tag: 'Fiscalidad',
+    date: '10 sep 2026',
+    readTime: '9 min',
+    title: 'Dividendos neerlandeses en España: cómo declararlos',
+    excerpt: 'Países Bajos suele retener el 15 % de tus dividendos. Cómo declarar el bruto en España, revisar el certificado del broker y reclamar si te han cobrado de más.',
+  },
+  {
     slug: 'dividendos-belgas-espana',
     tag: 'Fiscalidad',
     date: '09 sep 2026',

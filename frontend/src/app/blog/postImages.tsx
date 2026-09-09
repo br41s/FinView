@@ -1865,7 +1865,27 @@ function ImgDividendosBelgas() {
   );
 }
 
+function ImgDividendosNeerlandeses() {
+  return (
+    <div className={styles.postImgDividendosNeerlandeses}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">PAÍSES BAJOS · 15 %</text>
+        <rect x="24" y="32" width="56" height="54" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="52" y="52" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1.000 €</text>
+        <text x="52" y="66" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        <path d="M87 59H119" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m113 53 8 6-8 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <rect x="128" y="28" width="48" height="64" rx="6" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" />
+        <rect x="140" y="43" width="24" height="28" rx="3" fill="var(--fv-ochre)" />
+        <text x="152" y="61" fontSize="8" fill="var(--fv-paper)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        <text x="100" y="110" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">declara el bruto · deduce lo admisible</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-neerlandeses-espana': ImgDividendosNeerlandeses,
   'dividendos-belgas-espana': ImgDividendosBelgas,
   'dividendos-suizos-espana': ImgDividendosSuizos,
   'dividendos-britanicos-espana': ImgDividendosBritanicos,
