@@ -19,7 +19,9 @@ jobs:
       ANTHROPIC_BASE_URL: https://openrouter.ai/api
       ANTHROPIC_AUTH_TOKEN: ${{ secrets.OPENROUTER_API_KEY }}
       ANTHROPIC_API_KEY: ""
-      ANTHROPIC_MODEL: anthropic/claude-3.7-sonnet
+      # Pinned snapshot, not the floating `-latest` alias: this model decides
+      # whether PRs merge, so its behaviour should not change underneath us.
+      ANTHROPIC_MODEL: deepseek/deepseek-v4-flash-0731
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
