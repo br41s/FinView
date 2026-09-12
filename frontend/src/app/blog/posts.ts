@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-australianos-espana',
+    tag: 'Fiscalidad',
+    date: '12 sep 2026',
+    readTime: '9 min',
+    title: 'Dividendos australianos en España: franked, unfranked y el crédito que no cobras',
+    excerpt: 'Australia no retiene el dividendo franked a los no residentes, pero tampoco te deja recuperar el franking credit. Cómo distinguirlo del dividendo unfranked y declararlo bien en España.',
+  },
+  {
     slug: 'dividendos-canadienses-espana',
     tag: 'Fiscalidad',
     date: '11 sep 2026',
