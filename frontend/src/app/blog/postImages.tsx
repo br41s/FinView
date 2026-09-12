@@ -1903,7 +1903,28 @@ function ImgDividendosCanadienses() {
   );
 }
 
+function ImgTasaTobin() {
+  return (
+    <div className={styles.postImgTasaTobin}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">COMPRA · ITF ESPAÑOL</text>
+        <rect x="22" y="34" width="62" height="46" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="53" y="53" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">10.000 €</text>
+        <text x="53" y="67" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acciones españolas</text>
+        <path d="M91 57H119" stroke="var(--fv-ochre)" strokeWidth="1.8" strokeDasharray="4 3" />
+        <path d="M112 50L121 57L112 64" stroke="var(--fv-ochre)" strokeWidth="1.8" fill="none" />
+        <circle cx="151" cy="57" r="29" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <circle cx="151" cy="57" r="20" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1" />
+        <text x="151" y="54" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0,2 %</text>
+        <text x="151" y="67" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">= 20 €</text>
+        <text x="100" y="108" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">se suma al coste de adquisición</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'tasa-tobin-inversores-20260912': ImgTasaTobin,
   'dividendos-canadienses-espana': ImgDividendosCanadienses,
   'dividendos-neerlandeses-espana': ImgDividendosNeerlandeses,
   'dividendos-belgas-espana': ImgDividendosBelgas,

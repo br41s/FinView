@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'tasa-tobin-inversores-20260912',
+    tag: 'Fiscalidad',
+    date: '12 sep 2026',
+    readTime: '9 min',
+    title: 'Tasa Tobin en España: cuánto pagas al comprar acciones',
+    excerpt: 'La Tasa Tobin grava con un 0,2 % algunas compras de acciones españolas. Qué valores están sujetos, cómo aparece en tu broker y qué operaciones quedan fuera.',
+  },
+  {
     slug: 'dividendos-canadienses-espana',
     tag: 'Fiscalidad',
     date: '11 sep 2026',
