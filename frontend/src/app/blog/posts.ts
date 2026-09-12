@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-canadienses-espana',
+    tag: 'Fiscalidad',
+    date: '11 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos canadienses en España: cómo evitar el 25 % de retención',
+    excerpt: 'Canadá aplica un 25 % a los dividendos de no residentes, pero el convenio con España limita la retención al 15 %. Cómo revisar el NR301 y declarar el bruto en el IRPF.',
+  },
+  {
     slug: 'dividendos-neerlandeses-espana',
     tag: 'Fiscalidad',
     date: '10 sep 2026',

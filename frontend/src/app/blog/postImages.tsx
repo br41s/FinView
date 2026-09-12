@@ -1884,7 +1884,27 @@ function ImgDividendosNeerlandeses() {
   );
 }
 
+function ImgDividendosCanadienses() {
+  return (
+    <div className={styles.postImgDividendosCanadienses}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">CANADÁ · 25 % → 15 % CDI</text>
+        <rect x="15" y="32" width="52" height="54" rx="6" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none" />
+        <text x="41" y="52" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">NORMA</text>
+        <text x="41" y="70" fontSize="12" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">25 %</text>
+        <path d="M74 59H119" stroke="var(--fv-ochre)" strokeWidth="1.8" strokeDasharray="4 3" />
+        <path d="M112 52L121 59L112 66" stroke="var(--fv-ochre)" strokeWidth="1.8" fill="none" />
+        <path d="M146 28L177 40V67C177 83 161 94 146 99C131 94 115 83 115 67V40L146 28Z" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="146" y="60" fontSize="11" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        <text x="146" y="73" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">CONVENIO</text>
+        <text x="100" y="112" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">NR301 · beneficiario efectivo</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-canadienses-espana': ImgDividendosCanadienses,
   'dividendos-neerlandeses-espana': ImgDividendosNeerlandeses,
   'dividendos-belgas-espana': ImgDividendosBelgas,
   'dividendos-suizos-espana': ImgDividendosSuizos,
