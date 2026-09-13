@@ -1903,7 +1903,27 @@ function ImgDividendosCanadienses() {
   );
 }
 
+function ImgDividendosAustralianos() {
+  return (
+    <div className={styles.postImgDividendosAustralianos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="16" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">DIVIDENDO AUSTRALIANO</text>
+        <rect x="22" y="34" width="66" height="42" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5"/>
+        <text x="55" y="51" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">FRANKED</text>
+        <text x="55" y="65" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retención 0 %</text>
+        <rect x="112" y="34" width="66" height="42" rx="6" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5"/>
+        <text x="145" y="51" fontSize="8" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">UNFRANKED</text>
+        <text x="145" y="65" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">hasta 15 %</text>
+        <path d="M88 55 H112" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2"/>
+        <text x="100" y="101" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">el crédito australiano no se devuelve</text>
+        <text x="100" y="113" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">declara el bruto en España</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-australianos-espana': ImgDividendosAustralianos,
   'dividendos-canadienses-espana': ImgDividendosCanadienses,
   'dividendos-neerlandeses-espana': ImgDividendosNeerlandeses,
   'dividendos-belgas-espana': ImgDividendosBelgas,
