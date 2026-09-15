@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-daneses-espana',
+    tag: 'Fiscalidad',
+    date: '14 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos daneses en España: cómo recuperar la retención',
+    excerpt: 'Dinamarca puede retener el 27 % de tus dividendos. Qué dice Hacienda, cómo declararlos en España y cómo pedir la devolución a Skattestyrelsen.',
+  },
+  {
     slug: 'dividendos-australianos-espana',
     tag: 'Fiscalidad',
     date: '12 sep 2026',
