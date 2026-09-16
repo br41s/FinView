@@ -1943,7 +1943,29 @@ function ImgDividendosDaneses() {
   );
 }
 
+function ImgDividendosNoruegos() {
+  return (
+    <div className={styles.postImgDividendosNoruegos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">NORUEGA · 25 % → 15 % CDI</text>
+        <rect x="16" y="31" width="58" height="57" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="45" y="51" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">25 %</text>
+        <text x="45" y="65" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retención</text>
+        <text x="45" y="78" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">en origen</text>
+        <path d="M80 59H111" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m105 53 8 6-8 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="122" y="28" width="62" height="64" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="153" y="47" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">tope CDI</text>
+        <text x="153" y="63" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        <text x="153" y="78" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">10 puntos</text>
+        <text x="100" y="111" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el exceso se reclama a Skatteetaten</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-noruegos-espana': ImgDividendosNoruegos,
   'dividendos-daneses-espana': ImgDividendosDaneses,
   'dividendos-australianos-espana': ImgDividendosAustralianos,
   'dividendos-canadienses-espana': ImgDividendosCanadienses,

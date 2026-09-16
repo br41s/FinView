@@ -44,6 +44,14 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-noruegos-espana',
+    tag: 'Fiscalidad',
+    date: '16 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos noruegos en España: cómo recuperar el 25 % retenido',
+    excerpt: 'Noruega retiene el 25 % de tus dividendos, pero el convenio con España limita la retención al 15 %. Cómo declarar el bruto en el IRPF y pedir la devolución del exceso a Skatteetaten.',
+  },
+  {
     slug: 'dividendos-daneses-espana',
     tag: 'Fiscalidad',
     date: '14 sep 2026',
