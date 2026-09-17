@@ -1999,7 +1999,35 @@ function ImgDividendosIrlandeses() {
   );
 }
 
+function ImgDividendosPortugueses() {
+  return (
+    <div className={styles.postImgDividendosPortugueses}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">PORTUGAL · 28 % → 15 % → IRPF</text>
+        <rect x="12" y="30" width="52" height="58" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="38" y="48" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1.000 €</text>
+        <text x="38" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        <text x="38" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">−280 €</text>
+        <path d="M66 59h15" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m75 53 8 6-8 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="84" y="42" width="34" height="34" rx="3" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="101" y="58" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">22-RFI</text>
+        <text x="101" y="68" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">DSRI</text>
+        <text x="101" y="88" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">2 años</text>
+        <path d="M120 59h15" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m129 53 8 6-8 6" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="138" y="30" width="50" height="58" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="163" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">AEAT</text>
+        <text x="163" y="62" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">art. 80</text>
+        <text x="163" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        <text x="100" y="111" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el exceso se reclama a Lisboa, no a Hacienda</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-portugueses-espana': ImgDividendosPortugueses,
   'dividendos-irlandeses-espana': ImgDividendosIrlandeses,
   'dividendos-noruegos-espana': ImgDividendosNoruegos,
   'dividendos-daneses-espana': ImgDividendosDaneses,
