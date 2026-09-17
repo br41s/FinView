@@ -1964,7 +1964,43 @@ function ImgDividendosNoruegos() {
   );
 }
 
+function ImgDividendosIrlandeses() {
+  const leaves = [
+    { cx: 22, cy: 30 },
+    { cx: 33, cy: 30 },
+    { cx: 27.5, cy: 22 },
+  ];
+  return (
+    <div className={styles.postImgDividendosIrlandeses}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">IRLANDA · 25 % → 0 %</text>
+        {leaves.map((leaf) => (
+          <circle key={`${leaf.cx}-${leaf.cy}`} cx={leaf.cx} cy={leaf.cy} r="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        ))}
+        <path d="M27.5 28v17" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <circle cx="45" cy="66" r="17" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <text x="45" y="64" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">25 %</text>
+        <text x="45" y="75" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retención</text>
+        <text x="45" y="96" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">empresa irlandesa</text>
+        <path d="M64 66h11" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m71 61 6 5-6 5" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="83" y="48" width="34" height="37" rx="3" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="100" y="63" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">V2A</text>
+        <path d="M89 70h22M89 76h16" stroke="var(--fv-ochre)" strokeWidth="1" />
+        <text x="100" y="96" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">exención en origen</text>
+        <path d="M119 66h11" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m126 61 6 5-6 5" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="156" cy="66" r="15" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" />
+        <text x="156" y="64" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">0 %</text>
+        <text x="156" y="75" fontSize="5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">exento</text>
+        <text x="156" y="96" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">dividendo íntegro</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-irlandeses-espana': ImgDividendosIrlandeses,
   'dividendos-noruegos-espana': ImgDividendosNoruegos,
   'dividendos-daneses-espana': ImgDividendosDaneses,
   'dividendos-australianos-espana': ImgDividendosAustralianos,

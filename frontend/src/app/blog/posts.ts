@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-irlandeses-espana',
+    tag: 'Fiscalidad',
+    date: '17 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos irlandeses en España: cómo recuperar el 25 % y qué pasa con los ETF',
+    excerpt:
+      'Irlanda retiene el 25 % de los dividendos que paga a no residentes, pero un residente en España puede cobrar sin retención con el formulario V2A. Cómo declararlo, cómo reclamar el exceso y por qué un ETF irlandés no tiene nada que recuperar.',
+  },
+  {
     slug: 'dividendos-noruegos-espana',
     tag: 'Fiscalidad',
     date: '16 sep 2026',
