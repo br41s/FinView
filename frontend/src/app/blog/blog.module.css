@@ -1145,3 +1145,12 @@
   align-items: center;
   justify-content: center;
 }
+
+.postImgDividendosPortugueses {
+  height: 200px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(150deg, rgba(31,27,22,0.05) 0%, rgba(154,107,31,0.18) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

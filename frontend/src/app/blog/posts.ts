@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-portugueses-espana',
+    tag: 'Fiscalidad',
+    date: '18 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos portugueses en España: cómo recuperar el 28 % retenido',
+    excerpt:
+      'Portugal retiene el 28 % de tus dividendos, pero el convenio limita el impuesto al 15 %. Cómo pedir la reducción en origen con el modelo 21-RFI y cómo reclamar el exceso con el 22-RFI antes de que caduque el plazo.',
+  },
+  {
     slug: 'dividendos-irlandeses-espana',
     tag: 'Fiscalidad',
     date: '17 sep 2026',
