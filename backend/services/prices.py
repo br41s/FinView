@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
 from backend.services import exchange_rates, ticker_map
-from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
+from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, PORTFOLIO_SECONDS, Budget
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,14 @@ def fetch_and_cache_prices(
     if not ticker_to_isins:
         return cached
 
-    # Batch fetch via yfinance
-    prices = _fetch_yahoo_prices(list(ticker_to_isins.keys()))
+    # Batch fetch via yfinance, bounded: a user is waiting, and a stalled batch is
+    # superlinear in the number of symbols (see yahoo_budget). Whatever the budget
+    # stops fetching stays absent, which portfolio totals already treat as "unknown
+    # price" and fail closed on — never as a price of zero.
+    prices = _fetch_yahoo_prices(
+        list(ticker_to_isins.keys()),
+        budget=Budget(PORTFOLIO_SECONDS, "portfolio valuation"),
+    )
 
     # Determine which currencies need conversion
     non_eur_currencies: set[str] = set()

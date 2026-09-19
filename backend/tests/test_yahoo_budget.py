@@ -30,7 +30,11 @@ from backend.models import (
     User,
 )
 from backend.services import data_supervisor, prices, split_history, yahoo_budget
-from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, IMPORT_SECONDS, Budget
+from backend.services.yahoo_budget import (
+    GEO_CYCLE_SECONDS,
+    IMPORT_SECONDS,
+    Budget,
+)
 
 # What one stalled Yahoo call costs, measured against a socket that accepts and
 # never answers. The number is the whole reason a budget exists.
@@ -328,3 +332,39 @@ def test_a_cycle_budget_is_shared_not_renewed(clock, yahoo):
 
     assert prices.fetch_ticker_prices(["AAPL"], budget) == {}
     assert yahoo == []
+
+
+# ── portfolio: a user is waiting, and Cloud Run allows 1800s ─────────
+
+
+def test_the_portfolio_fetch_is_bounded_and_chunked(clock, monkeypatch):
+    """Without a budget this was one batch; a stalled Yahoo held the page for the
+    full Cloud Run request timeout (1800s) and was then killed mid-work."""
+    import yfinance
+
+    calls: list[list[str]] = []
+
+    def _stalled_download(tickers, **kwargs):
+        calls.append(list(tickers))
+        clock.advance(120.0)
+        return object()
+
+    monkeypatch.setattr(yfinance, "download", _stalled_download)
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+    monkeypatch.setattr(prices, "_resolve_ticker", lambda isin, _db: isin)
+    monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("1"))
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        out = prices.fetch_and_cache_prices(db, [f"US{i:010d}" for i in range(30)])
+    finally:
+        db.close()
+
+    # 30s of allowance, 120s per stalled chunk: one chunk, then stop.
+    assert len(calls) == 1
+    assert len(calls[0]) == 3
+    # Whatever resolved is still cached and returned; the rest stay absent, which
+    # the portfolio treats as unknown price and fails closed on.
+    assert len(out) == 3

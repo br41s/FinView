@@ -17,7 +17,7 @@ def test_shared_yahoo_ticker_prices_every_requested_isin(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
-    monkeypatch.setattr(svc, "_fetch_yahoo_prices", lambda _tickers: {"AENA.MC": 20.5})
+    monkeypatch.setattr(svc, "_fetch_yahoo_prices", lambda _tickers, **_kw: {"AENA.MC": 20.5})
     old_isin = "ES0105046009"
     new_isin = "ES0105046017"
 
@@ -37,7 +37,7 @@ def test_singapore_price_is_converted_with_sgd_rate(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
-    monkeypatch.setattr(svc, "_fetch_yahoo_prices", lambda _tickers: {"U11.SI": 30.0})
+    monkeypatch.setattr(svc, "_fetch_yahoo_prices", lambda _tickers, **_kw: {"U11.SI": 30.0})
     seen_currencies: list[str] = []
 
     def fake_rate(currency, _date):
