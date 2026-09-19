@@ -117,12 +117,16 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   card. Order comes from `date`, so entry position does not matter.
 - Merge gate: before merging ANY PR that touches `frontend/**`, run `gh pr checks <n>` and
   require the Vercel preview check green. Never merge on a red or pending preview.
-- **There is no CI and there never will be** — GitHub Actions is not available on this
-  account, so a workflow file is decoration, not a gate. Do not add one. The two real
-  gates are `.githooks/pre-push` (ruff + pytest on backend changes, typecheck + vitest +
-  build on frontend changes) and the Vercel preview. If a check matters, it goes in the
-  hook. Enable it once per clone with `git config core.hooksPath .githooks`; `start.sh`
-  does this for you.
+- **CI runs on GitHub Actions** (`.github/workflows/ci.yml`): ruff + pytest on the
+  backend, typecheck + vitest + build on the frontend, on every PR and every push to
+  main. The earlier rule here said Actions "is not available on this account" and told
+  you not to add a workflow — that premise was wrong and the workflow is restored.
+  What is genuinely unavailable is **branch protection** (403, Free plan), so a red
+  check cannot mechanically block a merge: it is a signal, not a wall. Never merge on
+  red.
+- The other two gates still stand and are not superseded: `.githooks/pre-push` (same
+  checks, locally, before the push) and the Vercel preview. Enable the hook once per
+  clone with `git config core.hooksPath .githooks`; `start.sh` does this for you.
 
 ---
 

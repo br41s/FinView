@@ -239,14 +239,28 @@ python3 scripts/verify_cloud_run_service.py --project=finview-brais-2026 \
 No usar `gcloud run services describe` sin `--format`: las variables de entorno de
 Cloud Run pueden contener secretos y acabar copiadas a logs o chats.
 
-### GitHub Actions — no se usa
-Workload Identity Federation quedó pre-configurada por si algún día se rehabilita GitHub Actions en la cuenta (está deshabilitada por GitHub). SA `github-actions-deployer@finview-brais-2026` y pool `github` siguen vivos pero sin workflow activo.
+### GitHub Actions — sí se usa (CI, no deploy)
+`.github/workflows/ci.yml` corre ruff + pytest (backend) y typecheck + vitest + build
+(frontend) en cada PR y en cada push a main.
 
-**No añadir workflows.** Un `.github/workflows/*.yml` nunca se ejecuta en esta cuenta:
-parece una barrera de calidad sin serlo. Se intentó una vez (PR #210) y hubo que
-retirarlo. Las dos barreras reales son `.githooks/pre-push` (ruff + pytest en cambios
-de backend; typecheck + vitest + build en frontend) y el preview de Vercel. Si un
-check importa, va en el hook.
+Esta sección decía antes **"no añadir workflows"**, porque se creía que Actions estaba
+deshabilitada en la cuenta. Era falso: Actions se ejecuta con normalidad, incluso en
+repos privados como éste. Sobre esa premisa equivocada se borró el workflow de la
+PR #210 (commit 168ed92) y el repo se quedó ~7 semanas sin ejecutar los tests — tiempo
+en el que `test_enagas_dividend` estuvo en rojo en main sin que nadie lo viera.
+
+Lo que sí es cierto es que **branch protection no está disponible** en el plan Free
+(403: *"Upgrade to GitHub Pro or make this repository public"*). Un check en rojo no
+puede bloquear el merge por sí solo; es señal, no barrera. Por eso el workflow dispara
+también en `push: main`, para detectar lo que entre sin PR.
+
+Las otras dos barreras siguen vigentes y no quedan sustituidas: `.githooks/pre-push`
+(los mismos checks, en local, antes del push) y el preview de Vercel.
+
+El deploy **no** pasa por Actions: sigue siendo Cloud Build. Workload Identity
+Federation quedó pre-configurada por si algún día se usa Actions para desplegar. SA
+`github-actions-deployer@finview-brais-2026` y pool `github` siguen vivos pero ningún
+workflow los usa.
 
 ## Deploy manual (solo recuperación)
 

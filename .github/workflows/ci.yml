@@ -1,0 +1,97 @@
+name: CI
+
+# Restored from the workflow deleted in 168ed92. That commit removed it on the
+# premise that "GitHub Actions is not available on this account" — which was
+# wrong: Actions execute here, verified on this repo's own runs. Branch
+# protection is genuinely unavailable on the Free plan, so `push: main` is what
+# covers anything that lands without a PR.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A superseded run on the same branch has nothing left to tell us.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create environment
+        run: uv venv --python 3.12 .venv
+
+      # requirements.txt is hash-locked and exported without dev extras, so the
+      # test tooling is installed alongside it rather than from it.
+      # The lint/test tooling is pinned on purpose. Unpinned, the first run
+      # installed ruff 0.16.8 against a tree developed on 0.15.7; 0.16 turns on
+      # rules the project never selected (I001 among them) and reported 1040
+      # errors on code that is clean locally. Bumping these is a deliberate
+      # change with a diff attached, not something a runner decides for us.
+      - name: Install dependencies
+        run: |
+          uv pip install --python .venv/bin/python -r requirements.txt
+          uv pip install --python .venv/bin/python \
+            'ruff==0.15.7' 'pytest==9.0.2' 'pytest-asyncio>=0.24'
+
+      - name: Lint
+        run: .venv/bin/python -m ruff check backend/
+
+      # ~163 tests skip here by design: they need the real broker PDFs/CSVs in
+      # files/, which are not in the repo. That also keeps the runner cheap —
+      # the two-minute test_import_service block is among the tests that skip.
+      - name: Test
+        run: .venv/bin/python -m pytest -q
+
+  frontend:
+    name: Frontend — typecheck + vitest + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # `defaults.run.working-directory` applies to `run:` steps only, not to
+      # `uses:` actions — so this one resolved package.json at the repo root,
+      # where there is none, and failed with "No pnpm version is specified".
+      # frontend/package.json carries packageManager: pnpm@10.32.1; point at it
+      # so the version stays declared in one place.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        run: pnpm test
+
+      # Also catches the MDX failure mode that only surfaces at build time:
+      # an unescaped "<" before a digit parses as a JSX tag and breaks the build.
+      - name: Build
+        run: pnpm build
