@@ -102,7 +102,20 @@ def test_the_right_key_passes(monkeypatch):
 
 def test_the_header_lookup_is_case_insensitive(monkeypatch):
     """Starlette lowercases header keys; a cron sending X-Cron-Key must work."""
+    from backend.services.geo import orchestrator
+
     monkeypatch.setattr(settings, "cron_secret", "s3cret")
+
+    # This is the only test here that sends the *correct* key, so it is the only
+    # one that gets past the gate and runs the handler body for real — against
+    # settings.database_url, which defaults to the developer's own finview.db.
+    # One geo cycle per row: an 8-way httpx fan-out plus yfinance, ~55s against
+    # a populated database and 0.01s against an empty one. That made the test's
+    # cost a function of local row count, and CI green only by the accident of
+    # having no users. The gate is what this file tests; the payload is not.
+    # cron_run imports this inside the function body, so patch the source module.
+    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda _uid: object())
+
     client = TestClient(app)
 
     # A 403 here would mean the header never reached the check.
