@@ -65,9 +65,27 @@ fail() {
 
 # ── Backend ─────────────────────────────────────────────────────────────
 if [ "$backend_touched" -eq 1 ]; then
-  # Prefer the project venv; fall back to whatever python3 is on PATH.
+  # Prefer the project venv, then the main checkout's, then PATH.
+  #
+  # A git worktree has no .venv of its own, so this used to drop straight to
+  # PATH and run whatever python3 and ruff happened to be installed globally.
+  # That is how a 2023-vintage Homebrew ruff aborted a clean push by refusing
+  # to parse target-version = "py312" and reporting it as "lint errors" (#256).
+  # --git-common-dir points at the main checkout's .git from inside a worktree,
+  # and its parent is the checkout that actually holds the venv.
   py="$repo_root/.venv/bin/python"
+  if [ ! -x "$py" ]; then
+    common_dir="$(git rev-parse --git-common-dir 2>/dev/null || echo .)"
+    main_root="$(cd "$(dirname "$common_dir")" 2>/dev/null && pwd)" || main_root=""
+    if [ -n "$main_root" ] && [ -x "$main_root/.venv/bin/python" ]; then
+      py="$main_root/.venv/bin/python"
+    fi
+  fi
   [ -x "$py" ] || py="$(command -v python3 || true)"
+
+  # Say which interpreter won: when the checks disagree with what you ran by
+  # hand, this line is the answer.
+  echo "pre-push: backend python → ${py:-none found}"
 
   # Resolve each tool independently. Missing tooling is a setup gap, not a
   # broken change: warn and skip that check rather than reporting it as a
