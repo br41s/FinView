@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-finlandeses-espana',
+    tag: 'Fiscalidad',
+    date: '20 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos finlandeses en España: cómo recuperar el 30 % retenido',
+    excerpt:
+      'Finlandia retiene el 30 % de tus dividendos y hasta el 35 % si la acción va a nombre de un intermediario. El convenio limita el impuesto al 15 %. Cómo declarar el bruto en el IRPF y cómo reclamar el exceso a la Verohallinto con el 6164e.',
+  },
+  {
     slug: 'dividendos-suecos-espana',
     tag: 'Fiscalidad',
     date: '19 sep 2026',
