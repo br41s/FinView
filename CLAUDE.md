@@ -88,6 +88,19 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   **not** cached — it returns the stale entry and retries next run. Caching a failure
   would pin "never split" on a real security for a month and the supervisor would miss
   the split it exists to catch. An empty result *is* cached: most tickers never split.
+- yfinance's `timeout=` argument **does not bind**, so do not reach for it as a guard.
+  `YfData._make_request` fetches the cookie/crumb with a hardcoded 30s default before
+  every request: `yf.download(..., timeout=3)` still takes 30s against an endpoint that
+  accepts the connection and never answers (measured), and `yf.Ticker(...).info` takes no
+  timeout at all. Nothing is unbounded — curl_cffi maps a scalar timeout onto
+  `CURLOPT_TIMEOUT` and `YfConfig.network.retries` is 0 — the damage is aggregate: one
+  stalled request costs ~30s and the supervisor makes one per unresolved ISIN, so ~90
+  ISINs is a 45-minute import (PR #255 → #258). Bound the **loop**, not the call, via
+  `services/yahoo_budget.py` — 60s per import, 120s per geo cycle. A spent budget must
+  degrade to whatever that path already did when Yahoo was unreachable, never to a
+  cached failure. `threads=True` does not help: one global cookie lock serializes the
+  stalls, so 3 tickers cost 4×30s, not 30s. A test asserting "a timeout is configured"
+  passes while production hangs — assert the loop stops instead.
 - DB schema: there is **no Alembic**. New tables auto-create via
   `Base.metadata.create_all` on startup. `create_all` does NOT alter existing tables, so
   adding a column to a table that already exists in prod requires registering it in
