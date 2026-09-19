@@ -11,13 +11,8 @@ from pathlib import Path
 from backend.importers.tr import parse_tr_tax_report, parse_eur_number, parse_date
 from backend.importers.base import TxType
 
-# Path to real test data
-TR_PDF_PATH = Path("/Users/brais/Downloads/FinView/Tax Report 2024.pdf")
-
-pytestmark = pytest.mark.skipif(
-    not TR_PDF_PATH.exists(),
-    reason="Trade Republic Tax Report PDF not available",
-)
+# Path to real test data (same convention as test_import_service.py)
+TR_PDF_PATH = Path(__file__).resolve().parents[2] / "files" / "TR-Tax Report 2024.pdf"
 
 
 # -- Unit tests for helpers --
@@ -51,7 +46,14 @@ class TestParseDate:
 
 @pytest.fixture(scope="module")
 def report():
-    """Parse the real TR Tax Report once for all tests."""
+    """Parse the real TR Tax Report once for all tests.
+
+    The PDF is not in the repo (`files/` is gitignored), so the tests that
+    need it skip here rather than at module level — the helper unit tests
+    above must run everywhere, including CI.
+    """
+    if not TR_PDF_PATH.exists():
+        pytest.skip("Trade Republic Tax Report PDF not available")
     return parse_tr_tax_report(TR_PDF_PATH)
 
 
@@ -113,13 +115,19 @@ class TestDividends:
         assert len(report.dividends) >= 60  # 65 expected
 
     def test_mercedes_dividend(self, report):
-        """Mercedes-Benz Group: 14.05.2024, 530.00 EUR, withholding 139.78."""
+        """Mercedes-Benz Group: 14.05.2024, 530.00 EUR gross, withholding 139.78.
+
+        `gross_amount` is the íntegro that feeds casilla 29; `net_amount_eur`
+        is the cash that reached the account, i.e. gross minus withholding.
+        Both are asserted so a future flip in either direction fails here.
+        """
         from datetime import date
         mbg = [d for d in report.dividends
                if d.isin == "DE0007100000" and d.trade_date == date(2024, 5, 14)]
         assert len(mbg) == 1
         d = mbg[0]
-        assert d.net_amount_eur == Decimal("530.0000")
+        assert d.gross_amount == Decimal("530.0000")
+        assert d.net_amount_eur == Decimal("390.220000")
         assert d.withholding_tax == Decimal("139.780000")
         assert d.domestic_withholding_tax == Decimal("0")
         assert d.foreign_withholding_tax == Decimal("139.780000")
@@ -130,7 +138,9 @@ class TestDividends:
         sie = [d for d in report.dividends
                if d.isin == "DE0007236101" and d.trade_date == date(2024, 2, 13)]
         assert len(sie) == 1
-        assert sie[0].net_amount_eur == Decimal("577.269985")
+        assert sie[0].gross_amount == Decimal("577.269985")
+        assert sie[0].withholding_tax == Decimal("152.250000")
+        assert sie[0].net_amount_eur == Decimal("425.019985")
 
     def test_country_tracked(self, report):
         de_divs = [d for d in report.dividends if d.country == "Alemania"]
@@ -139,6 +149,17 @@ class TestDividends:
     def test_all_dividends_have_casilla(self, report):
         for d in report.dividends:
             assert d.casilla in (27, 29), f"Unexpected casilla {d.casilla} for {d.isin}"
+
+    def test_gross_dividends_match_modelo100(self, report):
+        """Sum of gross dividends must equal the PDF's own casilla 29.
+
+        Casilla 29 declares the íntegro, not the cash received, so this is the
+        guard against `gross_amount` and `net_amount_eur` being swapped — the
+        drift that left the two assertions above stale for months.
+        """
+        gross = sum(d.gross_amount for d in report.dividends if d.casilla == 29)
+        c29 = next(c for c in report.casillas_modelo_100 if c.casilla == 29)
+        assert abs(gross - c29.amount_eur) < Decimal("0.01")
 
 
 class TestCapitalGains:

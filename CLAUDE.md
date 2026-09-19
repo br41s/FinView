@@ -30,7 +30,7 @@ need it before touching code.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 897 collected (734 pass, 163 skip without real broker PDFs/CSVs in files/) · vitest · 59 frontend tests |
+| Tests | pytest · 898 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 59 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -153,9 +153,17 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 897 collected (all under `backend/tests/`). 163 skip when the real
-broker files in `files/` are absent (not in repo — worktrees skip them; the main machine
-runs them). Full run is ~20s.
+Backend: `pytest` — 898 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 898 pass in ~33s. Those files are not in the repo,
+so where `files/` is absent — CI, and worktrees unless you symlink it — 126 skip and the
+remaining 772 run in ~7s.
+
+A skipped test reports as a pass, so a broken gate hides silently: the 35 tests in
+`test_tr_parser.py` were gated on a hardcoded `~/Downloads` path that no longer existed
+and ran nothing for months. Gate on a path built from `Path(__file__).resolve().parents[2]
+/ "files"`, and put the gate where the dependency is — a fixture that calls
+`pytest.skip()`, not a module-level `pytestmark` that also takes the pure unit tests down
+with it.
 
 Frontend: `cd frontend && pnpm test` (vitest) — 59 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
