@@ -19,7 +19,7 @@ def calls(monkeypatch):
     seen: list[dict] = []
     responses: dict[str, dict[str, float]] = {}
 
-    def fake_fetch(tickers, *, period="5d", interval="1d"):
+    def fake_fetch(tickers, *, period="5d", interval="1d", budget=None):
         seen.append({"tickers": list(tickers), "period": period, "interval": interval})
         return dict(responses.get(interval, {}))
 

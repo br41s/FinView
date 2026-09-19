@@ -22,6 +22,7 @@ from backend.models import (
     GeoSignalStatus,
 )
 from backend.services.prices import fetch_ticker_prices
+from backend.services.yahoo_budget import Budget
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ def _update_rule_stats(db: Session, signal: GeoSignal, is_correct: bool) -> None
         stat.updated_at = datetime.now(timezone.utc)
 
 
-def evaluate_pending(db: Session, user_id: int) -> int:
+def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) -> int:
     """Evaluate all due, unscored checkpoints for a user. Returns count evaluated."""
     now = datetime.now(timezone.utc)
     pending: list[GeoCheckpoint] = (
@@ -133,7 +134,7 @@ def evaluate_pending(db: Session, user_id: int) -> int:
     for s in signals.values():
         for t in s.tickers:
             symbols.add(t.symbol)
-    prices = fetch_ticker_prices(list(symbols)) if symbols else {}
+    prices = fetch_ticker_prices(list(symbols), budget) if symbols else {}
 
     evaluated = 0
     for chk in pending:

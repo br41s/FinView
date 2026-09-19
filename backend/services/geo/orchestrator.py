@@ -163,8 +163,13 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     # Phase D: price enrichment (one batched fetch for the union of tickers).
     symbols = sorted({t.symbol for a in enriched for t in a.tickers})
     from backend.services.prices import fetch_ticker_prices
+    from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
 
-    prices = fetch_ticker_prices(symbols) if symbols else {}
+    # One allowance for every Yahoo call this cycle makes — this fetch and the
+    # auditor's in Phase F. Yahoo cannot be bounded per call (see yahoo_budget), and
+    # a per-call budget would let one cycle spend it twice over.
+    yahoo = Budget(GEO_CYCLE_SECONDS, f"geo cycle (user {user_id})")
+    prices = fetch_ticker_prices(symbols, yahoo) if symbols else {}
 
     # Phase E: persist signals + checkpoints, collect notifications.
     #
@@ -208,7 +213,7 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     # Phase F: evaluate any due outcome checkpoints. Runs even when the persist
     # phase lost everything — the auditor is what resolves the signals already on
     # the board, and it must never be blocked by a write that failed upstream.
-    checkpoints = evaluate_pending(db, user_id)
+    checkpoints = evaluate_pending(db, user_id, yahoo)
 
     new_signals = sum(1 for r in results if r.is_new)
     logger.info(

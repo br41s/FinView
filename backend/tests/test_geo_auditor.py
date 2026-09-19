@@ -84,7 +84,7 @@ def _mature_signal(db, monkeypatch, horizon: str, *, direction="bullish", price_
     db.expire_all()
 
     monkeypatch.setattr(
-        auditor, "fetch_ticker_prices", lambda symbols: {"COPX": price_now}
+        auditor, "fetch_ticker_prices", lambda symbols, budget=None: {"COPX": price_now}
     )
     return signal.id
 
