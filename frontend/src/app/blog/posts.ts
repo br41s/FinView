@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-suecos-espana',
+    tag: 'Fiscalidad',
+    date: '19 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos suecos en España: cómo recuperar el 30 % retenido',
+    excerpt:
+      'Suecia retiene el 30 % de tus dividendos, pero el convenio de 1976 limita el impuesto al 15 %. Cómo declarar el bruto en el IRPF y cómo reclamar el exceso a Skatteverket con el SKV 3740 antes de que pasen los cinco años.',
+  },
+  {
     slug: 'dividendos-portugueses-espana',
     tag: 'Fiscalidad',
     date: '18 sep 2026',
