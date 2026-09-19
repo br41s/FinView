@@ -2,10 +2,12 @@
 #
 # Pre-push guard: refuse to push code that doesn't compile or pass its tests.
 #
-# THIS IS THE ONLY GATE. GitHub Actions is not available on this account, so no
-# workflow will ever run here — a CI file would be decoration. Nothing else
-# checks a push except the Vercel preview, which only covers the frontend build.
-# If a check matters, it belongs in this file.
+# THIS IS THE FIRST GATE, and the only one that runs before code leaves your
+# machine. .github/workflows/ci.yml now runs the same checks on every PR and
+# push to main — the claim that "Actions is not available on this account" was
+# wrong. Keep the two in step: a check that matters belongs in both, because
+# branch protection is unavailable on the Free plan, so the CI run cannot
+# actually block a merge on its own.
 #
 # Originally this only ran the frontend build, because blog merges had broken
 # production three times (PRs #59, #64) by fusing per-article blocks. It now runs

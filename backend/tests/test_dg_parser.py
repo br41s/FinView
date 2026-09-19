@@ -38,7 +38,10 @@ def test_enagas_dividend(report):
     assert d.country == "España"
     assert d.gross_amount == Decimal("40.00")
     assert d.withholding_tax == Decimal("7.60")
-    assert d.foreign_withholding_tax == Decimal("7.60")
+    # Enagas is Spanish-source: the 7.60 is retención española, so there is no
+    # foreign withholding and no doble imposición internacional to deduct.
+    # 2f725d6 asserted 7.60 here and the parser has never produced it.
+    assert d.foreign_withholding_tax == Decimal("0")
     assert d.net_amount_eur == Decimal("32.40")
     assert d.tx_type == TxType.DIVIDEND
 
