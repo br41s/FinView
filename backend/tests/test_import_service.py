@@ -22,6 +22,7 @@ from backend.models import (
     TransactionType,
     User,
 )
+from backend.services import data_supervisor, split_history
 from backend.services.fifo_engine import recalculate_cross_broker_fifo
 from backend.services.import_service import (
     _check_duplicate,
@@ -38,6 +39,24 @@ TR_DE_PDF = _FILES / "TR-Tax report - Period DE IBAN-2025.pdf"
 TR_ES_PDF = _FILES / "TR-Tax report - Period ES IBAN-2025.pdf"
 TR_CSV = _FILES / "TR-Transaction-export.csv"
 TR_2024_PDF = _FILES / "TR-Tax Report 2024.pdf"
+
+
+@pytest.fixture(autouse=True)
+def _no_ticker_lookups(monkeypatch):
+    """Keep imports off the network.
+
+    Every import runs the data supervisor, which resolves unknown ISINs by
+    calling yfinance. The `db` fixture below is a fresh in-memory database, so
+    `ticker_map` is always empty and every ISIN is unknown — 17 live Yahoo
+    lookups per test, ~25s of the ~32s each one took. The assertions here are
+    about duplicate detection and FIFO, never about a resolved ticker.
+
+    Behaviour is unchanged: `_try_resolve_ticker` already returns None on any
+    failure (data_supervisor.py), which is the path these tests were taking
+    anyway once Yahoo answered. Same stubs as test_data_supervisor.py:89.
+    """
+    monkeypatch.setattr(data_supervisor, "_try_resolve_ticker", lambda _isin: None)
+    monkeypatch.setattr(split_history, "_fetch", lambda _ticker: [])
 
 
 @pytest.fixture
