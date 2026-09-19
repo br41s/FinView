@@ -19,6 +19,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import Session
 
 from backend.models import SplitHistoryCache
+from backend.services.yahoo_budget import Budget
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +80,21 @@ def _fresh(row: SplitHistoryCache | None, now: datetime) -> Splits | None:
     return _decode(row.splits)
 
 
-def _resolve(db: Session, row: SplitHistoryCache | None, ticker: str, now: datetime) -> Splits:
+def _resolve(
+    db: Session,
+    row: SplitHistoryCache | None,
+    ticker: str,
+    now: datetime,
+    budget: Budget | None = None,
+) -> Splits:
     cached = _fresh(row, now)
     if cached is not None:
         return cached
 
-    fetched = _fetch(ticker)
+    # A spent budget is treated exactly like an unreachable Yahoo: nothing is
+    # written, so the next import retries instead of inheriting a skipped
+    # lookup as "never split" for the next 30 days.
+    fetched = None if (budget is not None and budget.spent()) else _fetch(ticker)
     if fetched is None:
         # Serve a stale entry rather than claim the security has never split
         # just because Yahoo was unreachable. Nothing is written, so the next
@@ -100,7 +110,9 @@ def _resolve(db: Session, row: SplitHistoryCache | None, ticker: str, now: datet
     return fetched
 
 
-def prefetch(db: Session, tickers: list[str]) -> dict[str, Splits]:
+def prefetch(
+    db: Session, tickers: list[str], budget: Budget | None = None
+) -> dict[str, Splits]:
     """Split history for many tickers, reading every cached row in one query.
 
     Does not commit — the caller owns the transaction, matching the rest of the
@@ -115,4 +127,6 @@ def prefetch(db: Session, tickers: list[str]) -> dict[str, Splits]:
         r.ticker: r
         for r in db.query(SplitHistoryCache).filter(SplitHistoryCache.ticker.in_(wanted)).all()
     }
-    return {ticker: _resolve(db, rows.get(ticker), ticker, now) for ticker in wanted}
+    return {
+        ticker: _resolve(db, rows.get(ticker), ticker, now, budget) for ticker in wanted
+    }

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
 from backend.services import exchange_rates, ticker_map
+from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
 
 logger = logging.getLogger(__name__)
 
@@ -259,12 +260,23 @@ def fetch_ticker_prices(tickers: list[str]) -> dict[str, float]:
     if not tickers:
         return {}
     unique = list(dict.fromkeys(tickers))
+    budget = Budget(GEO_CYCLE_SECONDS, "geo price enrichment")
 
     prices = _fetch_yahoo_prices(
         unique, period=_INTRADAY_PERIOD, interval=_INTRADAY_INTERVAL
     )
     missing = [t for t in unique if t not in prices]
     if missing:
+        # The fallback is a second full round-trip to Yahoo. When the intraday
+        # leg already burned the cycle's allowance — a stalled Yahoo costs ~30s
+        # per symbol and no call-site timeout changes that (see yahoo_budget) —
+        # skip it. Symbols stay absent, which the caller already treats as
+        # unresolvable rather than as a price of zero.
+        if budget.spent():
+            logger.warning(
+                "geo prices: skipping the daily-close fallback for %d symbols", len(missing)
+            )
+            return prices
         logger.info("geo prices: %d/%d symbols fell back to the daily close",
                     len(missing), len(unique))
         prices.update(_fetch_yahoo_prices(missing))

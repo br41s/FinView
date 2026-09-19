@@ -28,6 +28,7 @@ from backend.models import (
     TransactionType,
 )
 from backend.services.db_locks import lock_fifo_recalculation
+from backend.services.yahoo_budget import IMPORT_SECONDS, Budget
 
 logger = logging.getLogger(__name__)
 
@@ -122,12 +123,17 @@ def run_checks(db: Session, import_id: int | None = None, user_id: int | None = 
     lock_fifo_recalculation(db, user_id)
     issues: list[DataIssue] = []
 
+    # One allowance for every Yahoo call this run makes. Both checks below loop
+    # over securities one network call at a time, and a stalled Yahoo costs ~30s
+    # per call whatever timeout the call site asks for — see yahoo_budget.
+    budget = Budget(IMPORT_SECONDS, f"supervisor run (import {import_id})")
+
     issues.extend(_check_rights_as_sells(db, import_id, user_id))
     issues.extend(_check_missing_buys(db, import_id, user_id))
     issues.extend(_check_missing_cost_basis(db, import_id, user_id))
     issues.extend(_check_holdings_mismatch(db, import_id, user_id))
-    issues.extend(_check_missing_ticker(db, import_id, user_id))
-    issues.extend(_check_split_candidates(db, import_id, user_id))
+    issues.extend(_check_missing_ticker(db, import_id, user_id, budget=budget))
+    issues.extend(_check_split_candidates(db, import_id, user_id, budget=budget))
     issues.extend(_check_price_sanity(db, import_id, user_id))
 
     # Persist issues, deduplicating against existing needs_input rows so
@@ -442,7 +448,12 @@ def _check_holdings_mismatch(db: Session, import_id: int | None, user_id: int | 
 # Check 4: Missing Yahoo Finance ticker
 # ---------------------------------------------------------------------------
 
-def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
+def _check_missing_ticker(
+    db: Session,
+    import_id: int | None,
+    user_id: int | None = None,
+    budget: Budget | None = None,
+) -> list[DataIssue]:
     """Detect ISINs not in the Yahoo Finance ticker map.
 
     These will show "—" for current price in the UI.
@@ -487,7 +498,9 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
         # Try to auto-resolve via yfinance. `name` is already in hand from the
         # derivative check above — it used to be re-queried three more times
         # per ISIN to build these two issues.
-        ticker = _try_resolve_ticker(isin)
+        # A spent budget degrades to the same outcome an unresolvable ISIN
+        # already produces: flagged needs_input, retried on the next import.
+        ticker = None if (budget is not None and budget.spent()) else _try_resolve_ticker(isin)
         if ticker:
             ticker_map.remember(db, isin, ticker, name=name)
             known[isin] = ticker
@@ -528,7 +541,12 @@ def _check_missing_ticker(db: Session, import_id: int | None, user_id: int | Non
 # Check 5: Stock split candidates
 # ---------------------------------------------------------------------------
 
-def _check_split_candidates(db: Session, import_id: int | None, user_id: int | None = None) -> list[DataIssue]:
+def _check_split_candidates(
+    db: Session,
+    import_id: int | None,
+    user_id: int | None = None,
+    budget: Budget | None = None,
+) -> list[DataIssue]:
     """Detect and auto-resolve stock splits using yfinance history.
 
     Strategy:
@@ -567,7 +585,7 @@ def _check_split_candidates(db: Session, import_id: int | None, user_id: int | N
 
     # Split history for every ticker at once — this was a network call per
     # ticker, uncached, on the import path.
-    splits_by_ticker = split_history.prefetch(db, list(isin_for_ticker))
+    splits_by_ticker = split_history.prefetch(db, list(isin_for_ticker), budget)
 
     # Most runs find no split anywhere, so the rest of the prefetching only
     # happens when at least one ticker actually has one.
