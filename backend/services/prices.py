@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
 from backend.services import exchange_rates, ticker_map
-from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
+from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, PORTFOLIO_SECONDS, Budget
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,14 @@ def fetch_and_cache_prices(
     if not ticker_to_isins:
         return cached
 
-    # Batch fetch via yfinance
-    prices = _fetch_yahoo_prices(list(ticker_to_isins.keys()))
+    # Batch fetch via yfinance, bounded: a user is waiting, and a stalled batch is
+    # superlinear in the number of symbols (see yahoo_budget). Whatever the budget
+    # stops fetching stays absent, which portfolio totals already treat as "unknown
+    # price" and fail closed on — never as a price of zero.
+    prices = _fetch_yahoo_prices(
+        list(ticker_to_isins.keys()),
+        budget=Budget(PORTFOLIO_SECONDS, "portfolio valuation"),
+    )
 
     # Determine which currencies need conversion
     non_eur_currencies: set[str] = set()
@@ -214,14 +220,32 @@ def _last_closes(data, tickers: list[str]) -> dict[str, float]:
     return result
 
 
+# Symbols per round trip when a budget is watching. A stalled batch costs far more
+# than one stalled request: measured against a socket that accepts and never answers,
+# 1 symbol is 60s, 2 is 90s, and 6 is 300s — superlinear, so the 63 symbols the geo
+# rules carry would be well over half an hour inside a single uninterruptible call.
+# Three keeps one stalled chunk near the 120s cycle budget, so the worst case is the
+# budget plus one chunk instead of the whole batch.
+_STALL_CHUNK = 3
+
+
 def _fetch_yahoo_prices(
-    tickers: list[str], *, period: str = "5d", interval: str = "1d"
+    tickers: list[str],
+    *,
+    period: str = "5d",
+    interval: str = "1d",
+    budget: Budget | None = None,
 ) -> dict[str, float]:
     """Fetch latest prices from Yahoo Finance. Returns dict[ticker, price].
 
     Defaults to daily closes — that is what the portfolio cache stores, one row per
     ISIN per day, paired with an ECB rate for the same day. Do not switch that path
     to intraday.
+
+    Without a *budget* this is one batched call, which is what the portfolio path
+    wants: nobody can interrupt it, but a user is waiting and the happy path is a
+    single round trip. With one, the work is split so the budget has somewhere to
+    look — chunking without a budget would only add round trips and bound nothing.
     """
     try:
         import yfinance as yf
@@ -229,22 +253,43 @@ def _fetch_yahoo_prices(
         logger.error("yfinance not installed")
         return {}
 
-    try:
-        data = yf.download(
-            tickers,
-            period=period,
-            interval=interval,
-            auto_adjust=True,
-            progress=False,
-            threads=True,
-        )
-        return _last_closes(data, tickers)
-    except Exception:
-        logger.exception("Error fetching Yahoo Finance prices (%s/%s)", period, interval)
-        return {}
+    groups = (
+        [tickers[i : i + _STALL_CHUNK] for i in range(0, len(tickers), _STALL_CHUNK)]
+        if budget is not None
+        else [tickers]
+    )
+
+    out: dict[str, float] = {}
+    for group in groups:
+        if budget is not None and budget.spent():
+            logger.warning(
+                "Yahoo prices: budget spent, %d of %d symbols not fetched (%s/%s)",
+                len(tickers) - len(out),
+                len(tickers),
+                period,
+                interval,
+            )
+            break
+        try:
+            data = yf.download(
+                group,
+                period=period,
+                interval=interval,
+                auto_adjust=True,
+                progress=False,
+                threads=True,
+            )
+            out.update(_last_closes(data, group))
+        except Exception:
+            # One bad chunk must not drop the symbols that did resolve. Missing
+            # symbols are already treated as unresolvable, never as zero.
+            logger.exception("Error fetching Yahoo Finance prices (%s/%s)", period, interval)
+    return out
 
 
-def fetch_ticker_prices(tickers: list[str]) -> dict[str, float]:
+def fetch_ticker_prices(
+    tickers: list[str], budget: Budget | None = None
+) -> dict[str, float]:
     """Latest traded price per symbol — geo-intel entry prices and outcome scoring.
 
     Intraday first. Both ends of a geo measurement come from here: the price stamped
@@ -260,10 +305,14 @@ def fetch_ticker_prices(tickers: list[str]) -> dict[str, float]:
     if not tickers:
         return {}
     unique = list(dict.fromkeys(tickers))
-    budget = Budget(GEO_CYCLE_SECONDS, "geo price enrichment")
+    # One cycle, one allowance. The caller passes its own so that the two fetches a
+    # cycle makes — enrichment and the auditor's scoring — share 120s rather than
+    # taking 120s each.
+    if budget is None:
+        budget = Budget(GEO_CYCLE_SECONDS, "geo price enrichment")
 
     prices = _fetch_yahoo_prices(
-        unique, period=_INTRADAY_PERIOD, interval=_INTRADAY_INTERVAL
+        unique, period=_INTRADAY_PERIOD, interval=_INTRADAY_INTERVAL, budget=budget
     )
     missing = [t for t in unique if t not in prices]
     if missing:
@@ -279,7 +328,7 @@ def fetch_ticker_prices(tickers: list[str]) -> dict[str, float]:
             return prices
         logger.info("geo prices: %d/%d symbols fell back to the daily close",
                     len(missing), len(unique))
-        prices.update(_fetch_yahoo_prices(missing))
+        prices.update(_fetch_yahoo_prices(missing, budget=budget))
     return prices
 
 

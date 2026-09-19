@@ -29,8 +29,12 @@ from backend.models import (
     TransactionType,
     User,
 )
-from backend.services import data_supervisor, split_history, yahoo_budget
-from backend.services.yahoo_budget import IMPORT_SECONDS, Budget
+from backend.services import data_supervisor, prices, split_history, yahoo_budget
+from backend.services.yahoo_budget import (
+    GEO_CYCLE_SECONDS,
+    IMPORT_SECONDS,
+    Budget,
+)
 
 # What one stalled Yahoo call costs, measured against a socket that accepts and
 # never answers. The number is the whole reason a budget exists.
@@ -237,3 +241,130 @@ def test_a_spent_budget_still_serves_a_stale_split_row(db, clock, monkeypatch):
     assert split_history.prefetch(db, ["AAPL"], budget) == {
         "AAPL": [(date(2020, 8, 31), Decimal("4"))]
     }
+
+
+# ── prices: one stalled batch is worse than one stalled request ──────
+
+
+@pytest.fixture
+def yahoo(monkeypatch):
+    """Record each yf.download batch; prices resolve to 1.0 per symbol."""
+    calls: list[list[str]] = []
+
+    def _download(tickers, **kwargs):
+        calls.append(list(tickers))
+        return object()
+
+    import yfinance
+
+    monkeypatch.setattr(yfinance, "download", _download)
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, group: {t: 1.0 for t in group})
+    return calls
+
+
+def test_without_a_budget_prices_are_one_batch(yahoo):
+    """The portfolio path must keep its single round trip.
+
+    Chunking exists to give a budget somewhere to look. With no budget there is
+    nothing to check between chunks, so splitting would only add round trips to a
+    request a user is waiting on.
+    """
+    out = prices._fetch_yahoo_prices([f"S{i}" for i in range(10)])
+
+    assert len(yahoo) == 1
+    assert len(out) == 10
+
+
+def test_with_a_budget_prices_are_chunked(clock, yahoo):
+    budget = Budget(GEO_CYCLE_SECONDS, "test")
+    out = prices._fetch_yahoo_prices([f"S{i}" for i in range(10)], budget=budget)
+
+    assert [len(c) for c in yahoo] == [3, 3, 3, 1]
+    assert len(out) == 10
+
+
+def test_chunks_stop_once_the_budget_is_spent(clock, monkeypatch):
+    """A stalled chunk costs ~120s, so 120s of allowance buys one, then stops."""
+    import yfinance
+
+    calls: list[list[str]] = []
+
+    def _stalled_download(tickers, **kwargs):
+        calls.append(list(tickers))
+        clock.advance(120.0)
+        return object()
+
+    monkeypatch.setattr(yfinance, "download", _stalled_download)
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+
+    out = prices._fetch_yahoo_prices(
+        [f"S{i}" for i in range(21)], budget=Budget(GEO_CYCLE_SECONDS, "test")
+    )
+
+    # One chunk fits the allowance; the remaining six are skipped, not attempted.
+    assert len(calls) == 1
+    assert len(out) == 3
+
+
+def test_a_failing_chunk_does_not_drop_the_others(clock, monkeypatch):
+    """A batch used to return {} on any exception, losing every symbol in it."""
+    import yfinance
+
+    def _download(tickers, **kwargs):
+        if "S3" in list(tickers):
+            raise RuntimeError("Yahoo said no")
+        return object()
+
+    monkeypatch.setattr(yfinance, "download", _download)
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+
+    out = prices._fetch_yahoo_prices(
+        [f"S{i}" for i in range(6)], budget=Budget(GEO_CYCLE_SECONDS, "test")
+    )
+
+    assert set(out) == {"S0", "S1", "S2"}
+
+
+def test_a_cycle_budget_is_shared_not_renewed(clock, yahoo):
+    """Both geo callers pass the cycle's budget, so 120s means 120s per cycle."""
+    budget = Budget(GEO_CYCLE_SECONDS, "cycle")
+    clock.advance(GEO_CYCLE_SECONDS + 1)
+
+    assert prices.fetch_ticker_prices(["AAPL"], budget) == {}
+    assert yahoo == []
+
+
+# ── portfolio: a user is waiting, and Cloud Run allows 1800s ─────────
+
+
+def test_the_portfolio_fetch_is_bounded_and_chunked(clock, monkeypatch):
+    """Without a budget this was one batch; a stalled Yahoo held the page for the
+    full Cloud Run request timeout (1800s) and was then killed mid-work."""
+    import yfinance
+
+    calls: list[list[str]] = []
+
+    def _stalled_download(tickers, **kwargs):
+        calls.append(list(tickers))
+        clock.advance(120.0)
+        return object()
+
+    monkeypatch.setattr(yfinance, "download", _stalled_download)
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+    monkeypatch.setattr(prices, "_resolve_ticker", lambda isin, _db: isin)
+    monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("1"))
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        out = prices.fetch_and_cache_prices(db, [f"US{i:010d}" for i in range(30)])
+    finally:
+        db.close()
+
+    # 30s of allowance, 120s per stalled chunk: one chunk, then stop.
+    assert len(calls) == 1
+    assert len(calls[0]) == 3
+    # Whatever resolved is still cached and returned; the rest stay absent, which
+    # the portfolio treats as unknown price and fails closed on.
+    assert len(out) == 3

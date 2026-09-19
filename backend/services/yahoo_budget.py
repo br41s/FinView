@@ -29,6 +29,13 @@ logger = logging.getLogger(__name__)
 # ~1.5s, so this is dozens of ISINs before the budget ever bites.
 IMPORT_SECONDS = 60.0
 
+# One portfolio valuation. Tightest of the three because a user is waiting on the
+# response. It is affordable because the price cache is per ISIN per day: in steady
+# state nothing is fetched at all, and the cost lands on the first view of the day.
+# Cloud Run allows the request 1800s (cloudbuild.yaml --timeout=1800), so without a
+# budget a stalled Yahoo hangs the page for half an hour and is then killed mid-work.
+PORTFOLIO_SECONDS = 30.0
+
 # One geo cron cycle. Longer because no user is waiting on it, but still bounded:
 # the Cloud Run revision runs --max-instances=1 with --cpu-throttling and the
 # work has to finish inside the HTTP request.

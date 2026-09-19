@@ -142,7 +142,7 @@ def test_a_learned_ticker_makes_prices_fetchable(db, monkeypatch):
 
     assert prices._resolve_ticker(UNKNOWN_ISIN, db) == "AAPL"
 
-    monkeypatch.setattr(prices, "_fetch_yahoo_prices", lambda _t: {"AAPL": 190.0})
+    monkeypatch.setattr(prices, "_fetch_yahoo_prices", lambda _t, **_kw: {"AAPL": 190.0})
     monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("2"))
 
     assert prices.fetch_and_cache_prices(db, [UNKNOWN_ISIN]) == {UNKNOWN_ISIN: Decimal("95")}
