@@ -36,11 +36,11 @@ jobs:
 
       # requirements.txt is hash-locked and exported without dev extras, so the
       # test tooling is installed alongside it rather than from it.
-      # The lint/test tooling is pinned on purpose. Unpinned, the first run
-      # installed ruff 0.16.8 against a tree developed on 0.15.7; 0.16 turns on
-      # rules the project never selected (I001 among them) and reported 1040
-      # errors on code that is clean locally. Bumping these is a deliberate
-      # change with a diff attached, not something a runner decides for us.
+      # The lint/test tooling is pinned so a CI run is reproducible and matches
+      # the local venv. This is the second line of defence, not the first: what
+      # actually stopped ruff's defaults from moving the goalposts is the
+      # explicit `select` in pyproject.toml, verified clean on both 0.15.7 and
+      # 0.16.8. Pinning alone would only have deferred the problem to the bump.
       - name: Install dependencies
         run: |
           uv pip install --python .venv/bin/python -r requirements.txt
