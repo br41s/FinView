@@ -512,6 +512,7 @@ class GeoSignalOut(BaseModel):
     rules: list[GeoRuleOut] = []
     checkpoints: list[GeoCheckpointOut] = []
     timestamp: datetime
+    notifiedAt: datetime | None = None  # when a channel actually delivered it
     status: str  # active|resolved
     source: str = ""  # ingest feed key (usgs|EONET|gdelt|acled|…)
     sourceUrl: str | None = None  # link to the underlying source event, when captured
@@ -529,7 +530,8 @@ class GeoCycleRunOut(BaseModel):
     ok: bool
     events: int = 0
     new_signals: int = 0
-    notified: int = 0
+    notified: int = 0  # signals that reached at least one channel
+    notify_failed: int = 0  # signals the gate selected that no channel delivered
     checkpoints_evaluated: int = 0
     persist_failures: int = 0
     sources: dict[str, int] = {}

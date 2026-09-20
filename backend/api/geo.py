@@ -157,6 +157,7 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
             for c in checkpoints
         ],
         timestamp=_as_utc(signal.created_at),
+        notifiedAt=_as_utc(signal.notified_at),
         status=_ev(signal.status),
         source=signal.source or "",
         sourceUrl=_source_url(signal.raw_json),
@@ -187,6 +188,7 @@ def _serialize_run(run: GeoCycleRun | None) -> GeoCycleRunOut | None:
         events=run.events or 0,
         new_signals=run.new_signals or 0,
         notified=run.notified or 0,
+        notify_failed=run.notify_failed or 0,
         checkpoints_evaluated=run.checkpoints_evaluated or 0,
         persist_failures=run.persist_failures or 0,
         sources=sources,
