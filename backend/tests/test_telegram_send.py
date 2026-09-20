@@ -139,11 +139,26 @@ def test_a_message_at_the_limit_is_left_alone():
     assert json.loads(op.call_args.args[0].data)["text"] == exact
 
 
-def test_non_400_errors_do_not_retry():
-    err = _http_error(429, "Too Many Requests")
+def test_a_permanent_rejection_is_not_retried():
+    """403 is an answer, not a hiccup — retrying it just doubles the latency."""
+    err = _http_error(403, "Forbidden")
     with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
         assert send_telegram("hola") is False
     assert op.call_count == 1
+
+
+def test_a_rate_limit_is_retried_once(monkeypatch):
+    """429/5xx/timeout are transient. This used to give up on the first one, so
+    a momentary rate limit silently dropped the alert for good.
+
+    Exactly once: the geo and options cycles are synchronous inside the Cloud Run
+    request, so a retry ladder is charged to the request deadline.
+    """
+    monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
+    err = _http_error(429, "Too Many Requests")
+    with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
+        assert send_telegram("hola") is False
+    assert op.call_count == 2
 
 
 def test_an_unreadable_error_body_still_logs_the_code(caplog):

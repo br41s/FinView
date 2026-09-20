@@ -847,6 +847,11 @@ class GeoSignal(Base):
     status: Mapped[str] = mapped_column(
         _geo_enum(GeoSignalStatus), default=GeoSignalStatus.ACTIVE.value
     )
+    # When at least one notification channel actually delivered this signal.
+    # NULL means never delivered — which, before this column existed, was
+    # indistinguishable from delivered: notify_signal discarded every sender's
+    # return value and GeoCycleRun.notified counted attempts.
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Provenance
     matched_rule_ids: Mapped[str | None] = mapped_column(Text)  # JSON list of rule_id
@@ -989,7 +994,14 @@ class GeoCycleRun(Base):
 
     events: Mapped[int] = mapped_column(Integer, default=0)
     new_signals: Mapped[int] = mapped_column(Integer, default=0)
+    # Signals that reached at least one channel. This used to be incremented
+    # unconditionally next to the notify call, so it counted attempts: prod read
+    # "notified" on cycles where nothing was ever configured to deliver.
     notified: Mapped[int] = mapped_column(Integer, default=0)
+    # Signals the gate selected for notification where no channel delivered.
+    # Non-zero is a delivery outage, which a green `ok` and a zero `notified`
+    # (nothing to notify) cannot be told apart otherwise.
+    notify_failed: Mapped[int] = mapped_column(Integer, default=0)
     checkpoints_evaluated: Mapped[int] = mapped_column(Integer, default=0)
     # Signals the persist phase had to skip. Non-zero means the cycle finished
     # but lost work, which a green `ok` would otherwise hide.
