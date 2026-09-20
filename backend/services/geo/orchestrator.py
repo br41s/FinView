@@ -24,7 +24,7 @@ from .analyst import AnalystResult, AnalystTicker, analyze_event
 from .auditor import create_checkpoints, evaluate_pending
 from .ingest import fetch_all_sources
 from .notify import notify_signal
-from .rules import RULES_BY_ID, seed_rule_stats
+from .rules import RULES_BY_ID, compute_risk, seed_rule_stats
 from .sentinel import GeoEvent
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ def _compound_analyses(analyses: list[AnalystResult]) -> list[AnalystResult]:
                 matched_rules=[rule],
                 tickers=[AnalystTicker(t.symbol, t.direction, rule.description) for t in rule.tickers],
                 confidence=conf,
-                risk_score=min(round(conf / 15), 10),
+                risk_score=compute_risk([rule], event, None),
                 direction=rule.direction,
             )
         )
