@@ -371,6 +371,14 @@ def analyze_weather_extremes(points: list[MeteoPoint]) -> list[GeoEvent]:
 
 
 # ── Specialist: GDELT geopolitical ───────────────────────────────────
+# Classification is CAMEO-first: the export codes every event with a verb code
+# (``EventCode``/``EventRootCode``) from the CAMEO 1.1b3 ontology, which is a
+# coder's judgment about the event, not a substring of a headline. The keyword
+# pass below is only the fallback for rows the root map does not cover — the
+# QuadClass 3 pre-filter also lets roots 09–13 (investigate/demand/disapprove/
+# reject/threaten) through, and an actor named "MILITARY" or "SANCTION" is the
+# only handle those have.
+#
 # Matched as words, not substrings: "BAN" used to hit Lebanon, Albania,
 # Bangladesh and "central bank", so sanctions swallowed most of the feed, and
 # "STRIKE" claimed every airstrike for protest. A short suffix set keeps the
@@ -395,37 +403,92 @@ _GDELT_PATTERN_RE = {
     category: re.compile(r"\b(?:" + "|".join(patterns) + ")" + _PATTERN_SUFFIX, re.IGNORECASE)
     for category, patterns in _GDELT_ACTOR_PATTERNS.items()
 }
-# category → (financial_type, max_goldstein, min_goldstein)
-# No mention/source floors: the Doc API supplies no counts (see ingest/gdelt.py),
-# so the old 8–15 mention / 3–5 source floors could only ever be met by the
-# fabricated constants they were written against — and those were below the
-# floors, which is why prod holds 0 GDELT-sourced signals out of 1700.
-# goldstein_scale is likewise the *query's* severity prior (-6 conflict, -4
-# sanctions, -3 protest), not a per-article measurement, so a floor means
-# "which query may supply this category": armed_conflict only from the conflict
-# query, never from a protest headline. A floor below every query constant is
-# unreachable — armed_conflict shipped dead at -7 for exactly that reason.
+# A sanctions/aid-cutoff event between economic actors is a trade dispute, not a
+# security one — same CAMEO code, different thesis (FXI/DBA, not USO/LMT).
+_GDELT_ECONOMIC_ACTOR_RE = re.compile(
+    r"\b(?:TRADE|TARIFF|IMPORT|EXPORT|WTO|COMMERCE|CUSTOMS|MERCHANT)" + _PATTERN_SUFFIX,
+    re.IGNORECASE,
+)
+
+
+def _classify_by_cameo(event_code: str, root_code: str) -> str | None:
+    """CAMEO 1.1b3 verb code → sentinel category. Verified against the codebook.
+
+    Root 17 ("Coerce") is deliberately *not* armed conflict. Its bulk is 173
+    arrest/detain — the single most common conflict code in a live batch — and
+    routing a routine arrest into ``armed_conflict`` would fire the oil/defense
+    theses on it, which is the class of fabrication this source was rewritten to
+    remove. The two sub-codes that are state force against a population (171
+    seize or damage property, 175 use repression) go to ``protest``; 176 (cyber
+    attack) is a hostile act between states, so it escalates; the rest land in
+    ``diplomatic_tension``, which no rule matches — tracked in the feed and in
+    the region cluster, but not a thesis on its own.
+    """
+    if root_code == "14":  # Protest
+        return "protest"
+    if root_code == "15":  # Exhibit force posture
+        return "military_escalation"
+    if root_code == "16":  # Reduce relations
+        # 163 impose embargo/boycott/sanctions; 1621/1622 stop economic/military
+        # aid. Everything else (break relations, halt negotiations, expel
+        # observers) is diplomatic, not economic.
+        if event_code.startswith("163") or event_code in {"1621", "1622"}:
+            return "sanctions"
+        return "diplomatic_tension"
+    if root_code == "17":  # Coerce
+        if event_code == "176":
+            return "military_escalation"
+        if event_code.startswith("171") or event_code.startswith("175"):
+            return "protest"
+        return "diplomatic_tension"
+    if root_code in {"18", "19", "20"}:  # Unconventional / conventional / mass violence
+        return "armed_conflict"
+    return None
+
+
+# category → (financial_type, max_goldstein, min_goldstein, min_mentions, min_sources)
+#
+# The floors are real again. They were removed when the Doc API was the source
+# because it supplied no counts at all; the export supplies NumMentions and
+# NumSources per event, so a floor means what it says.
+#
+# Calibrated against 3 consecutive live export batches (2026-09-19/20, 440 rows
+# surviving the ingest pre-filter). Measured there: NumSources is 1 in 1758 of
+# 1790 rows — a 15-minute slice is usually an event's first sighting, and none
+# of the 32 exceptions were conflict rows — so the original design's 3–5 source
+# floor would have dropped 100% of the feed, and 1 is the only honest floor.
+# NumMentions runs min 1 / median 3 / p90 10 / max 21 with ~40% of conflict rows
+# at one or two mentions, so that is where the discrimination lives: 5 keeps the
+# real Ukraine (21), Gaza (6) and Wonsan (5) stories and drops the long tail.
+# The looser 4 on sanctions/trade_dispute is deliberate — CAMEO 163 is rare
+# (0 rows in the sample) and high-value, so it is not the category to thin.
+# ``cooperation`` has no CAMEO route: the ingest pre-filter is conflict-only, so
+# only the keyword fallback could reach it and it has no cooperation list. The
+# entry stays because ``diplomatic_cooperation`` rules exist and a future
+# cooperation source would land here; it emits nothing today.
 _GDELT_FILTERS = {
-    "armed_conflict": ("armed_conflict", -6, None),
-    "military_escalation": ("military_escalation", -4, None),
-    "sanctions": ("sanctions", -3, None),
-    "protest": ("mass_protest", -3, None),
-    "diplomatic_tension": ("diplomatic_tension", -3, None),
-    "trade_dispute": ("trade_dispute", -3, None),
-    "cooperation": ("diplomatic_cooperation", None, 6),
+    "armed_conflict": ("armed_conflict", -6, None, 5, 1),
+    "military_escalation": ("military_escalation", -4, None, 5, 1),
+    "sanctions": ("sanctions", -3, None, 4, 1),
+    "protest": ("mass_protest", -3, None, 6, 1),
+    "diplomatic_tension": ("diplomatic_tension", -3, None, 6, 1),
+    "trade_dispute": ("trade_dispute", -3, None, 4, 1),
+    "cooperation": ("diplomatic_cooperation", None, 6, 2, 1),
 }
 
 
 def _classify_gdelt(evt: GdeltEvent) -> str | None:
+    category = _classify_by_cameo(evt.event_code, evt.event_root_code)
+    if category in {"sanctions", "diplomatic_tension"} and _GDELT_ECONOMIC_ACTOR_RE.search(
+        f"{evt.actor1} {evt.actor2}"
+    ):
+        return "trade_dispute"
+    if category:
+        return category
     text = f"{evt.title} {evt.actor1} {evt.actor2}"
-    for category, pattern in _GDELT_PATTERN_RE.items():
+    for fallback, pattern in _GDELT_PATTERN_RE.items():
         if pattern.search(text):
-            return category
-    # No keyword: only the conflict query's prior (-6) says anything on its own —
-    # "Ukraine war, day 900" is conflict news without a trigger word. The other
-    # two priors are too weak to classify an unmatched headline.
-    if evt.goldstein_scale <= -6:
-        return "armed_conflict"
+            return fallback
     return None
 
 
@@ -441,10 +504,12 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
         category = _classify_gdelt(evt)
         if not category or category not in _GDELT_FILTERS:
             continue
-        ftype, max_g, min_g = _GDELT_FILTERS[category]
+        ftype, max_g, min_g, min_mentions, min_sources = _GDELT_FILTERS[category]
         if max_g is not None and evt.goldstein_scale > max_g:
             continue
         if min_g is not None and evt.goldstein_scale < min_g:
+            continue
+        if evt.num_mentions < min_mentions or evt.num_sources < min_sources:
             continue
 
         regions = match_regions(evt.latitude, evt.longitude)
@@ -452,20 +517,34 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
         region_key = region or f"{int(evt.latitude)}_{int(evt.longitude)}"
         day = (evt.date_added or "")[:8] or "today"
 
-        tr = region_counts.setdefault(region_key, {"count": 0, "sum_g": 0.0})
-        tr["count"] += 1
-        tr["sum_g"] += evt.goldstein_scale
-
-        # Ten headlines about one story are one event. The id is region+day
-        # keyed on purpose, but emitting a GeoEvent per article let the compound
-        # tally count article volume as "simultaneous events".
+        # Ten rows about one story are one event. The id is region+day keyed on
+        # purpose, but emitting a GeoEvent per row let the compound tally count
+        # article volume as "simultaneous events".
         event_id = f"gdelt-{category}-{region_key}-{day}"
         if event_id in seen:
             continue
         seen.add(event_id)
-        # Never "red" from a query constant: red is what severity_headroom reads
-        # as evidence the event exceeded its rule floor.
-        severity = "orange" if evt.goldstein_scale <= -4 else None
+
+        # The escalation tally counts *stories*, not rows, for the same reason —
+        # and it matters now in a way it could not before. The Doc API capped the
+        # feed at 75 articles a cycle; an hour of export batches passes ~90 rows
+        # of the floors, so a region with one story told 22 ways used to clear a
+        # "≥3 simultaneous events" bar that is supposed to mean three events.
+        tr = region_counts.setdefault(region_key, {"count": 0, "sum_g": 0.0})
+        tr["count"] += 1
+        tr["sum_g"] += evt.goldstein_scale
+        # Honest bands: goldstein_scale is now CAMEO's own weight for the coded
+        # event (19x fight = -10, 18x assault = -9, 15x force posture = -7.2,
+        # 14x protest = -6.5, 17x coerce = -5), not the per-query constant the
+        # Doc API era invented — so "red" is evidence again, and
+        # rules.severity_headroom may read it.
+        severity = (
+            "red"
+            if evt.goldstein_scale <= -7
+            else "orange"
+            if evt.goldstein_scale <= -4
+            else None
+        )
         out.append(
             GeoEvent(
                 id=event_id,
@@ -481,6 +560,9 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                     "goldsteinScale": evt.goldstein_scale,
                     "actor1": evt.actor1,
                     "category": category,
+                    "numMentions": evt.num_mentions,
+                    "eventCode": evt.event_code,
+                    "sourceUrl": evt.source_url,
                 },
             )
         )
@@ -503,10 +585,9 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                         f"{region_key.replace('_', ' ')} ({tr['count']} events)",
                         latitude=sample.latitude,
                         longitude=sample.longitude,
-                        # Article volume in one region is a real signal; the avg
-                        # goldstein behind it is still a query constant, so it
-                        # earns "orange", never the "red" severity_headroom reads.
-                        severity="orange",
+                        # The average behind this is measured per event now, so a
+                        # cluster of real fighting earns red on its own evidence.
+                        severity="red" if avg_g <= -7 else "orange",
                         region=region_key,
                         source="gdelt",
                         timestamp=now,
