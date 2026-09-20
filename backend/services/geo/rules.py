@@ -50,6 +50,99 @@ class FastRule:
     # from confidence squared the same number and capped importance at 54 against
     # a notify gate of 60 (0 notifications in 1700 prod signals, 2026-09-20 audit).
     risk: int = 0
+    # How wide the event is: site (one port, one mine), local (a country-sized
+    # box or smaller), regional (a multi-country box), global (compound rules,
+    # systemic). "" = inferred from the region box area (see rule_scope). A rule
+    # may only target instruments whose breadth its scope can plausibly move —
+    # the 2026-09-20 audit found 61 of 94 rules pairing a local event with an
+    # all-global basket ("a strong rain in one box, a worldwide ticker").
+    scope: str = ""
+    # (physical effect, price/flow it moves, why the instrument follows). Written
+    # only where the transmission can actually be written down; a rule whose
+    # chain cannot be written is the signal to drop it. Rendered as the thesis.
+    chain: tuple[str, str, str] | None = None
+
+    @property
+    def thesis(self) -> str:
+        return " → ".join(self.chain) if self.chain else self.direction
+
+
+SCOPE_RANK = {"site": 0, "local": 1, "regional": 2, "global": 3}
+# Breadth of an instrument's exposure: what fraction of its price a single
+# region can plausibly move. A commodity future is the *direct* price of the
+# thing a physical event disrupts, so it is narrow in the sense that matters,
+# whatever the number of countries that trade it.
+BREADTH_RANK = {"single_asset": 0, "commodity": 0, "national": 1, "sector": 2, "global": 3}
+# Widest instrument breadth a scope may target without a penalty.
+_MAX_BREADTH_FOR_SCOPE = {"site": 0, "local": 1, "regional": 2, "global": 3}
+_SCOPE_PENALTY_PER_STEP = 0.10
+
+# Per instrument. Every symbol in FAST_RULES must appear here (tested).
+INSTRUMENT_BREADTH: dict[str, str] = {
+    # commodity futures: the price the event moves
+    "CC=F": "commodity", "KC=F": "commodity", "LBR=F": "commodity", "ZC=F": "commodity",
+    # single-country / single-site exposure
+    "005930.KS": "national", "PCG": "single_asset", "SQM": "single_asset", "TSM": "national",
+    "WY": "national", "ZIM": "single_asset", "DAC": "single_asset", "TUR": "national",
+    "EWG": "national", "EWJ": "national", "EWY": "national", "EWZ": "national",
+    "FXI": "national", "INDA": "national", "DAL": "national", "UAL": "national",
+    "AAL": "national", "ALB": "sector", "CCJ": "single_asset",
+    # sector ETFs and sector-concentrated names
+    "COPX": "sector", "GDX": "sector", "ITA": "sector", "JETS": "sector", "LIT": "sector",
+    "REMX": "sector", "SOXX": "sector", "URA": "sector", "XLE": "sector", "XRT": "sector",
+    "BDRY": "sector", "WEAT": "commodity", "SOYB": "commodity", "DBA": "sector",
+    "USO": "commodity", "UNG": "commodity", "LMT": "sector", "RTX": "sector", "NOC": "sector",
+    "FCX": "sector", "SCCO": "sector", "ALL": "sector", "TRV": "sector", "HIG": "sector",
+    "RCL": "sector", "CCL": "sector",
+    # globally diversified
+    "GLD": "global", "BHP": "global", "RIO": "global", "VALE": "global", "XOM": "global",
+    "CVX": "global", "HD": "global", "LOW": "global", "HSY": "global", "MDLZ": "global",
+    "INTC": "global", "TM": "global",
+}
+
+# Tradability for a Spanish retail account (TR / DEGIRO / IBKR / ING / eToro):
+#   cash_eu       — buyable as a cash position
+#   options_only  — US ETF without a PRIIPs KID: reachable via options at IBKR only
+#   not_tradable  — no retail route (futures notionals, OTC, thin chains)
+# with the nearest EU-listed alternative where one exists. Families, not
+# verified ISINs: check the broker's product list before relying on one.
+INSTRUMENT_TRADABILITY: dict[str, tuple[str, str]] = {
+    "GLD": ("options_only", "SGLN / 4GLD (physical gold ETC)"),
+    "USO": ("options_only", "CRUD (WisdomTree WTI ETC)"),
+    "UNG": ("options_only", "NGAS (WisdomTree natural gas ETC)"),
+    "XLE": ("options_only", "SXLE (SPDR S&P US Energy UCITS)"),
+    "SOXX": ("options_only", "SMH (VanEck Semiconductor UCITS)"),
+    "ITA": ("options_only", "DFNS (VanEck Defense UCITS)"),
+    "FXI": ("options_only", "ICGA (iShares China Large Cap UCITS)"),
+    "EWJ": ("options_only", "IJPA (iShares MSCI Japan UCITS)"),
+    "EWY": ("options_only", "IKOR (iShares MSCI Korea UCITS)"),
+    "EWZ": ("options_only", "IBZL (iShares MSCI Brazil UCITS)"),
+    "EWG": ("options_only", "EXS1 (iShares Core DAX)"),
+    "INDA": ("options_only", "NDIA (iShares MSCI India UCITS)"),
+    "TUR": ("not_tradable", "IDTK (iShares MSCI Turkey UCITS)"),
+    "LIT": ("options_only", "VOLT (WisdomTree Battery Solutions)"),
+    "URA": ("options_only", "U3O8 (Sprott Uranium Miners UCITS)"),
+    "GDX": ("options_only", "GDXJ.L / VanEck Gold Miners UCITS"),
+    "COPX": ("not_tradable", "VanEck Global Mining UCITS"),
+    "REMX": ("not_tradable", "VanEck Rare Earth UCITS"),
+    "JETS": ("not_tradable", "IAG.MC / RYA.IR (airlines, Madrid / Dublin)"),
+    "BDRY": ("not_tradable", "GOGL.OL (Golden Ocean, Oslo)"),
+    "XRT": ("not_tradable", "ITX.MC (Inditex)"),
+    "WEAT": ("not_tradable", "WisdomTree Wheat ETC"),
+    "SOYB": ("not_tradable", "WisdomTree Soybeans ETC"),
+    "DBA": ("not_tradable", "WisdomTree Agriculture ETC"),
+    "CC=F": ("not_tradable", "WisdomTree Cocoa ETC"),
+    "KC=F": ("not_tradable", "WisdomTree Coffee ETC"),
+    "ZC=F": ("not_tradable", "WisdomTree Corn ETC"),
+    "LBR=F": ("not_tradable", ""),
+    "005930.KS": ("not_tradable", "Samsung GDR (SMSN.L)"),
+    # US single stocks: cash at every broker
+    **{s: ("cash_eu", "") for s in (
+        "AAL", "ALB", "ALL", "BHP", "CCJ", "CCL", "CVX", "DAC", "DAL", "FCX", "HD", "HIG",
+        "HSY", "INTC", "LMT", "LOW", "MDLZ", "NOC", "PCG", "RCL", "RIO", "RTX", "SCCO",
+        "SQM", "TM", "TRV", "TSM", "UAL", "VALE", "WY", "XOM", "ZIM",
+    )},
+}
 
 
 # Base market-impact risk per event category (1 = noise, 10 = systemic). This is
@@ -387,10 +480,47 @@ def match_rules(event) -> list[FastRule]:
     return out
 
 
+_SCOPE_LOCAL_MAX_AREA = 200  # deg²; regions up to ~turkey / ukraine are "local"
+
+
+def rule_scope(rule: FastRule) -> str:
+    """Explicit scope, or one inferred from the region box: compound and
+    region-less rules are global, small boxes local, the rest regional."""
+    if rule.scope:
+        return rule.scope
+    if rule.category == "compound":
+        return "global"
+    m = _RE_REGION.search(rule.condition)
+    if not m or m.group(1) not in GEO_REGIONS:
+        return "global"
+    la0, la1, lo0, lo1 = GEO_REGIONS[m.group(1)]
+    return "local" if (la1 - la0) * (lo1 - lo0) <= _SCOPE_LOCAL_MAX_AREA else "regional"
+
+
+def scope_violations(rule: FastRule) -> list[tuple[str, int]]:
+    """(symbol, steps over the scope's allowed breadth) for every leg too wide
+    for the event the rule fires on."""
+    allowed = _MAX_BREADTH_FOR_SCOPE[rule_scope(rule)]
+    out: list[tuple[str, int]] = []
+    for t in rule.tickers:
+        breadth = INSTRUMENT_BREADTH.get(t.symbol, "global")
+        over = BREADTH_RANK[breadth] - allowed
+        if over > 0:
+            out.append((t.symbol, over))
+    return out
+
+
+def scope_penalty(rule: FastRule) -> float:
+    """Confidence penalty for the widest mismatch in the basket: a local event
+    aimed at a worldwide instrument is a weaker claim than its base_confidence."""
+    worst = max((over for _, over in scope_violations(rule)), default=0)
+    return _SCOPE_PENALTY_PER_STEP * worst
+
+
 def effective_confidence(rule: FastRule, stat: GeoRuleStat | None) -> float:
-    """base_confidence + learned confidence_mod, clamped to [0, 1]."""
+    """base_confidence + learned confidence_mod − scope penalty, clamped to [0, 1]."""
     mod = float(stat.confidence_mod) if stat and stat.confidence_mod is not None else 0.0
-    return max(0.0, min(1.0, rule.base_confidence + mod))
+    return max(0.0, min(1.0, rule.base_confidence + mod - scope_penalty(rule)))
 
 
 def seed_rule_stats(db: Session) -> int:
