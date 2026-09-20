@@ -1,7 +1,7 @@
 """Sentinel + specialist analysts — normalize source data into GeoEvent objects.
 
 Port of WorldHawk's sentinel.ts + the 5 specialist analysts (ais/weather/flight/
-gdelt/acled). Each function turns a raw source feed into a list of GeoEvent with a
+gdelt). Each function turns a raw source feed into a list of GeoEvent with a
 fine-grained ``type`` that the rule matcher keys on.
 
 Difference from WorldHawk: the per-process "processed" dedup sets are dropped. The
@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
 from .ingest.types import (
-    AcledEvent,
     FireHotspot,
     FlightData,
     GdeltEvent,
@@ -521,136 +520,6 @@ def _iter_region_ids():
     from .rules import GEO_REGIONS
 
     return GEO_REGIONS.keys()
-
-
-# ── Specialist: ACLED conflict ───────────────────────────────────────
-# acled_type → (financial_type, min_fatalities, red_thr, orange_thr)
-_ACLED_MAPPINGS = {
-    "Battles": ("armed_conflict", 5, 50, 10),
-    "Explosions/Remote violence": ("armed_conflict", 3, 30, 5),
-    "Violence against civilians": ("armed_conflict", 10, 100, 20),
-    "Riots": ("mass_protest", 0, 20, 5),
-    "Protests": ("mass_protest", 0, 10, 1),
-    "Strategic developments": ("geopolitical_escalation", 0, 50, 10),
-}
-_ACLED_SUB_OVERRIDES = {
-    "Air/drone strike": "military_escalation",
-    "Shelling/artillery/missile attack": "military_escalation",
-    "Chemical weapon": "military_escalation",
-    "Headquarters or base established": "military_escalation",
-    "Armed clash": "armed_conflict",
-    "Remote explosive/landmine/IED": "armed_conflict",
-    "Government regains territory": "armed_conflict",
-    "Non-state actor overtakes territory": "armed_conflict",
-    "Mob violence": "mass_protest",
-    "Excessive force against protesters": "mass_protest",
-    "Peaceful protest": "mass_protest",
-    "Protest with intervention": "mass_protest",
-    "Violent demonstration": "mass_protest",
-    "Looting/property destruction": "mass_protest",
-    "Agreement": "diplomatic_cooperation",
-    "Arrests": "diplomatic_tension",
-}
-
-
-def analyze_acled_events(acled_events: list[AcledEvent]) -> list[GeoEvent]:
-    if not acled_events:
-        return []
-    now = _now_ms()
-    out: list[GeoEvent] = []
-
-    # Cluster by country + event_type + day.
-    groups: dict[str, list[AcledEvent]] = {}
-    for evt in acled_events:
-        day = evt.event_date[:10]
-        groups.setdefault(f"{evt.country}|{evt.event_type}|{day}", []).append(evt)
-
-    region_intensity: dict[str, dict] = {}
-
-    for gkey, group in groups.items():
-        country, event_type, date = gkey.split("|")
-        mapping = _ACLED_MAPPINGS.get(event_type)
-        if not mapping:
-            continue
-        ftype_default, min_fat, red_thr, orange_thr = mapping
-
-        total_fatalities = sum(e.fatalities for e in group)
-        if total_fatalities < min_fat and len(group) < 3:
-            continue
-
-        lat = sum(e.latitude for e in group) / len(group)
-        lon = sum(e.longitude for e in group) / len(group)
-
-        sub_counts: dict[str, int] = {}
-        for e in group:
-            sub_counts[e.sub_event_type] = sub_counts.get(e.sub_event_type, 0) + 1
-        dominant_sub = max(sub_counts, key=sub_counts.get) if sub_counts else ""
-        ftype = _ACLED_SUB_OVERRIDES.get(dominant_sub, ftype_default)
-
-        regions = match_regions(lat, lon)
-        region = regions[0] if regions else None
-        region_id = region or f"{country.lower().replace(' ', '_')}"
-        admin1 = group[0].admin1
-        location = f"{admin1}, {country}" if admin1 else country
-
-        intensity = region_intensity.setdefault(region_id, {"events": 0, "fatalities": 0})
-        intensity["events"] += len(group)
-        intensity["fatalities"] += total_fatalities
-
-        severity = "red" if total_fatalities >= red_thr else "orange" if total_fatalities >= orange_thr else None
-        fat_str = f" ({total_fatalities} fatalities)" if total_fatalities else ""
-        out.append(
-            GeoEvent(
-                id=f"acled-{region_id}-{ftype}-{date}",
-                type=ftype,
-                title=f"{event_type} in {location}{fat_str}",
-                latitude=lat,
-                longitude=lon,
-                severity=severity,
-                region=region,
-                source="acled",
-                timestamp=now,
-                raw_data={
-                    "eventType": event_type,
-                    "subEventType": dominant_sub,
-                    "eventCount": len(group),
-                    "totalFatalities": total_fatalities,
-                    "country": country,
-                },
-            )
-        )
-
-    # Escalation: high cumulative intensity per region.
-    region_ids = set(_iter_region_ids())
-    for region_id, intensity in region_intensity.items():
-        if region_id not in region_ids:
-            continue
-        if intensity["events"] >= 10 and intensity["fatalities"] >= 50:
-            sample = next(
-                (g[0] for g in groups.values()
-                 if region_id in match_regions(g[0].latitude, g[0].longitude)),
-                None,
-            )
-            if sample:
-                out.append(
-                    GeoEvent(
-                        id=f"acled-escalation-{region_id}",
-                        type="geopolitical_escalation",
-                        title=f"ACLED Conflict Escalation — {region_id.replace('_', ' ')} "
-                        f"({intensity['events']} events, {intensity['fatalities']} fatalities)",
-                        latitude=sample.latitude,
-                        longitude=sample.longitude,
-                        severity="red",
-                        region=region_id,
-                        source="acled",
-                        timestamp=now,
-                        raw_data={
-                            "eventCount": intensity["events"],
-                            "totalFatalities": intensity["fatalities"],
-                        },
-                    )
-                )
-    return out
 
 
 # ── Specialist: AIS maritime chokepoint traffic ──────────────────────

@@ -6,7 +6,7 @@ Two independent defects, both silent:
    because the Doc API's ``artlist`` mode returns no counts — and the sentinel's
    floors asked for 8–15 mentions and 3–5 sources. ``5 < 8`` on every row, so
    ``analyze_gdelt_events`` returned an empty list for its entire life. Prod: 0
-   GDELT-sourced signals out of 1700, with 25 of 94 rules depending on the source.
+   GDELT-sourced signals out of 1700, with 25 of the rules depending on the source.
 2. ``_classify_gdelt`` matched raw substrings, so ``"BAN"`` claimed *Lebanon*,
    *Albania*, *Bangladesh* and *central bank* for ``sanctions`` and ``"STRIKE"``
    claimed every *airstrike* for ``protest``.

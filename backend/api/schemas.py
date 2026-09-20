@@ -514,7 +514,7 @@ class GeoSignalOut(BaseModel):
     timestamp: datetime
     notifiedAt: datetime | None = None  # when a channel actually delivered it
     status: str  # active|resolved
-    source: str = ""  # ingest feed key (usgs|EONET|gdelt|acled|…)
+    source: str = ""  # ingest feed key (usgs|EONET|gdelt|…)
     sourceUrl: str | None = None  # link to the underlying source event, when captured
 
 

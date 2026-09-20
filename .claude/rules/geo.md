@@ -8,9 +8,9 @@ paths:
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 94 rules / 49 regions
-(`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
-maritime AIS, meteo, flights, GDELT, ACLED) — every source key optional, a missing
+WorldHawk port: geopolitical/natural events → market signals. 89 rules / 49 regions
+(`services/geo/rules.py`), 7 ingest sources (seismic, EONET events, FIRMS fires,
+maritime AIS, meteo, flights, GDELT) — every source key optional, a missing
 key degrades that source to empty.
 
 ### Adding regions / rules — overlap is the thing to reason about
@@ -151,7 +151,7 @@ a miss, not a result.
 
 ### Env keys (Cloud Run)
 Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KEY`,
-`FINVIEW_ACLED_EMAIL/PASSWORD` (OAuth password grant — ACLED has no API key), `FINVIEW_OPENSKY_CLIENT_ID/SECRET` (all optional).
+`FINVIEW_OPENSKY_CLIENT_ID/SECRET` (all optional).
 OpenSky moved to **OAuth2 client credentials**: `flights.py` exchanges them for a bearer
 token at `_TOKEN_URL` (cached until ~1 min before expiry) and falls back to the legacy
 `FINVIEW_OPENSKY_USERNAME/PASSWORD` basic auth, then to anonymous. Anonymous is

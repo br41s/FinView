@@ -93,7 +93,6 @@ const SOURCE_LABELS: Record<string, string> = {
   opensky: "OpenSky",
   windy: "Windy",
   gdelt: "GDELT",
-  acled: "ACLED",
   ais: "AIS marítimo",
   compound: "Regla compuesta",
 };

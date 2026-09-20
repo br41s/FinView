@@ -153,5 +153,4 @@ class SourceBundle:
     meteo: list[MeteoPoint] = field(default_factory=list)
     flights: list[FlightData] = field(default_factory=list)
     gdelt: list[GdeltEvent] = field(default_factory=list)
-    acled: list[AcledEvent] = field(default_factory=list)
     vessels: list[VesselSnapshot] = field(default_factory=list)

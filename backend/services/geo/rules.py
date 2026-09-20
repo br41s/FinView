@@ -1,6 +1,6 @@
 """Geo-economic correlation rules — Python port of WorldHawk's rules.ts.
 
-94 fast rules + 49 geo-regions + the condition matcher.
+89 fast rules + 49 geo-regions + the condition matcher.
 Direction: ↑ = bullish, ↓ = bearish.
 
 Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's headers say
@@ -317,19 +317,17 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("gdelt-trade-dispute-china", "trade_dispute", "region=china_industrial", "Trade dispute with China (GDELT)", _t("FXI- DBA+ GLD+"), "Trade disruption", 0.70),
     FastRule("gdelt-escalation-cluster", "geopolitical_escalation", "", "Geopolitical escalation cluster (GDELT)", _t("GLD+ LMT+ RTX+ ITA+ USO+"), "Broad risk-off", 0.80),
     FastRule("gdelt-cooperation-mideast", "diplomatic_cooperation", "region=middle_east_oil", "Diplomatic cooperation Middle East (GDELT)", _t("USO- GLD-"), "De-escalation, risk-on", 0.60),
-    # ACLED conflict
-    FastRule("acled-conflict-mideast-oil", "armed_conflict", "region=middle_east_oil", "Armed conflict Middle East (ACLED)", _t("USO+ XLE+ GLD+ LMT+ RTX+"), "Oil risk, defense", 0.86),
-    FastRule("acled-conflict-suez", "armed_conflict", "region=suez_red_sea", "Armed conflict Suez/Red Sea (ACLED)", _t("USO+ ZIM+ DAC+ GLD+"), "Shipping + oil risk", 0.84),
-    FastRule("acled-conflict-sahel", "armed_conflict", "region=sahel", "Armed conflict Sahel (ACLED)", _t("URA+ GLD+ GDX+"), "Uranium/gold supply risk", 0.72),
-    FastRule("acled-conflict-nigeria", "armed_conflict", "region=nigeria_oil", "Armed conflict Nigeria Delta (ACLED)", _t("USO+ XLE+"), "Oil supply risk", 0.70),
-    FastRule("acled-conflict-ukraine", "armed_conflict", "region=ukraine_black_sea", "Armed conflict Ukraine (ACLED)", _t("WEAT+ UNG+ LMT+ RTX+ NOC+"), "Grain + defense", 0.82),
-    FastRule("acled-conflict-horn-africa", "armed_conflict", "region=horn_of_africa", "Armed conflict Horn of Africa (ACLED)", _t("USO+ ZIM+ DBA+"), "Shipping + supply risk", 0.74),
-    FastRule("acled-military-taiwan", "military_escalation", "region=taiwan", "Military escalation Taiwan (ACLED)", _t("TSM- SOXX- LMT+ GLD+"), "Semi + defense", 0.84),
-    FastRule("acled-protest-mideast", "mass_protest", "region=middle_east_oil", "Mass protest Middle East (ACLED)", _t("USO+ XLE+ GLD+"), "Instability, oil risk", 0.68),
-    FastRule("acled-protest-china", "mass_protest", "region=china_industrial", "Mass protest China (ACLED)", _t("FXI- SOXX- GLD+"), "Instability", 0.66),
-    FastRule("acled-protest-southeast-asia", "mass_protest", "region=southeast_asia", "Mass protest Southeast Asia (ACLED)", _t("EWY- DBA+"), "Regional instability", 0.60),
-    FastRule("acled-escalation-cluster", "geopolitical_escalation", "", "Geopolitical escalation cluster (ACLED)", _t("GLD+ LMT+ RTX+ ITA+ USO+"), "Broad risk-off", 0.82),
-    FastRule("acled-conflict-drc-cobalt", "armed_conflict", "region=drc_mining", "Armed conflict DRC mining (ACLED)", _t("LIT+ REMX+"), "Cobalt/lithium supply risk", 0.70),
+    # News conflict / protest (GDELT), regions the first GDELT block does not cover.
+    # These were the ACLED rules: the matcher never keyed on source, so they always
+    # fired from GDELT too; ACLED itself was dropped 2026-09-20 (its API is not
+    # available to a personal account) and the five exact twins were removed.
+    FastRule("gdelt-conflict-suez", "armed_conflict", "region=suez_red_sea", "Armed conflict Suez/Red Sea (GDELT)", _t("USO+ ZIM+ DAC+ GLD+"), "Shipping + oil risk", 0.84),
+    FastRule("gdelt-conflict-sahel", "armed_conflict", "region=sahel", "Armed conflict Sahel (GDELT)", _t("URA+ GLD+ GDX+"), "Uranium/gold supply risk", 0.72),
+    FastRule("gdelt-conflict-nigeria", "armed_conflict", "region=nigeria_oil", "Armed conflict Nigeria Delta (GDELT)", _t("USO+ XLE+"), "Oil supply risk", 0.70),
+    FastRule("gdelt-conflict-horn-africa", "armed_conflict", "region=horn_of_africa", "Armed conflict Horn of Africa (GDELT)", _t("USO+ ZIM+ DBA+"), "Shipping + supply risk", 0.74),
+    FastRule("gdelt-protest-china", "mass_protest", "region=china_industrial", "Mass protest China (GDELT)", _t("FXI- SOXX- GLD+"), "Instability", 0.66),
+    FastRule("gdelt-protest-southeast-asia", "mass_protest", "region=southeast_asia", "Mass protest Southeast Asia (GDELT)", _t("EWY- DBA+"), "Regional instability", 0.60),
+    FastRule("gdelt-conflict-drc-cobalt", "armed_conflict", "region=drc_mining", "Armed conflict DRC mining (GDELT)", _t("LIT+ REMX+"), "Cobalt/lithium supply risk", 0.70),
     # Compound (evaluated by the orchestrator, NOT the per-event matcher)
     FastRule("compound-energy-crisis", "compound", "multiple_energy_events>=2", "Compound energy crisis", _t("USO+ UNG+ XLE+ GLD+"), "Multiple simultaneous energy shocks", 0.88),
     FastRule("compound-food-crisis", "compound", "multiple_food_events>=2", "Compound food crisis", _t("DBA+ WEAT+ SOYB+"), "Multiple simultaneous food shocks", 0.85),
