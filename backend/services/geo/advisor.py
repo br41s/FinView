@@ -25,6 +25,16 @@ logger = logging.getLogger(__name__)
 
 IMPORTANCE_THRESHOLD = 60
 _CONFIDENCE_SHIFT = 15  # min confidence delta to re-notify a known event
+# Sources that describe the world as configured, not as observed. The static
+# ALERT_ZONES polygons emit the same "red" event every cycle forever; they may
+# sit on the board but a hardcoded polygon is not something to page a phone
+# about. The first two notifications the pipeline ever sent (2026-09-20) were
+# Gaza and Syria — from these polygons, unchanged since June.
+_NON_OBSERVED_SOURCES = frozenset({"alerts"})
+
+
+def _pageable(source: str, importance: int) -> bool:
+    return importance >= IMPORTANCE_THRESHOLD and source not in _NON_OBSERVED_SOURCES
 
 # Fine matcher type → coarse frontend display category.
 _DISPLAY_CATEGORY: dict[str, GeoDisplayCategory] = {
@@ -104,7 +114,7 @@ def generate_signal(
         # notified_at is the retry ledger: a gated signal no channel delivered
         # (outage, rate limit) is re-selected until one does, instead of burning
         # its only attempt on the first cycle.
-        should_notify = importance >= IMPORTANCE_THRESHOLD and (
+        should_notify = _pageable(existing.source, importance) and (
             shift >= _CONFIDENCE_SHIFT or existing.notified_at is None
         )
         existing.confidence = confidence / 100
@@ -145,5 +155,5 @@ def generate_signal(
             )
         )
 
-    should_notify = importance >= IMPORTANCE_THRESHOLD
+    should_notify = _pageable(signal.source, importance)
     return SignalResult(signal, importance, is_new=True, should_notify=should_notify)
