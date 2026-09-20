@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from backend.models import GeoCycleRun, GeoRuleStat, GeoSignal, GeoSignalStatus
+from backend.models import GeoCycleRun, GeoFlightSample, GeoRuleStat, GeoSignal, GeoSignalStatus
 
 from . import sentinel
 from .advisor import IMPORTANCE_THRESHOLD, SignalResult, compute_importance, generate_signal
@@ -45,6 +45,11 @@ _SOURCE_KEYS = (
     "earthquakes", "events", "fires", "meteo", "flights", "gdelt", "acled", "vessels",
 )
 _RUN_RETENTION_DAYS = 7
+# Flight baseline: the sentinel keeps the last 12 samples per zone; one cycle per
+# 30 min makes that six hours. Samples closer than this are the same cycle seen
+# by another user and are not stored twice.
+_FLIGHT_SAMPLE_MIN_GAP = timedelta(minutes=10)
+_FLIGHT_SAMPLE_RETENTION = timedelta(hours=24)
 
 
 @dataclass
@@ -79,6 +84,56 @@ def _has_active_signal(db: Session, user_id: int, event: GeoEvent) -> bool:
         .first()
         is not None
     )
+
+
+def _hydrate_flight_history(db: Session) -> None:
+    """Load the per-zone baseline from the DB into the sentinel's rolling window."""
+    rows = (
+        db.query(GeoFlightSample)
+        .filter(GeoFlightSample.sampled_at >= datetime.now(timezone.utc) - _FLIGHT_SAMPLE_RETENTION)
+        .order_by(GeoFlightSample.sampled_at.asc())
+        .all()
+    )
+    history: dict[str, list[tuple[int, int, int]]] = {}
+    for r in rows:
+        ts = r.sampled_at if r.sampled_at.tzinfo else r.sampled_at.replace(tzinfo=timezone.utc)
+        history.setdefault(r.zone_id, []).append((r.total, r.military, int(ts.timestamp() * 1000)))
+    for hist in history.values():
+        del hist[:-sentinel._FLIGHT_MAX_HISTORY]
+    sentinel._flight_history.clear()
+    sentinel._flight_history.update(history)
+
+
+def _persist_flight_samples(db: Session) -> int:
+    """Store the sample the sentinel just appended for each zone; returns rows written."""
+    now = datetime.now(timezone.utc)
+    written = 0
+    for zone_id, hist in sentinel._flight_history.items():
+        if not hist:
+            continue
+        total, military, ts_ms = hist[-1]
+        sampled_at = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        latest = (
+            db.query(GeoFlightSample.sampled_at)
+            .filter(GeoFlightSample.zone_id == zone_id)
+            .order_by(GeoFlightSample.sampled_at.desc())
+            .first()
+        )
+        if latest is not None:
+            prev = latest[0] if latest[0].tzinfo else latest[0].replace(tzinfo=timezone.utc)
+            if sampled_at - prev < _FLIGHT_SAMPLE_MIN_GAP:
+                continue
+        db.add(GeoFlightSample(zone_id=zone_id, sampled_at=sampled_at, total=total, military=military))
+        written += 1
+    db.query(GeoFlightSample).filter(
+        GeoFlightSample.sampled_at < now - _FLIGHT_SAMPLE_RETENTION
+    ).delete(synchronize_session=False)
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        logger.warning("geo: could not persist flight samples", exc_info=True)
+    return written
 
 
 def _collect_events(bundle) -> list[GeoEvent]:
@@ -189,7 +244,9 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     stats = _load_stats(db)
 
     bundle = asyncio.run(fetch_all_sources())
+    _hydrate_flight_history(db)
     events = _collect_events(bundle)
+    _persist_flight_samples(db)
     logger.info("geo cycle user=%s: %d events from sources", user_id, len(events))
 
     # Phase A: rule-only correlation (cheap) for every event.

@@ -970,6 +970,26 @@ class GeoRuleStat(Base):
     )
 
 
+class GeoFlightSample(Base):
+    """One per-zone flight count per cycle — the airspace rules' rolling baseline.
+
+    The sentinel's drop/surge detection compares this cycle against the last
+    twelve samples. That history used to live in process memory, which with
+    ``--min-instances=0`` and a 30-minute cron dies between every cycle, so the
+    baseline was always the hard-coded default and five tankers over Hormuz read
+    as a "military surge" on every cold start. Objective and user-independent:
+    one row per zone per cycle, not per user.
+    """
+
+    __tablename__ = "geo_flight_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    zone_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    sampled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    military: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class GeoCycleRun(Base):
     """One execution of the geo pipeline for one user — the section's heartbeat.
 

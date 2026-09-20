@@ -77,8 +77,8 @@ class Settings(BaseSettings):
     opensky_client_secret: str = ""
     opensky_username: str = ""     # legacy basic auth
     opensky_password: str = ""
-    acled_email: str = ""          # ACLED (armed conflict) — needs email + key
-    acled_key: str = ""
+    acled_email: str = ""          # ACLED (armed conflict) — OAuth password grant with
+    acled_password: str = ""       # the myACLED login; there is no API key any more
     aisstream_key: str = ""        # aisstream.io global AIS (maritime WS, deferred)
     geo_monitor_interval_minutes: int = 15
 
