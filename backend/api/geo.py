@@ -458,10 +458,10 @@ def cron_run(db: DbSession):
     there are users and not one cycle completed, the job hears about it.
     """
     from backend.models import User
-    from backend.services.geo.orchestrator import run_cycle_for_user
+    from backend.services.geo.orchestrator import run_cycles
 
     user_ids = [uid for (uid,) in db.query(User.id).all()]
-    ok = sum(1 for uid in user_ids if run_cycle_for_user(uid) is not None)
+    ok = sum(1 for result in run_cycles(user_ids) if result is not None)
     if user_ids and not ok:
         raise HTTPException(
             status_code=500,

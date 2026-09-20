@@ -114,7 +114,8 @@ def test_the_header_lookup_is_case_insensitive(monkeypatch):
     # cost a function of local row count, and CI green only by the accident of
     # having no users. The gate is what this file tests; the payload is not.
     # cron_run imports this inside the function body, so patch the source module.
-    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda _uid: object())
+    monkeypatch.setattr(orchestrator, "prepare_cycle", lambda db: object())
+    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda _uid, inputs=None: object())
 
     client = TestClient(app)
 

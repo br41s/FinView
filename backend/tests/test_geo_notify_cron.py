@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -429,8 +430,9 @@ def test_cron_runs_cycle_per_user(db, monkeypatch):
 
     monkeypatch.setattr(settings, "cron_secret", "s3cret")
     ran: list[int] = []
+    monkeypatch.setattr(orchestrator, "prepare_cycle", lambda db: object())
     monkeypatch.setattr(
-        orchestrator, "run_cycle_for_user", lambda uid: ran.append(uid) or object()
+        orchestrator, "run_cycle_for_user", lambda uid, inputs=None: ran.append(uid) or object()
     )
 
     db.add(User(email="a@x.com"))
@@ -454,7 +456,7 @@ def test_cron_reports_failure_when_no_cycle_completes(db, monkeypatch):
 
     from backend.services.geo import orchestrator
 
-    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid: None)
+    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid, inputs=None: None)
     db.add(User(email="a@x.com"))
     db.commit()
 
@@ -468,7 +470,7 @@ def test_cron_succeeds_when_at_least_one_cycle_completes(db, monkeypatch):
     from backend.services.geo import orchestrator
 
     monkeypatch.setattr(
-        orchestrator, "run_cycle_for_user", lambda uid: None if uid == 1 else object()
+        orchestrator, "run_cycle_for_user", lambda uid, inputs=None: None if uid == 1 else object()
     )
     db.add(User(email="a@x.com"))
     db.add(User(email="b@x.com"))
@@ -482,7 +484,7 @@ def test_cron_succeeds_when_at_least_one_cycle_completes(db, monkeypatch):
 def test_cron_with_no_users_is_not_a_failure(db, monkeypatch):
     from backend.services.geo import orchestrator
 
-    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid: None)
+    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid, inputs=None: None)
     assert cron_run(db)["users"] == 0
 
 
@@ -640,3 +642,54 @@ def test_a_rule_only_refresh_keeps_the_llm_risk(db):
     )
     res = generate_signal(db, user_id=1, analysis=with_llm, prices={})
     assert (res.signal.risk_score, res.importance, res.should_notify) == (9, 72, True)
+
+
+def test_the_shared_half_runs_once_for_all_users(db, monkeypatch):
+    """Four accounts used to mean four ingests, four price fetches and four
+    series fetches over one identical bundle."""
+    from backend.config import settings
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(settings, "cron_secret", "s3cret")
+    prepared: list[int] = []
+    monkeypatch.setattr(
+        orchestrator, "prepare_cycle", lambda db: prepared.append(1) or "inputs"
+    )
+    seen: list[tuple[int, object]] = []
+    monkeypatch.setattr(
+        orchestrator, "run_cycle_for_user",
+        lambda uid, inputs=None: seen.append((uid, inputs)) or object(),
+    )
+    for email in ("a@x.com", "b@x.com", "c@x.com"):
+        db.add(User(email=email))
+    db.commit()
+
+    result = cron_run(db)
+    assert result["cycles_ok"] == 3
+    assert prepared == [1]
+    assert seen == [(1, "inputs"), (2, "inputs"), (3, "inputs")]
+
+
+def test_a_failed_shared_half_fails_every_user(db, monkeypatch):
+    from backend.config import settings
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(settings, "cron_secret", "s3cret")
+
+    def boom(db):
+        raise RuntimeError("ingest exploded")
+
+    monkeypatch.setattr(orchestrator, "prepare_cycle", boom)
+    recorded: list[tuple[int, str | None]] = []
+    monkeypatch.setattr(
+        orchestrator, "_record_run",
+        lambda db, uid, started, result, error: recorded.append((uid, error)),
+    )
+    db.add(User(email="a@x.com"))
+    db.add(User(email="b@x.com"))
+    db.commit()
+
+    with pytest.raises(HTTPException):
+        cron_run(db)
+    assert [uid for uid, _ in recorded] == [1, 2]
+    assert all("ingest exploded" in err for _, err in recorded)

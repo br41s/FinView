@@ -212,8 +212,32 @@ def _outcome(score: float | None) -> str:
     return BacktestOutcome.CORRECT.value if score > 50 else BacktestOutcome.INCORRECT.value
 
 
-def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) -> int:
+def _series_for(
+    symbols: list[str], budget: Budget | None, cache: dict[str, Series] | None, **spec
+) -> dict[str, Series]:
+    """Fetch the series for ``symbols``, reusing ``cache`` (one per cron request)
+    for whatever was already fetched for another user this cycle."""
+    if cache is None:
+        return fetch_price_series(symbols, budget=budget, **spec) if symbols else {}
+    missing = [s for s in symbols if s not in cache]
+    if missing:
+        cache.update(fetch_price_series(missing, budget=budget, **spec))
+        for s in missing:
+            cache.setdefault(s, [])  # remember a miss too: don't re-ask per user
+    return {s: cache[s] for s in symbols if cache.get(s)}
+
+
+def evaluate_pending(
+    db: Session,
+    user_id: int,
+    budget: Budget | None = None,
+    series_cache: dict[str, dict[str, Series]] | None = None,
+) -> int:
     """Evaluate all due, unscored checkpoints for a user. Returns count evaluated.
+
+    ``series_cache`` is shared across the users of one cron request: the price
+    series are the same for everyone, so they are fetched once per request, not
+    once per user.
 
     Each checkpoint is scored against the bar at its own target time, from the
     series fetched once per cycle: intraday when the target is inside the
@@ -241,7 +265,8 @@ def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) ->
         for s in db.query(GeoSignal).filter(GeoSignal.id.in_(signal_ids)).all()
     }
     symbols = sorted({t.symbol for s in signals.values() for t in s.tickers})
-    intraday = fetch_price_series(symbols, budget=budget, **_INTRADAY) if symbols else {}
+    cache = series_cache if series_cache is not None else {}
+    intraday = _series_for(symbols, budget, cache.setdefault("5m", {}), **_INTRADAY)
     # The daily series backs only what the intraday one cannot: symbols with no
     # 5-minute bars at all, and targets older than the intraday window. Fetching
     # it for everything doubled the Yahoo footprint for data never read, and it
@@ -256,7 +281,7 @@ def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) ->
         or intraday[sym][0][0] > earliest
         or len(intraday[sym]) <= _SESSION_BARS + _MIN_SIGMA_SAMPLES
     )
-    daily = fetch_price_series(need_daily, budget=budget, **_DAILY) if need_daily else {}
+    daily = _series_for(need_daily, budget, cache.setdefault("1d", {}), **_DAILY)
 
     evaluated = 0
     uncalibrated: set[str] = set()
