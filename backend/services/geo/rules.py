@@ -133,9 +133,9 @@ FAST_RULES: tuple[FastRule, ...] = (
     # Earthquakes
     FastRule("eq-chile-copper", "earthquake", "earthquake.magnitude>=6 && region=chile_mining", "Major Chilean earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption → COPX up, miners down", 0.82),
     FastRule("eq-japan-industrial", "earthquake", "earthquake.magnitude>=6.5 && region=japan", "Major Japanese earthquake hits industrial base", _t("EWJ- TM- GLD+"), "Japanese industrial disruption → equities down, gold up", 0.75),
-    FastRule("eq-taiwan-semi", "earthquake", "earthquake.magnitude>=6 && region=taiwan", "Taiwan earthquake threatens semiconductor production", _t("TSM- SOXX- INTC+ SSNLF+"), "Semi supply shock → TSMC down, competitors up", 0.78),
-    FastRule("eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey", "Major Turkish earthquake", _t("TUR- X+ GLD+"), "Turkish disruption, reconstruction demand for steel", 0.70),
-    FastRule("eq-indonesia-nickel", "earthquake", "earthquake.magnitude>=6 && region=indonesia_mining", "Indonesian earthquake disrupts nickel mining", _t("VALE- NI=F+"), "Nickel supply disruption", 0.68),
+    FastRule("eq-taiwan-semi", "earthquake", "earthquake.magnitude>=6 && region=taiwan", "Taiwan earthquake threatens semiconductor production", _t("TSM- SOXX- INTC+ 005930.KS+"), "Semi supply shock → TSMC down, competitors up", 0.78),
+    FastRule("eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey", "Major Turkish earthquake", _t("TUR- GLD+"), "Turkish disruption, reconstruction demand for steel", 0.70),
+    FastRule("eq-indonesia-nickel", "earthquake", "earthquake.magnitude>=6 && region=indonesia_mining", "Indonesian earthquake disrupts nickel mining", _t("VALE-"), "Nickel supply disruption", 0.68),
     FastRule("eq-peru-copper", "earthquake", "earthquake.magnitude>=6 && region=peru_mining", "Peruvian earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption", 0.76),
     FastRule("eq-lithium-triangle", "earthquake", "earthquake.magnitude>=6 && region=lithium_triangle", "Atacama/Puna earthquake disrupts lithium brine operations", _t("LIT+ ALB+ SQM-"), "Brine/port disruption → lithium price up, local producer SQM hit", 0.74),
     # Cyclones / hurricanes
@@ -147,7 +147,7 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("cyc-australia-ironore", "cyclone", "region=australia_pilbara", "Cyclone shuts in Pilbara iron-ore export ports", _t("BHP- RIO- VALE+"), "Port Hedland shut-in → Australian export volume lost, Vale gains on tighter seaborne supply", 0.80),
     # Wildfires
     FastRule("fire-california", "fire", "fire.cluster>=50 && region=california", "Major California wildfires", _t("ALL- TRV- PCG- HD+"), "Insurance losses, utility liability", 0.78),
-    FastRule("fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest", "Canadian wildfires disrupt lumber", _t("LBS=F+ WY+"), "Lumber supply disruption", 0.74),
+    FastRule("fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest", "Canadian wildfires disrupt lumber", _t("LBR=F+ WY+"), "Lumber supply disruption", 0.74),
     FastRule("fire-amazon", "fire", "fire.cluster>=100 && region=amazon", "Major Amazon fires", _t("DBA+ SOYB+ EWZ-"), "Agricultural / soy supply impact", 0.65),
     FastRule("fire-australia-mining", "fire", "fire.cluster>=30 && region=australia", "Australian fires disrupt mining", _t("BHP- RIO- GLD+"), "Mining disruption", 0.60),
     FastRule("fire-greece-tourism", "fire", "fire.cluster>=20 && region=mediterranean", "Mediterranean fires disrupt tourism", _t("JETS-"), "Tourism disruption", 0.55),
