@@ -258,3 +258,23 @@ def test_record_run_prunes_old_rows(db):
     assert db.query(GeoCycleRun).filter(GeoCycleRun.user_id == 2).count() == 1, (
         "pruning is per user"
     )
+
+
+def test_unresolvable_symbols_are_not_refetched_per_user(db, monkeypatch):
+    """"Not in prices" is not "not attempted": thin futures the shared fetch
+    could not price were re-asked once per user against the shared budget."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "backend.services.prices.fetch_ticker_prices",
+        lambda symbols, budget=None: calls.append(list(symbols)) or {},
+    )
+    inputs = orchestrator.CycleInputs(
+        bundle=_Bundle(), events=[], analyses=[], stats={}, prices={}, yahoo=None,
+        attempted={"TTF=F"},
+    )
+    monkeypatch.setattr(orchestrator, "_dispatch_notifications", lambda db, uid, results: (0, 0))
+    monkeypatch.setattr(orchestrator, "evaluate_pending", lambda *a, **k: 0)
+    # no analyses → nothing enriched → the only candidate is what an LLM might add
+    orchestrator.run_cycle(db, 1, inputs)
+    orchestrator.run_cycle(db, 2, inputs)
+    assert calls == []  # TTF=F was attempted in prepare; nobody re-asks

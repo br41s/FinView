@@ -258,6 +258,11 @@ class CycleInputs:
     prices: dict[str, float]
     yahoo: object  # Budget shared by every Yahoo call in the request
     series_cache: dict[str, dict] = field(default_factory=dict)
+    # Symbols any fetch this request has *tried*. "Not in prices" means
+    # unresolvable as often as it means "the LLM just added it", and the
+    # unresolvable ones (thin futures) must not be re-asked once per user.
+    attempted: set[str] = field(default_factory=set)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def prepare_cycle(db: Session) -> CycleInputs:
@@ -265,8 +270,13 @@ def prepare_cycle(db: Session) -> CycleInputs:
     from backend.services.prices import fetch_ticker_prices
     from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
 
+    started_at = datetime.now(timezone.utc)
     seed_rule_stats(db)
     stats = _load_stats(db)
+    # The stats outlive this session (they are read by every user's cycle) and
+    # the flight-sample commit below would expire them: a detached, expired
+    # GeoRuleStat raises on first attribute access. Snapshot them now.
+    db.expunge_all()
 
     bundle = asyncio.run(fetch_all_sources())
     _hydrate_flight_history(db)
@@ -286,7 +296,10 @@ def prepare_cycle(db: Session) -> CycleInputs:
     yahoo = Budget(GEO_CYCLE_SECONDS, "geo cycle")
     symbols = sorted({t.symbol for a in analyses for t in a.tickers})
     prices = fetch_ticker_prices(symbols, yahoo) if symbols else {}
-    return CycleInputs(bundle, events, analyses, stats, prices, yahoo)
+    return CycleInputs(
+        bundle, events, analyses, stats, prices, yahoo,
+        attempted=set(symbols), started_at=started_at,
+    )
 
 
 def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> CycleResult:
@@ -316,11 +329,14 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
 
     # The LLM may have added tickers the shared fetch did not cover.
     prices = inputs.prices
-    extra = sorted({t.symbol for a in enriched for t in a.tickers} - set(prices))
+    extra = sorted(
+        {t.symbol for a in enriched for t in a.tickers} - set(prices) - inputs.attempted
+    )
     if extra:
         from backend.services.prices import fetch_ticker_prices
 
-        prices = {**prices, **fetch_ticker_prices(extra, yahoo)}
+        inputs.attempted.update(extra)
+        inputs.prices.update(fetch_ticker_prices(extra, yahoo))  # the next user reuses it
 
     # Phase E: persist signals + checkpoints, collect notifications.
     #
@@ -421,10 +437,13 @@ def _record_run(
 
 
 def run_cycle_for_user(user_id: int, inputs: CycleInputs | None = None) -> CycleResult | None:
-    """Scheduler/background entry: manages its own DB session, never raises."""
+    """Scheduler/background entry: manages its own DB session, never raises.
+
+    The run row's started_at is the request's, not this user's: the row is the
+    liveness record and its duration should keep covering the ingest."""
     from backend.database import SessionLocal
 
-    started_at = datetime.now(timezone.utc)
+    started_at = inputs.started_at if inputs else datetime.now(timezone.utc)
     with SessionLocal() as db:
         try:
             result = run_cycle(db, user_id, inputs)
