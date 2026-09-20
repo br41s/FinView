@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-austriacos-espana',
+    tag: 'Fiscalidad',
+    date: '21 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos austriacos en España: cómo recuperar el 12,5 % retenido de más',
+    excerpt:
+      'Austria retiene el 27,5 % de tus dividendos, pero el convenio con España limita el impuesto al 15 %. Cómo declarar el bruto en el IRPF y cómo reclamar el exceso al Finanzamt con el trámite DIAG.',
+  },
+  {
     slug: 'dividendos-finlandeses-espana',
     tag: 'Fiscalidad',
     date: '20 sep 2026',
