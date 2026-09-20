@@ -8,10 +8,18 @@ paths:
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 89 rules / 49 regions
+WorldHawk port: geopolitical/natural events → market signals. 81 rules / 49 regions
 (`services/geo/rules.py`), 7 ingest sources (seismic, EONET events, FIRMS fires,
 maritime AIS, meteo, flights, GDELT) — every source key optional, a missing
 key degrades that source to empty.
+
+### Every rule states its reach and writes down its transmission
+`FastRule.scope` (site/local/regional/global) and `chain` — (physical effect, the price or
+flow it moves, why this instrument follows) — are **written, never inferred**; `chain`
+renders as the thesis, `scope` bounds the basket against `INSTRUMENT_BREADTH` and the
+mismatch costs confidence. A leg whose third clause cannot be written is dropped and a rule
+with no surviving leg is deleted (eight were, 2026-09-21). `INSTRUMENT_TRADABILITY` tags
+each symbol cash_eu / options_only / not_tradable with its UCITS or EU-listed alternate.
 
 ### Adding regions / rules — overlap is the thing to reason about
 `match_regions` returns **every** box containing the point and `match_rules` gates on
@@ -38,8 +46,8 @@ a geometry one — check which categories the boxes you overlap already carry.
   weather rule gets its point automatically; `backend/tests/test_geo_meteo_sampling.py`
   asserts that invariant. What is still manual is *where* in the box: the sentinel thresholds
   are severe (45°C / -30°C / 50mm per 3h), and a centroid on water or in a mild sub-climate
-  keeps the rule just as dead. Override it in `meteo._REGION_POINTS` (as `mediterranean` does
-  — its centroid is the Tyrrhenian Sea) and mind the ~500 calls/day Windy budget: the source
+  keeps the rule just as dead. Override it in `meteo._REGION_POINTS` (as `us_northeast` does
+  — its centroid, Albany, sees -30°C once a decade) and mind the ~500 calls/day Windy budget: the source
   really fetches ~48×/day, so each point costs ~48 calls.
 - Sentinel gates decide what ever reaches the matcher: earthquakes need `magnitude>=5.5`
   **and** to land inside some region; natural events need a region **or** `severity=red`.

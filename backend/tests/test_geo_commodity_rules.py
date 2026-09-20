@@ -51,7 +51,7 @@ def _basket(rule_id: str) -> dict[str, str]:
             6.8,
             -5.3,
             None,
-            {"CC=F": "bullish", "HSY": "bearish", "MDLZ": "bearish"},
+            {"CC=F": "bullish"},
         ),
         (
             "flood-westafrica-cocoa",
@@ -59,7 +59,7 @@ def _basket(rule_id: str) -> dict[str, str]:
             6.8,
             -5.3,
             None,
-            {"CC=F": "bullish", "HSY": "bearish", "MDLZ": "bearish"},
+            {"CC=F": "bullish"},
         ),
         # Port Hedland — world's largest iron-ore export port.
         (
@@ -68,7 +68,7 @@ def _basket(rule_id: str) -> dict[str, str]:
             -20.3,
             118.6,
             None,
-            {"BHP": "bearish", "RIO": "bearish", "VALE": "bullish"},
+            {"FMG.AX": "bearish"},
         ),
         # Salar de Atacama — brine lithium.
         (
@@ -77,7 +77,7 @@ def _basket(rule_id: str) -> dict[str, str]:
             -23.5,
             -68.2,
             6.5,
-            {"LIT": "bullish", "ALB": "bullish", "SQM": "bearish"},
+            {"SQM": "bearish", "ALB": "bearish"},
         ),
     ],
 )

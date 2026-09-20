@@ -483,7 +483,7 @@ class GeoRuleOut(BaseModel):
 
     id: str
     description: str  # what happened, e.g. "Major Chilean earthquake disrupts copper supply"
-    thesis: str  # rationale, e.g. "Copper supply disruption → COPX up, miners down"
+    thesis: str  # the rule's chain: physical effect → price it moves → why this instrument follows
     confidence: float  # rule's base confidence, 0-1
     category: str = ""  # event bucket the rule belongs to, e.g. "earthquake"
     trigger: str = ""  # the condition that fired, e.g. "mag>=6.5 near chile_mining"

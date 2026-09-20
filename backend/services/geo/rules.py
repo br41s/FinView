@@ -1,6 +1,6 @@
 """Geo-economic correlation rules — Python port of WorldHawk's rules.ts.
 
-89 fast rules + 49 geo-regions + the condition matcher.
+81 fast rules + 49 geo-regions + the condition matcher.
 Direction: ↑ = bullish, ↓ = bearish.
 
 Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's headers say
@@ -8,6 +8,13 @@ Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's header
 not the headers. The commodity-basin additions (cocoa / iron ore / lithium) take it to
 93 / 49, and the India monsoon precipitation rule to 94. Treat the spec's prose counts
 as historical, its tables as authoritative.
+
+The 2026-09-20 audit found the table dishonest about reach: 61 of 94 rules pointed a
+one-box physical event at an entirely global basket. Every rule now carries an explicit
+``scope`` and a written ``chain``; eight whose chain could not be written to any
+instrument were deleted (``vol-japan``, ``wx-heat-mediterranean``, ``wx-precip-china``,
+``iceberg-shipping``, ``wx-lowpres-atlantic``, ``eq-indonesia-nickel``,
+``vol-indonesia-palm``, ``gdelt-protest-southeast-asia``).
 
 Port decisions (flagged in the spec as un-enforced in the JS matcher):
 - ``fire.cluster>=N``: IMPLEMENTED here (the sentinel computes cluster size; gating
@@ -79,25 +86,35 @@ _SCOPE_PENALTY_PER_STEP = 0.10
 
 # Per instrument. Every symbol in FAST_RULES must appear here (tested).
 INSTRUMENT_BREADTH: dict[str, str] = {
-    # commodity futures: the price the event moves
+    # commodity futures / ETCs: the price the event moves directly
     "CC=F": "commodity", "KC=F": "commodity", "LBR=F": "commodity", "ZC=F": "commodity",
-    # single-country / single-site exposure
-    "005930.KS": "national", "PCG": "single_asset", "SQM": "single_asset", "TSM": "national",
-    "WY": "national", "ZIM": "single_asset", "DAC": "single_asset", "TUR": "national",
-    "EWG": "national", "EWJ": "national", "EWY": "national", "EWZ": "national",
-    "FXI": "national", "INDA": "national", "DAL": "national", "UAL": "national",
-    "AAL": "national", "ALB": "sector", "CCJ": "single_asset",
-    # sector ETFs and sector-concentrated names
-    "COPX": "sector", "GDX": "sector", "ITA": "sector", "JETS": "sector", "LIT": "sector",
-    "REMX": "sector", "SOXX": "sector", "URA": "sector", "XLE": "sector", "XRT": "sector",
-    "BDRY": "sector", "WEAT": "commodity", "SOYB": "commodity", "DBA": "sector",
-    "USO": "commodity", "UNG": "commodity", "LMT": "sector", "RTX": "sector", "NOC": "sector",
-    "FCX": "sector", "SCCO": "sector", "ALL": "sector", "TRV": "sector", "HIG": "sector",
-    "RCL": "sector", "CCL": "sector",
+    "HG=F": "commodity", "SB=F": "commodity", "ZS=F": "commodity", "TTF=F": "commodity",
+    "USO": "commodity", "UNG": "commodity", "WEAT": "commodity",
+    # single operating companies: one balance sheet, one asset base
+    "PCG": "single_asset", "SQM": "single_asset", "ALB": "single_asset",
+    "ZIM": "single_asset", "DAC": "single_asset", "CCJ": "single_asset",
+    "ANTO.L": "single_asset",   # Antofagasta — Chilean copper pure play
+    "SCCO": "single_asset",     # Southern Copper — Peru + Mexico, one company
+    "FMG.AX": "single_asset",   # Fortescue — Pilbara iron ore pure play
+    "IAG.MC": "single_asset", "RYA.IR": "single_asset", "ITX.MC": "single_asset",
+    # single-country exposure: one country's economy can move the whole price.
+    # An operating company domiciled and producing in one country belongs here
+    # even when it sells worldwide (the TSM precedent), which is why Toyota is
+    # national rather than global: a Japanese quake stops Japanese assembly.
+    "005930.KS": "national", "TSM": "national", "TM": "national", "WY": "national",
+    "TUR": "national", "EWG": "national", "EWJ": "national", "EWY": "national",
+    "EWZ": "national", "FXI": "national", "INDA": "national",
+    "DAL": "national", "UAL": "national", "AAL": "national",
+    # US-only P&C carriers: a single national cat event is what moves them
+    "ALL": "national", "TRV": "national", "HIG": "national",
+    # European insurers / utility: their book and their fleet are European
+    "MUV2.DE": "national", "ALV.DE": "national", "RWE.DE": "national",
+    # sector ETFs and diversified sector proxies
+    "ITA": "sector", "SOXX": "sector", "URA": "sector", "XLE": "sector", "DBA": "sector",
+    "LMT": "sector", "RTX": "sector", "RCL": "sector", "CCL": "sector",
+    "GLEN.L": "sector",  # Glencore — diversified miner + trading book
     # globally diversified
-    "GLD": "global", "BHP": "global", "RIO": "global", "VALE": "global", "XOM": "global",
-    "CVX": "global", "HD": "global", "LOW": "global", "HSY": "global", "MDLZ": "global",
-    "INTC": "global", "TM": "global",
+    "GLD": "global",
 }
 
 # Tradability for a Spanish retail account (TR / DEGIRO / IBKR / ING / eToro):
@@ -120,27 +137,32 @@ INSTRUMENT_TRADABILITY: dict[str, tuple[str, str]] = {
     "EWG": ("options_only", "EXS1 (iShares Core DAX)"),
     "INDA": ("options_only", "NDIA (iShares MSCI India UCITS)"),
     "TUR": ("not_tradable", "IDTK (iShares MSCI Turkey UCITS)"),
-    "LIT": ("options_only", "VOLT (WisdomTree Battery Solutions)"),
     "URA": ("options_only", "U3O8 (Sprott Uranium Miners UCITS)"),
-    "GDX": ("options_only", "GDXJ.L / VanEck Gold Miners UCITS"),
-    "COPX": ("not_tradable", "VanEck Global Mining UCITS"),
-    "REMX": ("not_tradable", "VanEck Rare Earth UCITS"),
-    "JETS": ("not_tradable", "IAG.MC / RYA.IR (airlines, Madrid / Dublin)"),
-    "BDRY": ("not_tradable", "GOGL.OL (Golden Ocean, Oslo)"),
-    "XRT": ("not_tradable", "ITX.MC (Inditex)"),
     "WEAT": ("not_tradable", "WisdomTree Wheat ETC"),
-    "SOYB": ("not_tradable", "WisdomTree Soybeans ETC"),
     "DBA": ("not_tradable", "WisdomTree Agriculture ETC"),
+    # Futures: the right benchmark, no retail cash route at these notionals.
     "CC=F": ("not_tradable", "WisdomTree Cocoa ETC"),
     "KC=F": ("not_tradable", "WisdomTree Coffee ETC"),
     "ZC=F": ("not_tradable", "WisdomTree Corn ETC"),
+    "ZS=F": ("not_tradable", "WisdomTree Soybeans ETC"),
+    "SB=F": ("not_tradable", "WisdomTree Sugar ETC"),
+    "HG=F": ("not_tradable", "WisdomTree Copper ETC"),
     "LBR=F": ("not_tradable", ""),
+    # Dutch TTF is *the* European gas benchmark (Henry Hub is not: a European
+    # cold snap or windstorm does not move US wellhead gas). It prices daily on
+    # Yahoo but its 5-minute series is thin — ~36 bars in 5 days vs ~1000 for
+    # NG=F — so intraday checkpoints on it will often resolve as "no data".
+    "TTF=F": ("not_tradable", "NGAS (WisdomTree natural gas ETC, Henry Hub — wrong benchmark)"),
     "005930.KS": ("not_tradable", "Samsung GDR (SMSN.L)"),
+    # EU-listed cash names: buyable as cash at TR / DEGIRO / IBKR / ING
+    **{s: ("cash_eu", "") for s in (
+        "ANTO.L", "GLEN.L", "IAG.MC", "ITX.MC", "RYA.IR", "RWE.DE", "MUV2.DE", "ALV.DE",
+    )},
+    "FMG.AX": ("not_tradable", "no EU line; ASX access is IBKR-only"),
     # US single stocks: cash at every broker
     **{s: ("cash_eu", "") for s in (
-        "AAL", "ALB", "ALL", "BHP", "CCJ", "CCL", "CVX", "DAC", "DAL", "FCX", "HD", "HIG",
-        "HSY", "INTC", "LMT", "LOW", "MDLZ", "NOC", "PCG", "RCL", "RIO", "RTX", "SCCO",
-        "SQM", "TM", "TRV", "TSM", "UAL", "VALE", "WY", "XOM", "ZIM",
+        "AAL", "ALB", "ALL", "CCJ", "CCL", "DAC", "DAL", "HIG", "LMT", "PCG", "RCL",
+        "RTX", "SCCO", "SQM", "TM", "TRV", "TSM", "UAL", "WY", "ZIM",
     )},
 }
 
@@ -314,117 +336,921 @@ def match_regions(lat: float, lon: float) -> list[str]:
     return out
 
 
-# ── 63 fast rules ────────────────────────────────────────────────────
+# ── 81 fast rules ────────────────────────────────────────────────────
+# Every rule carries an explicit ``scope`` and a written ``chain``:
+# (physical effect, the price or flow it moves, why this instrument follows).
+# A leg with no writable third clause is not in the basket.
 FAST_RULES: tuple[FastRule, ...] = (
-    # Earthquakes
-    FastRule("eq-chile-copper", "earthquake", "earthquake.magnitude>=6 && region=chile_mining", "Major Chilean earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption → COPX up, miners down", 0.82),
-    FastRule("eq-japan-industrial", "earthquake", "earthquake.magnitude>=6.5 && region=japan", "Major Japanese earthquake hits industrial base", _t("EWJ- TM- GLD+"), "Japanese industrial disruption → equities down, gold up", 0.75),
-    FastRule("eq-taiwan-semi", "earthquake", "earthquake.magnitude>=6 && region=taiwan", "Taiwan earthquake threatens semiconductor production", _t("TSM- SOXX- INTC+ 005930.KS+"), "Semi supply shock → TSMC down, competitors up", 0.78),
-    FastRule("eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey", "Major Turkish earthquake", _t("TUR- GLD+"), "Turkish disruption: local equities sold, gold bid", 0.70),
-    FastRule("eq-indonesia-nickel", "earthquake", "earthquake.magnitude>=6 && region=indonesia_mining", "Indonesian earthquake disrupts nickel mining", _t("VALE-"), "Nickel supply disruption", 0.68),
-    FastRule("eq-peru-copper", "earthquake", "earthquake.magnitude>=6 && region=peru_mining", "Peruvian earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption", 0.76),
-    FastRule("eq-lithium-triangle", "earthquake", "earthquake.magnitude>=6 && region=lithium_triangle", "Atacama/Puna earthquake disrupts lithium brine operations", _t("LIT+ ALB+ SQM-"), "Brine/port disruption → lithium price up, local producer SQM hit", 0.74),
-    # Cyclones / hurricanes
-    FastRule("cyc-gulf-oil", "cyclone", "region=gulf_of_mexico", "Hurricane threatens Gulf of Mexico oil/gas", _t("USO+ UNG+ XLE+ XOM+ CVX+"), "Gulf production shut-ins → energy up", 0.85),
-    FastRule("cyc-florida-insurance", "cyclone", "region=florida", "Hurricane hits Florida", _t("ALL- TRV- HIG- HD+ LOW+"), "Insurance losses, rebuilding demand", 0.80),
-    FastRule("cyc-caribbean-tourism", "cyclone", "region=caribbean", "Hurricane disrupts Caribbean tourism", _t("JETS- DAL- RCL- CCL-"), "Tourism/cruise disruption", 0.72),
-    FastRule("cyc-southeast-asia", "cyclone", "region=southeast_asia", "Cyclone hits Southeast Asia", _t("EWY- DBA+"), "Regional disruption, agri prices", 0.65),
-    FastRule("cyc-india-agriculture", "cyclone", "region=india_coast", "Cyclone hits Indian coast agriculture", _t("DBA+ INDA-"), "Agricultural disruption", 0.68),
-    FastRule("cyc-australia-ironore", "cyclone", "region=australia_pilbara", "Cyclone shuts in Pilbara iron-ore export ports", _t("BHP- RIO- VALE+"), "Port Hedland shut-in → Australian export volume lost, Vale gains on tighter seaborne supply", 0.80),
-    # Wildfires
-    FastRule("fire-california", "fire", "fire.cluster>=50 && region=california", "Major California wildfires", _t("ALL- TRV- PCG- HD+"), "Insurance losses, utility liability", 0.78),
-    FastRule("fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest", "Canadian wildfires disrupt lumber", _t("LBR=F+ WY+"), "Lumber supply disruption", 0.74),
-    FastRule("fire-amazon", "fire", "fire.cluster>=100 && region=amazon", "Major Amazon fires", _t("DBA+ SOYB+ EWZ-"), "Agricultural / soy supply impact", 0.65),
-    FastRule("fire-australia-mining", "fire", "fire.cluster>=30 && region=australia", "Australian fires disrupt mining", _t("BHP- RIO- GLD+"), "Mining disruption", 0.60),
-    FastRule("fire-greece-tourism", "fire", "fire.cluster>=20 && region=mediterranean", "Mediterranean fires disrupt tourism", _t("JETS-"), "Tourism disruption", 0.55),
-    # Volcanoes
-    FastRule("vol-iceland-aviation", "volcano", "region=iceland", "Icelandic volcano disrupts aviation", _t("JETS- DAL- UAL- AAL-"), "Ash cloud grounds flights", 0.83),
-    FastRule("vol-indonesia-palm", "volcano", "region=indonesia", "Indonesian volcano disrupts palm oil", _t("DBA+"), "Palm oil / agri disruption", 0.55),
-    FastRule("vol-japan", "volcano", "region=japan", "Japanese volcanic activity", _t("EWJ- JETS- GLD+"), "Regional disruption", 0.65),
-    # Floods
-    FastRule("flood-china-industry", "flood", "region=china_industrial", "Flooding hits Chinese industrial base", _t("FXI- DBA+ SOXX-"), "Industrial / supply disruption", 0.72),
-    FastRule("flood-bangladesh-textile", "flood", "region=bangladesh", "Flooding hits Bangladesh textiles", _t("XRT-"), "Textile supply disruption", 0.58),
-    FastRule("flood-midwest-grain", "flood", "region=us_midwest", "Flooding hits US Midwest grain", _t("WEAT+ ZC=F+ DBA+"), "Grain supply disruption", 0.80),
-    FastRule("flood-germany-rhine", "flood", "region=germany_rhine", "Rhine flooding disrupts logistics", _t("EWG- UNG+"), "Logistics / energy disruption", 0.65),
-    FastRule("flood-westafrica-cocoa", "flood", "region=west_africa_cocoa", "West African flooding drives black-pod disease in cocoa", _t("CC=F+ HSY- MDLZ-"), "Excess rain → black-pod harvest loss → cocoa up, chocolate makers squeezed on input cost", 0.62),
-    # Conflicts / geopolitical (alert-zone driven, category conflict)
-    FastRule("conflict-mideast-oil", "conflict", "alert.severity=red && region=middle_east_oil", "Middle East oil conflict", _t("USO+ UNG+ XLE+ LMT+ RTX+ NOC+ ITA+ GLD+"), "Oil supply risk, defense demand", 0.88),
-    FastRule("conflict-hormuz-strait", "conflict", "region=strait_of_hormuz", "Strait of Hormuz tension", _t("USO+ XOM+ CVX+"), "Oil chokepoint risk", 0.90),
-    FastRule("conflict-ukraine-grain", "conflict", "region=ukraine_black_sea", "Ukraine/Black Sea conflict", _t("WEAT+ DBA+ UNG+ LMT+ RTX+"), "Grain export risk, defense demand", 0.82),
-    FastRule("conflict-south-china-sea", "conflict", "region=south_china_sea", "South China Sea tension", _t("FXI- TSM- LMT+ GLD+"), "Regional risk, defense demand", 0.75),
-    FastRule("conflict-korea", "conflict", "alert.severity=red && region=korean_peninsula", "Korean Peninsula conflict", _t("EWY- LMT+ NOC+ GLD+"), "Regional risk, defense demand", 0.72),
-    FastRule("conflict-suez", "conflict", "region=suez_red_sea", "Suez/Red Sea disruption", _t("USO+ ZIM+ DAC+"), "Shipping chokepoint risk", 0.80),
-    FastRule("conflict-iran-nuclear", "conflict", "alert.severity=red && region=iran", "Iran nuclear/military escalation", _t("USO+ GLD+ LMT+ RTX+ ITA+"), "Oil risk, defense demand", 0.84),
-    # Maritime (mixed)
-    FastRule("maritime-panama-drought", "drought", "region=panama_canal", "Panama Canal drought restricts transit", _t("ZIM+ DAC+ USO+"), "Shipping capacity reduction", 0.75),
-    FastRule("maritime-malacca-tension", "conflict", "region=malacca_strait", "Malacca Strait tension", _t("USO+ FXI- EWJ-"), "Shipping chokepoint risk", 0.78),
-    # AIS-derived maritime
-    FastRule("ais-tanker-drop-hormuz", "maritime_disruption", "region=strait_of_hormuz", "Tanker traffic drop at Hormuz", _t("USO+ XLE+ GLD+ UNG+"), "Oil chokepoint disruption", 0.85),
-    FastRule("ais-tanker-drop-suez", "maritime_disruption", "region=suez_red_sea", "Tanker traffic drop at Suez", _t("USO+ ZIM+ DAC+"), "Shipping disruption", 0.82),
-    FastRule("ais-reroute-cape", "maritime_rerouting", "region=cape_good_hope", "Shipping reroutes via Cape of Good Hope", _t("USO+ ZIM+ DAC+ BDRY+"), "Longer routes, higher freight", 0.80),
-    FastRule("ais-cargo-drop-malacca", "maritime_disruption", "region=malacca_strait", "Cargo traffic drop at Malacca", _t("FXI- EWJ- TSM- BDRY+"), "Asian trade disruption", 0.80),
-    FastRule("ais-congestion-suez", "maritime_congestion", "region=suez_red_sea", "Congestion at Suez", _t("ZIM+ DAC+ USO+"), "Shipping delays", 0.72),
-    FastRule("ais-cargo-drop-panama", "maritime_disruption", "region=panama_canal", "Cargo traffic drop at Panama", _t("ZIM+ DAC+ BDRY+"), "Shipping disruption", 0.75),
-    # Storms
-    FastRule("storm-us-winter", "storm", "region=us_northeast", "Winter storm hits US Northeast", _t("UNG+ JETS- DAL-"), "Heating demand, flight disruption", 0.73),
-    FastRule("storm-texas-freeze", "storm", "region=texas", "Texas freeze event", _t("UNG+ USO+ XLE+"), "Energy demand spike, production freeze", 0.80),
-    FastRule("storm-europe-energy", "storm", "region=northern_europe", "European storm hits energy", _t("UNG+ JETS-"), "Energy demand, flight disruption", 0.62),
-    # Drought / agriculture
-    FastRule("drought-us-breadbasket", "drought", "region=us_great_plains", "US Great Plains drought", _t("WEAT+ ZC=F+ DBA+"), "Grain supply reduction", 0.82),
-    FastRule("drought-brazil-coffee", "drought", "region=brazil_southeast", "Brazil drought hits coffee/soy", _t("KC=F+ SOYB+ DBA+ EWZ-"), "Coffee/soy supply reduction", 0.78),
-    FastRule("drought-india-monsoon", "drought", "region=india", "Indian monsoon failure", _t("DBA+ INDA-"), "Agricultural disruption", 0.70),
-    FastRule("drought-westafrica-cocoa", "drought", "region=west_africa_cocoa", "Ivory Coast/Ghana drought hits cocoa supply", _t("CC=F+ HSY- MDLZ-"), "~60% of world cocoa → supply shock lifts cocoa, chocolate makers down on input cost", 0.78),
-    # Nuclear / infra (declared but dormant — see module docstring)
-    FastRule("nuclear-incident", "nuclear", "earthquake.magnitude>=5 && near_nuclear_plant", "Nuclear plant incident", _t("URA- CCJ- XLE+ UNG+"), "Nuclear supply risk, alt-energy demand", 0.70),
-    # Iceberg / Arctic
-    FastRule("iceberg-shipping", "iceberg", "region=north_atlantic_shipping", "Iceberg threatens North Atlantic shipping", _t("ZIM- JETS-"), "Shipping route risk", 0.45),
-    # Extreme weather — Windy
-    FastRule("wx-heat-texas", "extreme_heat", "region=texas", "Extreme heat in Texas", _t("UNG+ USO+ XLE+"), "Cooling demand spike", 0.78),
-    FastRule("wx-heat-india", "extreme_heat", "region=india", "Extreme heat in India", _t("DBA+ INDA- WEAT+"), "Crop stress, demand", 0.72),
-    FastRule("wx-heat-mediterranean", "extreme_heat", "region=mediterranean", "Extreme heat in Mediterranean", _t("JETS- DBA+"), "Tourism/agri impact", 0.60),
-    FastRule("wx-cold-us-northeast", "extreme_cold", "region=us_northeast", "Extreme cold in US Northeast", _t("UNG+ USO+ JETS- DAL-"), "Heating demand, disruption", 0.80),
-    FastRule("wx-cold-northern-europe", "extreme_cold", "region=northern_europe", "Extreme cold in Northern Europe", _t("UNG+ EWG-"), "Heating demand", 0.75),
-    FastRule("wx-storm-gulf", "severe_storm", "region=gulf_of_mexico", "Severe storm in Gulf of Mexico", _t("USO+ XLE+ XOM+ CVX+"), "Energy production risk", 0.82),
-    FastRule("wx-storm-northern-europe", "severe_storm", "region=northern_europe", "Severe storm in Northern Europe", _t("ALL- TRV- JETS-"), "Insurance losses, disruption", 0.68),
-    FastRule("wx-precip-us-midwest", "heavy_precipitation", "region=us_midwest", "Heavy precipitation in US Midwest", _t("WEAT+ ZC=F+ DBA+"), "Crop disruption", 0.77),
-    FastRule("wx-precip-china", "heavy_precipitation", "region=china_industrial", "Heavy precipitation in China", _t("FXI- SOXX-"), "Industrial disruption", 0.70),
-    FastRule("wx-precip-india", "heavy_precipitation", "region=india", "Heavy precipitation in India (monsoon)", _t("DBA+ INDA-"), "Crop/logistics disruption", 0.70),
-    FastRule("wx-lowpres-atlantic", "deep_cyclone", "region=north_atlantic_shipping", "Deep cyclone in North Atlantic", _t("ZIM- BDRY- JETS-"), "Shipping disruption", 0.60),
-    # Flight anomalies — OpenSky
-    FastRule("air-closure-mideast", "airspace_closure", "region=middle_east_oil", "Airspace closure over Middle East", _t("USO+ GLD+ LMT+ RTX+ JETS-"), "Conflict signal, oil risk", 0.85),
-    FastRule("air-closure-ukraine", "airspace_closure", "region=ukraine_black_sea", "Airspace closure over Ukraine", _t("WEAT+ UNG+ LMT+ JETS-"), "Conflict escalation", 0.82),
-    FastRule("air-closure-taiwan", "airspace_closure", "region=taiwan", "Airspace closure over Taiwan", _t("TSM- SOXX- FXI- LMT+ GLD+"), "Semi supply + conflict risk", 0.88),
-    FastRule("air-closure-korea", "airspace_closure", "region=korean_peninsula", "Airspace closure over Korea", _t("EWY- LMT+ NOC+ GLD+"), "Conflict risk", 0.80),
-    FastRule("air-closure-iran", "airspace_closure", "region=iran", "Airspace closure over Iran", _t("USO+ GLD+ LMT+ ITA+"), "Oil + conflict risk", 0.86),
-    FastRule("air-military-mideast", "military_surge", "region=middle_east_oil", "Military flight surge in Middle East", _t("USO+ LMT+ RTX+ NOC+ GLD+"), "Military buildup", 0.83),
-    FastRule("air-military-europe", "military_surge", "region=northern_europe", "Military flight surge in Europe", _t("LMT+ RTX+ UNG+"), "Military buildup", 0.70),
-    FastRule("air-military-scs", "military_surge", "region=south_china_sea", "Military flight surge in South China Sea", _t("FXI- LMT+ TSM- GLD+"), "Military buildup", 0.75),
-    # GDELT geopolitical
-    FastRule("gdelt-conflict-mideast", "armed_conflict", "region=middle_east_oil", "Armed conflict in Middle East (GDELT)", _t("USO+ XLE+ GLD+ LMT+"), "Oil risk, defense demand", 0.84),
-    FastRule("gdelt-conflict-ukraine", "armed_conflict", "region=ukraine_black_sea", "Armed conflict in Ukraine (GDELT)", _t("WEAT+ UNG+ LMT+ RTX+"), "Grain + defense", 0.80),
-    FastRule("gdelt-military-taiwan", "military_escalation", "region=taiwan", "Military escalation Taiwan (GDELT)", _t("TSM- SOXX- FXI- LMT+ GLD+"), "Semi + defense", 0.82),
-    FastRule("gdelt-military-korea", "military_escalation", "region=korean_peninsula", "Military escalation Korea (GDELT)", _t("EWY- LMT+ NOC+ GLD+"), "Defense demand", 0.76),
-    FastRule("gdelt-sanctions-iran", "sanctions", "region=iran", "Sanctions on Iran (GDELT)", _t("USO+ GLD+ XLE+"), "Oil supply risk", 0.78),
-    FastRule("gdelt-sanctions-china", "sanctions", "region=china_industrial", "Sanctions on China (GDELT)", _t("FXI- SOXX- TSM- GLD+"), "Trade/tech disruption", 0.74),
-    FastRule("gdelt-protest-mideast", "mass_protest", "region=middle_east_oil", "Mass protest in Middle East (GDELT)", _t("USO+ XLE+"), "Instability, oil risk", 0.65),
-    FastRule("gdelt-trade-dispute-china", "trade_dispute", "region=china_industrial", "Trade dispute with China (GDELT)", _t("FXI- DBA+ GLD+"), "Trade disruption", 0.70),
-    FastRule("gdelt-escalation-cluster", "geopolitical_escalation", "", "Geopolitical escalation cluster (GDELT)", _t("GLD+ LMT+ RTX+ ITA+ USO+"), "Broad risk-off", 0.80),
-    FastRule("gdelt-cooperation-mideast", "diplomatic_cooperation", "region=middle_east_oil", "Diplomatic cooperation Middle East (GDELT)", _t("USO- GLD-"), "De-escalation, risk-on", 0.60),
+    # ── Earthquakes ──────────────────────────────────────────────────
+    FastRule(
+        "eq-chile-copper", "earthquake", "earthquake.magnitude>=6 && region=chile_mining",
+        "Major Chilean earthquake disrupts copper supply", _t("HG=F+ ANTO.L-"),
+        "Copper supply disruption → exchange copper up, the Chilean producer down", 0.82,
+        scope="local",
+        chain=(
+            "an M6+ quake halts Atacama shafts, concentrators and the loading ports",
+            "seaborne concentrate supply tightens and exchange copper is bid",
+            "Antofagasta's mines are all Chilean, so the lost tonnes are its own output",
+        ),
+    ),
+    FastRule(
+        "eq-japan-industrial", "earthquake", "earthquake.magnitude>=6.5 && region=japan",
+        "Major Japanese earthquake hits industrial base", _t("EWJ- TM-"),
+        "Japanese industrial disruption → domestic equities and carmakers down", 0.75,
+        scope="regional",
+        chain=(
+            "an M6.5+ quake halts assembly lines, rail and power across a Japanese prefecture",
+            "domestic output and earnings for the quarter are cut and rebuild costs land",
+            "Toyota assembles in Japan and the country index is the disruption itself",
+        ),
+    ),
+    FastRule(
+        "eq-taiwan-semi", "earthquake", "earthquake.magnitude>=6 && region=taiwan",
+        "Taiwan earthquake threatens semiconductor production", _t("TSM- 005930.KS+"),
+        "Fab downtime → TSMC loses wafers, the only substitute foundry gains", 0.78,
+        scope="local",
+        chain=(
+            "an M6+ quake trips Hsinchu and Tainan fabs and scraps the wafers in process",
+            "leading-edge foundry capacity is short for a quarter and spot pricing firms",
+            "the affected fabs are one company's, and Samsung Foundry is the near-term substitute",
+        ),
+    ),
+    FastRule(
+        "eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey",
+        "Major Turkish earthquake", _t("TUR-"),
+        "Reconstruction cost and lost output are carried by Turkish assets", 0.70,
+        scope="local",
+        chain=(
+            "an M6.5+ quake destroys housing and industry across several Turkish provinces",
+            "the fiscal cost, the lira and lost regional output all move against Turkish assets",
+            "the country index is the direct claim on that economy",
+        ),
+    ),
+    FastRule(
+        "eq-peru-copper", "earthquake", "earthquake.magnitude>=6 && region=peru_mining",
+        "Peruvian earthquake disrupts copper supply", _t("HG=F+ SCCO-"),
+        "Copper supply disruption → exchange copper up, the Peruvian producer down", 0.76,
+        scope="local",
+        chain=(
+            "an M6+ quake halts southern Peruvian pits, concentrators and the coastal ports",
+            "seaborne concentrate supply tightens and exchange copper is bid",
+            "Toquepala and Cuajone are roughly half of Southern Copper's book",
+        ),
+    ),
+    FastRule(
+        "eq-lithium-triangle", "earthquake", "earthquake.magnitude>=6 && region=lithium_triangle",
+        "Atacama/Puna earthquake disrupts lithium brine operations", _t("SQM- ALB-"),
+        "Brine pond and port damage cuts both Atacama producers' output", 0.74,
+        scope="local",
+        chain=(
+            "an M6+ quake breaches evaporation ponds and cuts the road and port link to Antofagasta",
+            "months of brine inventory in the ponds is lost and shipments stop",
+            "both listed producers pump the same salar, so the outage is shared",
+        ),
+    ),
+    # ── Cyclones / hurricanes ────────────────────────────────────────
+    FastRule(
+        "cyc-gulf-oil", "cyclone", "region=gulf_of_mexico",
+        "Hurricane threatens Gulf of Mexico oil/gas", _t("USO+ UNG+ XLE+"),
+        "Gulf production shut-ins → crude, gas and US energy equity up", 0.85,
+        scope="regional",
+        chain=(
+            "a hurricane track forces evacuation and shut-in of offshore platforms and coastal refineries",
+            "US crude and gas supply drops for days to weeks while demand is unchanged",
+            "the US energy sector's production and refining base sits in that box",
+        ),
+    ),
+    FastRule(
+        "cyc-florida-insurance", "cyclone", "region=florida",
+        "Hurricane hits Florida", _t("ALL- TRV- HIG-"),
+        "Insured cat losses land on US personal and commercial lines", 0.80,
+        scope="local",
+        chain=(
+            "a landfalling hurricane destroys Florida housing and commercial property",
+            "insured losses run to tens of billions and reserve strengthening follows",
+            "these are US-only P&C carriers whose Florida book pays the claims",
+        ),
+    ),
+    FastRule(
+        "cyc-caribbean-tourism", "cyclone", "region=caribbean",
+        "Hurricane disrupts Caribbean tourism", _t("DAL- RCL- CCL-"),
+        "Itineraries and routes cancelled in peak season", 0.72,
+        scope="regional",
+        chain=(
+            "a hurricane closes Caribbean airports, ports and resorts for days",
+            "bookings are cancelled and refunded and capacity is redeployed at a loss",
+            "Caribbean itineraries and routes are a large share of these carriers' season",
+        ),
+    ),
+    FastRule(
+        "cyc-southeast-asia", "cyclone", "region=southeast_asia",
+        "Cyclone hits Southeast Asia", _t("KC=F+"),
+        "Typhoon damage in the Vietnamese coffee belt lifts robusta", 0.65,
+        scope="regional",
+        chain=(
+            "a landfalling typhoon strips cherries and floods the Central Highlands plantations",
+            "the world's largest robusta crop is cut and export parity rises",
+            "the coffee contract is the price of exactly that crop",
+        ),
+    ),
+    FastRule(
+        "cyc-india-agriculture", "cyclone", "region=india_coast",
+        "Cyclone hits Indian coast agriculture", _t("SB=F+ INDA-"),
+        "Coastal crop and port damage → sugar up, Indian equities down", 0.68,
+        scope="regional",
+        chain=(
+            "a Bay of Bengal or Arabian Sea cyclone floods coastal cane and closes the export ports",
+            "India is the second largest sugar exporter, so a lost crop tightens world supply",
+            "the sugar contract prices that supply and the country index carries the damage",
+        ),
+    ),
+    FastRule(
+        "cyc-australia-ironore", "cyclone", "region=australia_pilbara",
+        "Cyclone shuts in Pilbara iron-ore export ports", _t("FMG.AX-"),
+        "Port Hedland shut-in costs the pure-play exporter its shipments", 0.80,
+        scope="site",
+        chain=(
+            "a tropical cyclone closes Port Hedland and Dampier and stops the rail from the mines",
+            "several days of export tonnage is deferred out of the quarter",
+            "Fortescue ships only Pilbara ore through those two ports",
+        ),
+    ),
+    # ── Wildfires ────────────────────────────────────────────────────
+    FastRule(
+        "fire-california", "fire", "fire.cluster>=50 && region=california",
+        "Major California wildfires", _t("ALL- TRV- PCG-"),
+        "Insured losses plus utility ignition liability", 0.78,
+        scope="local",
+        chain=(
+            "a 50+ hotspot cluster burns through the wildland-urban interface",
+            "insured property losses and inverse-condemnation liability for the igniting utility",
+            "these carriers write the California homeowner book and PG&E owns the lines",
+        ),
+    ),
+    FastRule(
+        "fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest",
+        "Canadian wildfires disrupt lumber", _t("LBR=F+ WY+"),
+        "Harvest and mill shutdowns tighten the lumber benchmark", 0.74,
+        scope="regional",
+        chain=(
+            "fires and evacuation orders stop harvesting and close sawmills across BC and Alberta",
+            "the marginal supply of construction lumber into North America is cut",
+            "the futures contract is that price and Weyerhaeuser's US timber re-prices with it",
+        ),
+    ),
+    FastRule(
+        "fire-amazon", "fire", "fire.cluster>=100 && region=amazon",
+        "Major Amazon fires", _t("ZS=F+ EWZ-"),
+        "Crop loss at the frontier plus the sanctions and financing overhang", 0.65,
+        scope="regional",
+        chain=(
+            "a 100+ hotspot cluster burns the Mato Grosso and Pará crop frontier",
+            "soybean supply from the world's largest exporter is questioned and trade sanction risk returns",
+            "the soybean contract prices that supply and the country index carries the policy risk",
+        ),
+    ),
+    FastRule(
+        "fire-australia-mining", "fire", "fire.cluster>=30 && region=australia_pilbara",
+        "Pilbara fires disrupt iron-ore haulage", _t("FMG.AX-"),
+        "Spinifex fire across the rail corridor stops the mine-to-port link", 0.60,
+        scope="site",
+        chain=(
+            "a 30+ hotspot cluster crosses the Pilbara rail corridor and mine access roads",
+            "haulage to Port Hedland stops and shipments slip out of the quarter",
+            "Fortescue's whole operation is that one corridor",
+        ),
+    ),
+    FastRule(
+        "fire-greece-tourism", "fire", "fire.cluster>=20 && region=mediterranean",
+        "Mediterranean fires disrupt tourism", _t("IAG.MC- RYA.IR-"),
+        "Evacuations and cancellations hit the southern-Europe leisure season", 0.55,
+        scope="regional",
+        chain=(
+            "a 20+ hotspot cluster forces resort evacuations and repatriation flights mid-season",
+            "forward leisure bookings and fares into southern Europe fall for the rest of the summer",
+            "these two carriers' short-haul networks are concentrated on exactly those routes",
+        ),
+    ),
+    # ── Volcanoes ────────────────────────────────────────────────────
+    FastRule(
+        "vol-iceland-aviation", "volcano", "region=iceland",
+        "Icelandic volcano disrupts aviation", _t("IAG.MC- RYA.IR- DAL- UAL- AAL-"),
+        "Ash cloud closes North Atlantic and European airspace", 0.83,
+        scope="local",
+        chain=(
+            "an ash plume drifts into the North Atlantic tracks and the European upper airspace",
+            "regulators close corridors and thousands of rotations are cancelled and re-accommodated",
+            "these are the carriers that fly the transatlantic and intra-European networks affected",
+        ),
+    ),
+    # ── Floods ───────────────────────────────────────────────────────
+    FastRule(
+        "flood-china-industry", "flood", "region=china_industrial",
+        "Flooding hits Chinese industrial base", _t("FXI- DBA+"),
+        "Industrial shutdown plus a domestic crop loss that pulls in imports", 0.72,
+        scope="regional",
+        chain=(
+            "Yangtze-basin flooding shuts factories, rail and inland ports and drowns the crop",
+            "domestic output is lost and China replaces the lost grain on the world market",
+            "the country index is the disruption; the ag basket is the import bid",
+        ),
+    ),
+    FastRule(
+        "flood-bangladesh-textile", "flood", "region=bangladesh",
+        "Flooding hits Bangladesh textiles", _t("ITX.MC-"),
+        "Garment factory and port shutdown lands in the buyer's margin", 0.58,
+        scope="local",
+        chain=(
+            "monsoon flooding closes Dhaka and Chattogram garment factories and the port",
+            "lead times stretch and air freight replaces sea freight on the season's orders",
+            "Inditex sources a large share of its volume from exactly those factories",
+        ),
+    ),
+    FastRule(
+        "flood-midwest-grain", "flood", "region=us_midwest",
+        "Flooding hits US Midwest grain", _t("ZC=F+ WEAT+"),
+        "Prevented plantings and drowned acres cut the crop", 0.80,
+        scope="regional",
+        chain=(
+            "flooding drowns planted acres and blocks barge movement on the Mississippi system",
+            "the US corn and wheat balance sheet tightens and basis widens",
+            "these contracts are the price of that crop",
+        ),
+    ),
+    FastRule(
+        "flood-germany-rhine", "flood", "region=germany_rhine",
+        "Rhine flooding disrupts logistics", _t("EWG- TTF=F+"),
+        "Barge traffic stops, and the fuel that moves by barge is replaced by gas", 0.65,
+        scope="local",
+        chain=(
+            "high water closes the Rhine to barges and floods riverside industrial sites",
+            "coal and chemical feedstock stop moving and German plants burn more gas to cover",
+            "the German index is the industrial damage and TTF is the European gas price",
+        ),
+    ),
+    FastRule(
+        "flood-westafrica-cocoa", "flood", "region=west_africa_cocoa",
+        "West African flooding drives black-pod disease in cocoa", _t("CC=F+"),
+        "Excess rain → black-pod harvest loss → cocoa bid", 0.62,
+        scope="local",
+        chain=(
+            "sustained flooding in Ivorian and Ghanaian groves spreads black-pod rot through the main crop",
+            "arrivals at the ports fall short of the forecast and the world balance tightens",
+            "the cocoa contract is the price of that crop",
+        ),
+    ),
+    # ── Conflicts / geopolitical (alert-zone driven, category conflict) ──
+    FastRule(
+        "conflict-mideast-oil", "conflict", "alert.severity=red && region=middle_east_oil",
+        "Middle East oil conflict", _t("USO+ XLE+ LMT+ RTX+ ITA+ GLD+"),
+        "Oil supply risk, defense demand, systemic risk-off", 0.88,
+        scope="regional",
+        chain=(
+            "a red-severity conflict puts Gulf production, refining and export terminals at risk",
+            "a war premium is priced into crude, defense order books re-rate and reserve demand moves into gold",
+            "energy carries the barrel, the primes carry the orders, and bullion is the systemic hedge",
+        ),
+    ),
+    FastRule(
+        "conflict-hormuz-strait", "conflict", "region=strait_of_hormuz",
+        "Strait of Hormuz tension", _t("USO+ GLD+"),
+        "A fifth of seaborne crude transits one 21-mile channel", 0.90,
+        scope="site",
+        chain=(
+            "military action in the strait threatens the transit of roughly a fifth of seaborne crude",
+            "there is no alternative route at that volume, so the whole crude curve re-prices and risk assets de-rate",
+            "crude is the disrupted good and gold is the reserve asset bid in a systemic supply shock",
+        ),
+    ),
+    FastRule(
+        "conflict-ukraine-grain", "conflict", "region=ukraine_black_sea",
+        "Ukraine/Black Sea conflict", _t("WEAT+ ZC=F+"),
+        "Black Sea export corridor risk on a top-five grain origin", 0.82,
+        scope="local",
+        chain=(
+            "fighting closes Odesa and the Black Sea corridor and leaves the crop unharvested",
+            "a top-five wheat and corn origin is removed from the export balance",
+            "these contracts are the price of the grain that no longer ships",
+        ),
+    ),
+    FastRule(
+        "conflict-south-china-sea", "conflict", "region=south_china_sea",
+        "South China Sea tension", _t("FXI- TSM- LMT+ GLD+"),
+        "Regional escalation risk, defense demand, systemic risk-off", 0.75,
+        scope="regional",
+        chain=(
+            "armed incident in the sea lane that carries a third of world trade and the Taiwan approaches",
+            "a conflict premium is priced into the regional equity risk and into defense order books",
+            "Chinese and Taiwanese assets are the exposure, and gold is the hedge against a great-power tail",
+        ),
+    ),
+    FastRule(
+        "conflict-korea", "conflict", "alert.severity=red && region=korean_peninsula",
+        "Korean Peninsula conflict", _t("EWY- GLD+"),
+        "Seoul is inside artillery range; a red alert is a systemic tail", 0.72,
+        scope="local",
+        chain=(
+            "a red-severity incident on the DMZ puts Seoul's industrial belt at direct risk",
+            "Korean assets carry a war discount and reserve demand moves into gold",
+            "the country index is the exposure and bullion is the tail hedge",
+        ),
+    ),
+    FastRule(
+        "conflict-suez", "conflict", "region=suez_red_sea",
+        "Suez/Red Sea disruption", _t("USO+ ZIM+ DAC+"),
+        "Chokepoint closure reroutes Asia-Europe trade around Africa", 0.80,
+        scope="site",
+        chain=(
+            "attacks in the Red Sea close the Suez approach to commercial traffic",
+            "Asia-Europe voyages add ten days around the Cape, absorbing capacity and lifting freight rates",
+            "the liner earns the spot rate and the lessor re-charters into it; crude carries the transit risk",
+        ),
+    ),
+    FastRule(
+        "conflict-iran-nuclear", "conflict", "alert.severity=red && region=iran",
+        "Iran nuclear/military escalation", _t("USO+ GLD+ LMT+ ITA+"),
+        "Oil supply risk, defense demand, systemic risk-off", 0.84,
+        scope="regional",
+        chain=(
+            "a red-severity escalation puts Iranian exports and the Gulf shipping lane at risk",
+            "crude prices a war premium, defense procurement accelerates and reserve demand moves into gold",
+            "crude is the disrupted good, the defense names take the orders, bullion is the systemic hedge",
+        ),
+    ),
+    # ── Maritime (mixed) ─────────────────────────────────────────────
+    FastRule(
+        "maritime-panama-drought", "drought", "region=panama_canal",
+        "Panama Canal drought restricts transit", _t("ZIM+ DAC+"),
+        "Draft and slot restrictions remove effective container capacity", 0.75,
+        scope="site",
+        chain=(
+            "low water in Gatún Lake cuts daily transit slots and the maximum draft",
+            "ships wait, reroute or sail light, and effective container capacity on the route falls",
+            "the liner earns the higher spot rate and the lessor re-charters tonnage into it",
+        ),
+    ),
+    FastRule(
+        "maritime-malacca-tension", "conflict", "region=malacca_strait",
+        "Malacca Strait tension", _t("USO+ ZIM+ DAC+"),
+        "The alternative straits cost days of steaming", 0.78,
+        scope="site",
+        chain=(
+            "tension in the strait pushes traffic onto the Lombok and Sunda routes",
+            "voyage days and war-risk premia rise on every Gulf-to-Asia crude and container sailing",
+            "crude carries the transit risk and the box carriers earn the tighter effective capacity",
+        ),
+    ),
+    # ── AIS-derived maritime ─────────────────────────────────────────
+    FastRule(
+        "ais-tanker-drop-hormuz", "maritime_disruption", "region=strait_of_hormuz",
+        "Tanker traffic drop at Hormuz", _t("USO+ GLD+"),
+        "Observed transits falling is the chokepoint closing in real time", 0.85,
+        scope="site",
+        chain=(
+            "tanker transits through the strait fall below their normal daily count",
+            "Gulf loadings are not reaching the market and the crude curve backwardates",
+            "crude is the cargo that stopped moving and gold is the reserve bid in a supply shock",
+        ),
+    ),
+    FastRule(
+        "ais-tanker-drop-suez", "maritime_disruption", "region=suez_red_sea",
+        "Tanker traffic drop at Suez", _t("USO+ ZIM+ DAC+"),
+        "Observed transits falling means the reroute has begun", 0.82,
+        scope="site",
+        chain=(
+            "tanker and box transits through the Suez approach fall below normal",
+            "cargo is routing around the Cape, adding voyage days and lifting freight rates",
+            "crude carries the delivery risk, the liner and the lessor earn the rate",
+        ),
+    ),
+    FastRule(
+        "ais-reroute-cape", "maritime_rerouting", "region=cape_good_hope",
+        "Shipping reroutes via Cape of Good Hope", _t("USO+ ZIM+ DAC+"),
+        "Traffic appearing at the Cape is absorbed capacity elsewhere", 0.80,
+        scope="site",
+        chain=(
+            "vessel counts round the Cape rise above their baseline",
+            "the same cargo now takes ten more days, so effective fleet capacity shrinks and rates rise",
+            "the liner earns the spot rate, the lessor re-charters into it, bunker demand supports crude",
+        ),
+    ),
+    FastRule(
+        "ais-cargo-drop-malacca", "maritime_disruption", "region=malacca_strait",
+        "Cargo traffic drop at Malacca", _t("ZIM+ DAC+"),
+        "Traffic leaving the strait is capacity leaving the market", 0.80,
+        scope="site",
+        chain=(
+            "box traffic through the strait falls below its normal daily count",
+            "cargo diverts to longer routes and effective container capacity on Asia-Europe falls",
+            "the liner earns the spot rate and the lessor re-charters tonnage into it",
+        ),
+    ),
+    FastRule(
+        "ais-congestion-suez", "maritime_congestion", "region=suez_red_sea",
+        "Congestion at Suez", _t("ZIM+ DAC+"),
+        "Ships queuing are ships not carrying the next cargo", 0.72,
+        scope="site",
+        chain=(
+            "vessels accumulate at anchor at the canal approaches instead of transiting",
+            "waiting days remove effective capacity from the Asia-Europe rotation and spot rates firm",
+            "the liner earns the rate and the lessor re-charters idle tonnage into it",
+        ),
+    ),
+    FastRule(
+        "ais-cargo-drop-panama", "maritime_disruption", "region=panama_canal",
+        "Cargo traffic drop at Panama", _t("ZIM+ DAC+"),
+        "Fewer transits is less effective capacity on the Asia-US East Coast leg", 0.75,
+        scope="site",
+        chain=(
+            "daily transits through the canal fall below their normal count",
+            "Asia-to-US-East-Coast boxes route via Suez or rail, adding days and lifting rates",
+            "the liner earns the spot rate and the lessor re-charters tonnage into it",
+        ),
+    ),
+    # ── Storms ───────────────────────────────────────────────────────
+    FastRule(
+        "storm-us-winter", "storm", "region=us_northeast",
+        "Winter storm hits US Northeast", _t("UNG+ DAL-"),
+        "Heating load spikes, hub operations stop", 0.73,
+        scope="local",
+        chain=(
+            "a winter storm drives heating degree days through the Northeast and closes the airports",
+            "residential and commercial gas burn jumps while flights are cancelled outright",
+            "Henry Hub is the price of that burn and the hub carrier eats the cancellations",
+        ),
+    ),
+    FastRule(
+        "storm-texas-freeze", "storm", "region=texas",
+        "Texas freeze event", _t("UNG+ USO+"),
+        "Wellhead freeze-offs cut supply while load peaks", 0.80,
+        scope="local",
+        chain=(
+            "a hard freeze ices Permian wellheads and gathering lines while ERCOT load peaks",
+            "gas and crude production is shut in at the moment demand is highest",
+            "both benchmarks are the price of the barrels and mcf that stop flowing",
+        ),
+    ),
+    FastRule(
+        "storm-europe-energy", "storm", "region=northern_europe",
+        "European windstorm hits energy", _t("TTF=F+ RWE.DE+"),
+        "Above cut-out speed wind farms stop, and thermal plant covers the gap", 0.62,
+        scope="regional",
+        chain=(
+            "a severe windstorm pushes turbines past cut-out speed and brings transmission lines down",
+            "wind generation drops out unplanned and gas-fired plant is dispatched to cover it",
+            "TTF is the European gas benchmark and RWE's thermal fleet captures the wider spread",
+        ),
+    ),
+    # ── Drought / agriculture ────────────────────────────────────────
+    FastRule(
+        "drought-us-breadbasket", "drought", "region=us_great_plains",
+        "US Great Plains drought", _t("WEAT+ ZC=F+"),
+        "Yield loss in the hard red winter wheat belt", 0.82,
+        scope="regional",
+        chain=(
+            "drought through the growing season cuts yields and raises abandonment in the Plains",
+            "the US wheat and corn balance sheet tightens and export supply shrinks",
+            "these contracts are the price of that crop",
+        ),
+    ),
+    FastRule(
+        "drought-brazil-coffee", "drought", "region=brazil_southeast",
+        "Brazil drought hits coffee/soy", _t("KC=F+ ZS=F+ EWZ-"),
+        "Flowering and pod fill fail in the world's largest origin", 0.78,
+        scope="local",
+        chain=(
+            "drought during flowering and pod fill cuts yields across Minas Gerais and São Paulo",
+            "the world's largest arabica and soybean origin ships less for two seasons",
+            "these contracts price that crop and agribusiness is a large part of the Brazilian index",
+        ),
+    ),
+    FastRule(
+        "drought-india-monsoon", "drought", "region=india",
+        "Indian monsoon failure", _t("SB=F+ INDA-"),
+        "A failed monsoon cuts the cane crop and triggers export curbs", 0.70,
+        scope="regional",
+        chain=(
+            "a deficient monsoon cuts cane and kharif yields across the main growing states",
+            "India, the second largest sugar exporter, curbs exports and world supply tightens",
+            "the sugar contract prices that supply and the country index carries the rural demand hit",
+        ),
+    ),
+    FastRule(
+        "drought-westafrica-cocoa", "drought", "region=west_africa_cocoa",
+        "Ivory Coast/Ghana drought hits cocoa supply", _t("CC=F+"),
+        "~60% of world cocoa comes out of this one box", 0.78,
+        scope="local",
+        chain=(
+            "harmattan drought desiccates pods across the Ivorian and Ghanaian belt",
+            "roughly 60% of world cocoa origin ships short and the balance goes into deficit",
+            "the cocoa contract is the price of that crop",
+        ),
+    ),
+    # ── Nuclear / infra (declared but dormant — see module docstring) ──
+    FastRule(
+        "nuclear-incident", "nuclear", "earthquake.magnitude>=5 && near_nuclear_plant",
+        "Nuclear plant incident", _t("URA- CCJ-"),
+        "A release event stops new build and reactor restarts worldwide", 0.70,
+        scope="global",
+        chain=(
+            "seismic damage at a reactor site forces shutdown and a release investigation",
+            "regulators pause restarts and new build worldwide and utility uranium demand is cut",
+            "the miners sell into exactly that demand — Fukushima repriced the whole fuel cycle",
+        ),
+    ),
+    # ── Extreme weather — Windy ──────────────────────────────────────
+    FastRule(
+        "wx-heat-texas", "extreme_heat", "region=texas",
+        "Extreme heat in Texas", _t("UNG+"),
+        "Record ERCOT cooling load is burned as gas", 0.78,
+        scope="local",
+        chain=(
+            "a heat dome drives ERCOT cooling load to records for days on end",
+            "gas-fired generation runs flat out and storage withdrawals run ahead of the seasonal norm",
+            "Henry Hub is the price of exactly that burn",
+        ),
+    ),
+    FastRule(
+        "wx-heat-india", "extreme_heat", "region=india",
+        "Extreme heat in India", _t("WEAT+ SB=F+ INDA-"),
+        "Terminal heat stress shrivels grain and triggers export bans", 0.72,
+        scope="regional",
+        chain=(
+            "a heat wave during grain fill shrivels the wheat crop and stresses standing cane",
+            "India restricts wheat and sugar exports, removing supply from the world balance",
+            "these contracts price that supply and the country index carries the power and rural shock",
+        ),
+    ),
+    FastRule(
+        "wx-cold-us-northeast", "extreme_cold", "region=us_northeast",
+        "Extreme cold in US Northeast", _t("UNG+ DAL-"),
+        "Heating load spikes into a constrained pipeline network", 0.80,
+        scope="local",
+        chain=(
+            "an arctic outbreak drives heating demand across the Northeast and de-ices the airports",
+            "gas burn spikes against a pipeline-constrained region and flights are cancelled",
+            "Henry Hub is the price of that burn and the hub carrier eats the cancellations",
+        ),
+    ),
+    FastRule(
+        "wx-cold-northern-europe", "extreme_cold", "region=northern_europe",
+        "Extreme cold in Northern Europe", _t("TTF=F+ EWG-"),
+        "Cold snap pulls European storage down faster than the norm", 0.75,
+        scope="regional",
+        chain=(
+            "an extended cold spell raises heating demand across northwest Europe",
+            "storage withdrawals run ahead of schedule and the European gas curve firms",
+            "TTF is that price, and German industry pays it as an input cost",
+        ),
+    ),
+    FastRule(
+        "wx-storm-gulf", "severe_storm", "region=gulf_of_mexico",
+        "Severe storm in Gulf of Mexico", _t("USO+ XLE+"),
+        "Offshore evacuation and refinery shutdown", 0.82,
+        scope="regional",
+        chain=(
+            "a severe storm forces offshore evacuation and precautionary refinery shutdown on the coast",
+            "crude and product supply is interrupted for days",
+            "the barrel is the disrupted good and the US energy sector's plant is in that box",
+        ),
+    ),
+    FastRule(
+        "wx-storm-northern-europe", "severe_storm", "region=northern_europe",
+        "Severe storm in Northern Europe", _t("MUV2.DE- ALV.DE-"),
+        "European windstorm is a named cat peril on European books", 0.68,
+        scope="regional",
+        chain=(
+            "a named windstorm crosses northwest Europe and damages roofs, vehicles and grid",
+            "insured losses run into the billions and hit the retained layers first",
+            "European windstorm is one of the core cat perils these two underwrite",
+        ),
+    ),
+    FastRule(
+        "wx-precip-us-midwest", "heavy_precipitation", "region=us_midwest",
+        "Heavy precipitation in US Midwest", _t("ZC=F+ WEAT+"),
+        "Waterlogged fields delay planting and rot standing crop", 0.77,
+        scope="regional",
+        chain=(
+            "prolonged heavy rain waterlogs the Corn Belt inside the planting or harvest window",
+            "acres go unplanted or the standing crop degrades and the balance sheet tightens",
+            "these contracts are the price of that crop",
+        ),
+    ),
+    FastRule(
+        "wx-precip-india", "heavy_precipitation", "region=india",
+        "Heavy precipitation in India (monsoon)", _t("SB=F+ INDA-"),
+        "Excess monsoon rain lodges cane and blocks the crushing season", 0.70,
+        scope="regional",
+        chain=(
+            "sustained monsoon excess floods the cane belt and lodges the standing crop",
+            "recoverable sugar per tonne falls and India's exportable surplus shrinks",
+            "the sugar contract prices that supply and the country index carries the logistics hit",
+        ),
+    ),
+    # ── Flight anomalies — OpenSky / adsb.lol ────────────────────────
+    FastRule(
+        "air-closure-mideast", "airspace_closure", "region=middle_east_oil",
+        "Airspace closure over Middle East", _t("USO+ LMT+ GLD+"),
+        "Civil traffic clearing a corridor is the leading indicator of strikes", 0.85,
+        scope="regional",
+        chain=(
+            "civil traffic vacates a Gulf corridor, which precedes or accompanies military action",
+            "a war premium is priced into crude and defense procurement expectations rise",
+            "crude is the good at risk, the prime takes the orders, bullion is the systemic hedge",
+        ),
+    ),
+    FastRule(
+        "air-closure-ukraine", "airspace_closure", "region=ukraine_black_sea",
+        "Airspace closure over Ukraine", _t("WEAT+ ZC=F+ TTF=F+"),
+        "Escalation over the corridor that carries the grain and the gas", 0.82,
+        scope="local",
+        chain=(
+            "airspace over the Black Sea corridor closes, marking a step up in the fighting",
+            "grain export insurance and transit risk rise and European gas transit is questioned again",
+            "these contracts price the grain that stops shipping and the gas that stops flowing",
+        ),
+    ),
+    FastRule(
+        "air-closure-taiwan", "airspace_closure", "region=taiwan",
+        "Airspace closure over Taiwan", _t("TSM- FXI- GLD+"),
+        "A closed Taiwan corridor is the systemic tail scenario", 0.88,
+        scope="local",
+        chain=(
+            "civil aviation vacates the Taiwan approaches, which only happens around live exercises or worse",
+            "leading-edge foundry supply and cross-strait trade are put in question at once",
+            "the foundry and the mainland index are the exposure, and gold is the tail hedge",
+        ),
+    ),
+    FastRule(
+        "air-closure-korea", "airspace_closure", "region=korean_peninsula",
+        "Airspace closure over Korea", _t("EWY- GLD+"),
+        "A closed corridor over the DMZ is a systemic tail", 0.80,
+        scope="local",
+        chain=(
+            "civil traffic vacates the peninsula corridor around a military event",
+            "Korean assets carry a war discount and reserve demand moves into gold",
+            "the country index is the exposure and bullion is the tail hedge",
+        ),
+    ),
+    FastRule(
+        "air-closure-iran", "airspace_closure", "region=iran",
+        "Airspace closure over Iran", _t("USO+ LMT+ GLD+"),
+        "Corridor closure over an OPEC producer precedes strikes", 0.86,
+        scope="regional",
+        chain=(
+            "civil traffic clears Iranian airspace, which precedes or accompanies military action",
+            "Iranian export continuity is questioned, crude prices a premium, procurement accelerates",
+            "crude is the good at risk, the prime takes the orders, bullion is the systemic hedge",
+        ),
+    ),
+    FastRule(
+        "air-military-mideast", "military_surge", "region=middle_east_oil",
+        "Military flight surge in Middle East", _t("USO+ LMT+ GLD+"),
+        "Tanker and transport surge is the buildup made visible", 0.83,
+        scope="regional",
+        chain=(
+            "military transport and tanker movements over the Gulf rise well above baseline",
+            "the market prices a higher probability of strikes on production and export infrastructure",
+            "crude is the good at risk, the prime takes the orders, bullion is the systemic hedge",
+        ),
+    ),
+    FastRule(
+        "air-military-europe", "military_surge", "region=northern_europe",
+        "Military flight surge in Europe", _t("LMT+ ITA+"),
+        "A visible NATO surge pulls procurement forward", 0.70,
+        scope="regional",
+        chain=(
+            "military air activity over northern Europe rises well above its baseline",
+            "NATO members bring munitions and air-defence procurement forward",
+            "these are the order books that replenishment lands in",
+        ),
+    ),
+    FastRule(
+        "air-military-scs", "military_surge", "region=south_china_sea",
+        "Military flight surge in South China Sea", _t("FXI- LMT+ TSM- GLD+"),
+        "A surge over the sea lane raises the great-power tail", 0.75,
+        scope="regional",
+        chain=(
+            "military air activity over the sea lane and the Taiwan approaches rises above baseline",
+            "regional equity risk premia widen, procurement accelerates and reserve demand moves into gold",
+            "the regional indices are the exposure, the prime takes the orders, bullion is the tail hedge",
+        ),
+    ),
+    # ── GDELT geopolitical ───────────────────────────────────────────
+    FastRule(
+        "gdelt-conflict-mideast", "armed_conflict", "region=middle_east_oil",
+        "Armed conflict in Middle East (GDELT)", _t("USO+ XLE+ GLD+ LMT+"),
+        "Oil supply risk, defense demand, systemic risk-off", 0.84,
+        scope="regional",
+        chain=(
+            "reported armed conflict in the Gulf puts production and export terminals at risk",
+            "a war premium is priced into crude and defense order books re-rate",
+            "energy carries the barrel, the prime takes the orders, bullion is the systemic hedge",
+        ),
+    ),
+    FastRule(
+        "gdelt-conflict-ukraine", "armed_conflict", "region=ukraine_black_sea",
+        "Armed conflict in Ukraine (GDELT)", _t("WEAT+ ZC=F+ TTF=F+"),
+        "Grain corridor and gas transit risk", 0.80,
+        scope="local",
+        chain=(
+            "reported fighting around the Black Sea corridor and the transit infrastructure",
+            "grain export insurance and gas transit continuity are both repriced",
+            "these contracts are the price of the grain and the gas that stop moving",
+        ),
+    ),
+    FastRule(
+        "gdelt-military-taiwan", "military_escalation", "region=taiwan",
+        "Military escalation Taiwan (GDELT)", _t("TSM- FXI- GLD+"),
+        "Foundry supply and cross-strait trade at risk at once", 0.82,
+        scope="local",
+        chain=(
+            "reported military escalation around the strait and the Taiwanese approaches",
+            "leading-edge foundry continuity and cross-strait trade are questioned together",
+            "the foundry and the mainland index are the exposure, gold is the tail hedge",
+        ),
+    ),
+    FastRule(
+        "gdelt-military-korea", "military_escalation", "region=korean_peninsula",
+        "Military escalation Korea (GDELT)", _t("EWY- GLD+"),
+        "Seoul's industrial belt is inside the risk radius", 0.76,
+        scope="local",
+        chain=(
+            "reported military escalation on the peninsula",
+            "Korean assets carry a war discount and reserve demand moves into gold",
+            "the country index is the exposure and bullion is the tail hedge",
+        ),
+    ),
+    FastRule(
+        "gdelt-sanctions-iran", "sanctions", "region=iran",
+        "Sanctions on Iran (GDELT)", _t("USO+ GLD+ XLE+"),
+        "Barrels removed from the export balance", 0.78,
+        scope="regional",
+        chain=(
+            "tightened sanctions cut Iranian crude out of the legal export balance",
+            "the marginal barrel gets more expensive and the geopolitical premium widens",
+            "crude and the energy sector carry the barrel; bullion is the reserve-system hedge",
+        ),
+    ),
+    FastRule(
+        "gdelt-sanctions-china", "sanctions", "region=china_industrial",
+        "Sanctions on China (GDELT)", _t("FXI- SOXX- TSM-"),
+        "Export controls cut the semiconductor trade in both directions", 0.74,
+        scope="regional",
+        chain=(
+            "export controls or entity listings restrict semiconductor and equipment trade with China",
+            "Chinese industrial demand and the suppliers who sell into it both lose addressable revenue",
+            "the mainland index, the chip sector and the foundry sit on the two ends of that trade",
+        ),
+    ),
+    FastRule(
+        "gdelt-protest-mideast", "mass_protest", "region=middle_east_oil",
+        "Mass protest in Middle East (GDELT)", _t("USO+ XLE+"),
+        "Instability in a producing state is a supply risk", 0.65,
+        scope="regional",
+        chain=(
+            "sustained mass protest in a Gulf producing state threatens the stability of the regime",
+            "a probability of export interruption is priced into the curve",
+            "crude and the energy sector are the claim on those barrels",
+        ),
+    ),
+    FastRule(
+        "gdelt-trade-dispute-china", "trade_dispute", "region=china_industrial",
+        "Trade dispute with China (GDELT)", _t("FXI- ZS=F-"),
+        "Retaliation lands on the US farm export that China buys most of", 0.70,
+        scope="regional",
+        chain=(
+            "a tariff or trade dispute escalates and China retaliates on US agricultural imports",
+            "Chinese demand for US soybeans is redirected to Brazil and the US balance loosens",
+            "the mainland index carries the dispute and the soybean contract carries the lost bid",
+        ),
+    ),
+    FastRule(
+        "gdelt-escalation-cluster", "geopolitical_escalation", "",
+        "Geopolitical escalation cluster (GDELT)", _t("GLD+ LMT+ ITA+ USO+"),
+        "Broad risk-off across unrelated theatres at once", 0.80,
+        scope="global",
+        chain=(
+            "escalation is reported across several unrelated theatres inside the same window",
+            "cross-asset risk premia widen together, which is what makes it systemic rather than local",
+            "bullion is the reserve hedge, defense takes the procurement, crude takes the supply risk",
+        ),
+    ),
+    FastRule(
+        "gdelt-cooperation-mideast", "diplomatic_cooperation", "region=middle_east_oil",
+        "Diplomatic cooperation Middle East (GDELT)", _t("USO-"),
+        "De-escalation deflates the war premium in the curve", 0.60,
+        scope="regional",
+        chain=(
+            "a ceasefire, accord or sanctions relief is reported between Gulf parties",
+            "the geopolitical premium embedded in the crude curve deflates and barrels return",
+            "crude is where that premium was priced",
+        ),
+    ),
     # News conflict / protest (GDELT), regions the first GDELT block does not cover.
     # These were the ACLED rules: the matcher never keyed on source, so they always
     # fired from GDELT too; ACLED itself was dropped 2026-09-20 (its API is not
     # available to a personal account) and the five exact twins were removed.
-    FastRule("gdelt-conflict-suez", "armed_conflict", "region=suez_red_sea", "Armed conflict Suez/Red Sea (GDELT)", _t("USO+ ZIM+ DAC+ GLD+"), "Shipping + oil risk", 0.84),
-    FastRule("gdelt-conflict-sahel", "armed_conflict", "region=sahel", "Armed conflict Sahel (GDELT)", _t("URA+ GLD+ GDX+"), "Uranium/gold supply risk", 0.72),
-    FastRule("gdelt-conflict-nigeria", "armed_conflict", "region=nigeria_oil", "Armed conflict Nigeria Delta (GDELT)", _t("USO+ XLE+"), "Oil supply risk", 0.70),
-    FastRule("gdelt-conflict-horn-africa", "armed_conflict", "region=horn_of_africa", "Armed conflict Horn of Africa (GDELT)", _t("USO+ ZIM+ DBA+"), "Shipping + supply risk", 0.74),
-    FastRule("gdelt-protest-china", "mass_protest", "region=china_industrial", "Mass protest China (GDELT)", _t("FXI- SOXX- GLD+"), "Instability", 0.66),
-    FastRule("gdelt-protest-southeast-asia", "mass_protest", "region=southeast_asia", "Mass protest Southeast Asia (GDELT)", _t("EWY- DBA+"), "Regional instability", 0.60),
-    FastRule("gdelt-conflict-drc-cobalt", "armed_conflict", "region=drc_mining", "Armed conflict DRC mining (GDELT)", _t("LIT+ REMX+"), "Cobalt/lithium supply risk", 0.70),
-    # Compound (evaluated by the orchestrator, NOT the per-event matcher)
-    FastRule("compound-energy-crisis", "compound", "multiple_energy_events>=2", "Compound energy crisis", _t("USO+ UNG+ XLE+ GLD+"), "Multiple simultaneous energy shocks", 0.88),
-    FastRule("compound-food-crisis", "compound", "multiple_food_events>=2", "Compound food crisis", _t("DBA+ WEAT+ SOYB+"), "Multiple simultaneous food shocks", 0.85),
-    FastRule("compound-geopolitical-escalation", "compound", "multiple_conflict_events>=2", "Compound geopolitical escalation", _t("GLD+ LMT+ RTX+ NOC+ ITA+"), "Multiple simultaneous conflicts", 0.82),
+    FastRule(
+        "gdelt-conflict-suez", "armed_conflict", "region=suez_red_sea",
+        "Armed conflict Suez/Red Sea (GDELT)", _t("USO+ ZIM+ DAC+"),
+        "Chokepoint attacks push Asia-Europe trade around Africa", 0.84,
+        scope="site",
+        chain=(
+            "reported attacks on shipping close the Red Sea approach to commercial traffic",
+            "voyages add ten days around the Cape, absorbing capacity and lifting freight rates",
+            "the liner earns the spot rate, the lessor re-charters into it, crude carries transit risk",
+        ),
+    ),
+    FastRule(
+        "gdelt-conflict-sahel", "armed_conflict", "region=sahel",
+        "Armed conflict Sahel (GDELT)", _t("URA+"),
+        "Nigerien uranium is a real share of the convertible supply", 0.72,
+        scope="regional",
+        chain=(
+            "armed conflict or a coup in the Sahel threatens Nigerien mine output and the export road",
+            "a meaningful share of non-Russian uranium supply is put in doubt against contracted demand",
+            "the uranium miners are the listed claim on exactly that supply",
+        ),
+    ),
+    FastRule(
+        "gdelt-conflict-nigeria", "armed_conflict", "region=nigeria_oil",
+        "Armed conflict Nigeria Delta (GDELT)", _t("USO+"),
+        "Delta militancy has historically shut in hundreds of kbd", 0.70,
+        scope="local",
+        chain=(
+            "militant attacks on Delta pipelines and terminals force force-majeure declarations",
+            "Nigerian light sweet barrels come off the export balance",
+            "crude is the price of the barrels that stop loading",
+        ),
+    ),
+    FastRule(
+        "gdelt-conflict-horn-africa", "armed_conflict", "region=horn_of_africa",
+        "Armed conflict Horn of Africa (GDELT)", _t("USO+ ZIM+ DAC+"),
+        "The Bab-el-Mandeb approach runs along this coast", 0.74,
+        scope="regional",
+        chain=(
+            "armed conflict on the Horn coast raises the threat to the Bab-el-Mandeb approach",
+            "war-risk premia and reroute decisions on the Asia-Europe leg follow within days",
+            "the box carriers earn the tighter capacity and crude carries the transit risk",
+        ),
+    ),
+    FastRule(
+        "gdelt-protest-china", "mass_protest", "region=china_industrial",
+        "Mass protest China (GDELT)", _t("FXI-"),
+        "Unrest in the industrial belt is a domestic risk premium", 0.66,
+        scope="regional",
+        chain=(
+            "mass protest in the coastal industrial provinces is reported at scale",
+            "policy and production continuity risk is repriced into Chinese domestic assets",
+            "the mainland large-cap index is the direct claim on that economy",
+        ),
+    ),
+    FastRule(
+        "gdelt-conflict-drc-cobalt", "armed_conflict", "region=drc_mining",
+        "Armed conflict DRC mining (GDELT)", _t("GLEN.L-"),
+        "Congolese output is the producer's own tonnage, not a substitute's gain", 0.70,
+        scope="regional",
+        chain=(
+            "armed conflict across the eastern Congolese mining belt closes sites and the export corridor",
+            "Congolese cobalt and base-metal tonnage stops reaching the market",
+            "Glencore is the listed producer whose Congolese volume those tonnes are",
+        ),
+    ),
+    # ── Compound (evaluated by the orchestrator, NOT the per-event matcher) ──
+    FastRule(
+        "compound-energy-crisis", "compound", "multiple_energy_events>=2",
+        "Compound energy crisis", _t("USO+ UNG+ XLE+ GLD+"),
+        "Multiple simultaneous energy shocks", 0.88,
+        scope="global",
+        chain=(
+            "two or more unrelated energy disruptions land inside the same window",
+            "the supply cushion that absorbs any single one is gone, so the whole complex re-prices",
+            "crude, gas and the energy sector are the complex; bullion is the inflation-shock hedge",
+        ),
+    ),
+    FastRule(
+        "compound-food-crisis", "compound", "multiple_food_events>=2",
+        "Compound food crisis", _t("WEAT+ ZC=F+ ZS=F+"),
+        "Multiple simultaneous food shocks", 0.85,
+        scope="global",
+        chain=(
+            "two or more unrelated crop or export shocks land inside the same window",
+            "importers cover early and exporters restrict, which turns a supply dip into a squeeze",
+            "these three contracts are the calories that get substituted between",
+        ),
+    ),
+    FastRule(
+        "compound-geopolitical-escalation", "compound", "multiple_conflict_events>=2",
+        "Compound geopolitical escalation", _t("GLD+ LMT+ ITA+"),
+        "Multiple simultaneous conflicts", 0.82,
+        scope="global",
+        chain=(
+            "two or more unrelated conflicts escalate inside the same window",
+            "defense budgets move structurally and reserve demand rotates into gold",
+            "bullion is the reserve hedge and these are the order books replenishment lands in",
+        ),
+    ),
 )
 
 RULES_BY_ID: dict[str, FastRule] = {r.id: r for r in FAST_RULES}

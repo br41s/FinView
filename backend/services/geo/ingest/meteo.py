@@ -44,9 +44,6 @@ _RE_REGION = re.compile(r"region=(\w+)")
 # the rule just as dead as no point at all. Only regions listed here deviate from
 # the centroid; each entry documents why.
 _REGION_POINTS: dict[str, tuple[tuple[float, float], ...]] = {
-    # Centroid (39, 13) is the Tyrrhenian Sea — open water never reaches 45°C.
-    # Guadalquivir valley (Seville) is western Europe's reliable 45°C+ spot.
-    "mediterranean": ((37.4, -5.9),),
     # Centroid (42.5, -73.5) is the Albany area, where -30°C is a once-in-decades
     # record. Northern Maine / Québec border clears -30°C in most winters.
     "us_northeast": ((45.5, -70.5),),

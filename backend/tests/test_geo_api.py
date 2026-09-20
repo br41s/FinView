@@ -82,7 +82,7 @@ def test_matched_rules_skips_unknown_rule_ids(db):
 def test_matched_rules_uses_base_confidence_without_learned_stat(db):
     s = _signal(matched_rule_ids=json.dumps(["eq-chile-copper"]))
     rules = _matched_rules(s, {})
-    # base_confidence less the scope penalty (COPX is a sector ETF on a local box), no stat row yet
+    # base_confidence less the scope penalty (the basket is all narrow, so it is zero here)
     assert rules[0].confidence == pytest.approx(0.82 - scope_penalty(RULES_BY_ID["eq-chile-copper"]))
 
 

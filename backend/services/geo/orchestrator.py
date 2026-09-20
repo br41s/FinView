@@ -30,9 +30,9 @@ from .sentinel import GeoEvent
 logger = logging.getLogger(__name__)
 
 # Compound-rule ticker buckets (an event counts in a bucket if its basket overlaps).
-_ENERGY = {"USO", "UNG", "XLE", "XOM", "CVX"}
-_FOOD = {"DBA", "WEAT", "SOYB", "ZC=F", "KC=F"}
-_CONFLICT = {"LMT", "RTX", "NOC", "ITA"}
+_ENERGY = {"USO", "UNG", "XLE", "TTF=F"}
+_FOOD = {"DBA", "WEAT", "ZC=F", "ZS=F", "KC=F", "CC=F", "SB=F"}
+_CONFLICT = {"LMT", "RTX", "ITA"}
 _COMPOUND_BUCKETS = {
     "compound-energy-crisis": _ENERGY,
     "compound-food-crisis": _FOOD,
