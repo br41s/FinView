@@ -101,7 +101,12 @@ def generate_signal(
 
     if existing is not None:
         shift = abs(confidence - round(float(existing.confidence) * 100))
-        should_notify = importance >= IMPORTANCE_THRESHOLD and shift >= _CONFIDENCE_SHIFT
+        # notified_at is the retry ledger: a gated signal no channel delivered
+        # (outage, rate limit) is re-selected until one does, instead of burning
+        # its only attempt on the first cycle.
+        should_notify = importance >= IMPORTANCE_THRESHOLD and (
+            shift >= _CONFIDENCE_SHIFT or existing.notified_at is None
+        )
         existing.confidence = confidence / 100
         existing.importance = importance
         existing.risk_score = analysis.risk_score

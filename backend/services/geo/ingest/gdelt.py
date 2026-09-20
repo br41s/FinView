@@ -21,8 +21,11 @@ from .types import GdeltEvent
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 15 * 60
-# Stagger between the three concurrent queries, not a serial spacer.
-_STAGGER_DELAY = 0.5
+# Stagger between the three concurrent queries, not a serial spacer. 2 s, not
+# 0.5: GDELT rate-limits per IP (prod logged 1700 429/5xx lines in 7 days even
+# with 6 s serial spacing) and three requests inside one second is the shape
+# most likely to trip it. Total added latency is 4 s, against the 44 s it was.
+_STAGGER_DELAY = 2.0
 _REQUEST_TIMEOUT = 12.0
 # The cron runs every 30 min and dedup is by external_id, so re-reading a 24h
 # digest every cycle was pure latency: 6h still covers a long 429 streak (GDELT
@@ -96,11 +99,17 @@ async def _fetch_query(index: int, query: str, goldstein: float) -> list[GdeltEv
         "timespan": _TIMESPAN,
     }
     text = await fetch_text(url, params=params, timeout=_REQUEST_TIMEOUT)
-    if not text or not text.startswith("{"):  # rate limited / error page
+    if not text or not text.startswith("{"):
+        # GDELT answers rate limits with a plain-text page, so this is the
+        # branch prod actually takes — it must not be the silent one.
+        logger.warning(
+            "gdelt query %d returned no JSON (rate limited?): %r", index, (text or "")[:120]
+        )
         return []
     try:
         data = json.loads(text)
     except ValueError:
+        logger.warning("gdelt query %d returned malformed JSON: %r", index, text[:120])
         return []
 
     events: list[GdeltEvent] = []

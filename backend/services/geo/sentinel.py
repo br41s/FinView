@@ -370,12 +370,19 @@ def analyze_weather_extremes(points: list[MeteoPoint]) -> list[GeoEvent]:
 # Bangladesh and "central bank", so sanctions swallowed most of the feed, and
 # "STRIKE" claimed every airstrike for protest. A short suffix set keeps the
 # stems working ("sanctions", "restrictions", "demonstrators") without the
-# false positives. Order matters — first match wins, so the broadest list
-# (trade_dispute: TRADE / IMPORT / EXPORT) is checked last.
+# false positives. Order matters — first match wins: the most specific list
+# (armed_conflict) is checked first so "airstrike" is never a protest and
+# "sanctions on military exports" stays sanctions; the broadest list
+# (trade_dispute: TRADE / IMPORT / EXPORT) is checked last. FORCE and DEPLOY
+# are deliberately absent from military_escalation — "task force", "police
+# forces" and "deploys capital" were paging the highest-risk category.
 _GDELT_ACTOR_PATTERNS = {
-    "military_escalation": ("MILITARY", "ARMY", "NAVY", "FORCE", "DEPLOY", "MISSILE", "NUCLEAR"),
+    "armed_conflict": (
+        "AIRSTRIKE", "INVASION", "INVAD", "OFFENSIVE", "SHELLING", "ARTILLERY", "BOMBARD", "CLASH",
+    ),
     "sanctions": ("SANCTION", "EMBARGO", "BAN", "RESTRICT", "TARIFF"),
     "protest": ("PROTEST", "DEMONSTRAT", "RIOT", "STRIKE", "UNREST"),
+    "military_escalation": ("MILITARY", "ARMY", "NAVY", "TROOP", "WARSHIP", "MISSILE", "NUCLEAR"),
     "trade_dispute": ("TRADE", "TARIFF", "IMPORT", "EXPORT", "WTO"),
 }
 _PATTERN_SUFFIX = r"(?:S|ES|ED|ING|ER|ERS|OR|ORS|ION|IONS|MENT|MENTS)?\b"
@@ -388,12 +395,17 @@ _GDELT_PATTERN_RE = {
 # so the old 8–15 mention / 3–5 source floors could only ever be met by the
 # fabricated constants they were written against — and those were below the
 # floors, which is why prod holds 0 GDELT-sourced signals out of 1700.
+# goldstein_scale is likewise the *query's* severity prior (-6 conflict, -4
+# sanctions, -3 protest), not a per-article measurement, so a floor means
+# "which query may supply this category": armed_conflict only from the conflict
+# query, never from a protest headline. A floor below every query constant is
+# unreachable — armed_conflict shipped dead at -7 for exactly that reason.
 _GDELT_FILTERS = {
-    "armed_conflict": ("armed_conflict", -7, None),
-    "military_escalation": ("military_escalation", -5, None),
-    "sanctions": ("sanctions", -4, None),
+    "armed_conflict": ("armed_conflict", -6, None),
+    "military_escalation": ("military_escalation", -4, None),
+    "sanctions": ("sanctions", -3, None),
     "protest": ("mass_protest", -3, None),
-    "diplomatic_tension": ("diplomatic_tension", -4, None),
+    "diplomatic_tension": ("diplomatic_tension", -3, None),
     "trade_dispute": ("trade_dispute", -3, None),
     "cooperation": ("diplomatic_cooperation", None, 6),
 }
@@ -404,14 +416,11 @@ def _classify_gdelt(evt: GdeltEvent) -> str | None:
     for category, pattern in _GDELT_PATTERN_RE.items():
         if pattern.search(text):
             return category
-    if evt.goldstein_scale <= -7:
+    # No keyword: only the conflict query's prior (-6) says anything on its own —
+    # "Ukraine war, day 900" is conflict news without a trigger word. The other
+    # two priors are too weak to classify an unmatched headline.
+    if evt.goldstein_scale <= -6:
         return "armed_conflict"
-    if evt.goldstein_scale <= -5:
-        return "military_escalation"
-    if evt.goldstein_scale <= -3:
-        return "diplomatic_tension"
-    if evt.goldstein_scale >= 6:
-        return "cooperation"
     return None
 
 
@@ -421,6 +430,7 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
     now = _now_ms()
     out: list[GeoEvent] = []
     region_counts: dict[str, dict] = {}
+    seen: set[str] = set()
 
     for evt in gdelt_events:
         category = _classify_gdelt(evt)
@@ -441,10 +451,19 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
         tr["count"] += 1
         tr["sum_g"] += evt.goldstein_scale
 
-        severity = "red" if evt.goldstein_scale <= -7 else "orange" if evt.goldstein_scale <= -4 else None
+        # Ten headlines about one story are one event. The id is region+day
+        # keyed on purpose, but emitting a GeoEvent per article let the compound
+        # tally count article volume as "simultaneous events".
+        event_id = f"gdelt-{category}-{region_key}-{day}"
+        if event_id in seen:
+            continue
+        seen.add(event_id)
+        # Never "red" from a query constant: red is what severity_headroom reads
+        # as evidence the event exceeded its rule floor.
+        severity = "orange" if evt.goldstein_scale <= -4 else None
         out.append(
             GeoEvent(
-                id=f"gdelt-{category}-{region_key}-{day}",
+                id=event_id,
                 type=ftype,
                 title=f"{category.replace('_', ' ').title()}: {evt.title[:120]}",
                 latitude=evt.latitude,
@@ -479,7 +498,10 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                         f"{region_key.replace('_', ' ')} ({tr['count']} events)",
                         latitude=sample.latitude,
                         longitude=sample.longitude,
-                        severity="red",
+                        # Article volume in one region is a real signal; the avg
+                        # goldstein behind it is still a query constant, so it
+                        # earns "orange", never the "red" severity_headroom reads.
+                        severity="orange",
                         region=region_key,
                         source="gdelt",
                         timestamp=now,

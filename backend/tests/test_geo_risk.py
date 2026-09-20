@@ -104,3 +104,42 @@ def test_llm_risk_overrides_and_is_clamped():
 
 def test_no_rules_no_llm_is_middle_of_the_road():
     assert compute_risk([], _event(), None) == 5
+
+
+def test_llm_garbage_risk_falls_back_to_the_rules(caplog):
+    """riskScore comes straight out of json.loads. A model answering "alto" must
+    cost one override, not the user's whole cycle (analyze_event is unguarded
+    in Phase C and a raise there skips the auditor too)."""
+    rule = next(r for r in FAST_RULES if r.id == "eq-chile-copper")
+    ev = _event(magnitude=6.0)
+    for garbage in ("alto", "7/10", {}, [], "", object()):
+        assert compute_risk([rule], ev, garbage) == base_risk(rule)
+    assert "non-numeric LLM riskScore" in caplog.text
+    assert compute_risk([rule], ev, "8") == 8  # a numeric string is still a number
+
+
+def test_headroom_never_goes_negative():
+    rule = next(r for r in FAST_RULES if r.id == "eq-chile-copper")
+    assert severity_headroom(rule, _event(magnitude=1.0)) == 0
+
+
+def test_fire_cluster_headroom_scales_with_the_floor():
+    rule = next(r for r in FAST_RULES if r.category == "fire")
+    floor = int(rule.condition.split("fire.cluster>=")[1].split()[0])
+    fire = lambda n: _event(type="fire", raw_data={"clusterSize": n})  # noqa: E731
+    assert severity_headroom(rule, fire(floor)) == 0
+    assert severity_headroom(rule, fire(floor * 2)) == 1
+    assert severity_headroom(rule, fire(floor * 4)) == 2
+    assert severity_headroom(rule, _event(type="fire")) == 0  # no cluster size at all
+
+
+def test_red_severity_counts_only_when_the_rule_did_not_demand_it():
+    demanded = next(r for r in FAST_RULES if "alert.severity=red" in r.condition)
+    plain = next(
+        r for r in FAST_RULES
+        if r.category == demanded.category and "alert.severity" not in r.condition
+    )
+    red = _event(type=demanded.category, severity="red")
+    assert severity_headroom(demanded, red) == 0
+    assert severity_headroom(plain, red) == 1
+    assert severity_headroom(plain, _event(type=demanded.category, severity="orange")) == 0

@@ -95,9 +95,13 @@ def _collect_events(bundle) -> list[GeoEvent]:
 def _compound_analyses(analyses: list[AnalystResult]) -> list[AnalystResult]:
     """Tally matched-event baskets into compound buckets; emit compound analyses for count ≥ 2."""
     counts = {rid: 0 for rid in _COMPOUND_BUCKETS}
+    seen_events: set[str] = set()
     for a in analyses:
-        if not a.matched_rules:
+        # "Simultaneous events" counts events, not analyses: a feed that emits
+        # several rows for one id (GDELT, one per article) must not tally twice.
+        if not a.matched_rules or a.event.id in seen_events:
             continue
+        seen_events.add(a.event.id)
         symbols = {t.symbol for t in a.tickers}
         for rid, bucket in _COMPOUND_BUCKETS.items():
             if symbols & bucket:
@@ -143,13 +147,26 @@ def _dispatch_notifications(
     outcome, so prod reported notifications on cycles where every channel was
     unconfigured and silently returned False. ``notified_at`` on the signal is
     the per-signal half of the same record.
+
+    Bound the loop, not the call: a channel that fails once is skipped for the
+    rest of the cycle. Worst case per signal with every channel stalling is
+    ~60 s, this runs synchronously inside the cron request, and a real outage
+    is exactly when many signals are gated. The skipped signals keep
+    ``notified_at`` NULL and the advisor re-selects them next cycle.
     """
+    gated = [res for res in results if res.should_notify]
+    # Everything the payload reads, loaded before the first send: the Phase E
+    # commit expired the ORM objects, and a lazy load between two channel
+    # stalls is a DB round trip held open across the whole fan-out.
+    for res in gated:
+        _ = (res.signal.headline, res.signal.direction, res.signal.risk_score,
+             res.signal.location, list(res.signal.tickers))
     notified = 0
     notify_failed = 0
-    for res in results:
-        if not res.should_notify:
-            continue
-        channels = notify_signal(res.signal, res.importance)
+    down: set[str] = set()
+    for res in gated:
+        channels = notify_signal(res.signal, res.importance, skip=down)
+        down.update(ch for ch, ok in channels.items() if not ok)
         if any(channels.values()):
             res.signal.notified_at = datetime.now(timezone.utc)
             notified += 1

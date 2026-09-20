@@ -145,6 +145,16 @@ describe("geoHealth", () => {
     expect(health?.message).not.toContain("notificada");
   });
 
+  it("reports lost signals before undelivered alerts when both happened", () => {
+    // A dropped signal is gone; an undelivered alert is retried next cycle.
+    const health = geoHealth(
+      { interval_minutes: 15, last_run: run({ persist_failures: 1, notify_failed: 3 }) },
+      NOW,
+    );
+    expect(health?.message).toContain("descartó 1 señal");
+    expect(health?.message).not.toContain("no entregada");
+  });
+
   it("handles a run recorded before the notify counters existed", () => {
     // `notify_failed` is optional on the wire: a row written by an older
     // revision must not read as an undelivered alert.

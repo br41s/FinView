@@ -41,12 +41,16 @@ def _ev(value) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 
-def notify_signal(signal: GeoSignal, importance: int) -> dict[str, bool]:
+def notify_signal(
+    signal: GeoSignal, importance: int, skip: frozenset[str] | set[str] = frozenset()
+) -> dict[str, bool]:
     """Push one signal to every channel; return per-channel delivery.
 
     The returned dict always carries all three keys, so `any(...)` answers
     "did this reach anyone" and `False` for a channel means either unconfigured,
-    rejected or raised — the log line says which.
+    rejected, raised or skipped — the log line says which. `skip` is the
+    orchestrator's per-cycle breaker: a channel that already failed this cycle
+    is not retried on every remaining signal.
     """
     delivered = dict.fromkeys(CHANNELS, False)
     try:
@@ -93,6 +97,8 @@ def notify_signal(signal: GeoSignal, importance: int) -> dict[str, bool]:
     # One try per channel: a Telegram exception used to take email down with it,
     # producing a partial fan-out with no record of which half arrived.
     for channel, send in senders:
+        if channel in skip:
+            continue
         try:
             sent = bool(send())
         except Exception:

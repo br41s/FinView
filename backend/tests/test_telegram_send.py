@@ -147,15 +147,23 @@ def test_a_permanent_rejection_is_not_retried():
     assert op.call_count == 1
 
 
-def test_a_rate_limit_is_retried_once(monkeypatch):
-    """429/5xx/timeout are transient. This used to give up on the first one, so
-    a momentary rate limit silently dropped the alert for good.
-
-    Exactly once: the geo and options cycles are synchronous inside the Cloud Run
-    request, so a retry ladder is charged to the request deadline.
+def test_a_rate_limit_is_not_retried(monkeypatch):
+    """429 carries a retry_after of 30–60 s and the bot is shared with the
+    options agent: retrying 1 s later extends the ban for both. The geo cycle
+    retries the signal next run instead (notified_at stays NULL).
     """
     monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
     err = _http_error(429, "Too Many Requests")
+    with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
+        assert send_telegram("hola") is False
+    assert op.call_count == 1
+
+
+def test_a_server_error_is_retried_once(monkeypatch):
+    """Exactly once: the geo and options cycles are synchronous inside the Cloud
+    Run request, so a retry ladder is charged to the request deadline."""
+    monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
+    err = _http_error(503, "Service Unavailable")
     with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
         assert send_telegram("hola") is False
     assert op.call_count == 2

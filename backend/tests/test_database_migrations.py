@@ -281,3 +281,20 @@ def test_ensure_constraints_skips_tables_that_do_not_exist(monkeypatch):
     monkeypatch.setattr(database, "engine", engine)
 
     database.ensure_constraints()  # must not raise
+
+
+def test_ensure_columns_adds_geo_notification_columns(monkeypatch):
+    """`notified_at` / `notify_failed` land on tables that already exist in prod;
+    create_all will not add them, only the additive list does."""
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE geo_signals (id INTEGER PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE geo_cycle_runs (id INTEGER PRIMARY KEY)"))
+    monkeypatch.setattr(database, "engine", engine)
+
+    database.ensure_columns()
+    database.ensure_columns()
+
+    inspector = inspect(engine)
+    assert "notified_at" in {c["name"] for c in inspector.get_columns("geo_signals")}
+    assert "notify_failed" in {c["name"] for c in inspector.get_columns("geo_cycle_runs")}

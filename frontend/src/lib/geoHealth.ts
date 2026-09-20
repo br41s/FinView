@@ -111,6 +111,17 @@ export function geoHealth(
     };
   }
 
+  // Lost work outranks a missed push: a signal the persist phase dropped is
+  // gone, an undelivered alert is retried next cycle.
+  if (run.persist_failures > 0) {
+    return {
+      tone: "warn",
+      message: `La última ejecución (${ageText}) descartó ${run.persist_failures} señal${
+        run.persist_failures === 1 ? "" : "es"
+      } al guardarlas.`,
+    };
+  }
+
   // A run that selected alerts and delivered none is a delivery outage. It is
   // invisible in every other field: `notified` at zero reads exactly like a
   // cycle where nothing crossed the gate.
@@ -123,15 +134,6 @@ export function geoHealth(
       } no entregada${
         undelivered === 1 ? "" : "s"
       }. Revisa las claves de ntfy, Telegram y email.`,
-    };
-  }
-
-  if (run.persist_failures > 0) {
-    return {
-      tone: "warn",
-      message: `La última ejecución (${ageText}) descartó ${run.persist_failures} señal${
-        run.persist_failures === 1 ? "" : "es"
-      } al guardarlas.`,
     };
   }
 

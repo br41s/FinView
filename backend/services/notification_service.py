@@ -36,9 +36,15 @@ _RETRY_BACKOFF_SECONDS = 1.0
 
 
 def _is_retryable(exc: BaseException) -> bool:
-    """429 / 5xx / transport timeout — transient, worth exactly one retry."""
+    """5xx / transport timeout — transient, worth exactly one retry.
+
+    Not 429: Telegram's rate limit carries a retry_after of 30–60 s and the bot
+    token is shared with the options agent, so a retry 1 s later extends the
+    ban for both. A geo signal that misses keeps notified_at NULL and is
+    re-selected next cycle instead.
+    """
     if isinstance(exc, urllib.error.HTTPError):
-        return exc.code == 429 or 500 <= exc.code < 600
+        return 500 <= exc.code < 600
     if isinstance(exc, TimeoutError):  # socket.timeout is TimeoutError on 3.10+
         return True
     if isinstance(exc, urllib.error.URLError):

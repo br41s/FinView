@@ -135,7 +135,7 @@ def test_airstrike_is_not_protest():
     """`"STRIKE" in "AIRSTRIKE"` — an air raid filed as a labour action."""
     category = sentinel._classify_gdelt(_event("US airstrike on Houthi positions", -6.0))
     assert category != "protest"
-    assert category == "military_escalation"
+    assert category == "armed_conflict"
 
 
 def test_sanctions_headline_is_sanctions():
@@ -154,6 +154,7 @@ def test_strike_headline_is_protest():
 def test_queries_do_not_run_serially(monkeypatch):
     """Old code: 6s sleep between queries = ~44s of a 59s ingest, every cycle."""
     _stub_fetch(monkeypatch, latency=0.2)
+    monkeypatch.setattr(gdelt, "_STAGGER_DELAY", 0.0)  # the stagger is not the point here
     started = time.monotonic()
     asyncio.run(gdelt.fetch_gdelt())
     elapsed = time.monotonic() - started
@@ -183,3 +184,90 @@ def test_rate_limited_response_degrades_to_stale(monkeypatch):
     monkeypatch.setattr(gdelt, "fetch_text", rate_limited)
     monkeypatch.setattr(gdelt._cache, "_ts", 0.0)  # expire the TTL, keep the value
     assert asyncio.run(gdelt.fetch_gdelt()) == first
+
+
+# ── Review findings 2026-09-20: goldstein is a per-query constant ─────
+
+from backend.services.geo.sentinel import _classify_gdelt, analyze_gdelt_events  # noqa: E402
+
+
+def test_every_query_prior_can_produce_an_event():
+    """The floors gate on the query's constant, so each query must be able to
+    yield its own category. armed_conflict shipped with a -7 floor against a
+    -6 constant: unreachable, in the branch meant to unblock GDELT."""
+    from backend.services.geo.ingest.gdelt import _QUERIES
+
+    for query, prior in _QUERIES:
+        word = query.split("(")[1].split()[0]
+        events = analyze_gdelt_events([_event(f"Breaking: {word} in the capital", prior)])
+        assert events, f"query {query!r} at prior {prior} produces nothing"
+
+
+def test_conflict_query_without_a_keyword_is_still_armed_conflict():
+    events = analyze_gdelt_events([_event("Ukraine war: day 900 update", -6.0)])
+    assert events and events[0].type == "armed_conflict"
+
+
+def test_protest_query_never_yields_armed_conflict():
+    """A coup headline mentioning shelling comes from the -3 query; the
+    armed_conflict floor (-6) says that query may not supply it."""
+    assert analyze_gdelt_events([_event("Coup leaders shelling the palace", -3.0)]) == []
+
+
+def test_sanctions_on_the_military_are_sanctions():
+    assert _classify_gdelt(_event("US sanctions Russian military exporters", -4.0)) == "sanctions"
+
+
+def test_airstrike_is_armed_conflict_not_protest_or_escalation():
+    assert _classify_gdelt(_event("Airstrikes hit Sanaa overnight", -6.0)) == "armed_conflict"
+
+
+def test_task_force_and_deployment_are_not_military_escalation():
+    assert _classify_gdelt(_event("Trade task force deploys new tariff plan", -3.0)) != "military_escalation"
+    assert _classify_gdelt(_event("Police forces disperse protesters", -3.0)) == "protest"
+
+
+def test_query_constants_never_produce_red_severity():
+    events = analyze_gdelt_events([_event("Airstrikes hit Sanaa overnight", -6.0)])
+    assert events[0].severity == "orange"
+
+
+def test_many_articles_about_one_story_are_one_event():
+    """One GeoEvent per article with a colliding id let the compound tally count
+    article volume as simultaneous events."""
+    articles = [_event(f"Airstrikes hit Sanaa, report {i}", -6.0) for i in range(10)]
+    events = analyze_gdelt_events(articles)
+    assert [e.type for e in events] == ["armed_conflict", "geopolitical_escalation"]
+    # The cluster is the one place article volume legitimately counts — and it
+    # is still not "red": that severity would read as evidence in the rules.
+    assert all(e.severity == "orange" for e in events)
+
+
+def test_one_failing_query_does_not_lose_the_others(monkeypatch):
+    from backend.services.geo.ingest import gdelt as g
+
+    body = json.dumps({"articles": _ARTICLES})
+
+    async def flaky(url, *, params=None, **kw):
+        if params["query"] == g._QUERIES[1][0]:
+            raise RuntimeError("boom")
+        return body
+
+    monkeypatch.setattr(g, "fetch_text", flaky)
+    monkeypatch.setattr(g, "_STAGGER_DELAY", 0.0)
+    monkeypatch.setattr(g._cache, "_value", None)
+    assert asyncio.run(g.fetch_gdelt())
+
+
+def test_rate_limit_page_is_logged_not_silent(monkeypatch, caplog):
+    from backend.services.geo.ingest import gdelt as g
+
+    async def rate_limited(url, *, params=None, **kw):
+        return "Your request has been rate limited. Please try again later."
+
+    monkeypatch.setattr(g, "fetch_text", rate_limited)
+    monkeypatch.setattr(g, "_STAGGER_DELAY", 0.0)
+    monkeypatch.setattr(g._cache, "_value", None)
+    assert asyncio.run(g.fetch_gdelt()) == []
+    assert "rate limited" in caplog.text
+

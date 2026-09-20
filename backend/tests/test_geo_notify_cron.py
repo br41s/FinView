@@ -1,7 +1,7 @@
 """Tests for geo notifications (channel fan-out, Telegram escaping) and /geo/cron."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -498,3 +498,57 @@ def test_scheduler_status_stamps_utc_on_the_last_signal(db, monkeypatch):
     status = scheduler_status(db, user)
 
     assert status.last_signal_at.utcoffset().total_seconds() == 0
+
+
+def test_a_channel_that_fails_once_is_skipped_for_the_rest_of_the_cycle(db, monkeypatch):
+    """Bound the loop, not the call: with three signals gated and Telegram
+    stalling, Telegram is attempted once, not three times, inside the cron
+    request. The signals it missed stay un-stamped and retry next cycle."""
+    from backend.services.geo import orchestrator
+
+    calls: list[str] = []
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: calls.append("ntfy") or True)
+    monkeypatch.setattr(notify, "send_telegram", lambda text: calls.append("tg") or False)
+    monkeypatch.setattr(notify, "send_email", lambda *a: calls.append("email") or True)
+
+    signals = [_signal(), _signal(), _signal()]
+    for i, s in enumerate(signals):
+        s.external_id = f"evt-{i}"
+        db.add(s)
+    db.commit()
+
+    notified, failed = orchestrator._dispatch_notifications(db, 1, [_gated(s) for s in signals])
+
+    assert calls.count("tg") == 1
+    assert calls.count("ntfy") == 3 and calls.count("email") == 3
+    assert (notified, failed) == (3, 0)
+
+
+def test_an_undelivered_signal_is_reselected_next_cycle(db):
+    """`notified_at` is the retry ledger. An ACTIVE signal above the gate with
+    no delivery on record is selected again even with zero confidence shift;
+    once any channel delivered, only a ≥15-point shift re-notifies."""
+    import time
+
+    from backend.services.geo.advisor import generate_signal
+    from backend.services.geo.analyst import AnalystResult, AnalystTicker
+    from backend.services.geo.sentinel import GeoEvent
+
+    existing = _signal()
+    db.add(existing)
+    db.commit()
+
+    event = GeoEvent(
+        id=existing.external_id, type="earthquake", title="t", latitude=35.0,
+        longitude=139.0, source=existing.source, timestamp=int(time.time() * 1000),
+    )
+    analysis = AnalystResult(
+        event=event, matched_rules=[], tickers=[AnalystTicker("GLD", "bullish", "x")],
+        confidence=float(existing.confidence) * 100, risk_score=9, direction="bearish",
+    )
+
+    assert generate_signal(db, user_id=1, analysis=analysis, prices={}).should_notify is True
+
+    existing.notified_at = datetime.now(timezone.utc)
+    db.commit()
+    assert generate_signal(db, user_id=1, analysis=analysis, prices={}).should_notify is False
