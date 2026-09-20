@@ -32,6 +32,11 @@ _BASE_URL = "https://data.gdeltproject.org/gdeltv2"
 _LASTUPDATE_URL = f"{_BASE_URL}/lastupdate.txt"
 _CACHE_TTL = 15 * 60
 _REQUEST_TIMEOUT = 20.0
+# Real batches are 30–200 KB zipped, single-digit MB unzipped. A wrong file
+# behind the name (or a hostile one) must not be decompressed into a 1 GiB
+# container: the download and the member are both capped.
+_MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024
+_MAX_MEMBER_BYTES = 64 * 1024 * 1024
 # 4 batches × 15 min. The cron is every 30 min, so this bridges exactly one
 # missed cycle without re-reading a day of history every run.
 _BATCH_COUNT = 4
@@ -152,7 +157,7 @@ def _title_for(actor1: str, actor2: str, event_code: str, root_code: str) -> str
 
 
 def _parse_row(row: list[str]) -> GdeltEvent | None:
-    if len(row) < _EXPORT_COLUMNS:
+    if len(row) < _EXPORT_COLUMNS or not row[_C_GLOBAL_ID].strip():
         return None
     lat_raw, lon_raw = row[_C_GEO_LAT], row[_C_GEO_LON]
     if not lat_raw or not lon_raw:
@@ -198,25 +203,35 @@ def _parse_row(row: list[str]) -> GdeltEvent | None:
 
 def _parse_export_zip(payload: bytes) -> list[GdeltEvent]:
     """Unzip in memory and parse the single TSV inside. Never raises."""
+    events: list[GdeltEvent] = []
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-            names = archive.namelist()
-            if not names:
+            infos = archive.infolist()
+            if not infos:
                 return []
-            raw = archive.read(names[0])
-    except (zipfile.BadZipFile, OSError):
-        logger.warning("gdelt export payload is not a readable zip (%d bytes)", len(payload))
+            if infos[0].file_size > _MAX_MEMBER_BYTES:
+                logger.warning(
+                    "gdelt export member is %d bytes, over the %d cap — skipped",
+                    infos[0].file_size, _MAX_MEMBER_BYTES,
+                )
+                return []
+            raw = archive.read(infos[0])
+        text = raw.decode("utf-8", errors="replace")
+        # No header row, and the fields are raw text that contains unbalanced
+        # quotes (headlines do) — QUOTE_NONE keeps csv from swallowing the rest
+        # of the file. csv.Error (an oversized field: a truncated or wrong file)
+        # is inside the try on purpose: it used to escape fetch_gdelt and cost
+        # the cycle its stale cache.
+        reader = csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)
+        for row in reader:
+            event = _parse_row(row)
+            if event is not None:
+                events.append(event)
+    except (zipfile.BadZipFile, OSError, csv.Error, ValueError) as exc:
+        logger.warning(
+            "gdelt export payload unreadable (%d bytes): %s", len(payload), exc
+        )
         return []
-
-    text = raw.decode("utf-8", errors="replace")
-    # No header row, and the fields are raw text that contains unbalanced quotes
-    # (headlines do) — QUOTE_NONE keeps csv from swallowing the rest of the file.
-    reader = csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)
-    events: list[GdeltEvent] = []
-    for row in reader:
-        event = _parse_row(row)
-        if event is not None:
-            events.append(event)
     return events
 
 
@@ -238,7 +253,9 @@ async def fetch_gdelt() -> list[GdeltEvent]:
             await asyncio.sleep(_FETCH_PAUSE)
         # Only the newest batch is guaranteed to exist; the older filenames are
         # derived, and GDELT does skip batches.
-        payload = await fetch_bytes(url, timeout=_REQUEST_TIMEOUT, missing_ok=index > 0)
+        payload = await fetch_bytes(
+            url, timeout=_REQUEST_TIMEOUT, missing_ok=index > 0, max_bytes=_MAX_DOWNLOAD_BYTES,
+        )
         if not payload:
             continue
         for event in _parse_export_zip(payload):

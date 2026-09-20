@@ -120,28 +120,6 @@ class GdeltEvent:
 
 
 @dataclass
-class AcledEvent:
-    """ACLED expert-coded armed-conflict / protest event."""
-
-    id: str
-    event_date: str
-    event_type: str
-    sub_event_type: str
-    actor1: str
-    actor2: str
-    country: str
-    admin1: str
-    location: str
-    latitude: float
-    longitude: float
-    fatalities: int
-    notes: str
-    source: str
-    source_scale: str
-    tags: str
-
-
-@dataclass
 class VesselSnapshot:
     """AIS vessel position snapshot (maritime chokepoint analysis)."""
 

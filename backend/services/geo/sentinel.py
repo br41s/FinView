@@ -492,13 +492,82 @@ def _classify_gdelt(evt: GdeltEvent) -> str | None:
     return None
 
 
+_MOST_SPECIFIC_CACHE: dict[str, float] = {}
+
+
+def _most_specific_region(regions: list[str]) -> str | None:
+    """The smallest containing box. ``match_regions`` returns every box in
+    declaration order, and the chokepoints are carved *inside* broader ones —
+    taking ``regions[0]`` filed a Hormuz seizure under middle_east_oil and a
+    Seoul mobilisation under japan, so the specific keys were never reachable."""
+    if not regions:
+        return None
+    if not _MOST_SPECIFIC_CACHE:
+        from .rules import GEO_REGIONS
+
+        for name, (la0, la1, lo0, lo1) in GEO_REGIONS.items():
+            _MOST_SPECIFIC_CACHE[name] = (la1 - la0) * (lo1 - lo0)
+    return min(regions, key=lambda r: _MOST_SPECIFIC_CACHE.get(r, float("inf")))
+
+
+# Where a cluster of conflict stories is a geopolitical thesis. GDELT's coder
+# files police raids and prosecutions under 19x "use conventional military
+# force", so an hour of batches clusters over India, the US Midwest and Northern
+# Europe as readily as over the Red Sea; a cluster only means something where
+# the conflict / chokepoint / sanctions rules are written.
+_ESCALATION_REGIONS = frozenset({
+    "middle_east_oil", "strait_of_hormuz", "suez_red_sea", "iran", "ukraine_black_sea",
+    "taiwan", "east_china_sea", "south_china_sea", "korean_peninsula", "malacca_strait",
+    "china_industrial", "sahel", "nigeria_oil", "horn_of_africa", "drc_mining", "libya",
+    "myanmar", "panama_canal", "cape_good_hope",
+})
+# Chokepoints where a single violent event is the thesis: the mention floor is
+# relaxed there, because the export codes an event once — a Hormuz seizure with
+# 3 mentions in its first 15 minutes is not re-presented later with 10.
+_CHOKEPOINT_REGIONS = frozenset({
+    "strait_of_hormuz", "suez_red_sea", "malacca_strait", "panama_canal", "cape_good_hope",
+    "taiwan",
+})
+_CHOKEPOINT_MIN_MENTIONS = 2
+_CHOKEPOINT_MAX_GOLDSTEIN = -8
+# Cluster bar, measured on one hour of live batches (2026-09-20 08:15–09:15 UTC,
+# a quiet Sunday): distinct stories past the floors, keyed on the most specific
+# region — suez_red_sea 20, south_china_sea 7, china_industrial 6, ukraine 5,
+# korea 5, middle_east_oil 4, myanmar 4, horn_of_africa 3, iran 3. "≥3 events"
+# would have clustered nine regions in a calm hour; ten stories across at
+# least two categories picked out the one region that was genuinely hot.
+_CLUSTER_MIN_STORIES = 10
+_CLUSTER_MIN_CATEGORIES = 2
+
+
+def _passes_gdelt_floors(evt: GdeltEvent, region: str | None, min_mentions: int,
+                         min_sources: int) -> bool:
+    if evt.num_sources < min_sources:
+        return False
+    if evt.num_mentions >= min_mentions:
+        return True
+    return (
+        region in _CHOKEPOINT_REGIONS
+        and evt.goldstein_scale <= _CHOKEPOINT_MAX_GOLDSTEIN
+        and evt.num_mentions >= _CHOKEPOINT_MIN_MENTIONS
+    )
+
+
 def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
     if not gdelt_events:
         return []
     now = _now_ms()
-    out: list[GeoEvent] = []
-    region_counts: dict[str, dict] = {}
-    seen: set[str] = set()
+
+    # One GeoEvent per (category, region): an ongoing conflict is one tracked
+    # signal that the advisor refreshes each cycle and the auditor resolves at
+    # +7d, not a new row every UTC day — a day-keyed id split one story into
+    # two signals at midnight four cycles out of 48. Each bucket is represented
+    # by its strongest row (lowest Goldstein, then most mentions), not by
+    # whichever row the file listed first: the representative decides the
+    # coordinates the rules match against, the severity that
+    # rules.severity_headroom reads, and the source URL the reader is sent to.
+    buckets: dict[str, dict] = {}
+    tally: dict[str, dict] = {}
 
     for evt in gdelt_events:
         category = _classify_gdelt(evt)
@@ -509,51 +578,48 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
             continue
         if min_g is not None and evt.goldstein_scale < min_g:
             continue
-        if evt.num_mentions < min_mentions or evt.num_sources < min_sources:
+        region = _most_specific_region(match_regions(evt.latitude, evt.longitude))
+        if not _passes_gdelt_floors(evt, region, min_mentions, min_sources):
             continue
-
-        regions = match_regions(evt.latitude, evt.longitude)
-        region = regions[0] if regions else None
         region_key = region or f"{int(evt.latitude)}_{int(evt.longitude)}"
-        day = (evt.date_added or "")[:8] or "today"
 
-        # Ten rows about one story are one event. The id is region+day keyed on
-        # purpose, but emitting a GeoEvent per row let the compound tally count
-        # article volume as "simultaneous events".
-        event_id = f"gdelt-{category}-{region_key}-{day}"
-        if event_id in seen:
-            continue
-        seen.add(event_id)
+        rank = (evt.goldstein_scale, -evt.num_mentions)
+        bucket = buckets.setdefault(
+            f"gdelt-{category}-{region_key}",
+            {"best": evt, "rank": rank, "category": category, "ftype": ftype,
+             "region": region, "stories": 0},
+        )
+        bucket["stories"] += 1
+        if rank < bucket["rank"]:
+            bucket["best"], bucket["rank"] = evt, rank
 
-        # The escalation tally counts *stories*, not rows, for the same reason —
-        # and it matters now in a way it could not before. The Doc API capped the
-        # feed at 75 articles a cycle; an hour of export batches passes ~90 rows
-        # of the floors, so a region with one story told 22 ways used to clear a
-        # "≥3 simultaneous events" bar that is supposed to mean three events.
-        tr = region_counts.setdefault(region_key, {"count": 0, "sum_g": 0.0})
-        tr["count"] += 1
+        tr = tally.setdefault(region_key, {"stories": 0, "categories": set(), "sum_g": 0.0,
+                                           "best": evt})
+        tr["stories"] += 1
+        tr["categories"].add(category)
         tr["sum_g"] += evt.goldstein_scale
-        # Honest bands: goldstein_scale is now CAMEO's own weight for the coded
-        # event (19x fight = -10, 18x assault = -9, 15x force posture = -7.2,
-        # 14x protest = -6.5, 17x coerce = -5), not the per-query constant the
-        # Doc API era invented — so "red" is evidence again, and
-        # rules.severity_headroom may read it.
+        if evt.goldstein_scale < tr["best"].goldstein_scale:
+            tr["best"] = evt
+
+    out: list[GeoEvent] = []
+    for event_id, bucket in buckets.items():
+        evt, category = bucket["best"], bucket["category"]
+        # Honest bands: goldstein_scale is CAMEO's own weight for the coded event
+        # (19x fight = -10, 18x assault = -9, 15x force posture = -7.2, 14x protest
+        # = -6.5, 17x coerce = -5), so "red" is evidence and rules.severity_headroom
+        # may read it.
         severity = (
-            "red"
-            if evt.goldstein_scale <= -7
-            else "orange"
-            if evt.goldstein_scale <= -4
-            else None
+            "red" if evt.goldstein_scale <= -7 else "orange" if evt.goldstein_scale <= -4 else None
         )
         out.append(
             GeoEvent(
                 id=event_id,
-                type=ftype,
+                type=bucket["ftype"],
                 title=f"{category.replace('_', ' ').title()}: {evt.title[:120]}",
                 latitude=evt.latitude,
                 longitude=evt.longitude,
                 severity=severity,
-                region=region,
+                region=bucket["region"],
                 source="gdelt",
                 timestamp=now,
                 raw_data={
@@ -563,56 +629,44 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                     "numMentions": evt.num_mentions,
                     "eventCode": evt.event_code,
                     "sourceUrl": evt.source_url,
+                    "storiesThisHour": bucket["stories"],
                 },
             )
         )
 
-    # Compound escalation: ≥3 events clustered in one real region, avg goldstein ≤ -5.
-    # GDELT's coder files police raids and prosecutions under 19x "use
-    # conventional military force", so an hour of batches clusters over India,
-    # the US Midwest and Northern Europe as readily as over the Red Sea. A
-    # cluster is only a geopolitical thesis where geopolitics is the thesis:
-    # the regions the conflict / chokepoint / sanctions rules are written for.
-    for region_key, tr in region_counts.items():
-        avg_g = tr["sum_g"] / tr["count"] if tr["count"] else 0
-        if tr["count"] >= 3 and avg_g <= -5 and region_key in _ESCALATION_REGIONS:
-            sample = next(
-                (e for e in gdelt_events if region_key in match_regions(e.latitude, e.longitude)),
-                None,
+    for region_key, tr in tally.items():
+        if region_key not in _ESCALATION_REGIONS:
+            continue
+        avg_g = tr["sum_g"] / tr["stories"]
+        if (
+            tr["stories"] < _CLUSTER_MIN_STORIES
+            or len(tr["categories"]) < _CLUSTER_MIN_CATEGORIES
+            or avg_g > -5
+        ):
+            continue
+        marker = tr["best"]
+        out.append(
+            GeoEvent(
+                id=f"gdelt-escalation-{region_key}",
+                type="geopolitical_escalation",
+                title=f"Geopolitical Escalation Cluster — "
+                f"{region_key.replace('_', ' ')} ({tr['stories']} events)",
+                latitude=marker.latitude,
+                longitude=marker.longitude,
+                # The average behind this is measured per event, so a cluster of
+                # real fighting earns red on its own evidence.
+                severity="red" if avg_g <= -7 else "orange",
+                region=region_key,
+                source="gdelt",
+                timestamp=now,
+                raw_data={
+                    "eventCount": tr["stories"],
+                    "categories": sorted(tr["categories"]),
+                    "avgGoldstein": round(avg_g, 2),
+                },
             )
-            if sample:
-                out.append(
-                    GeoEvent(
-                        id=f"gdelt-escalation-{region_key}",
-                        type="geopolitical_escalation",
-                        title=f"Geopolitical Escalation Cluster — "
-                        f"{region_key.replace('_', ' ')} ({tr['count']} events)",
-                        latitude=sample.latitude,
-                        longitude=sample.longitude,
-                        # The average behind this is measured per event now, so a
-                        # cluster of real fighting earns red on its own evidence.
-                        severity="red" if avg_g <= -7 else "orange",
-                        region=region_key,
-                        source="gdelt",
-                        timestamp=now,
-                        raw_data={"eventCount": tr["count"], "avgGoldstein": avg_g},
-                    )
-                )
+        )
     return out
-
-
-def _iter_region_ids():
-    from .rules import GEO_REGIONS
-
-    return GEO_REGIONS.keys()
-
-
-_ESCALATION_REGIONS = frozenset({
-    "middle_east_oil", "strait_of_hormuz", "suez_red_sea", "iran", "ukraine_black_sea",
-    "taiwan", "east_china_sea", "south_china_sea", "korean_peninsula", "malacca_strait",
-    "china_industrial", "sahel", "nigeria_oil", "horn_of_africa", "drc_mining", "libya",
-    "myanmar", "panama_canal", "cape_good_hope",
-})
 
 
 # ── Specialist: AIS maritime chokepoint traffic ──────────────────────

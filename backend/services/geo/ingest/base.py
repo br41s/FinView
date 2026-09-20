@@ -107,6 +107,7 @@ async def fetch_bytes(
     headers: dict | None = None,
     timeout: float = DEFAULT_TIMEOUT,
     missing_ok: bool = False,
+    max_bytes: int | None = None,
 ) -> bytes | None:
     """Fetch a URL and return the raw body bytes, or None on any failure.
 
@@ -126,6 +127,11 @@ async def fetch_bytes(
                 logger.info("geo ingest %s → HTTP 404 (not published yet)", url)
             else:
                 logger.warning("geo ingest %s → HTTP %s", url, resp.status_code)
+            return None
+        if max_bytes is not None and len(resp.content) > max_bytes:
+            logger.warning(
+                "geo ingest %s → %d bytes, over the %d cap", url, len(resp.content), max_bytes
+            )
             return None
         return resp.content
     except Exception:

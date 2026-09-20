@@ -427,39 +427,6 @@ def test_many_rows_about_one_story_are_one_event(monkeypatch):
     assert len(ids) == len(set(ids))
 
 
-def test_escalation_cluster_is_red_when_the_measured_average_earns_it(monkeypatch):
-    """Ukraine: armed_conflict (-10) + military_escalation (-7.2) + tension (-5).
-
-    Average -7.4 ≤ -7, so the cluster is red — and it is red on evidence now,
-    which is what ``rules.severity_headroom`` reads.
-    """
-    clusters = [e for e in _analyzed(monkeypatch) if e.type == "geopolitical_escalation"]
-    ukraine = next(e for e in clusters if e.region == "ukraine_black_sea")
-    assert ukraine.raw_data["eventCount"] == 3
-    assert ukraine.raw_data["avgGoldstein"] <= -7
-    assert ukraine.severity == "red"
-
-
-def test_escalation_cluster_counts_stories_not_rows():
-    """A region with one story told 22 ways is not "≥3 simultaneous events".
-
-    The Doc API capped the feed at 75 articles a cycle so the distinction did not
-    bite; an hour of export batches passes ~90 rows of the floors.
-    """
-    rows = [
-        GdeltEvent(
-            id=f"gdelt-{i}", title="t", event_code="193", event_root_code="19",
-            quad_class=4, goldstein_scale=-10.0, num_mentions=20, num_sources=1,
-            num_articles=20, avg_tone=-8.0, latitude=50.4, longitude=30.5,
-            location="Kyiv, Ukraine", actor1="UKRAINE", actor2="RUSSIA",
-            date_added=_LATEST, source_url="",
-        )
-        for i in range(22)
-    ]
-    assert [e for e in sentinel.analyze_gdelt_events(rows)
-            if e.type == "geopolitical_escalation"] == []
-
-
 def test_raw_data_contract(monkeypatch):
     """orchestrator.py and the frontend read these keys."""
     event = next(e for e in _analyzed(monkeypatch) if e.type == "armed_conflict")
@@ -470,30 +437,127 @@ def test_raw_data_contract(monkeypatch):
     assert event.raw_data["sourceUrl"].startswith("https://")
 
 
-def test_event_ids_are_region_and_day_keyed(monkeypatch):
-    for event in _analyzed(monkeypatch):
-        assert event.id.startswith("gdelt-")
-        assert event.source == "gdelt"
+# ── Buckets, representatives, clusters ───────────────────────────────
 
 
-def test_escalation_cluster_only_forms_where_geopolitics_is_the_thesis():
-    """Three 19x events over Ohio are a police story, not a geopolitical cluster.
-    The per-event armed_conflict events still exist (no rule covers us_midwest);
-    the cluster — which matches gdelt-escalation-cluster everywhere — does not."""
-    # Three categories, as a real escalation reads: a fight, a show of force, coercion.
-    codes = (("190", "19", -10.0), ("154", "15", -7.2), ("172", "17", -5.0))
-    def rows(lat, lon, loc):
-        return [
-            GdeltEvent(
-                id=f"gdelt-{loc}-{i}", title="t", event_code=code, event_root_code=root,
-                quad_class=4, goldstein_scale=gs, num_mentions=20, num_sources=1,
-                num_articles=20, avg_tone=-8.0, latitude=lat, longitude=lon + i * 0.5,
-                location=loc, actor1="POLICE", actor2="SUSPECT",
-                date_added=_LATEST, source_url=f"https://ex.test/{loc}/{i}",
-            )
-            for i, (code, root, gs) in enumerate(codes)
-        ]
-    ohio = sentinel.analyze_gdelt_events(rows(40.0, -83.0, "Columbus, Ohio"))
+def _story(i, *, lat, lon, code="190", root="19", gs=-10.0, mentions=20, date=None, url=None):
+    return GdeltEvent(
+        id=f"gdelt-{i}", title="t", event_code=code, event_root_code=root, quad_class=4,
+        goldstein_scale=gs, num_mentions=mentions, num_sources=1, num_articles=mentions,
+        avg_tone=-8.0, latitude=lat, longitude=lon, location="x", actor1="A", actor2="B",
+        date_added=date or _LATEST, source_url=url or f"https://ex.test/{i}",
+    )
+
+
+def _mixed(n, lat, lon):
+    """n distinct stories in two categories (fight -10, force posture -7.2)."""
+    return [
+        _story(i, lat=lat, lon=lon + i * 0.01,
+               **({} if i % 2 else {"code": "154", "root": "15", "gs": -7.2}))
+        for i in range(n)
+    ]
+
+
+def test_events_are_keyed_on_the_most_specific_region():
+    """match_regions returns every containing box in declaration order and the
+    chokepoints are carved inside broader ones: Seoul used to file under japan,
+    Hormuz under middle_east_oil — so those keys were never reachable."""
+    seoul = sentinel.analyze_gdelt_events([_story(1, lat=37.5, lon=127.0)])
+    hormuz = sentinel.analyze_gdelt_events([_story(2, lat=26.0, lon=56.0)])
+    assert seoul[0].region == "korean_peninsula"
+    assert hormuz[0].region == "strait_of_hormuz"
+    assert hormuz[0].id == "gdelt-armed_conflict-strait_of_hormuz"
+
+
+def test_the_representative_is_the_strongest_row_not_the_first():
+    """The representative sets the coordinates the rules match, the severity
+    headroom reads, and the URL the reader is sent to."""
+    mild = _story(1, lat=33.3, lon=44.4, code="172", root="17", gs=-5.0, mentions=6,
+                  url="https://ex.test/mild")
+    fierce = _story(2, lat=33.4, lon=44.5, gs=-10.0, mentions=30, url="https://ex.test/fierce")
+    # Both middle_east_oil; different categories → different buckets. Same category:
+    weak = _story(3, lat=33.3, lon=44.4, code="180", root="18", gs=-9.0, mentions=5,
+                  url="https://ex.test/weak")
+    for order in ([mild, weak, fierce], [fierce, weak, mild]):
+        events = sentinel.analyze_gdelt_events(order)
+        conflict = next(e for e in events if e.type == "armed_conflict")
+        assert conflict.raw_data["sourceUrl"] == "https://ex.test/fierce"
+        assert conflict.severity == "red" and conflict.raw_data["storiesThisHour"] == 2
+
+
+def test_one_story_across_midnight_is_one_event():
+    rows = [
+        _story(1, lat=50.4, lon=30.5, date="20260919235900"),
+        _story(2, lat=50.4, lon=30.6, date="20260920000500"),
+    ]
+    events = sentinel.analyze_gdelt_events(rows)
+    assert [e.id for e in events if e.type == "armed_conflict"] == [
+        "gdelt-armed_conflict-ukraine_black_sea"
+    ]
+
+
+def test_cluster_needs_ten_stories_in_two_categories():
+    """Measured on a quiet hour: nine escalation regions had ≥3 stories, only the
+    Red Sea (20) was genuinely hot. Three events is background, not escalation."""
+    clusters = lambda evs: [e for e in evs if e.type == "geopolitical_escalation"]  # noqa: E731
+    assert clusters(sentinel.analyze_gdelt_events(_mixed(9, 50.4, 30.5))) == []
+    one_category = [_story(i, lat=50.4, lon=30.5 + i * 0.01) for i in range(12)]
+    assert clusters(sentinel.analyze_gdelt_events(one_category)) == []
+    hot = clusters(sentinel.analyze_gdelt_events(_mixed(10, 50.4, 30.5)))
+    assert len(hot) == 1
+    assert hot[0].region == "ukraine_black_sea"
+    assert hot[0].raw_data["eventCount"] == 10
+    assert hot[0].raw_data["categories"] == ["armed_conflict", "military_escalation"]
+    assert hot[0].severity == "red"  # avg of -10 and -7.2 ≤ -7, on evidence
+
+
+def test_cluster_only_forms_where_geopolitics_is_the_thesis():
+    """Twelve 19x stories over Ohio are policing, not a geopolitical cluster."""
+    ohio = sentinel.analyze_gdelt_events(_mixed(12, 40.0, -83.0))
     assert [e for e in ohio if e.type == "geopolitical_escalation"] == []
-    red_sea = sentinel.analyze_gdelt_events(rows(20.0, 38.0, "Red Sea"))
+    red_sea = sentinel.analyze_gdelt_events(_mixed(12, 20.0, 38.0))
     assert [e for e in red_sea if e.type == "geopolitical_escalation"]
+
+
+def test_chokepoint_events_pass_a_lower_mention_floor():
+    """The export codes an event once: a Hormuz seizure with 3 mentions in its
+    first 15 minutes never comes back with 10. India with 3 mentions is noise."""
+    hormuz = sentinel.analyze_gdelt_events([_story(1, lat=26.0, lon=56.0, mentions=3)])
+    india = sentinel.analyze_gdelt_events([_story(2, lat=20.0, lon=78.0, mentions=3)])
+    assert hormuz and hormuz[0].region == "strait_of_hormuz"
+    assert india == []
+    mild_hormuz = sentinel.analyze_gdelt_events(
+        [_story(3, lat=26.0, lon=56.0, code="172", root="17", gs=-5.0, mentions=3)]
+    )
+    assert mild_hormuz == []  # the hatch is for violence, not coercion
+
+
+# ── Parser hardening ─────────────────────────────────────────────────
+
+
+def _zip_bytes(member: bytes) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("x.export.CSV", member)
+    return buf.getvalue()
+
+
+def test_an_oversized_field_does_not_raise(caplog):
+    """csv.Error used to escape fetch_gdelt and cost the cycle its stale cache."""
+    assert gdelt._parse_export_zip(_zip_bytes(b"X" * 200_000)) == []
+    assert "unreadable" in caplog.text
+
+
+def test_a_member_over_the_cap_is_not_decompressed(monkeypatch, caplog):
+    monkeypatch.setattr(gdelt, "_MAX_MEMBER_BYTES", 1000)
+    assert gdelt._parse_export_zip(_zip_bytes(b"\t" * 2000)) == []
+    assert "over the" in caplog.text
+
+
+def test_rows_without_a_global_id_are_dropped():
+    row = _row("", event_code="190", root_code="19", quad="4", goldstein="-10.0",
+               mentions="9", lat="31.5", lon="34.5", geo_name="Gaza")
+    assert gdelt._parse_export_zip(_zip_bytes(row.encode())) == []
