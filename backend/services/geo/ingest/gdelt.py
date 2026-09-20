@@ -1,142 +1,222 @@
-"""GDELT 2.0 Doc API → GdeltEvent list.
+"""GDELT 2.0 event export files → GdeltEvent list.
 
-Free, no key. The three thematic queries run concurrently, staggered by half a
-second so the burst still looks polite; serializing them with a 6s spacer cost
-~44s of every cycle's ingest wall and bought nothing (GDELT answered 16% of prod
-cycles either way). Articles are geolocated by source-country centroid.
+Free, no key, and **not** the DOC 2.0 API this replaced. Measured 2026-09-20 from
+Google Cloud: ``api.gdeltproject.org/api/v2/doc/doc`` answers HTTP 429 to a
+*single* request (prod: available in 17% of cycles, ~1700 rate-limit lines a
+week), while ``data.gdeltproject.org/gdeltv2/`` — a static file host — answers
+200 in under 0.5 s. The API also returned no Goldstein score, no mention counts
+and no coordinates, so the old module fabricated a per-query Goldstein constant
+and a capital centroid; the export carries all three per event.
 
-``artlist`` returns headlines only — no mention or source counts, no per-article
-Goldstein score. Those fields are not invented here: the per-query Goldstein
-constant is the query's own severity prior, and the mention/source floors that
-used to gate on fabricated counts are gone from the sentinel.
+Shape: ``lastupdate.txt`` is three lines (``<size> <md5> <url>`` for export /
+mentions / gkg) naming the newest 15-minute batch. Each export zip holds one
+headerless 61-column TSV, ~600–4000 rows. We read the newest batch plus the 3
+before it (filenames step back 15 min): the cron runs every 30 min, dedup is by
+GlobalEventID, so the overlap is free and a skipped cycle is bridged. A missing
+older file is normal, not an error.
 """
 
 import asyncio
-import json
+import csv
+import io
 import logging
+import zipfile
+from datetime import datetime, timedelta
 
-from .base import TTLCache, fetch_text
+from .base import TTLCache, fetch_bytes, fetch_text
 from .types import GdeltEvent
 
 logger = logging.getLogger(__name__)
 
+_BASE_URL = "https://data.gdeltproject.org/gdeltv2"
+_LASTUPDATE_URL = f"{_BASE_URL}/lastupdate.txt"
 _CACHE_TTL = 15 * 60
-# Stagger between the three concurrent queries, not a serial spacer. 2 s, not
-# 0.5: GDELT rate-limits per IP (prod logged 1700 429/5xx lines in 7 days even
-# with 6 s serial spacing) and three requests inside one second is the shape
-# most likely to trip it. Total added latency is 4 s, against the 44 s it was.
-_STAGGER_DELAY = 2.0
-_REQUEST_TIMEOUT = 12.0
-# The cron runs every 30 min and dedup is by external_id, so re-reading a 24h
-# digest every cycle was pure latency: 6h still covers a long 429 streak (GDELT
-# answered 168/1010 prod cycles) while DateDesc keeps the 25 records the newest.
-_TIMESPAN = "6h"
-_cache = TTLCache()
+_REQUEST_TIMEOUT = 20.0
+# 4 batches × 15 min. The cron is every 30 min, so this bridges exactly one
+# missed cycle without re-reading a day of history every run.
+_BATCH_COUNT = 4
+_BATCH_MINUTES = 15
+# data.gdeltproject.org is a static host with no documented rate limit, but four
+# requests inside one second is the shape that got us blocked on the API.
+_FETCH_PAUSE = 0.3
 
-_QUERIES = [
-    ("(military OR conflict OR escalation OR airstrike OR invasion) sourcelang:english", -6.0),
-    ("(sanctions OR embargo OR tariff) sourcelang:english", -4.0),
-    ("(protest OR riot OR unrest OR coup) sourcelang:english", -3.0),
-]
+# Pre-filter only. QuadClass 3/4 are verbal/material conflict; the root codes are
+# CAMEO's conflict half (14 protest … 20 mass violence). The real gates — mention
+# floors, Goldstein bands, region matching — live in the sentinel.
+_CONFLICT_QUAD = {3, 4}
+_CONFLICT_ROOTS = {"14", "15", "16", "17", "18", "19", "20"}
 
-_COUNTRY_CENTROIDS: dict[str, tuple[float, float]] = {
-    "United States": (38.9, -77.0), "United Kingdom": (51.5, -0.1), "Russia": (55.8, 37.6),
-    "China": (39.9, 116.4), "Iran": (35.7, 51.4), "Israel": (31.8, 35.2),
-    "Ukraine": (50.4, 30.5), "Taiwan": (25.0, 121.5), "South Korea": (37.6, 127.0),
-    "North Korea": (39.0, 125.8), "Japan": (35.7, 139.7), "India": (28.6, 77.2),
-    "Pakistan": (33.7, 73.1), "Turkey": (39.9, 32.9), "Saudi Arabia": (24.7, 46.7),
-    "Iraq": (33.3, 44.4), "Syria": (33.5, 36.3), "Lebanon": (33.9, 35.5),
-    "Egypt": (30.0, 31.2), "Germany": (52.5, 13.4), "France": (48.9, 2.3),
-    "Italy": (41.9, 12.5), "Poland": (52.2, 21.0), "Romania": (44.4, 26.1),
-    "Spain": (40.4, -3.7), "Brazil": (-15.8, -47.9), "Mexico": (19.4, -99.1),
-    "Canada": (45.4, -75.7), "Australia": (-33.9, 151.2), "South Africa": (-33.9, 18.4),
-    "Nigeria": (9.1, 7.5), "Kenya": (-1.3, 36.8), "Ethiopia": (9.0, 38.7),
-    "Venezuela": (10.5, -66.9), "Colombia": (4.6, -74.1), "Argentina": (-34.6, -58.4),
-    "Indonesia": (-6.2, 106.8), "Malaysia": (3.1, 101.7), "Philippines": (14.6, 121.0),
-    "Thailand": (13.8, 100.5), "Vietnam": (21.0, 105.9), "Myanmar": (19.8, 96.2),
-    "Afghanistan": (34.5, 69.2), "Yemen": (15.4, 44.2), "Libya": (32.9, 13.2),
-    "Sudan": (15.6, 32.5), "Somalia": (2.0, 45.3), "Niger": (13.5, 2.1),
-    "Mali": (12.6, -8.0), "Burkina Faso": (12.4, -1.5), "Bangladesh": (23.8, 90.4),
-    "Sri Lanka": (6.9, 79.9), "Georgia": (41.7, 44.8), "Moldova": (47.0, 28.8),
-    "Belarus": (53.9, 27.6), "Estonia": (59.4, 24.7), "Latvia": (56.9, 24.1),
-    "Lithuania": (54.7, 25.3), "Finland": (60.2, 25.0), "Sweden": (59.3, 18.1),
-    "Norway": (59.9, 10.8), "Hungary": (47.5, 19.0), "Ireland": (53.3, -6.3),
-    "Greece": (37.9, 23.7), "Czech Republic": (50.1, 14.4), "Austria": (48.2, 16.4),
-    "Switzerland": (46.9, 7.4), "Netherlands": (52.4, 4.9), "Belgium": (50.8, 4.4),
-    "Portugal": (38.7, -9.1), "Denmark": (55.7, 12.6), "New Zealand": (-41.3, 174.8),
-    "Singapore": (1.4, 103.8), "Qatar": (25.3, 51.5), "United Arab Emirates": (24.5, 54.7),
-    "Kuwait": (29.4, 47.9), "Bahrain": (26.2, 50.6), "Oman": (23.6, 58.5),
-    "Jordan": (31.9, 35.9), "Morocco": (33.6, -7.6), "Tunisia": (36.8, 10.2),
-    "Algeria": (36.8, 3.1),
+# Column indexes in the 61-column GDELT 2.0 export record (0-based), verified
+# against a real batch and the CAMEO 1.1b3 codebook.
+_C_GLOBAL_ID = 0
+_C_ACTOR1 = 6
+_C_ACTOR2 = 16
+_C_EVENT_CODE = 26
+_C_ROOT_CODE = 28
+_C_QUAD_CLASS = 29
+_C_GOLDSTEIN = 30
+_C_MENTIONS = 31
+_C_SOURCES = 32
+_C_ARTICLES = 33
+_C_AVG_TONE = 34
+_C_GEO_NAME = 52
+_C_GEO_LAT = 56
+_C_GEO_LON = 57
+_C_DATE_ADDED = 59
+_C_SOURCE_URL = 60
+_EXPORT_COLUMNS = 61
+
+# CAMEO root → human description, used to build the title the export omits.
+_ROOT_DESCRIPTIONS = {
+    "14": "protest",
+    "15": "exhibit force posture",
+    "16": "reduce relations",
+    "17": "coerce",
+    "18": "unconventional violence",
+    "19": "conventional military force",
+    "20": "mass violence",
+}
+# A handful of sub-codes worth naming exactly; everything else falls back to the
+# root description above.
+_CODE_DESCRIPTIONS = {
+    "141": "demonstrate or rally",
+    "143": "strike or boycott",
+    "145": "violent protest, riot",
+    "152": "increase military alert status",
+    "154": "mobilize or increase armed forces",
+    "161": "reduce or break diplomatic relations",
+    "1621": "stop economic assistance",
+    "1622": "stop military assistance",
+    "163": "impose embargo, boycott or sanctions",
+    "164": "halt negotiations",
+    "172": "impose administrative sanctions",
+    "173": "arrest or detain",
+    "174": "expel or deport",
+    "175": "use repression",
+    "176": "cyber attack",
+    "181": "abduct, hijack, take hostage",
+    "183": "bombing",
+    "186": "assassinate",
+    "190": "use conventional military force",
+    "191": "impose blockade, restrict movement",
+    "192": "occupy territory",
+    "193": "fight with small arms",
+    "194": "fight with artillery and tanks",
+    "195": "employ aerial weapons",
+    "196": "violate ceasefire",
+    "202": "mass killings",
+    "203": "ethnic cleansing",
 }
 
-def _hash_code(s: str) -> str:
-    h = 0
-    for ch in s:
-        h = ((h << 5) - h + ord(ch)) & 0xFFFFFFFF
-    # emulate JS 32-bit signed wrap then abs
-    if h >= 0x80000000:
-        h -= 0x100000000
-    return format(abs(h), "x")
+_cache = TTLCache()
 
 
-def _strip_html(s: str) -> str:
-    import re
+def _parse_lastupdate(text: str) -> str | None:
+    """Return the export URL from ``lastupdate.txt``, or None if it isn't one.
 
-    return re.sub(r"<[^>]*>", "", s).strip()
+    Three lines of ``<size> <md5> <url>``; only the ``.export.CSV.zip`` one is
+    ours. A rate-limit or error page is HTML and simply has no such line.
+    """
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[2].endswith(".export.CSV.zip"):
+            return parts[2].replace("http://", "https://", 1)
+    return None
 
 
-async def _fetch_query(index: int, query: str, goldstein: float) -> list[GdeltEvent]:
-    if index:
-        await asyncio.sleep(_STAGGER_DELAY * index)
-    url = "https://api.gdeltproject.org/api/v2/doc/doc"
-    params = {
-        "query": query,
-        "mode": "artlist",
-        "maxrecords": 25,
-        "format": "json",
-        "sort": "DateDesc",
-        "timespan": _TIMESPAN,
-    }
-    text = await fetch_text(url, params=params, timeout=_REQUEST_TIMEOUT)
-    if not text or not text.startswith("{"):
-        # GDELT answers rate limits with a plain-text page, so this is the
-        # branch prod actually takes — it must not be the silent one.
-        logger.warning(
-            "gdelt query %d returned no JSON (rate limited?): %r", index, (text or "")[:120]
-        )
-        return []
+def _batch_urls(latest_url: str, count: int = _BATCH_COUNT) -> list[str]:
+    """Derive the latest N export URLs by stepping the filename back 15 min.
+
+    The timestamp is the filename, so the arithmetic is on a real datetime —
+    subtracting 15 from the minute field alone breaks on every hour and day
+    boundary, which is four times an hour.
+    """
+    name = latest_url.rsplit("/", 1)[-1]
+    stamp = name.split(".", 1)[0]
     try:
-        data = json.loads(text)
+        ts = datetime.strptime(stamp, "%Y%m%d%H%M%S")
     except ValueError:
-        logger.warning("gdelt query %d returned malformed JSON: %r", index, text[:120])
+        logger.warning("gdelt lastupdate URL has no parseable timestamp: %r", latest_url)
+        return [latest_url]
+    return [
+        f"{_BASE_URL}/{(ts - timedelta(minutes=_BATCH_MINUTES * i)):%Y%m%d%H%M%S}.export.CSV.zip"
+        for i in range(count)
+    ]
+
+
+def _title_for(actor1: str, actor2: str, event_code: str, root_code: str) -> str:
+    description = _CODE_DESCRIPTIONS.get(event_code) or _ROOT_DESCRIPTIONS.get(
+        root_code, "conflict event"
+    )
+    return f"{actor1 or '?'} → {actor2 or '?'}: {description}"
+
+
+def _parse_row(row: list[str]) -> GdeltEvent | None:
+    if len(row) < _EXPORT_COLUMNS:
+        return None
+    lat_raw, lon_raw = row[_C_GEO_LAT], row[_C_GEO_LON]
+    if not lat_raw or not lon_raw:
+        return None
+    root_code = row[_C_ROOT_CODE]
+    try:
+        quad_class = int(row[_C_QUAD_CLASS] or 0)
+        latitude = float(lat_raw)
+        longitude = float(lon_raw)
+        goldstein = float(row[_C_GOLDSTEIN] or 0.0)
+        mentions = int(row[_C_MENTIONS] or 0)
+        sources = int(row[_C_SOURCES] or 0)
+        articles = int(row[_C_ARTICLES] or 0)
+        avg_tone = float(row[_C_AVG_TONE] or 0.0)
+    except ValueError:
+        return None
+    if quad_class not in _CONFLICT_QUAD and root_code not in _CONFLICT_ROOTS:
+        return None
+
+    actor1 = row[_C_ACTOR1].strip()
+    actor2 = row[_C_ACTOR2].strip()
+    event_code = row[_C_EVENT_CODE].strip()
+    return GdeltEvent(
+        id=f"gdelt-{row[_C_GLOBAL_ID]}",
+        title=_title_for(actor1, actor2, event_code, root_code),
+        event_code=event_code,
+        event_root_code=root_code,
+        quad_class=quad_class,
+        goldstein_scale=goldstein,
+        num_mentions=mentions,
+        num_sources=sources,
+        num_articles=articles,
+        avg_tone=avg_tone,
+        latitude=latitude,
+        longitude=longitude,
+        location=row[_C_GEO_NAME].strip(),
+        actor1=actor1,
+        actor2=actor2,
+        date_added=row[_C_DATE_ADDED].strip(),
+        source_url=row[_C_SOURCE_URL].strip(),
+    )
+
+
+def _parse_export_zip(payload: bytes) -> list[GdeltEvent]:
+    """Unzip in memory and parse the single TSV inside. Never raises."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            names = archive.namelist()
+            if not names:
+                return []
+            raw = archive.read(names[0])
+    except (zipfile.BadZipFile, OSError):
+        logger.warning("gdelt export payload is not a readable zip (%d bytes)", len(payload))
         return []
 
+    text = raw.decode("utf-8", errors="replace")
+    # No header row, and the fields are raw text that contains unbalanced quotes
+    # (headlines do) — QUOTE_NONE keeps csv from swallowing the rest of the file.
+    reader = csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)
     events: list[GdeltEvent] = []
-    for art in data.get("articles", []) or []:
-        country = art.get("sourcecountry") or ""
-        coords = _COUNTRY_CENTROIDS.get(country)
-        if not coords:
-            continue
-        title = _strip_html(str(art.get("title") or ""))
-        if len(title) < 10:
-            continue
-        url_ = art.get("url") or ""
-        events.append(
-            GdeltEvent(
-                id=f"gdelt-{_hash_code(url_ or title)}",
-                title=title[:200],
-                event_code="",
-                goldstein_scale=goldstein,
-                avg_tone=goldstein * 1.2,
-                latitude=coords[0],
-                longitude=coords[1],
-                actor1=country,
-                actor2="",
-                date_added=art.get("seendate") or "",
-                source_url=url_,
-            )
-        )
+    for row in reader:
+        event = _parse_row(row)
+        if event is not None:
+            events.append(event)
     return events
 
 
@@ -145,29 +225,32 @@ async def fetch_gdelt() -> list[GdeltEvent]:
     if cached is not None:
         return cached
 
-    results = await asyncio.gather(
-        *(_fetch_query(i, q, g) for i, (q, g) in enumerate(_QUERIES)),
-        return_exceptions=True,
-    )
+    text = await fetch_text(_LASTUPDATE_URL, timeout=_REQUEST_TIMEOUT)
+    latest = _parse_lastupdate(text) if text else None
+    if not latest:
+        logger.warning("gdelt lastupdate.txt unusable: %r", (text or "")[:120])
+        return _cache.stale or []
+
     events: list[GdeltEvent] = []
-    for result in results:
-        if isinstance(result, BaseException):
-            logger.warning("gdelt query failed: %s", result)
-            continue
-        events.extend(result)
-
-    # Dedup by title prefix.
     seen: set[str] = set()
-    deduped: list[GdeltEvent] = []
-    for e in events:
-        key = e.title[:50].lower()
-        if key in seen:
+    for index, url in enumerate(_batch_urls(latest)):
+        if index:
+            await asyncio.sleep(_FETCH_PAUSE)
+        # Only the newest batch is guaranteed to exist; the older filenames are
+        # derived, and GDELT does skip batches.
+        payload = await fetch_bytes(url, timeout=_REQUEST_TIMEOUT, missing_ok=index > 0)
+        if not payload:
             continue
-        seen.add(key)
-        deduped.append(e)
+        for event in _parse_export_zip(payload):
+            if event.id in seen:
+                continue
+            seen.add(event.id)
+            events.append(event)
 
-    if not deduped and _cache.stale is not None:
-        return _cache.stale
+    if not events:
+        logger.warning("gdelt export batches yielded no conflict events")
+        if _cache.stale is not None:
+            return _cache.stale
 
-    _cache.set(deduped)
-    return deduped
+    _cache.set(events)
+    return events
