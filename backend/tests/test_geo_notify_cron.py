@@ -607,3 +607,36 @@ def test_static_alert_zones_never_page(db):
     )
     res = generate_signal(db, user_id=1, analysis=analysis, prices={})
     assert res.importance >= 60 and res.should_notify is False
+
+
+def test_a_rule_only_refresh_keeps_the_llm_risk(db):
+    """The LLM runs on first sighting only. Its risk must survive the next
+    cycle's rule-only refresh, or the override flips back and pages."""
+    import time
+
+    from backend.services.geo.advisor import generate_signal
+    from backend.services.geo.analyst import AnalystResult, AnalystTicker
+    from backend.services.geo.sentinel import GeoEvent
+
+    existing = _signal()
+    existing.risk_score = 5  # the LLM's call on first sighting: 0.8 × 5 → 40, no page
+    existing.importance = 40
+    db.add(existing)
+    db.commit()
+    event = GeoEvent(
+        id=existing.external_id, type="earthquake", title="t", latitude=35.0,
+        longitude=139.0, source=existing.source, timestamp=int(time.time() * 1000),
+    )
+    rule_only = AnalystResult(
+        event=event, matched_rules=[], tickers=[AnalystTicker("GLD", "bullish", "x")],
+        confidence=80.0, risk_score=9, direction="bearish",  # the rules alone say 9
+    )
+    res = generate_signal(db, user_id=1, analysis=rule_only, prices={})
+    assert (res.signal.risk_score, res.importance, res.should_notify) == (5, 40, False)
+
+    with_llm = AnalystResult(
+        event=event, matched_rules=[], tickers=[AnalystTicker("GLD", "bullish", "x")],
+        confidence=80.0, risk_score=9, direction="bearish", llm_narrative="escalating",
+    )
+    res = generate_signal(db, user_id=1, analysis=with_llm, prices={})
+    assert (res.signal.risk_score, res.importance, res.should_notify) == (9, 72, True)
