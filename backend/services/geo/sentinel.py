@@ -238,8 +238,11 @@ _AIRSPACE_ZONES = (
     ("northern-europe", "northern_europe", 54, 72, 10, 30, 180, 0.45, 12),
 )
 _FLIGHT_MAX_HISTORY = 12
-# Objective (user-independent) rolling baselines: zone_id → list[(total, military, ts)].
+# Objective (user-independent) rolling baselines: zone_id → list[(total, military, ts_ms)].
+# Hydrated from geo_flight_samples by the orchestrator before each analysis and
+# written back after — process memory alone dies at scale-to-zero (see the model).
 _flight_history: dict[str, list[tuple[int, int, int]]] = {}
+_MIN_BASELINE_SAMPLES = 2
 
 
 def analyze_flight_anomalies(flights: list[FlightData]) -> list[GeoEvent]:
@@ -265,7 +268,10 @@ def analyze_flight_anomalies(flights: list[FlightData]) -> list[GeoEvent]:
 
         prior = hist[:-1]
         baseline = round(sum(h[0] for h in prior) / len(prior)) if len(prior) >= 1 else normal
-        mil_baseline = round(sum(h[1] for h in prior) / len(prior)) if len(prior) >= 2 else 2
+        # No baseline, no surge: a default of 2 made any cold start with a
+        # handful of tankers on station a "military surge".
+        has_mil_baseline = len(prior) >= _MIN_BASELINE_SAMPLES
+        mil_baseline = round(sum(h[1] for h in prior) / len(prior)) if has_mil_baseline else 0
 
         center_lat = (lat_min + lat_max) / 2
         center_lon = (lon_min + lon_max) / 2
@@ -295,7 +301,7 @@ def analyze_flight_anomalies(flights: list[FlightData]) -> list[GeoEvent]:
                 )
 
         # Military activity surge.
-        if military >= mil_thr and military > mil_baseline * 2:
+        if has_mil_baseline and military >= mil_thr and military > mil_baseline * 2:
             out.append(
                 GeoEvent(
                     id=f"air-military-{zid}",
