@@ -14,6 +14,11 @@ from backend.services.geo.advisor import SignalResult
 from backend.services.geo.notify import _md_escape, notify_signal
 
 
+@pytest.fixture(autouse=True)
+def _fresh_delivery_ledger(monkeypatch):
+    monkeypatch.setattr(notify, "_DELIVERED", {})
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite:///:memory:")
@@ -552,3 +557,53 @@ def test_an_undelivered_signal_is_reselected_next_cycle(db):
     existing.notified_at = datetime.now(timezone.utc)
     db.commit()
     assert generate_signal(db, user_id=1, analysis=analysis, prices={}).should_notify is False
+
+
+def test_one_event_is_delivered_once_across_users(monkeypatch):
+    """Three accounts, one phone: the second and third users' copies of the
+    same event are not sent again, but still count as delivered for them."""
+    calls: list[str] = []
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: calls.append("ntfy") or True)
+    monkeypatch.setattr(notify, "send_telegram", lambda text: calls.append("tg") or True)
+    monkeypatch.setattr(notify, "send_email", lambda *a: calls.append("email") or True)
+
+    first = notify_signal(_signal(), importance=72)
+    second_user = _signal()
+    second_user.user_id = 2
+    second = notify_signal(second_user, importance=72)
+
+    assert first == second == {"ntfy": True, "telegram": True, "email": True}
+    assert calls == ["ntfy", "tg", "email"]
+
+
+def test_a_failed_delivery_is_not_remembered_as_done(monkeypatch):
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: False)
+    monkeypatch.setattr(notify, "send_telegram", lambda text: False)
+    monkeypatch.setattr(notify, "send_email", lambda *a: False)
+    calls: list[int] = []
+    notify_signal(_signal(), importance=72)
+    monkeypatch.setattr(notify, "send_email", lambda *a: calls.append(1) or True)
+    assert notify_signal(_signal(), importance=72)["email"] is True
+    assert calls == [1]
+
+
+def test_static_alert_zones_never_page(db):
+    """The hardcoded ALERT_ZONES polygons emit the same red event every cycle.
+    They stay on the board; they do not reach a phone."""
+    import time
+
+    from backend.services.geo.advisor import generate_signal
+    from backend.services.geo.analyst import AnalystResult, AnalystTicker
+    from backend.services.geo.sentinel import GeoEvent
+
+    event = GeoEvent(
+        id="alert-gaza-israel", type="conflict", title="Geopolitical Alert: Gaza / Israel",
+        latitude=31.45, longitude=34.35, source="alerts", timestamp=int(time.time() * 1000),
+        severity="red",
+    )
+    analysis = AnalystResult(
+        event=event, matched_rules=[], tickers=[AnalystTicker("USO", "bullish", "x")],
+        confidence=92.0, risk_score=9, direction="bullish",
+    )
+    res = generate_signal(db, user_id=1, analysis=analysis, prices={})
+    assert res.importance >= 60 and res.should_notify is False

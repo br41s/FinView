@@ -10,6 +10,7 @@ channels actually delivered.
 """
 
 import logging
+import time
 
 from backend.models import GeoSignal
 from backend.services.notification_service import send_email, send_ntfy, send_telegram
@@ -21,6 +22,13 @@ logger = logging.getLogger(__name__)
 _MD_SPECIALS = "*_`["
 
 CHANNELS = ("ntfy", "telegram", "email")
+# One delivery per event, not per user. The cron runs every user's cycle in one
+# request against one set of channel credentials (there are no per-user
+# channels yet), so three accounts meant three identical pushes to one phone —
+# which is exactly what happened on the first cycle the gate ever opened.
+# Process-local, like every geo cache: it only has to span one cron request.
+_DELIVERED: dict[str, tuple[float, dict[str, bool]]] = {}
+_DELIVERED_TTL = 6 * 3600
 
 
 def _md_escape(text: str) -> str:
@@ -53,6 +61,13 @@ def notify_signal(
     is not retried on every remaining signal.
     """
     delivered = dict.fromkeys(CHANNELS, False)
+    key = f"{signal.source}:{signal.external_id}"
+    prior = _DELIVERED.get(key)
+    if prior and time.time() - prior[0] < _DELIVERED_TTL and any(prior[1].values()):
+        logger.info(
+            "geo notification: signal %s already delivered for another user (%s)", signal.id, key
+        )
+        return dict(prior[1])
     try:
         tickers = ", ".join(t.symbol for t in signal.tickers) or "—"
         headline = signal.headline[:80]
@@ -116,6 +131,8 @@ def notify_signal(
             )
     ok = [c for c in CHANNELS if delivered[c]]
     failed = [c for c in CHANNELS if not delivered[c]]
+    if ok:
+        _DELIVERED[key] = (time.time(), dict(delivered))
     logger.info(
         "geo notification: signal %s (importance %s) delivered via %s, failed %s",
         signal.id, importance, ",".join(ok) or "none", ",".join(failed) or "none",
