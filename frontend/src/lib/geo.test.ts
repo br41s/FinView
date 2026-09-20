@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   formatAccuracyLine,
+  scopeLabel,
+  thesisSegments,
+  tradabilityHint,
   type GeoAccuracy,
   type GeoCheckpointHorizon,
   type GeoHorizonAccuracy,
@@ -91,5 +94,92 @@ describe("formatAccuracyLine", () => {
       NOW,
     );
     expect(line).toContain("1h 33 %");
+  });
+});
+
+describe("tradabilityHint", () => {
+  it("says nothing about an instrument buyable as cash", () => {
+    expect(tradabilityHint({ tradability: "cash_eu", alternate: null })).toEqual({
+      badge: null,
+      tooltip: null,
+      muted: false,
+    });
+  });
+
+  it("treats an older row with no tradability as cash, not as dead", () => {
+    // Signals persisted before the scoping work carry no field; greying them
+    // out would paint most of the feed as unreachable.
+    expect(tradabilityHint({}).muted).toBe(false);
+    expect(tradabilityHint({}).badge).toBeNull();
+  });
+
+  it("marks a US ETF as options-only without dimming it — it is still a route", () => {
+    const hint = tradabilityHint({
+      tradability: "options_only",
+      alternate: "SGLN / 4GLD (physical gold ETC)",
+    });
+    expect(hint.badge).toBe("opc.");
+    expect(hint.muted).toBe(false);
+    expect(hint.tooltip).toBe(
+      "ETF USA sin KID: solo opciones en IBKR — alternativa: SGLN / 4GLD (physical gold ETC)",
+    );
+  });
+
+  it("dims an instrument with no retail route and names the alternative", () => {
+    const hint = tradabilityHint({
+      tradability: "not_tradable",
+      alternate: "WisdomTree Cocoa ETC",
+    });
+    expect(hint.muted).toBe(true);
+    expect(hint.badge).toBe("s/ruta");
+    expect(hint.tooltip).toBe("Sin ruta minorista en la UE — alternativa: WisdomTree Cocoa ETC");
+  });
+
+  it("says 'sin alternativa' rather than trailing an empty one", () => {
+    // The backend sends "" → null for LBR=F; a blank tail would read as a bug.
+    expect(tradabilityHint({ tradability: "not_tradable", alternate: null }).tooltip).toBe(
+      "Sin ruta minorista en la UE — sin alternativa",
+    );
+    expect(tradabilityHint({ tradability: "options_only", alternate: "  " }).tooltip).toBe(
+      "ETF USA sin KID: solo opciones en IBKR — sin alternativa",
+    );
+  });
+});
+
+describe("scopeLabel", () => {
+  it("translates every scope the backend can send", () => {
+    expect(scopeLabel("site")).toBe("sitio");
+    expect(scopeLabel("local")).toBe("local");
+    expect(scopeLabel("regional")).toBe("regional");
+    expect(scopeLabel("global")).toBe("global");
+  });
+
+  it("returns null for a row written before scoping, so no tag is drawn", () => {
+    expect(scopeLabel(undefined)).toBeNull();
+    expect(scopeLabel("")).toBeNull();
+    expect(scopeLabel("planetary")).toBeNull();
+  });
+});
+
+describe("thesisSegments", () => {
+  it("splits a written chain into its three links", () => {
+    expect(
+      thesisSegments("Corta el suministro de cobre → sube el precio spot → mineras arriba"),
+    ).toEqual([
+      "Corta el suministro de cobre",
+      "sube el precio spot",
+      "mineras arriba",
+    ]);
+  });
+
+  it("leaves an unchained thesis as one segment", () => {
+    expect(thesisSegments("Riesgo de oferta en el Golfo")).toEqual([
+      "Riesgo de oferta en el Golfo",
+    ]);
+  });
+
+  it("drops empty links instead of rendering a dangling arrow", () => {
+    expect(thesisSegments("A →  → B")).toEqual(["A", "B"]);
+    expect(thesisSegments("   ")).toEqual([]);
   });
 });

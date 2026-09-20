@@ -17,12 +17,11 @@ from backend.services.geo.rules import FAST_RULES
 # when added. Update deliberately — see the failure message below.
 EXPECTED_SYMBOLS: frozenset[str] = frozenset(
     {
-        "005930.KS", "AAL", "ALB", "ALL", "BDRY", "BHP", "CC=F", "CCJ", "CCL", "COPX",
-        "CVX", "DAC", "DAL", "DBA", "EWG", "EWJ", "EWY", "EWZ", "FCX", "FXI", "GDX",
-        "GLD", "HD", "HIG", "HSY", "INDA", "INTC", "ITA", "JETS", "KC=F", "LBR=F",
-        "LIT", "LMT", "LOW", "MDLZ", "NOC", "PCG", "RCL", "REMX", "RIO", "RTX", "SCCO",
-        "SOXX", "SOYB", "SQM", "TM", "TRV", "TSM", "TUR", "UAL", "UNG", "URA", "USO",
-        "VALE", "WEAT", "WY", "XLE", "XOM", "XRT", "ZC=F", "ZIM",
+        "005930.KS", "AAL", "ALB", "ALL", "ALV.DE", "ANTO.L", "CC=F", "CCJ", "CCL", "DAC",
+        "DAL", "DBA", "EWG", "EWJ", "EWY", "EWZ", "FMG.AX", "FXI", "GLD", "GLEN.L", "HG=F",
+        "HIG", "IAG.MC", "INDA", "ITA", "ITX.MC", "KC=F", "LBR=F", "LMT", "MUV2.DE", "PCG",
+        "RCL", "RTX", "RWE.DE", "RYA.IR", "SB=F", "SCCO", "SOXX", "SQM", "TM", "TRV", "TSM",
+        "TTF=F", "TUR", "UAL", "UNG", "URA", "USO", "WEAT", "WY", "XLE", "ZC=F", "ZIM", "ZS=F",
     }
 )
 

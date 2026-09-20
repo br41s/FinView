@@ -24,15 +24,15 @@ from .analyst import AnalystResult, AnalystTicker, analyze_event
 from .auditor import create_checkpoints, evaluate_pending
 from .ingest import fetch_all_sources
 from .notify import notify_signal
-from .rules import RULES_BY_ID, compute_risk, seed_rule_stats
+from .rules import RULES_BY_ID, compute_risk, effective_confidence, seed_rule_stats
 from .sentinel import GeoEvent
 
 logger = logging.getLogger(__name__)
 
 # Compound-rule ticker buckets (an event counts in a bucket if its basket overlaps).
-_ENERGY = {"USO", "UNG", "XLE", "XOM", "CVX"}
-_FOOD = {"DBA", "WEAT", "SOYB", "ZC=F", "KC=F"}
-_CONFLICT = {"LMT", "RTX", "NOC", "ITA"}
+_ENERGY = {"USO", "UNG", "XLE", "TTF=F"}
+_FOOD = {"DBA", "WEAT", "ZC=F", "ZS=F", "KC=F", "CC=F", "SB=F"}
+_CONFLICT = {"LMT", "RTX", "ITA"}
 _COMPOUND_BUCKETS = {
     "compound-energy-crisis": _ENERGY,
     "compound-food-crisis": _FOOD,
@@ -146,7 +146,9 @@ def _collect_events(bundle) -> list[GeoEvent]:
     return events
 
 
-def _compound_analyses(analyses: list[AnalystResult]) -> list[AnalystResult]:
+def _compound_analyses(
+    analyses: list[AnalystResult], stats: dict[str, GeoRuleStat] | None = None
+) -> list[AnalystResult]:
     """Tally matched-event baskets into compound buckets; emit compound analyses for count ≥ 2."""
     counts = {rid: 0 for rid in _COMPOUND_BUCKETS}
     seen_events: set[str] = set()
@@ -177,7 +179,9 @@ def _compound_analyses(analyses: list[AnalystResult]) -> list[AnalystResult]:
             timestamp=int(time.time() * 1000),
             raw_data={"eventCount": count},
         )
-        conf = rule.base_confidence * 100
+        # Learned like every other rule: the panel shows effective_confidence, so
+        # scoring the signal on the unlearned base number diverged from it.
+        conf = effective_confidence(rule, (stats or {}).get(rid)) * 100
         out.append(
             AnalystResult(
                 event=event,
@@ -252,7 +256,7 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     analyses = [analyze_event(e, stats, use_llm=False) for e in events]
 
     # Phase B: compound rules (orchestrator-level bucket tally).
-    analyses.extend(_compound_analyses(analyses))
+    analyses.extend(_compound_analyses(analyses, stats))
 
     # Phase C: LLM enrichment only for important, rule-backed signals the user
     # doesn't already track — known active signals only get their scores refreshed

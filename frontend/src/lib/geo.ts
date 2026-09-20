@@ -2,11 +2,25 @@
 // (Lives in lib/ because src/data/ is gitignored; the original Lovable mock file
 // stays there for local reference only — production imports come from here.)
 
+/** What a Spanish retail account can actually do with the instrument.
+ *  `cash_eu` = buyable as cash anywhere; `options_only` = US ETF without a KID,
+ *  so only reachable through IBKR options; `not_tradable` = no retail route. */
+export type GeoTradability = "cash_eu" | "options_only" | "not_tradable";
+
 export type GeoSignalTicker = {
   symbol: string;
   direction: "bullish" | "bearish" | "neutral";
   priceAtSignal: number | null;
+  /** Optional on the wire: signals persisted before the scoping work carry no
+   *  tradability, and an unknown instrument is assumed buyable rather than
+   *  painted as dead. */
+  tradability?: GeoTradability;
+  /** Nearest EU-listed equivalent, e.g. "SGLN / 4GLD (physical gold ETC)". */
+  alternate?: string | null;
 };
+
+/** How wide the event that fired the rule is. Optional on the wire. */
+export type GeoRuleScope = "site" | "local" | "regional" | "global";
 
 export type GeoRule = {
   id: string;
@@ -15,6 +29,7 @@ export type GeoRule = {
   confidence: number; // 0-1
   category?: string; // event bucket, e.g. "earthquake"
   trigger?: string; // the condition that fired, e.g. "mag>=6.5 near chile_mining"
+  scope?: GeoRuleScope; // how wide the event is; absent on rows written before scoping
 };
 
 export type GeoCheckpointHorizon = "1h" | "6h" | "1d" | "3d" | "7d";
@@ -118,6 +133,74 @@ export function formatAccuracyLine(
     return sum + (bucket ? bucket.correct + bucket.incorrect : 0);
   }, 0);
   return `Aciertos (${days} d): ${parts.join(" · ")} · n=${measured}`;
+}
+
+// ── Tradability, scope and thesis chain (the Phase 2 scoping read) ──
+// 24 US-domiciled ETFs carried 61 % of all rule→ticker edges and rendered
+// exactly like XOM, so the desk read "buy GLD" off a chip that a Spanish
+// retail account cannot buy as cash. These are the pure bits of that fix.
+
+export type TradabilityHint = {
+  /** Short marker for the chip; null when there is nothing to say. */
+  badge: string | null;
+  /** Full explanation for the chip's tooltip; null when tradable as cash. */
+  tooltip: string | null;
+  /** Paint the chip as unreachable (dimmed, dashed). */
+  muted: boolean;
+};
+
+const NO_HINT: TradabilityHint = { badge: null, tooltip: null, muted: false };
+
+/**
+ * What to draw on a ticker chip for a Spanish retail account.
+ *
+ * `options_only` is **actionable, not disabled** — the owner trades options at
+ * IBKR, so a US ETF without a KID is a route, just not a cash one. Only
+ * `not_tradable` is dimmed. An absent `tradability` (older signal rows) reads
+ * as cash: assuming "unknown = dead" would grey out most of the feed.
+ */
+export function tradabilityHint(
+  t: Pick<GeoSignalTicker, "tradability" | "alternate">,
+): TradabilityHint {
+  const alt = t.alternate?.trim() ? `alternativa: ${t.alternate.trim()}` : "sin alternativa";
+  switch (t.tradability) {
+    case "options_only":
+      return {
+        badge: "opc.",
+        tooltip: `ETF USA sin KID: solo opciones en IBKR — ${alt}`,
+        muted: false,
+      };
+    case "not_tradable":
+      // The more severe state needs a legible marker: `title=` does not exist on touch.
+      return { badge: "s/ruta", tooltip: `Sin ruta minorista en la UE — ${alt}`, muted: true };
+    default:
+      return NO_HINT;
+  }
+}
+
+const SCOPE_LABELS: Record<GeoRuleScope, string> = {
+  site: "sitio",
+  local: "local",
+  regional: "regional",
+  global: "global",
+};
+
+/** Spanish tag for a rule's scope; null when the row predates scoping. */
+export function scopeLabel(scope?: string): string | null {
+  return SCOPE_LABELS[scope as GeoRuleScope] ?? null;
+}
+
+/**
+ * A written thesis is a chain — physical effect → price/flow → instrument —
+ * joined with " → " on the wire. Split so the panel can space the links out
+ * instead of running them together; an unchained thesis comes back as a single
+ * segment and renders exactly as it did before.
+ */
+export function thesisSegments(thesis: string): string[] {
+  return thesis
+    .split("→")
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 export const MARKET_ANCHORS: Record<

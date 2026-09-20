@@ -50,7 +50,10 @@ def _region_of(rule) -> str:
 
 def test_weather_rules_exist():
     """Guard the guard: a typo in _WEATHER_CATEGORIES would empty every case."""
-    assert len(_weather_rules()) >= 10
+    # 8 since the 2026-09-21 rescope dropped wx-heat-mediterranean, wx-precip-china
+    # and wx-lowpres-atlantic — three weather rules whose chain to any instrument
+    # could not be written. The floor guards against an empty list, not a count.
+    assert len(_weather_rules()) >= 8
 
 
 @pytest.mark.parametrize("rule", _weather_rules(), ids=lambda r: r.id)

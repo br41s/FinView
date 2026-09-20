@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
+from backend.services.geo.rules import RULES_BY_ID, scope_penalty
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -80,7 +82,8 @@ def test_matched_rules_skips_unknown_rule_ids(db):
 def test_matched_rules_uses_base_confidence_without_learned_stat(db):
     s = _signal(matched_rule_ids=json.dumps(["eq-chile-copper"]))
     rules = _matched_rules(s, {})
-    assert rules[0].confidence == pytest.approx(0.82)  # base_confidence, no GeoRuleStat row yet
+    # base_confidence less the scope penalty (the basket is all narrow, so it is zero here)
+    assert rules[0].confidence == pytest.approx(0.82 - scope_penalty(RULES_BY_ID["eq-chile-copper"]))
 
 
 def test_matched_rules_uses_effective_confidence_with_learned_stat(db):
@@ -96,7 +99,7 @@ def test_matched_rules_uses_effective_confidence_with_learned_stat(db):
     s = _signal(matched_rule_ids=json.dumps(["eq-chile-copper"]))
     stats = _load_rule_stats(db, [s])
     rules = _matched_rules(s, stats)
-    assert rules[0].confidence == pytest.approx(0.87)
+    assert rules[0].confidence == pytest.approx(0.87 - scope_penalty(RULES_BY_ID["eq-chile-copper"]))
 
 
 # ── _load_rule_stats ──────────────────────────────────────────────────

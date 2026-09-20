@@ -33,7 +33,7 @@ from backend.models import (
     GeoSignal,
     GeoSignalStatus,
 )
-from backend.services.geo.rules import RULES_BY_ID, effective_confidence
+from backend.services.geo.rules import RULES_BY_ID, effective_confidence, rule_scope, INSTRUMENT_TRADABILITY
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,8 @@ def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[Geo
         GeoRuleOut(
             id=rid,
             description=RULES_BY_ID[rid].description,
-            thesis=RULES_BY_ID[rid].direction,
+            thesis=RULES_BY_ID[rid].thesis,
+            scope=rule_scope(RULES_BY_ID[rid]),
             confidence=effective_confidence(RULES_BY_ID[rid], stats.get(rid)),
             category=RULES_BY_ID[rid].category,
             trigger=RULES_BY_ID[rid].condition,
@@ -153,6 +154,8 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
                 symbol=t.symbol,
                 direction=_ev(t.direction),
                 priceAtSignal=float(t.price_at_signal) if t.price_at_signal is not None else None,
+                tradability=INSTRUMENT_TRADABILITY.get(t.symbol, ("cash_eu", ""))[0],
+                alternate=INSTRUMENT_TRADABILITY.get(t.symbol, ("cash_eu", ""))[1] or None,
             )
             for t in signal.tickers
         ],
