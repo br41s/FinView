@@ -12,7 +12,7 @@ model, so the global collector is a separate piece of work.
 This module ships the Digitraffic HTTP client (the faithful port of the route's
 fallback path) so the source is wired and swappable, but it returns no chokepoint
 coverage. Until the WS collector lands, the maritime_* rules stay dormant — the
-same strait regions are still covered by the conflict / GDELT / ACLED rules.
+same strait regions are still covered by the conflict / GDELT rules.
 """
 
 import logging

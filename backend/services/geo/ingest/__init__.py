@@ -9,7 +9,6 @@ analog of WorldHawk's Promise.allSettled).
 import asyncio
 import logging
 
-from .acled import fetch_acled
 from .events import fetch_events
 from .fires import fetch_fires
 from .flights import fetch_flights
@@ -18,7 +17,6 @@ from .maritime import fetch_vessels
 from .meteo import fetch_meteo
 from .seismic import fetch_seismic
 from .types import (
-    AcledEvent,
     FireHotspot,
     FlightData,
     GdeltEvent,
@@ -39,7 +37,6 @@ __all__ = [
     "fetch_meteo",
     "fetch_flights",
     "fetch_gdelt",
-    "fetch_acled",
     "fetch_vessels",
     "SourceBundle",
     "SeismicEvent",
@@ -48,13 +45,12 @@ __all__ = [
     "MeteoPoint",
     "FlightData",
     "GdeltEvent",
-    "AcledEvent",
     "VesselSnapshot",
 ]
 
 
 async def fetch_all_sources() -> SourceBundle:
-    """Fetch all 8 sources concurrently. Per-source failures yield empty lists."""
+    """Fetch all 7 sources concurrently. Per-source failures yield empty lists."""
     results = await asyncio.gather(
         fetch_seismic(),
         fetch_events(),
@@ -62,13 +58,12 @@ async def fetch_all_sources() -> SourceBundle:
         fetch_meteo(),
         fetch_flights(),
         fetch_gdelt(),
-        fetch_acled(),
         fetch_vessels(),
         return_exceptions=True,
     )
     keys = (
         "earthquakes", "events", "fires", "meteo",
-        "flights", "gdelt", "acled", "vessels",
+        "flights", "gdelt", "vessels",
     )
     bundle = SourceBundle()
     for key, result in zip(keys, results):

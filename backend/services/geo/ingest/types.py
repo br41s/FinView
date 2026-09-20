@@ -87,46 +87,36 @@ class FlightData:
 
 @dataclass
 class GdeltEvent:
-    """GDELT 2.0 Doc-API derived geopolitical event.
+    """One row of a GDELT 2.0 ``export.CSV`` batch (see ``ingest/gdelt.py``).
 
-    No ``num_mentions``/``num_sources``: the Doc API's ``artlist`` mode does not
-    return them, and the placeholder constants that used to stand in for them
-    sat below the sentinel's own floors, so every article was dropped.
+    Every field here is read off the export, not inferred: ``goldstein_scale``
+    is CAMEO's own conflict/cooperation weight for the coded ``event_code``
+    (constant per code, but per-event because the code is), and the mention
+    counts and coordinates are the event's, not a query's. The Doc API this
+    replaced supplied none of them, which is why the sentinel's mention floors
+    and its red severity band had to be disabled while it was the source.
+
+    ``title`` is synthesized ("Actor1 → Actor2: CAMEO description") — the export
+    carries no headline, only ``source_url``.
     """
 
     id: str
     title: str
     event_code: str
+    event_root_code: str
+    quad_class: int
     goldstein_scale: float
+    num_mentions: int
+    num_sources: int
+    num_articles: int
     avg_tone: float
     latitude: float
     longitude: float
+    location: str
     actor1: str
     actor2: str
     date_added: str
     source_url: str
-
-
-@dataclass
-class AcledEvent:
-    """ACLED expert-coded armed-conflict / protest event."""
-
-    id: str
-    event_date: str
-    event_type: str
-    sub_event_type: str
-    actor1: str
-    actor2: str
-    country: str
-    admin1: str
-    location: str
-    latitude: float
-    longitude: float
-    fatalities: int
-    notes: str
-    source: str
-    source_scale: str
-    tags: str
 
 
 @dataclass
@@ -153,5 +143,4 @@ class SourceBundle:
     meteo: list[MeteoPoint] = field(default_factory=list)
     flights: list[FlightData] = field(default_factory=list)
     gdelt: list[GdeltEvent] = field(default_factory=list)
-    acled: list[AcledEvent] = field(default_factory=list)
     vessels: list[VesselSnapshot] = field(default_factory=list)

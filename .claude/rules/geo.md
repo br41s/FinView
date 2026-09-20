@@ -8,9 +8,9 @@ paths:
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 94 rules / 49 regions
-(`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
-maritime AIS, meteo, flights, GDELT, ACLED) — every source key optional, a missing
+WorldHawk port: geopolitical/natural events → market signals. 89 rules / 49 regions
+(`services/geo/rules.py`), 7 ingest sources (seismic, EONET events, FIRMS fires,
+maritime AIS, meteo, flights, GDELT) — every source key optional, a missing
 key degrades that source to empty.
 
 ### Adding regions / rules — overlap is the thing to reason about
@@ -48,6 +48,18 @@ a geometry one — check which categories the boxes you overlap already carry.
   on next boot. `base_confidence` is **not cosmetic**: it feeds
   `effective_confidence → importance = round(confidence × risk/10)`, and ≥60 is the
   notify gate. It decides what pushes to a phone.
+
+### GDELT — the 15-minute export files, never the DOC API
+The DOC API answers **429 to a single request from Google Cloud** (prod: up in 17% of
+cycles) and carries no Goldstein, no mention counts, no coordinates — so the old ingest
+fabricated a per-query Goldstein and a capital centroid, and the sentinel had to delete its
+floors and ban "red". `data.gdeltproject.org/gdeltv2/` is static, 200 in <0.5 s, and gives
+all three per event: `lastupdate.txt` + the 3 prior batches (**60 min**, bridges one missed
+30-min cron; dedup by GlobalEventID). Floors are real again, calibrated on live batches —
+mentions 4–6 by category, **sources 1** (NumSources was 1 in 1758/1790 rows, so the original
+3–5 floor would drop the whole feed). Classification is CAMEO root code first, actor
+keywords only as fallback; root 17 (coerce, mostly 173 arrest) is deliberately **not** armed
+conflict, and the escalation cluster counts deduped stories, not rows.
 
 ### Pipeline (`services/geo/orchestrator.py`, per user)
 `ingest → sentinel (event extraction) → analyst (rule matching, LLM enrichment for
@@ -151,7 +163,7 @@ a miss, not a result.
 
 ### Env keys (Cloud Run)
 Sources: `FINVIEW_FIRMS_MAP_KEY`, `FINVIEW_WINDY_API_KEY`, `FINVIEW_AISSTREAM_KEY`,
-`FINVIEW_ACLED_EMAIL/PASSWORD` (OAuth password grant — ACLED has no API key), `FINVIEW_OPENSKY_CLIENT_ID/SECRET` (all optional).
+`FINVIEW_OPENSKY_CLIENT_ID/SECRET` (all optional).
 OpenSky moved to **OAuth2 client credentials**: `flights.py` exchanges them for a bearer
 token at `_TOKEN_URL` (cached until ~1 min before expiry) and falls back to the legacy
 `FINVIEW_OPENSKY_USERNAME/PASSWORD` basic auth, then to anonymous. Anonymous is

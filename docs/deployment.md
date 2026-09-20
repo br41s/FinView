@@ -69,7 +69,6 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 | `FINVIEW_FIRMS_MAP_KEY` | 5 reglas de incendio | `fire` no se emite nunca |
 | `FINVIEW_OPENSKY_CLIENT_ID` + `_SECRET` | 8 reglas de espacio aéreo y presencia militar | Anónimo: limitado hasta leerse como «sin vuelos» |
 | `FINVIEW_WINDY_API_KEY` | 11 reglas de clima extremo | Ninguna se evalúa. ~480 llamadas/día de un presupuesto de ~500 |
-| `FINVIEW_ACLED_EMAIL` + `_KEY` | 0 reglas en exclusiva | GDELT ya cubre sus 6 categorías; ACLED solo añade precisión |
 
 ---
 

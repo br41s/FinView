@@ -98,3 +98,42 @@ async def fetch_text(
     except Exception:
         logger.warning("geo ingest request failed: %s", url, exc_info=True)
         return None
+
+
+async def fetch_bytes(
+    url: str,
+    *,
+    params: dict | None = None,
+    headers: dict | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    missing_ok: bool = False,
+    max_bytes: int | None = None,
+) -> bytes | None:
+    """Fetch a URL and return the raw body bytes, or None on any failure.
+
+    ``missing_ok`` downgrades 404 to an info log: a caller that walks a series of
+    static filenames backwards in time (GDELT's 15-minute export batches) hits a
+    not-yet-published file as a matter of course, and a warning per cycle for an
+    expected miss trains the operator to ignore the channel's warnings.
+    """
+    merged = {"User-Agent": USER_AGENT}
+    if headers:
+        merged.update(headers)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            resp = await client.get(url, params=params, headers=merged)
+        if resp.status_code != 200:
+            if missing_ok and resp.status_code == 404:
+                logger.info("geo ingest %s → HTTP 404 (not published yet)", url)
+            else:
+                logger.warning("geo ingest %s → HTTP %s", url, resp.status_code)
+            return None
+        if max_bytes is not None and len(resp.content) > max_bytes:
+            logger.warning(
+                "geo ingest %s → %d bytes, over the %d cap", url, len(resp.content), max_bytes
+            )
+            return None
+        return resp.content
+    except Exception:
+        logger.warning("geo ingest request failed: %s", url, exc_info=True)
+        return None

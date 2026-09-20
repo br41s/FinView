@@ -1,7 +1,7 @@
 """Sentinel + specialist analysts — normalize source data into GeoEvent objects.
 
 Port of WorldHawk's sentinel.ts + the 5 specialist analysts (ais/weather/flight/
-gdelt/acled). Each function turns a raw source feed into a list of GeoEvent with a
+gdelt). Each function turns a raw source feed into a list of GeoEvent with a
 fine-grained ``type`` that the rule matcher keys on.
 
 Difference from WorldHawk: the per-process "processed" dedup sets are dropped. The
@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
 from .ingest.types import (
-    AcledEvent,
     FireHotspot,
     FlightData,
     GdeltEvent,
@@ -372,6 +371,14 @@ def analyze_weather_extremes(points: list[MeteoPoint]) -> list[GeoEvent]:
 
 
 # ── Specialist: GDELT geopolitical ───────────────────────────────────
+# Classification is CAMEO-first: the export codes every event with a verb code
+# (``EventCode``/``EventRootCode``) from the CAMEO 1.1b3 ontology, which is a
+# coder's judgment about the event, not a substring of a headline. The keyword
+# pass below is only the fallback for rows the root map does not cover — the
+# QuadClass 3 pre-filter also lets roots 09–13 (investigate/demand/disapprove/
+# reject/threaten) through, and an actor named "MILITARY" or "SANCTION" is the
+# only handle those have.
+#
 # Matched as words, not substrings: "BAN" used to hit Lebanon, Albania,
 # Bangladesh and "central bank", so sanctions swallowed most of the feed, and
 # "STRIKE" claimed every airstrike for protest. A short suffix set keeps the
@@ -396,260 +403,269 @@ _GDELT_PATTERN_RE = {
     category: re.compile(r"\b(?:" + "|".join(patterns) + ")" + _PATTERN_SUFFIX, re.IGNORECASE)
     for category, patterns in _GDELT_ACTOR_PATTERNS.items()
 }
-# category → (financial_type, max_goldstein, min_goldstein)
-# No mention/source floors: the Doc API supplies no counts (see ingest/gdelt.py),
-# so the old 8–15 mention / 3–5 source floors could only ever be met by the
-# fabricated constants they were written against — and those were below the
-# floors, which is why prod holds 0 GDELT-sourced signals out of 1700.
-# goldstein_scale is likewise the *query's* severity prior (-6 conflict, -4
-# sanctions, -3 protest), not a per-article measurement, so a floor means
-# "which query may supply this category": armed_conflict only from the conflict
-# query, never from a protest headline. A floor below every query constant is
-# unreachable — armed_conflict shipped dead at -7 for exactly that reason.
+# A sanctions/aid-cutoff event between economic actors is a trade dispute, not a
+# security one — same CAMEO code, different thesis (FXI/DBA, not USO/LMT).
+_GDELT_ECONOMIC_ACTOR_RE = re.compile(
+    r"\b(?:TRADE|TARIFF|IMPORT|EXPORT|WTO|COMMERCE|CUSTOMS|MERCHANT)" + _PATTERN_SUFFIX,
+    re.IGNORECASE,
+)
+
+
+def _classify_by_cameo(event_code: str, root_code: str) -> str | None:
+    """CAMEO 1.1b3 verb code → sentinel category. Verified against the codebook.
+
+    Root 17 ("Coerce") is deliberately *not* armed conflict. Its bulk is 173
+    arrest/detain — the single most common conflict code in a live batch — and
+    routing a routine arrest into ``armed_conflict`` would fire the oil/defense
+    theses on it, which is the class of fabrication this source was rewritten to
+    remove. The two sub-codes that are state force against a population (171
+    seize or damage property, 175 use repression) go to ``protest``; 176 (cyber
+    attack) is a hostile act between states, so it escalates; the rest land in
+    ``diplomatic_tension``, which no rule matches — tracked in the feed and in
+    the region cluster, but not a thesis on its own.
+    """
+    if root_code == "14":  # Protest
+        return "protest"
+    if root_code == "15":  # Exhibit force posture
+        return "military_escalation"
+    if root_code == "16":  # Reduce relations
+        # 163 impose embargo/boycott/sanctions; 1621/1622 stop economic/military
+        # aid. Everything else (break relations, halt negotiations, expel
+        # observers) is diplomatic, not economic.
+        if event_code.startswith("163") or event_code in {"1621", "1622"}:
+            return "sanctions"
+        return "diplomatic_tension"
+    if root_code == "17":  # Coerce
+        if event_code == "176":
+            return "military_escalation"
+        if event_code.startswith("171") or event_code.startswith("175"):
+            return "protest"
+        return "diplomatic_tension"
+    if root_code in {"18", "19", "20"}:  # Unconventional / conventional / mass violence
+        return "armed_conflict"
+    return None
+
+
+# category → (financial_type, max_goldstein, min_goldstein, min_mentions, min_sources)
+#
+# The floors are real again. They were removed when the Doc API was the source
+# because it supplied no counts at all; the export supplies NumMentions and
+# NumSources per event, so a floor means what it says.
+#
+# Calibrated against 3 consecutive live export batches (2026-09-19/20, 440 rows
+# surviving the ingest pre-filter). Measured there: NumSources is 1 in 1758 of
+# 1790 rows — a 15-minute slice is usually an event's first sighting, and none
+# of the 32 exceptions were conflict rows — so the original design's 3–5 source
+# floor would have dropped 100% of the feed, and 1 is the only honest floor.
+# NumMentions runs min 1 / median 3 / p90 10 / max 21 with ~40% of conflict rows
+# at one or two mentions, so that is where the discrimination lives: 5 keeps the
+# real Ukraine (21), Gaza (6) and Wonsan (5) stories and drops the long tail.
+# The looser 4 on sanctions/trade_dispute is deliberate — CAMEO 163 is rare
+# (0 rows in the sample) and high-value, so it is not the category to thin.
+# ``cooperation`` has no CAMEO route: the ingest pre-filter is conflict-only, so
+# only the keyword fallback could reach it and it has no cooperation list. The
+# entry stays because ``diplomatic_cooperation`` rules exist and a future
+# cooperation source would land here; it emits nothing today.
 _GDELT_FILTERS = {
-    "armed_conflict": ("armed_conflict", -6, None),
-    "military_escalation": ("military_escalation", -4, None),
-    "sanctions": ("sanctions", -3, None),
-    "protest": ("mass_protest", -3, None),
-    "diplomatic_tension": ("diplomatic_tension", -3, None),
-    "trade_dispute": ("trade_dispute", -3, None),
-    "cooperation": ("diplomatic_cooperation", None, 6),
+    "armed_conflict": ("armed_conflict", -6, None, 5, 1),
+    "military_escalation": ("military_escalation", -4, None, 5, 1),
+    "sanctions": ("sanctions", -3, None, 4, 1),
+    "protest": ("mass_protest", -3, None, 6, 1),
+    "diplomatic_tension": ("diplomatic_tension", -3, None, 6, 1),
+    "trade_dispute": ("trade_dispute", -3, None, 4, 1),
+    "cooperation": ("diplomatic_cooperation", None, 6, 2, 1),
 }
 
 
 def _classify_gdelt(evt: GdeltEvent) -> str | None:
+    category = _classify_by_cameo(evt.event_code, evt.event_root_code)
+    if category in {"sanctions", "diplomatic_tension"} and _GDELT_ECONOMIC_ACTOR_RE.search(
+        f"{evt.actor1} {evt.actor2}"
+    ):
+        return "trade_dispute"
+    if category:
+        return category
     text = f"{evt.title} {evt.actor1} {evt.actor2}"
-    for category, pattern in _GDELT_PATTERN_RE.items():
+    for fallback, pattern in _GDELT_PATTERN_RE.items():
         if pattern.search(text):
-            return category
-    # No keyword: only the conflict query's prior (-6) says anything on its own —
-    # "Ukraine war, day 900" is conflict news without a trigger word. The other
-    # two priors are too weak to classify an unmatched headline.
-    if evt.goldstein_scale <= -6:
-        return "armed_conflict"
+            return fallback
     return None
+
+
+_MOST_SPECIFIC_CACHE: dict[str, float] = {}
+
+
+def _most_specific_region(regions: list[str]) -> str | None:
+    """The smallest containing box. ``match_regions`` returns every box in
+    declaration order, and the chokepoints are carved *inside* broader ones —
+    taking ``regions[0]`` filed a Hormuz seizure under middle_east_oil and a
+    Seoul mobilisation under japan, so the specific keys were never reachable."""
+    if not regions:
+        return None
+    if not _MOST_SPECIFIC_CACHE:
+        from .rules import GEO_REGIONS
+
+        for name, (la0, la1, lo0, lo1) in GEO_REGIONS.items():
+            _MOST_SPECIFIC_CACHE[name] = (la1 - la0) * (lo1 - lo0)
+    return min(regions, key=lambda r: _MOST_SPECIFIC_CACHE.get(r, float("inf")))
+
+
+# Where a cluster of conflict stories is a geopolitical thesis. GDELT's coder
+# files police raids and prosecutions under 19x "use conventional military
+# force", so an hour of batches clusters over India, the US Midwest and Northern
+# Europe as readily as over the Red Sea; a cluster only means something where
+# the conflict / chokepoint / sanctions rules are written.
+_ESCALATION_REGIONS = frozenset({
+    "middle_east_oil", "strait_of_hormuz", "suez_red_sea", "iran", "ukraine_black_sea",
+    "taiwan", "east_china_sea", "south_china_sea", "korean_peninsula", "malacca_strait",
+    "china_industrial", "sahel", "nigeria_oil", "horn_of_africa", "drc_mining", "libya",
+    "myanmar", "panama_canal", "cape_good_hope",
+})
+# Chokepoints where a single violent event is the thesis: the mention floor is
+# relaxed there, because the export codes an event once — a Hormuz seizure with
+# 3 mentions in its first 15 minutes is not re-presented later with 10.
+_CHOKEPOINT_REGIONS = frozenset({
+    "strait_of_hormuz", "suez_red_sea", "malacca_strait", "panama_canal", "cape_good_hope",
+    "taiwan",
+})
+_CHOKEPOINT_MIN_MENTIONS = 2
+_CHOKEPOINT_MAX_GOLDSTEIN = -8
+# Cluster bar, measured on one hour of live batches (2026-09-20 08:15–09:15 UTC,
+# a quiet Sunday): distinct stories past the floors, keyed on the most specific
+# region — suez_red_sea 20, south_china_sea 7, china_industrial 6, ukraine 5,
+# korea 5, middle_east_oil 4, myanmar 4, horn_of_africa 3, iran 3. "≥3 events"
+# would have clustered nine regions in a calm hour; ten stories across at
+# least two categories picked out the one region that was genuinely hot.
+_CLUSTER_MIN_STORIES = 10
+_CLUSTER_MIN_CATEGORIES = 2
+
+
+def _passes_gdelt_floors(evt: GdeltEvent, region: str | None, min_mentions: int,
+                         min_sources: int) -> bool:
+    if evt.num_sources < min_sources:
+        return False
+    if evt.num_mentions >= min_mentions:
+        return True
+    return (
+        region in _CHOKEPOINT_REGIONS
+        and evt.goldstein_scale <= _CHOKEPOINT_MAX_GOLDSTEIN
+        and evt.num_mentions >= _CHOKEPOINT_MIN_MENTIONS
+    )
 
 
 def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
     if not gdelt_events:
         return []
     now = _now_ms()
-    out: list[GeoEvent] = []
-    region_counts: dict[str, dict] = {}
-    seen: set[str] = set()
+
+    # One GeoEvent per (category, region): an ongoing conflict is one tracked
+    # signal that the advisor refreshes each cycle and the auditor resolves at
+    # +7d, not a new row every UTC day — a day-keyed id split one story into
+    # two signals at midnight four cycles out of 48. Each bucket is represented
+    # by its strongest row (lowest Goldstein, then most mentions), not by
+    # whichever row the file listed first: the representative decides the
+    # coordinates the rules match against, the severity that
+    # rules.severity_headroom reads, and the source URL the reader is sent to.
+    buckets: dict[str, dict] = {}
+    tally: dict[str, dict] = {}
 
     for evt in gdelt_events:
         category = _classify_gdelt(evt)
         if not category or category not in _GDELT_FILTERS:
             continue
-        ftype, max_g, min_g = _GDELT_FILTERS[category]
+        ftype, max_g, min_g, min_mentions, min_sources = _GDELT_FILTERS[category]
         if max_g is not None and evt.goldstein_scale > max_g:
             continue
         if min_g is not None and evt.goldstein_scale < min_g:
             continue
-
-        regions = match_regions(evt.latitude, evt.longitude)
-        region = regions[0] if regions else None
-        region_key = region or f"{int(evt.latitude)}_{int(evt.longitude)}"
-        day = (evt.date_added or "")[:8] or "today"
-
-        tr = region_counts.setdefault(region_key, {"count": 0, "sum_g": 0.0})
-        tr["count"] += 1
-        tr["sum_g"] += evt.goldstein_scale
-
-        # Ten headlines about one story are one event. The id is region+day
-        # keyed on purpose, but emitting a GeoEvent per article let the compound
-        # tally count article volume as "simultaneous events".
-        event_id = f"gdelt-{category}-{region_key}-{day}"
-        if event_id in seen:
+        region = _most_specific_region(match_regions(evt.latitude, evt.longitude))
+        if not _passes_gdelt_floors(evt, region, min_mentions, min_sources):
             continue
-        seen.add(event_id)
-        # Never "red" from a query constant: red is what severity_headroom reads
-        # as evidence the event exceeded its rule floor.
-        severity = "orange" if evt.goldstein_scale <= -4 else None
+        region_key = region or f"{int(evt.latitude)}_{int(evt.longitude)}"
+
+        rank = (evt.goldstein_scale, -evt.num_mentions)
+        bucket = buckets.setdefault(
+            f"gdelt-{category}-{region_key}",
+            {"best": evt, "rank": rank, "category": category, "ftype": ftype,
+             "region": region, "stories": 0},
+        )
+        bucket["stories"] += 1
+        if rank < bucket["rank"]:
+            bucket["best"], bucket["rank"] = evt, rank
+
+        tr = tally.setdefault(region_key, {"stories": 0, "categories": set(), "sum_g": 0.0,
+                                           "best": evt})
+        tr["stories"] += 1
+        tr["categories"].add(category)
+        tr["sum_g"] += evt.goldstein_scale
+        if evt.goldstein_scale < tr["best"].goldstein_scale:
+            tr["best"] = evt
+
+    out: list[GeoEvent] = []
+    for event_id, bucket in buckets.items():
+        evt, category = bucket["best"], bucket["category"]
+        # Honest bands: goldstein_scale is CAMEO's own weight for the coded event
+        # (19x fight = -10, 18x assault = -9, 15x force posture = -7.2, 14x protest
+        # = -6.5, 17x coerce = -5), so "red" is evidence and rules.severity_headroom
+        # may read it.
+        severity = (
+            "red" if evt.goldstein_scale <= -7 else "orange" if evt.goldstein_scale <= -4 else None
+        )
         out.append(
             GeoEvent(
                 id=event_id,
-                type=ftype,
+                type=bucket["ftype"],
                 title=f"{category.replace('_', ' ').title()}: {evt.title[:120]}",
                 latitude=evt.latitude,
                 longitude=evt.longitude,
                 severity=severity,
-                region=region,
+                region=bucket["region"],
                 source="gdelt",
                 timestamp=now,
                 raw_data={
                     "goldsteinScale": evt.goldstein_scale,
                     "actor1": evt.actor1,
                     "category": category,
+                    "numMentions": evt.num_mentions,
+                    "eventCode": evt.event_code,
+                    "sourceUrl": evt.source_url,
+                    "storiesThisHour": bucket["stories"],
                 },
             )
         )
 
-    # Compound escalation: ≥3 events clustered in one real region, avg goldstein ≤ -5.
-    region_ids = set(_iter_region_ids())
-    for region_key, tr in region_counts.items():
-        avg_g = tr["sum_g"] / tr["count"] if tr["count"] else 0
-        if tr["count"] >= 3 and avg_g <= -5 and region_key in region_ids:
-            sample = next(
-                (e for e in gdelt_events if region_key in match_regions(e.latitude, e.longitude)),
-                None,
-            )
-            if sample:
-                out.append(
-                    GeoEvent(
-                        id=f"gdelt-escalation-{region_key}",
-                        type="geopolitical_escalation",
-                        title=f"Geopolitical Escalation Cluster — "
-                        f"{region_key.replace('_', ' ')} ({tr['count']} events)",
-                        latitude=sample.latitude,
-                        longitude=sample.longitude,
-                        # Article volume in one region is a real signal; the avg
-                        # goldstein behind it is still a query constant, so it
-                        # earns "orange", never the "red" severity_headroom reads.
-                        severity="orange",
-                        region=region_key,
-                        source="gdelt",
-                        timestamp=now,
-                        raw_data={"eventCount": tr["count"], "avgGoldstein": avg_g},
-                    )
-                )
-    return out
-
-
-def _iter_region_ids():
-    from .rules import GEO_REGIONS
-
-    return GEO_REGIONS.keys()
-
-
-# ── Specialist: ACLED conflict ───────────────────────────────────────
-# acled_type → (financial_type, min_fatalities, red_thr, orange_thr)
-_ACLED_MAPPINGS = {
-    "Battles": ("armed_conflict", 5, 50, 10),
-    "Explosions/Remote violence": ("armed_conflict", 3, 30, 5),
-    "Violence against civilians": ("armed_conflict", 10, 100, 20),
-    "Riots": ("mass_protest", 0, 20, 5),
-    "Protests": ("mass_protest", 0, 10, 1),
-    "Strategic developments": ("geopolitical_escalation", 0, 50, 10),
-}
-_ACLED_SUB_OVERRIDES = {
-    "Air/drone strike": "military_escalation",
-    "Shelling/artillery/missile attack": "military_escalation",
-    "Chemical weapon": "military_escalation",
-    "Headquarters or base established": "military_escalation",
-    "Armed clash": "armed_conflict",
-    "Remote explosive/landmine/IED": "armed_conflict",
-    "Government regains territory": "armed_conflict",
-    "Non-state actor overtakes territory": "armed_conflict",
-    "Mob violence": "mass_protest",
-    "Excessive force against protesters": "mass_protest",
-    "Peaceful protest": "mass_protest",
-    "Protest with intervention": "mass_protest",
-    "Violent demonstration": "mass_protest",
-    "Looting/property destruction": "mass_protest",
-    "Agreement": "diplomatic_cooperation",
-    "Arrests": "diplomatic_tension",
-}
-
-
-def analyze_acled_events(acled_events: list[AcledEvent]) -> list[GeoEvent]:
-    if not acled_events:
-        return []
-    now = _now_ms()
-    out: list[GeoEvent] = []
-
-    # Cluster by country + event_type + day.
-    groups: dict[str, list[AcledEvent]] = {}
-    for evt in acled_events:
-        day = evt.event_date[:10]
-        groups.setdefault(f"{evt.country}|{evt.event_type}|{day}", []).append(evt)
-
-    region_intensity: dict[str, dict] = {}
-
-    for gkey, group in groups.items():
-        country, event_type, date = gkey.split("|")
-        mapping = _ACLED_MAPPINGS.get(event_type)
-        if not mapping:
+    for region_key, tr in tally.items():
+        if region_key not in _ESCALATION_REGIONS:
             continue
-        ftype_default, min_fat, red_thr, orange_thr = mapping
-
-        total_fatalities = sum(e.fatalities for e in group)
-        if total_fatalities < min_fat and len(group) < 3:
+        avg_g = tr["sum_g"] / tr["stories"]
+        if (
+            tr["stories"] < _CLUSTER_MIN_STORIES
+            or len(tr["categories"]) < _CLUSTER_MIN_CATEGORIES
+            or avg_g > -5
+        ):
             continue
-
-        lat = sum(e.latitude for e in group) / len(group)
-        lon = sum(e.longitude for e in group) / len(group)
-
-        sub_counts: dict[str, int] = {}
-        for e in group:
-            sub_counts[e.sub_event_type] = sub_counts.get(e.sub_event_type, 0) + 1
-        dominant_sub = max(sub_counts, key=sub_counts.get) if sub_counts else ""
-        ftype = _ACLED_SUB_OVERRIDES.get(dominant_sub, ftype_default)
-
-        regions = match_regions(lat, lon)
-        region = regions[0] if regions else None
-        region_id = region or f"{country.lower().replace(' ', '_')}"
-        admin1 = group[0].admin1
-        location = f"{admin1}, {country}" if admin1 else country
-
-        intensity = region_intensity.setdefault(region_id, {"events": 0, "fatalities": 0})
-        intensity["events"] += len(group)
-        intensity["fatalities"] += total_fatalities
-
-        severity = "red" if total_fatalities >= red_thr else "orange" if total_fatalities >= orange_thr else None
-        fat_str = f" ({total_fatalities} fatalities)" if total_fatalities else ""
+        marker = tr["best"]
         out.append(
             GeoEvent(
-                id=f"acled-{region_id}-{ftype}-{date}",
-                type=ftype,
-                title=f"{event_type} in {location}{fat_str}",
-                latitude=lat,
-                longitude=lon,
-                severity=severity,
-                region=region,
-                source="acled",
+                id=f"gdelt-escalation-{region_key}",
+                type="geopolitical_escalation",
+                title=f"Geopolitical Escalation Cluster — "
+                f"{region_key.replace('_', ' ')} ({tr['stories']} events)",
+                latitude=marker.latitude,
+                longitude=marker.longitude,
+                # The average behind this is measured per event, so a cluster of
+                # real fighting earns red on its own evidence.
+                severity="red" if avg_g <= -7 else "orange",
+                region=region_key,
+                source="gdelt",
                 timestamp=now,
                 raw_data={
-                    "eventType": event_type,
-                    "subEventType": dominant_sub,
-                    "eventCount": len(group),
-                    "totalFatalities": total_fatalities,
-                    "country": country,
+                    "eventCount": tr["stories"],
+                    "categories": sorted(tr["categories"]),
+                    "avgGoldstein": round(avg_g, 2),
                 },
             )
         )
-
-    # Escalation: high cumulative intensity per region.
-    region_ids = set(_iter_region_ids())
-    for region_id, intensity in region_intensity.items():
-        if region_id not in region_ids:
-            continue
-        if intensity["events"] >= 10 and intensity["fatalities"] >= 50:
-            sample = next(
-                (g[0] for g in groups.values()
-                 if region_id in match_regions(g[0].latitude, g[0].longitude)),
-                None,
-            )
-            if sample:
-                out.append(
-                    GeoEvent(
-                        id=f"acled-escalation-{region_id}",
-                        type="geopolitical_escalation",
-                        title=f"ACLED Conflict Escalation — {region_id.replace('_', ' ')} "
-                        f"({intensity['events']} events, {intensity['fatalities']} fatalities)",
-                        latitude=sample.latitude,
-                        longitude=sample.longitude,
-                        severity="red",
-                        region=region_id,
-                        source="acled",
-                        timestamp=now,
-                        raw_data={
-                            "eventCount": intensity["events"],
-                            "totalFatalities": intensity["fatalities"],
-                        },
-                    )
-                )
     return out
 
 
