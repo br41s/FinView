@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, ExternalLink, Target } from "lucide-react";
-import type { GeoSignal } from "@/lib/geo";
+import { scopeLabel, thesisSegments, tradabilityHint, type GeoSignal } from "@/lib/geo";
 import { api } from "@/lib/api";
 import { PrecioTab } from "@/components/instrument/PrecioTab";
 import { FundamentalsCard } from "./FundamentalsCard";
@@ -350,43 +350,68 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             </p>
           ) : (
             <div className="mt-2.5 flex flex-col gap-2.5">
-              {signal.rules.map((r) => (
-                <div key={r.id} className="rounded-md border border-[rgba(31,27,22,0.12)] bg-[#FEFCF5] px-3 py-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-[12px] font-medium leading-snug text-[#1F1B16]">
-                      {r.description}
-                    </p>
-                    <span
-                      className="shrink-0 text-[10px] tabular-nums text-[rgba(31,27,22,0.5)]"
-                      style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
-                      title="Confianza de la regla (base + ajuste del auditor)"
-                    >
-                      {Math.round(r.confidence * 100)}%
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
-                    {r.thesis}
-                  </p>
-                  {(r.category || r.trigger) && (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {r.category && (
-                        <span className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[9px] uppercase tracking-wider text-[rgba(31,27,22,0.55)]">
-                          {r.category}
-                        </span>
-                      )}
-                      {r.trigger && (
-                        <span
-                          className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[10px] text-[rgba(31,27,22,0.6)]"
-                          style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
-                          title="Condición que disparó esta regla"
-                        >
-                          {r.trigger}
-                        </span>
-                      )}
+              {signal.rules.map((r) => {
+                const scope = scopeLabel(r.scope);
+                const chain = thesisSegments(r.thesis);
+                return (
+                  <div key={r.id} className="rounded-md border border-[rgba(31,27,22,0.12)] bg-[#FEFCF5] px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[12px] font-medium leading-snug text-[#1F1B16]">
+                        {scope && (
+                          <span
+                            className="mr-1.5 rounded-sm bg-[rgba(31,27,22,0.06)] px-1 py-[1px] align-[1px] text-[9px] font-normal uppercase tracking-wider text-[rgba(31,27,22,0.55)]"
+                            title="Alcance del evento que disparó la regla"
+                          >
+                            {scope}
+                          </span>
+                        )}
+                        {r.description}
+                      </p>
+                      <span
+                        className="shrink-0 text-[10px] tabular-nums text-[rgba(31,27,22,0.5)]"
+                        style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                        title="Confianza de la regla (base + ajuste del auditor)"
+                      >
+                        {Math.round(r.confidence * 100)}%
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    {/* A written thesis is a chain: physical effect → price/flow →
+                        instrument. Run together it reads as one sentence and the
+                        three links stop being separable; spaced out you can see
+                        which link you disagree with. */}
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
+                      {chain.map((segment, i) => (
+                        <Fragment key={i}>
+                          {i > 0 && (
+                            <span aria-hidden className="text-[rgba(31,27,22,0.35)]">
+                              →
+                            </span>
+                          )}
+                          <span>{segment}</span>
+                        </Fragment>
+                      ))}
+                    </div>
+                    {(r.category || r.trigger) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {r.category && (
+                          <span className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[9px] uppercase tracking-wider text-[rgba(31,27,22,0.55)]">
+                            {r.category}
+                          </span>
+                        )}
+                        {r.trigger && (
+                          <span
+                            className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[10px] text-[rgba(31,27,22,0.6)]"
+                            style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+                            title="Condición que disparó esta regla"
+                          >
+                            {r.trigger}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -403,24 +428,41 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 const color = DIR_COLORS[t.direction];
                 const arrow = t.direction === "bullish" ? "↑" : t.direction === "bearish" ? "↓" : "•";
                 const isExpanded = expandedSymbol === t.symbol;
+                const hint = tradabilityHint(t);
+                const base =
+                  t.priceAtSignal != null
+                    ? `Price at signal: $${t.priceAtSignal.toFixed(2)} · Ver instrumento`
+                    : "Ver instrumento";
                 return (
                   <button
                     key={t.symbol}
                     type="button"
-                    title={
-                      t.priceAtSignal != null
-                        ? `Price at signal: $${t.priceAtSignal.toFixed(2)} · Ver instrumento`
-                        : "Ver instrumento"
-                    }
+                    title={hint.tooltip ? `${base} · ${hint.tooltip}` : base}
                     onClick={() => setExpandedSymbol(isExpanded ? null : t.symbol)}
-                    className="rounded-full px-2.5 py-1 text-[11px] transition-opacity hover:opacity-70"
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-opacity hover:opacity-70"
                     style={{
                       fontFamily: "var(--fv-font-jetbrains), monospace",
                       color,
                       backgroundColor: color + "1A",
+                      // A chip with no retail route in the EU still belongs in the
+                      // thesis — it just must not read as buyable. Dimmed + dashed,
+                      // never hidden. `options_only` stays at full weight: the owner
+                      // trades IBKR options, so it is a route, not a dead end.
+                      border: hint.muted ? `1px dashed ${color}80` : "1px solid transparent",
+                      opacity: hint.muted ? 0.55 : 1,
                     }}
                   >
-                    {arrow} {t.symbol}
+                    <span>
+                      {arrow} {t.symbol}
+                    </span>
+                    {hint.badge && (
+                      <span
+                        className="rounded-sm px-1 py-[1px] text-[8px] uppercase tracking-wider"
+                        style={{ backgroundColor: color + "26" }}
+                      >
+                        {hint.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })
@@ -428,6 +470,17 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           </div>
           {expandedSymbol && (
             <div className="mt-3 rounded-md border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] p-3">
+              {(() => {
+                // The chip's tooltip names the alternative; the expansion is where
+                // you act on it, so it gets a line you can read without hovering.
+                const alt = signal.tickers.find((t) => t.symbol === expandedSymbol)?.alternate;
+                return alt?.trim() ? (
+                  <p className="mb-2 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
+                    <span className="text-[rgba(31,27,22,0.45)]">Alternativa UCITS/UE:</span>{" "}
+                    <span className="text-[#1F1B16]">{alt.trim()}</span>
+                  </p>
+                ) : null;
+              })()}
               <PrecioTab symbol={expandedSymbol} />
               <FundamentalsCard symbol={expandedSymbol} />
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[rgba(31,27,22,0.12)] pt-3 text-[11px]">
