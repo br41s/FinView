@@ -1,7 +1,7 @@
 """Daily stock price fetching and caching via Yahoo Finance."""
 
 import logging
-from datetime import date
+from datetime import datetime, date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -220,6 +220,44 @@ def _last_closes(data, tickers: list[str]) -> dict[str, float]:
     return result
 
 
+def _close_series(data, tickers: list[str]) -> dict[str, list[tuple[datetime, float]]]:
+    """Full (timestamp, close) series per ticker from a yfinance download frame,
+    timestamps normalised to aware UTC. Same column-shape handling as
+    ``_last_closes``; NaN bars are dropped."""
+    import pandas as pd
+
+    result: dict[str, list[tuple[datetime, float]]] = {}
+    if data is None or getattr(data, "empty", True):
+        return result
+    try:
+        close_data = data["Close"]
+    except (KeyError, TypeError, IndexError):
+        return result
+
+    def _rows(series) -> list[tuple[datetime, float]]:
+        series = series.dropna()
+        out: list[tuple[datetime, float]] = []
+        for ts, val in series.items():
+            ts = pd.Timestamp(ts)
+            ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+            out.append((ts.to_pydatetime(), float(val)))
+        return out
+
+    if isinstance(close_data, pd.Series):
+        if tickers:
+            result[tickers[0]] = _rows(close_data)
+        return result
+    if isinstance(close_data, pd.DataFrame):
+        if close_data.columns.nlevels > 1:
+            close_data = close_data.droplevel(0, axis=1)
+        for ticker in tickers:
+            if ticker in close_data.columns:
+                result[ticker] = _rows(close_data[ticker])
+            elif len(tickers) == 1 and len(close_data.columns) == 1:
+                result[ticker] = _rows(close_data.iloc[:, 0])
+    return {k: v for k, v in result.items() if v}
+
+
 # Symbols per round trip when a budget is watching. A stalled batch costs far more
 # than one stalled request: measured against a socket that accepts and never answers,
 # 1 symbol is 60s, 2 is 90s, and 6 is 300s — superlinear, so the 63 symbols the geo
@@ -284,6 +322,51 @@ def _fetch_yahoo_prices(
             # One bad chunk must not drop the symbols that did resolve. Missing
             # symbols are already treated as unresolvable, never as zero.
             logger.exception("Error fetching Yahoo Finance prices (%s/%s)", period, interval)
+    return out
+
+
+def fetch_price_series(
+    tickers: list[str],
+    *,
+    period: str,
+    interval: str,
+    budget: Budget | None = None,
+) -> dict[str, list[tuple[datetime, float]]]:
+    """Close series per symbol — the auditor's as-of prices and noise estimate.
+
+    A checkpoint is scored against the bar *at its target time*, not the last
+    bar at evaluation time: the cron runs every 30 minutes, so "now" is a random
+    60–90 minute window for a +1h horizon, and several horizons due in one cycle
+    used to receive the identical price. Same chunking/budget rules as
+    ``_fetch_yahoo_prices``; symbols without bars are absent, never empty.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.error("yfinance not installed")
+        return {}
+    unique = list(dict.fromkeys(tickers))
+    groups = (
+        [unique[i : i + _STALL_CHUNK] for i in range(0, len(unique), _STALL_CHUNK)]
+        if budget is not None
+        else [unique]
+    )
+    out: dict[str, list[tuple[datetime, float]]] = {}
+    for group in groups:
+        if budget is not None and budget.spent():
+            logger.warning(
+                "Yahoo series: budget spent, %d of %d symbols not fetched (%s/%s)",
+                len(unique) - len(out), len(unique), period, interval,
+            )
+            break
+        try:
+            data = yf.download(
+                group, period=period, interval=interval, auto_adjust=True,
+                progress=False, threads=True,
+            )
+            out.update(_close_series(data, group))
+        except Exception:
+            logger.exception("Error fetching Yahoo Finance series (%s/%s)", period, interval)
     return out
 
 

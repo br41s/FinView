@@ -83,8 +83,10 @@ def _mature_signal(db, monkeypatch, horizon: str, *, direction="bullish", price_
     # Force a fresh read so horizon comes back as GeoHorizon member (reproduces bug).
     db.expire_all()
 
+    bar_at = datetime.now(timezone.utc) - timedelta(days=2)
     monkeypatch.setattr(
-        auditor, "fetch_ticker_prices", lambda symbols, budget=None: {"COPX": price_now}
+        auditor, "fetch_price_series",
+        lambda symbols, budget=None, **kw: {"COPX": [(bar_at, price_now)]},
     )
     return signal.id
 
@@ -236,3 +238,90 @@ def test_an_unmeasurable_resolution_does_not_punish_the_rules(db, monkeypatch):
     assert stat.total_signals == 0
     # The signal still resolves — it just teaches nothing.
     assert _status(db.query(GeoSignal).one()) == "resolved"
+
+
+# ── v2: the bar at the target, noise-scaled thresholds, no burning ─────
+
+
+def _series(start: datetime, step: timedelta, closes: list[float]):
+    return [(start + step * i, c) for i, c in enumerate(closes)]
+
+
+def test_the_checkpoint_reads_the_bar_at_its_target_not_the_last_bar():
+    start = datetime(2026, 9, 14, 13, 30, tzinfo=timezone.utc)
+    bars = _series(start, timedelta(minutes=5), [100.0, 101.0, 102.0, 103.0, 104.0])
+    assert auditor._as_of(bars, start + timedelta(minutes=12)) == 102.0
+    assert auditor._as_of(bars, start - timedelta(minutes=1)) is None
+    assert auditor._as_of(bars, start + timedelta(days=3)) == 104.0
+
+
+def test_threshold_scales_with_the_tickers_own_noise():
+    start = datetime(2026, 9, 14, 13, 30, tzinfo=timezone.utc)
+    quiet = _series(start, timedelta(minutes=5), [100 + 0.02 * (i % 3) for i in range(200)])
+    wild = _series(start, timedelta(minutes=5), [100 + 3.0 * ((i % 7) - 3) for i in range(200)])
+    q = auditor._threshold_pct(quiet, None, "1h")
+    w = auditor._threshold_pct(wild, None, "1h")
+    assert q == auditor._MIN_MOVE_PCT  # floor: quieter than the floor
+    assert w > 1.0  # a ticker that swings 3% needs a real move to be readable
+    assert auditor._threshold_pct(None, None, "3d") == auditor._MIN_MOVE_PCT
+
+
+def test_ties_are_neutral_not_correct():
+    assert auditor._outcome(50.0) == "NEUTRAL"
+    assert auditor._outcome(66.67) == "CORRECT"
+    assert auditor._outcome(33.33) == "INCORRECT"
+    assert auditor._outcome(None) == "NEUTRAL"
+
+
+def test_intraday_horizons_are_in_trading_time(db):
+    """A signal born on a Sunday gets its +1h checkpoint one session-hour into
+    Monday, not at 04:00 Sunday against Friday's close."""
+    signal = _basket(_ticker())
+    signal.created_at = datetime(2026, 9, 20, 3, 0, tzinfo=timezone.utc)  # Sunday
+    db.add(signal)
+    db.flush()
+    auditor.create_checkpoints(db, signal)
+    db.commit()
+    by = {getattr(c.horizon, "value", c.horizon): c.target_at for c in signal.checkpoints}
+    h1 = by["1h"].replace(tzinfo=timezone.utc) if by["1h"].tzinfo is None else by["1h"]
+    assert h1 == datetime(2026, 9, 21, 14, 30, tzinfo=timezone.utc)  # Mon 10:30 ET
+    assert by["1d"].replace(tzinfo=None) == datetime(2026, 9, 21, 3, 0)
+
+
+def test_no_price_leaves_the_checkpoint_pending_until_give_up(db, monkeypatch):
+    """A Yahoo stall used to burn every due window as NEUTRAL forever."""
+    signal_id = _mature_signal(db, monkeypatch, GeoHorizon.D1.value)
+    monkeypatch.setattr(auditor, "fetch_price_series", lambda *a, **k: {})
+    chk = db.query(GeoCheckpoint).one()
+    chk.target_at = datetime.now(timezone.utc) - timedelta(hours=1)  # due, recently
+    db.commit()
+
+    assert auditor.evaluate_pending(db, user_id=1) == 0
+    chk = db.query(GeoCheckpoint).one()
+    assert chk.outcome is None and chk.evaluated_at is None
+
+    # 7 days later with still no bars: recorded as unmeasurable, not retried forever.
+    chk.target_at = datetime.now(timezone.utc) - timedelta(days=8)
+    db.commit()
+    assert auditor.evaluate_pending(db, user_id=1) == 1
+    chk = db.query(GeoCheckpoint).one()
+    assert getattr(chk.outcome, "value", chk.outcome) == "NEUTRAL"
+    assert "sin datos" in chk.detail
+    assert _status(db.get(GeoSignal, signal_id)) == "active"  # D1 never resolves
+
+
+def test_the_daily_series_backs_a_target_older_than_the_intraday_window(db, monkeypatch):
+    signal_id = _mature_signal(db, monkeypatch, GeoHorizon.D7.value)
+    now = datetime.now(timezone.utc)
+    intraday = _series(now - timedelta(hours=10), timedelta(minutes=5), [120.0] * 50)
+    daily = _series(now - timedelta(days=20), timedelta(days=1), [100.0] * 15 + [110.0] * 5)
+
+    def series(symbols, budget=None, *, period, interval):
+        return {"COPX": intraday if interval == "5m" else daily}
+
+    monkeypatch.setattr(auditor, "fetch_price_series", series)
+    auditor.evaluate_pending(db, user_id=1)
+    chk = db.query(GeoCheckpoint).one()
+    # target (+7d, i.e. yesterday) is before the intraday window → daily close 110, not 120
+    assert "COPX: +10.00%" in chk.detail
+    assert _status(db.get(GeoSignal, signal_id)) == "resolved"
