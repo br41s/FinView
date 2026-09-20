@@ -474,3 +474,26 @@ def test_event_ids_are_region_and_day_keyed(monkeypatch):
     for event in _analyzed(monkeypatch):
         assert event.id.startswith("gdelt-")
         assert event.source == "gdelt"
+
+
+def test_escalation_cluster_only_forms_where_geopolitics_is_the_thesis():
+    """Three 19x events over Ohio are a police story, not a geopolitical cluster.
+    The per-event armed_conflict events still exist (no rule covers us_midwest);
+    the cluster — which matches gdelt-escalation-cluster everywhere — does not."""
+    # Three categories, as a real escalation reads: a fight, a show of force, coercion.
+    codes = (("190", "19", -10.0), ("154", "15", -7.2), ("172", "17", -5.0))
+    def rows(lat, lon, loc):
+        return [
+            GdeltEvent(
+                id=f"gdelt-{loc}-{i}", title="t", event_code=code, event_root_code=root,
+                quad_class=4, goldstein_scale=gs, num_mentions=20, num_sources=1,
+                num_articles=20, avg_tone=-8.0, latitude=lat, longitude=lon + i * 0.5,
+                location=loc, actor1="POLICE", actor2="SUSPECT",
+                date_added=_LATEST, source_url=f"https://ex.test/{loc}/{i}",
+            )
+            for i, (code, root, gs) in enumerate(codes)
+        ]
+    ohio = sentinel.analyze_gdelt_events(rows(40.0, -83.0, "Columbus, Ohio"))
+    assert [e for e in ohio if e.type == "geopolitical_escalation"] == []
+    red_sea = sentinel.analyze_gdelt_events(rows(20.0, 38.0, "Red Sea"))
+    assert [e for e in red_sea if e.type == "geopolitical_escalation"]

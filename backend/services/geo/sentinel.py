@@ -568,10 +568,14 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
         )
 
     # Compound escalation: ≥3 events clustered in one real region, avg goldstein ≤ -5.
-    region_ids = set(_iter_region_ids())
+    # GDELT's coder files police raids and prosecutions under 19x "use
+    # conventional military force", so an hour of batches clusters over India,
+    # the US Midwest and Northern Europe as readily as over the Red Sea. A
+    # cluster is only a geopolitical thesis where geopolitics is the thesis:
+    # the regions the conflict / chokepoint / sanctions rules are written for.
     for region_key, tr in region_counts.items():
         avg_g = tr["sum_g"] / tr["count"] if tr["count"] else 0
-        if tr["count"] >= 3 and avg_g <= -5 and region_key in region_ids:
+        if tr["count"] >= 3 and avg_g <= -5 and region_key in _ESCALATION_REGIONS:
             sample = next(
                 (e for e in gdelt_events if region_key in match_regions(e.latitude, e.longitude)),
                 None,
@@ -601,6 +605,14 @@ def _iter_region_ids():
     from .rules import GEO_REGIONS
 
     return GEO_REGIONS.keys()
+
+
+_ESCALATION_REGIONS = frozenset({
+    "middle_east_oil", "strait_of_hormuz", "suez_red_sea", "iran", "ukraine_black_sea",
+    "taiwan", "east_china_sea", "south_china_sea", "korean_peninsula", "malacca_strait",
+    "china_industrial", "sahel", "nigeria_oil", "horn_of_africa", "drc_mining", "libya",
+    "myanmar", "panama_canal", "cape_good_hope",
+})
 
 
 # ── Specialist: AIS maritime chokepoint traffic ──────────────────────
