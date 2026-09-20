@@ -139,11 +139,34 @@ def test_a_message_at_the_limit_is_left_alone():
     assert json.loads(op.call_args.args[0].data)["text"] == exact
 
 
-def test_non_400_errors_do_not_retry():
+def test_a_permanent_rejection_is_not_retried():
+    """403 is an answer, not a hiccup — retrying it just doubles the latency."""
+    err = _http_error(403, "Forbidden")
+    with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
+        assert send_telegram("hola") is False
+    assert op.call_count == 1
+
+
+def test_a_rate_limit_is_not_retried(monkeypatch):
+    """429 carries a retry_after of 30–60 s and the bot is shared with the
+    options agent: retrying 1 s later extends the ban for both. The geo cycle
+    retries the signal next run instead (notified_at stays NULL).
+    """
+    monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
     err = _http_error(429, "Too Many Requests")
     with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
         assert send_telegram("hola") is False
     assert op.call_count == 1
+
+
+def test_a_server_error_is_retried_once(monkeypatch):
+    """Exactly once: the geo and options cycles are synchronous inside the Cloud
+    Run request, so a retry ladder is charged to the request deadline."""
+    monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
+    err = _http_error(503, "Service Unavailable")
+    with patch.object(notification_service.urllib.request, "urlopen", side_effect=err) as op:
+        assert send_telegram("hola") is False
+    assert op.call_count == 2
 
 
 def test_an_unreadable_error_body_still_logs_the_code(caplog):

@@ -23,30 +23,64 @@ logger = logging.getLogger(__name__)
 # Telegram rejects any message over 4096 characters outright.
 _TELEGRAM_MAX_CHARS = 4096
 
+# Gmail's SMTP handshake has no default deadline in smtplib, so an unreachable
+# server holds the socket open until the platform's TCP timeout. The geo cron is
+# synchronous inside the Cloud Run request, so that stall is charged straight to
+# the 1800 s request deadline.
+_SMTP_TIMEOUT = 15
+
+# Exactly one retry, and only for the transient classes. A second failure is a
+# real one, and the geo/options cycles are synchronous — burning the request on
+# a retry ladder costs more than the alert is worth.
+_RETRY_BACKOFF_SECONDS = 1.0
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """5xx / transport timeout — transient, worth exactly one retry.
+
+    Not 429: Telegram's rate limit carries a retry_after of 30–60 s and the bot
+    token is shared with the options agent, so a retry 1 s later extends the
+    ban for both. A geo signal that misses keeps notified_at NULL and is
+    re-selected next cycle instead.
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        return 500 <= exc.code < 600
+    if isinstance(exc, TimeoutError):  # socket.timeout is TimeoutError on 3.10+
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        return isinstance(exc.reason, TimeoutError)
+    return False
+
 
 def send_ntfy(title: str, message: str, priority: str = "high", tags: str = "chart_with_upwards_trend") -> bool:
     """Send push notification via ntfy.sh."""
     topic = settings.ntfy_topic
     if not topic:
+        logger.warning("ntfy not configured (FINVIEW_NTFY_TOPIC unset) — push not sent")
         return False
-    try:
-        url = f"https://ntfy.sh/{topic}"
-        data = message.encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Title": urllib.parse.quote(title, safe=" "),
-                "Priority": priority,
-                "Tags": tags,
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status == 200
-    except Exception:
-        logger.exception("ntfy send failed")
-        return False
+    url = f"https://ntfy.sh/{topic}"
+    req = urllib.request.Request(
+        url,
+        data=message.encode("utf-8"),
+        headers={
+            "Title": urllib.parse.quote(title, safe=" "),
+            "Priority": priority,
+            "Tags": tags,
+        },
+        method="POST",
+    )
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status == 200
+        except Exception as exc:
+            if attempt == 0 and _is_retryable(exc):
+                logger.warning("ntfy send failed (%s) — retrying once", exc)
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            logger.exception("ntfy send failed")
+            return False
+    return False
 
 
 def send_email(subject: str, html_body: str) -> bool:
@@ -55,6 +89,9 @@ def send_email(subject: str, html_body: str) -> bool:
     password = settings.notify_email_password
     recipient = settings.notify_email_to
     if not all([sender, password, recipient]):
+        logger.warning(
+            "email not configured (FINVIEW_NOTIFY_EMAIL_FROM/TO/PASSWORD) — digest not sent"
+        )
         return False
     try:
         msg = MIMEMultipart("alternative")
@@ -63,7 +100,7 @@ def send_email(subject: str, html_body: str) -> bool:
         msg["To"] = recipient
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=_SMTP_TIMEOUT) as server:
             server.starttls()
             server.login(sender, password)
             server.sendmail(sender, [recipient], msg.as_string())
@@ -88,6 +125,9 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
     token = settings.telegram_bot_token
     chat_id = settings.telegram_chat_id
     if not token or not chat_id:
+        logger.warning(
+            "Telegram not configured (FINVIEW_TELEGRAM_BOT_TOKEN/CHAT_ID) — message not sent"
+        )
         return False
     # Telegram hard-caps a message at 4096 chars and rejects the whole thing with
     # "message is too long" — a 400 that the plain-text retry can't fix, because
@@ -97,54 +137,63 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
     # rather than "silently dropped".
     if len(text) > _TELEGRAM_MAX_CHARS:
         text = text[: _TELEGRAM_MAX_CHARS - 20].rstrip() + "\n… (recortado)"
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        body = {
-            "chat_id": chat_id,
-            "text": text,
-            "disable_web_page_preview": True,
-        }
-        if parse_mode:
-            body["parse_mode"] = parse_mode
-        # Forum groups: route into the app's topic instead of General. Only valid
-        # for forum supergroups — a private chat has no threads, so a stray
-        # thread_id there is a 400 ("message thread not found").
-        thread_id = settings.telegram_thread_id.strip()
-        if include_thread and thread_id.isdigit():
-            body["message_thread_id"] = int(thread_id)
-        payload = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status == 200
-    except urllib.error.HTTPError as e:
-        # Telegram explains every rejection in the response body
-        # ({"ok": false, "error_code": 400, "description": "..."}). Logging only
-        # the traceback throws that away and leaves a bare "400: Bad Request"
-        # to guess at — which is exactly what happened in prod: spikes silently
-        # never arrived and the logs couldn't say why.
-        detail = ""
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    body: dict = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if parse_mode:
+        body["parse_mode"] = parse_mode
+    # Forum groups: route into the app's topic instead of General. Only valid
+    # for forum supergroups — a private chat has no threads, so a stray
+    # thread_id there is a 400 ("message thread not found").
+    thread_id = settings.telegram_thread_id.strip()
+    if include_thread and thread_id.isdigit():
+        body["message_thread_id"] = int(thread_id)
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    for attempt in range(2):
         try:
-            detail = e.read().decode("utf-8", "replace")[:300]
-        except Exception:
-            pass
-        logger.error("Telegram send failed: HTTP %s — %s", e.code, detail)
-        # A 400 is almost always one of the two optional extras: Markdown
-        # formatting (a stray `*`/`_` in alert text) or forum-topic routing (a
-        # thread_id that doesn't exist for this chat). Retry once stripping both
-        # — the content matters more than the formatting or the topic. Guarded by
-        # `parse_mode` so the retry can't recurse.
-        if e.code == 400 and parse_mode:
-            logger.info("Telegram: retrying as plain text, no thread")
-            return send_telegram(text, parse_mode=None, include_thread=False)
-        return False
-    except Exception:
-        logger.exception("Telegram send failed")
-        return False
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status == 200
+        except urllib.error.HTTPError as e:
+            # Telegram explains every rejection in the response body
+            # ({"ok": false, "error_code": 400, "description": "..."}). Logging only
+            # the traceback throws that away and leaves a bare "400: Bad Request"
+            # to guess at — which is exactly what happened in prod: spikes silently
+            # never arrived and the logs couldn't say why.
+            detail = ""
+            try:
+                detail = e.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                pass
+            logger.error("Telegram send failed: HTTP %s — %s", e.code, detail)
+            # A 400 is almost always one of the two optional extras: Markdown
+            # formatting (a stray `*`/`_` in alert text) or forum-topic routing (a
+            # thread_id that doesn't exist for this chat). Retry once stripping both
+            # — the content matters more than the formatting or the topic. Guarded by
+            # `parse_mode` so the retry can't recurse.
+            if e.code == 400 and parse_mode:
+                logger.info("Telegram: retrying as plain text, no thread")
+                return send_telegram(text, parse_mode=None, include_thread=False)
+            if attempt == 0 and _is_retryable(e):
+                logger.warning("Telegram: HTTP %s is transient — retrying once", e.code)
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            return False
+        except Exception as exc:
+            if attempt == 0 and _is_retryable(exc):
+                logger.warning("Telegram send failed (%s) — retrying once", exc)
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            logger.exception("Telegram send failed")
+            return False
+    return False
 
 
 # Cross-cycle dedup. An alert that stays true (HIGH_IV on TEF.MC for three hours)

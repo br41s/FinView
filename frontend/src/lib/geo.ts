@@ -50,6 +50,7 @@ export type GeoSignal = {
   rules: GeoRule[];
   checkpoints: GeoCheckpoint[];
   timestamp: string;
+  notifiedAt?: string | null; // when a channel actually delivered it; null = never
   status: "active" | "resolved";
   source?: string; // ingest feed key (usgs|EONET|gdelt|…)
   sourceUrl?: string | null; // link to the underlying source event, when captured

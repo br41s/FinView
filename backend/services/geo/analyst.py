@@ -15,7 +15,7 @@ import httpx
 
 from backend.config import settings
 
-from .rules import FastRule, GeoRuleStat, effective_confidence, match_rules
+from .rules import FastRule, GeoRuleStat, compute_risk, effective_confidence, match_rules
 from .sentinel import GeoEvent
 
 logger = logging.getLogger(__name__)
@@ -156,10 +156,7 @@ def analyze_event(
                 )
 
     final_conf = confidence if rules else float(llm.get("confidence", 50)) if llm else 50.0
-    risk_score = (
-        int(llm["riskScore"]) if llm and "riskScore" in llm
-        else min(round(final_conf / 15), 10)
-    )
+    risk_score = compute_risk(rules, event, (llm or {}).get("riskScore"))
     impact = (llm or {}).get("estimatedImpact", {})
     return AnalystResult(
         event=event,

@@ -24,7 +24,7 @@ from .analyst import AnalystResult, AnalystTicker, analyze_event
 from .auditor import create_checkpoints, evaluate_pending
 from .ingest import fetch_all_sources
 from .notify import notify_signal
-from .rules import RULES_BY_ID, seed_rule_stats
+from .rules import RULES_BY_ID, compute_risk, seed_rule_stats
 from .sentinel import GeoEvent
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,8 @@ class CycleResult:
     sources: dict[str, int] = field(default_factory=dict)
     # Signals dropped by the persist phase. A cycle can finish with work lost.
     persist_failures: int = 0
+    # Signals the notify gate selected that no channel delivered.
+    notify_failed: int = 0
 
 
 def _load_stats(db: Session) -> dict[str, GeoRuleStat]:
@@ -93,9 +95,13 @@ def _collect_events(bundle) -> list[GeoEvent]:
 def _compound_analyses(analyses: list[AnalystResult]) -> list[AnalystResult]:
     """Tally matched-event baskets into compound buckets; emit compound analyses for count ≥ 2."""
     counts = {rid: 0 for rid in _COMPOUND_BUCKETS}
+    seen_events: set[str] = set()
     for a in analyses:
-        if not a.matched_rules:
+        # "Simultaneous events" counts events, not analyses: a feed that emits
+        # several rows for one id (GDELT, one per article) must not tally twice.
+        if not a.matched_rules or a.event.id in seen_events:
             continue
+        seen_events.add(a.event.id)
         symbols = {t.symbol for t in a.tickers}
         for rid, bucket in _COMPOUND_BUCKETS.items():
             if symbols & bucket:
@@ -124,11 +130,57 @@ def _compound_analyses(analyses: list[AnalystResult]) -> list[AnalystResult]:
                 matched_rules=[rule],
                 tickers=[AnalystTicker(t.symbol, t.direction, rule.description) for t in rule.tickers],
                 confidence=conf,
-                risk_score=min(round(conf / 15), 10),
+                risk_score=compute_risk([rule], event, None),
                 direction=rule.direction,
             )
         )
     return out
+
+
+def _dispatch_notifications(
+    db: Session, user_id: int, results: list[SignalResult]
+) -> tuple[int, int]:
+    """Push the gated signals and record what was actually delivered.
+
+    Returns (notified, notify_failed). ``notified`` is a delivery count, not an
+    attempt count: it used to be incremented next to the call regardless of
+    outcome, so prod reported notifications on cycles where every channel was
+    unconfigured and silently returned False. ``notified_at`` on the signal is
+    the per-signal half of the same record.
+
+    Bound the loop, not the call: a channel that fails once is skipped for the
+    rest of the cycle. Worst case per signal with every channel stalling is
+    ~60 s, this runs synchronously inside the cron request, and a real outage
+    is exactly when many signals are gated. The skipped signals keep
+    ``notified_at`` NULL and the advisor re-selects them next cycle.
+    """
+    gated = [res for res in results if res.should_notify]
+    # Everything the payload reads, loaded before the first send: the Phase E
+    # commit expired the ORM objects, and a lazy load between two channel
+    # stalls is a DB round trip held open across the whole fan-out.
+    for res in gated:
+        _ = (res.signal.headline, res.signal.direction, res.signal.risk_score,
+             res.signal.location, list(res.signal.tickers))
+    notified = 0
+    notify_failed = 0
+    down: set[str] = set()
+    for res in gated:
+        channels = notify_signal(res.signal, res.importance, skip=down)
+        down.update(ch for ch, ok in channels.items() if not ok)
+        if any(channels.values()):
+            res.signal.notified_at = datetime.now(timezone.utc)
+            notified += 1
+        else:
+            notify_failed += 1
+    if notified:
+        try:
+            db.commit()
+        except SQLAlchemyError:
+            db.rollback()
+            logger.warning(
+                "geo cycle user=%s: could not stamp notified_at", user_id, exc_info=True
+            )
+    return notified, notify_failed
 
 
 def run_cycle(db: Session, user_id: int) -> CycleResult:
@@ -204,11 +256,7 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
         results = []
         logger.exception("geo cycle user=%s: commit failed, no signals persisted", user_id)
 
-    notified = 0
-    for res in results:
-        if res.should_notify:
-            notify_signal(res.signal, res.importance)
-            notified += 1
+    notified, notify_failed = _dispatch_notifications(db, user_id, results)
 
     # Phase F: evaluate any due outcome checkpoints. Runs even when the persist
     # phase lost everything — the auditor is what resolves the signals already on
@@ -217,14 +265,15 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
 
     new_signals = sum(1 for r in results if r.is_new)
     logger.info(
-        "geo cycle user=%s done: %d new signals, %d notified, %d checkpoints, "
-        "%d persist failures",
-        user_id, new_signals, notified, checkpoints, persist_failures,
+        "geo cycle user=%s done: %d new signals, %d notified, %d undelivered, "
+        "%d checkpoints, %d persist failures",
+        user_id, new_signals, notified, notify_failed, checkpoints, persist_failures,
     )
     return CycleResult(
         events=len(events),
         new_signals=new_signals,
         notified=notified,
+        notify_failed=notify_failed,
         checkpoints_evaluated=checkpoints,
         sources={key: len(getattr(bundle, key, []) or []) for key in _SOURCE_KEYS},
         persist_failures=persist_failures,
@@ -255,6 +304,7 @@ def _record_run(
                 events=result.events if result else 0,
                 new_signals=result.new_signals if result else 0,
                 notified=result.notified if result else 0,
+                notify_failed=result.notify_failed if result else 0,
                 checkpoints_evaluated=result.checkpoints_evaluated if result else 0,
                 persist_failures=result.persist_failures if result else 0,
                 sources=json.dumps(result.sources) if result and result.sources else None,

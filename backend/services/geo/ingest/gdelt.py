@@ -1,7 +1,14 @@
 """GDELT 2.0 Doc API → GdeltEvent list.
 
-Free, no key. Rate limit ~1 req / 5s, so the three thematic queries run
-sequentially with a 6s spacer. Articles are geolocated by source-country centroid.
+Free, no key. The three thematic queries run concurrently, staggered by half a
+second so the burst still looks polite; serializing them with a 6s spacer cost
+~44s of every cycle's ingest wall and bought nothing (GDELT answered 16% of prod
+cycles either way). Articles are geolocated by source-country centroid.
+
+``artlist`` returns headlines only — no mention or source counts, no per-article
+Goldstein score. Those fields are not invented here: the per-query Goldstein
+constant is the query's own severity prior, and the mention/source floors that
+used to gate on fabricated counts are gone from the sentinel.
 """
 
 import asyncio
@@ -14,7 +21,16 @@ from .types import GdeltEvent
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 15 * 60
-_RATE_LIMIT_DELAY = 6.0
+# Stagger between the three concurrent queries, not a serial spacer. 2 s, not
+# 0.5: GDELT rate-limits per IP (prod logged 1700 429/5xx lines in 7 days even
+# with 6 s serial spacing) and three requests inside one second is the shape
+# most likely to trip it. Total added latency is 4 s, against the 44 s it was.
+_STAGGER_DELAY = 2.0
+_REQUEST_TIMEOUT = 12.0
+# The cron runs every 30 min and dedup is by external_id, so re-reading a 24h
+# digest every cycle was pure latency: 6h still covers a long 429 streak (GDELT
+# answered 168/1010 prod cycles) while DateDesc keeps the 25 records the newest.
+_TIMESPAN = "6h"
 _cache = TTLCache()
 
 _QUERIES = [
@@ -70,56 +86,75 @@ def _strip_html(s: str) -> str:
     return re.sub(r"<[^>]*>", "", s).strip()
 
 
+async def _fetch_query(index: int, query: str, goldstein: float) -> list[GdeltEvent]:
+    if index:
+        await asyncio.sleep(_STAGGER_DELAY * index)
+    url = "https://api.gdeltproject.org/api/v2/doc/doc"
+    params = {
+        "query": query,
+        "mode": "artlist",
+        "maxrecords": 25,
+        "format": "json",
+        "sort": "DateDesc",
+        "timespan": _TIMESPAN,
+    }
+    text = await fetch_text(url, params=params, timeout=_REQUEST_TIMEOUT)
+    if not text or not text.startswith("{"):
+        # GDELT answers rate limits with a plain-text page, so this is the
+        # branch prod actually takes — it must not be the silent one.
+        logger.warning(
+            "gdelt query %d returned no JSON (rate limited?): %r", index, (text or "")[:120]
+        )
+        return []
+    try:
+        data = json.loads(text)
+    except ValueError:
+        logger.warning("gdelt query %d returned malformed JSON: %r", index, text[:120])
+        return []
+
+    events: list[GdeltEvent] = []
+    for art in data.get("articles", []) or []:
+        country = art.get("sourcecountry") or ""
+        coords = _COUNTRY_CENTROIDS.get(country)
+        if not coords:
+            continue
+        title = _strip_html(str(art.get("title") or ""))
+        if len(title) < 10:
+            continue
+        url_ = art.get("url") or ""
+        events.append(
+            GdeltEvent(
+                id=f"gdelt-{_hash_code(url_ or title)}",
+                title=title[:200],
+                event_code="",
+                goldstein_scale=goldstein,
+                avg_tone=goldstein * 1.2,
+                latitude=coords[0],
+                longitude=coords[1],
+                actor1=country,
+                actor2="",
+                date_added=art.get("seendate") or "",
+                source_url=url_,
+            )
+        )
+    return events
+
+
 async def fetch_gdelt() -> list[GdeltEvent]:
     cached = _cache.get(_CACHE_TTL)
     if cached is not None:
         return cached
 
+    results = await asyncio.gather(
+        *(_fetch_query(i, q, g) for i, (q, g) in enumerate(_QUERIES)),
+        return_exceptions=True,
+    )
     events: list[GdeltEvent] = []
-    for i, (query, goldstein) in enumerate(_QUERIES):
-        if i > 0:
-            await asyncio.sleep(_RATE_LIMIT_DELAY)
-        url = "https://api.gdeltproject.org/api/v2/doc/doc"
-        params = {
-            "query": query,
-            "mode": "artlist",
-            "maxrecords": 25,
-            "format": "json",
-            "timespan": "24h",
-        }
-        text = await fetch_text(url, params=params)
-        if not text or not text.startswith("{"):  # rate limited / error page
+    for result in results:
+        if isinstance(result, BaseException):
+            logger.warning("gdelt query failed: %s", result)
             continue
-        try:
-            data = json.loads(text)
-        except ValueError:
-            continue
-        for art in data.get("articles", []) or []:
-            country = art.get("sourcecountry") or ""
-            coords = _COUNTRY_CENTROIDS.get(country)
-            if not coords:
-                continue
-            title = _strip_html(str(art.get("title") or ""))
-            if len(title) < 10:
-                continue
-            url_ = art.get("url") or ""
-            events.append(
-                GdeltEvent(
-                    id=f"gdelt-{_hash_code(url_ or title)}",
-                    title=title[:200],
-                    event_code="",
-                    goldstein_scale=goldstein,
-                    num_mentions=5,
-                    num_sources=3,
-                    avg_tone=goldstein * 1.2,
-                    latitude=coords[0],
-                    longitude=coords[1],
-                    actor1=country,
-                    actor2="",
-                    date_added=art.get("seendate") or "",
-                    source_url=url_,
-                )
-            )
+        events.extend(result)
 
     # Dedup by title prefix.
     seen: set[str] = set()

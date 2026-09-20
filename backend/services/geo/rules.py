@@ -45,6 +45,99 @@ class FastRule:
     tickers: tuple[RuleTicker, ...]
     direction: str  # thesis / rationale (free text)
     base_confidence: float
+    # Market-impact risk 1–10. 0 = inherit CATEGORY_RISK[category]. Independent of
+    # confidence on purpose: importance = confidence × risk/10, and deriving risk
+    # from confidence squared the same number and capped importance at 54 against
+    # a notify gate of 60 (0 notifications in 1700 prod signals, 2026-09-20 audit).
+    risk: int = 0
+
+
+# Base market-impact risk per event category (1 = noise, 10 = systemic). This is
+# "how much can this kind of event move a price", not "how sure are we" — that is
+# base_confidence. A specific rule overrides it with FastRule.risk.
+CATEGORY_RISK: dict[str, int] = {
+    "nuclear": 10,
+    "conflict": 8,
+    "military_escalation": 8,
+    "maritime_disruption": 8,
+    # 6, not 8: "≥2 events touching an energy ticker" is a weak bar (a Texas heat
+    # wave plus any Gulf storm), the id rotates daily, and at 8 all three compound
+    # rules page every day. Raise it once the tally has earned that.
+    "compound": 6,
+    "armed_conflict": 7,
+    "geopolitical_escalation": 7,
+    "sanctions": 7,
+    "maritime_rerouting": 7,
+    "airspace_closure": 6,
+    "military_surge": 6,
+    "trade_dispute": 6,
+    "earthquake": 6,
+    "cyclone": 6,
+    "drought": 5,
+    "extreme_cold": 5,
+    "maritime_congestion": 5,
+    "mass_protest": 4,
+    "volcano": 4,
+    "storm": 4,
+    "severe_storm": 4,
+    "flood": 4,
+    "fire": 4,
+    "extreme_heat": 4,
+    "deep_cyclone": 4,
+    "diplomatic_cooperation": 3,
+    "heavy_precipitation": 3,
+    "iceberg": 2,
+}
+_DEFAULT_RISK = 5
+_MAX_HEADROOM = 2
+
+
+def base_risk(rule: FastRule) -> int:
+    return rule.risk or CATEGORY_RISK.get(rule.category, _DEFAULT_RISK)
+
+
+def severity_headroom(rule: FastRule, event) -> int:
+    """0..2 — how far the event exceeds the rule's own trigger floor.
+
+    A rule fires at its floor; the floor is the weakest event it accepts. Headroom
+    is what separates an M8.5 from the M6.0 that trips the same rule.
+    """
+    cond = rule.condition
+    m = _RE_MAGNITUDE.search(cond)
+    mag = getattr(event, "magnitude", None)
+    if m and mag is not None:
+        return max(0, min(_MAX_HEADROOM, int((mag - float(m.group(1))) / 0.7)))
+    m = _RE_CLUSTER.search(cond)
+    size = (getattr(event, "raw_data", None) or {}).get("clusterSize")
+    if m and size:
+        ratio = size / int(m.group(1))
+        return 2 if ratio >= 4 else 1 if ratio >= 2 else 0
+    if getattr(event, "severity", None) == "red" and not _RE_SEVERITY.search(cond):
+        return 1
+    return 0
+
+
+def compute_risk(rules: list[FastRule], event, llm_risk: int | None) -> int:
+    """Risk 1–10 for a signal: rule base risk + severity headroom, LLM overrides.
+
+    Decision 2026-09-20 (memories/decisions/finview.md): "a mix with the LLM
+    allowed to override":
+      - no rules and no LLM → _DEFAULT_RISK
+      - rules → max base_risk (the riskiest matched thesis, not the mean — the
+        mean would let a low-risk co-match dilute a Hormuz signal) + max headroom
+      - a numeric LLM riskScore replaces the whole thing; a non-numeric one
+        ("alto", "7/10", {}) is logged and ignored — the field comes straight
+        out of json.loads and a bad value must cost one override, not the cycle
+    """
+    if llm_risk is not None:
+        try:
+            return max(1, min(10, int(llm_risk)))
+        except (TypeError, ValueError):
+            logger.warning("geo: ignoring non-numeric LLM riskScore %r", llm_risk)
+    if not rules:
+        return _DEFAULT_RISK
+    risk = max(base_risk(r) for r in rules) + max(severity_headroom(r, event) for r in rules)
+    return max(1, min(10, risk))
 
 
 def _t(spec: str) -> tuple[RuleTicker, ...]:
@@ -133,9 +226,9 @@ FAST_RULES: tuple[FastRule, ...] = (
     # Earthquakes
     FastRule("eq-chile-copper", "earthquake", "earthquake.magnitude>=6 && region=chile_mining", "Major Chilean earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption → COPX up, miners down", 0.82),
     FastRule("eq-japan-industrial", "earthquake", "earthquake.magnitude>=6.5 && region=japan", "Major Japanese earthquake hits industrial base", _t("EWJ- TM- GLD+"), "Japanese industrial disruption → equities down, gold up", 0.75),
-    FastRule("eq-taiwan-semi", "earthquake", "earthquake.magnitude>=6 && region=taiwan", "Taiwan earthquake threatens semiconductor production", _t("TSM- SOXX- INTC+ SSNLF+"), "Semi supply shock → TSMC down, competitors up", 0.78),
-    FastRule("eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey", "Major Turkish earthquake", _t("TUR- X+ GLD+"), "Turkish disruption, reconstruction demand for steel", 0.70),
-    FastRule("eq-indonesia-nickel", "earthquake", "earthquake.magnitude>=6 && region=indonesia_mining", "Indonesian earthquake disrupts nickel mining", _t("VALE- NI=F+"), "Nickel supply disruption", 0.68),
+    FastRule("eq-taiwan-semi", "earthquake", "earthquake.magnitude>=6 && region=taiwan", "Taiwan earthquake threatens semiconductor production", _t("TSM- SOXX- INTC+ 005930.KS+"), "Semi supply shock → TSMC down, competitors up", 0.78),
+    FastRule("eq-turkey", "earthquake", "earthquake.magnitude>=6.5 && region=turkey", "Major Turkish earthquake", _t("TUR- GLD+"), "Turkish disruption: local equities sold, gold bid", 0.70),
+    FastRule("eq-indonesia-nickel", "earthquake", "earthquake.magnitude>=6 && region=indonesia_mining", "Indonesian earthquake disrupts nickel mining", _t("VALE-"), "Nickel supply disruption", 0.68),
     FastRule("eq-peru-copper", "earthquake", "earthquake.magnitude>=6 && region=peru_mining", "Peruvian earthquake disrupts copper supply", _t("COPX+ FCX- SCCO-"), "Copper supply disruption", 0.76),
     FastRule("eq-lithium-triangle", "earthquake", "earthquake.magnitude>=6 && region=lithium_triangle", "Atacama/Puna earthquake disrupts lithium brine operations", _t("LIT+ ALB+ SQM-"), "Brine/port disruption → lithium price up, local producer SQM hit", 0.74),
     # Cyclones / hurricanes
@@ -147,7 +240,7 @@ FAST_RULES: tuple[FastRule, ...] = (
     FastRule("cyc-australia-ironore", "cyclone", "region=australia_pilbara", "Cyclone shuts in Pilbara iron-ore export ports", _t("BHP- RIO- VALE+"), "Port Hedland shut-in → Australian export volume lost, Vale gains on tighter seaborne supply", 0.80),
     # Wildfires
     FastRule("fire-california", "fire", "fire.cluster>=50 && region=california", "Major California wildfires", _t("ALL- TRV- PCG- HD+"), "Insurance losses, utility liability", 0.78),
-    FastRule("fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest", "Canadian wildfires disrupt lumber", _t("LBS=F+ WY+"), "Lumber supply disruption", 0.74),
+    FastRule("fire-canada-lumber", "fire", "fire.cluster>=30 && region=canada_forest", "Canadian wildfires disrupt lumber", _t("LBR=F+ WY+"), "Lumber supply disruption", 0.74),
     FastRule("fire-amazon", "fire", "fire.cluster>=100 && region=amazon", "Major Amazon fires", _t("DBA+ SOYB+ EWZ-"), "Agricultural / soy supply impact", 0.65),
     FastRule("fire-australia-mining", "fire", "fire.cluster>=30 && region=australia", "Australian fires disrupt mining", _t("BHP- RIO- GLD+"), "Mining disruption", 0.60),
     FastRule("fire-greece-tourism", "fire", "fire.cluster>=20 && region=mediterranean", "Mediterranean fires disrupt tourism", _t("JETS-"), "Tourism disruption", 0.55),

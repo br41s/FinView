@@ -16,7 +16,10 @@ export interface GeoCycleRun {
   ok: boolean;
   events: number;
   new_signals: number;
+  /** Signals that reached at least one channel (ntfy / Telegram / email). */
   notified: number;
+  /** Signals the notify gate selected that no channel delivered. */
+  notify_failed?: number;
   checkpoints_evaluated: number;
   persist_failures: number;
   sources: Record<string, number>;
@@ -108,6 +111,8 @@ export function geoHealth(
     };
   }
 
+  // Lost work outranks a missed push: a signal the persist phase dropped is
+  // gone, an undelivered alert is retried next cycle.
   if (run.persist_failures > 0) {
     return {
       tone: "warn",
@@ -117,8 +122,29 @@ export function geoHealth(
     };
   }
 
+  // A run that selected alerts and delivered none is a delivery outage. It is
+  // invisible in every other field: `notified` at zero reads exactly like a
+  // cycle where nothing crossed the gate.
+  const undelivered = run.notify_failed ?? 0;
+  if (undelivered > 0) {
+    return {
+      tone: "warn",
+      message: `La última ejecución (${ageText}): ${undelivered} alerta${
+        undelivered === 1 ? "" : "s"
+      } no entregada${
+        undelivered === 1 ? "" : "s"
+      }. Revisa las claves de ntfy, Telegram y email.`,
+    };
+  }
+
+  // Deliveries are only mentioned when there were any: a healthy cycle that
+  // matched nothing shouldn't read as "0 notificadas".
+  const delivered =
+    run.notified > 0
+      ? ` · ${run.notified} notificada${run.notified === 1 ? "" : "s"}`
+      : "";
   return {
     tone: "ok",
-    message: `Última ejecución ${ageText} · ${run.events} eventos · ${run.new_signals} señales nuevas`,
+    message: `Última ejecución ${ageText} · ${run.events} eventos · ${run.new_signals} señales nuevas${delivered}`,
   };
 }

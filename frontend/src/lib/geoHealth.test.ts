@@ -11,6 +11,7 @@ function run(overrides: Partial<GeoCycleRun> = {}): GeoCycleRun {
     events: 34,
     new_signals: 2,
     notified: 0,
+    notify_failed: 0,
     checkpoints_evaluated: 5,
     persist_failures: 0,
     sources: { earthquakes: 9, events: 20, fires: 5 },
@@ -109,6 +110,59 @@ describe("geoHealth", () => {
     );
     expect(health?.tone).toBe("warn");
     expect(health?.message).toContain("1 señal ");
+  });
+
+  it("reports alerts the notify phase could not deliver", () => {
+    // Prod ran seven days with the gate closed and no way to tell "sent" from
+    // "swallowed": `notified` counted attempts and nothing rendered it.
+    const health = geoHealth(
+      { interval_minutes: 15, last_run: run({ notify_failed: 2 }) },
+      NOW,
+    );
+    expect(health?.tone).toBe("warn");
+    expect(health?.message).toContain("2 alertas no entregadas");
+  });
+
+  it("says one undelivered alert in the singular", () => {
+    const health = geoHealth(
+      { interval_minutes: 15, last_run: run({ notify_failed: 1 }) },
+      NOW,
+    );
+    expect(health?.message).toContain("1 alerta no entregada");
+  });
+
+  it("reports deliveries on a healthy cycle that notified", () => {
+    const health = geoHealth(
+      { interval_minutes: 15, last_run: run({ notified: 3 }) },
+      NOW,
+    );
+    expect(health?.tone).toBe("ok");
+    expect(health?.message).toContain("3 notificadas");
+  });
+
+  it("does not mention notifications when there were none", () => {
+    const health = geoHealth({ interval_minutes: 15, last_run: run() }, NOW);
+    expect(health?.message).not.toContain("notificada");
+  });
+
+  it("reports lost signals before undelivered alerts when both happened", () => {
+    // A dropped signal is gone; an undelivered alert is retried next cycle.
+    const health = geoHealth(
+      { interval_minutes: 15, last_run: run({ persist_failures: 1, notify_failed: 3 }) },
+      NOW,
+    );
+    expect(health?.message).toContain("descartó 1 señal");
+    expect(health?.message).not.toContain("no entregada");
+  });
+
+  it("handles a run recorded before the notify counters existed", () => {
+    // `notify_failed` is optional on the wire: a row written by an older
+    // revision must not read as an undelivered alert.
+    const health = geoHealth(
+      { interval_minutes: 15, last_run: run({ notify_failed: undefined }) },
+      NOW,
+    );
+    expect(health?.tone).toBe("ok");
   });
 
   it("handles a run recorded before source counts existed", () => {
