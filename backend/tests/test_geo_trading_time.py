@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from backend.services.geo.trading_time import add_trading_time, in_session
+from backend.services.geo.trading_time import add_trading_time
 
 UTC = timezone.utc
 
@@ -41,8 +41,3 @@ def test_naive_input_is_utc():
         2026, 9, 14, 15, 0, tzinfo=UTC
     )
 
-
-def test_in_session():
-    assert in_session(datetime(2026, 9, 14, 14, 0, tzinfo=UTC))
-    assert not in_session(datetime(2026, 9, 14, 21, 0, tzinfo=UTC))
-    assert not in_session(datetime(2026, 9, 19, 14, 0, tzinfo=UTC))  # Saturday

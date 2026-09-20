@@ -52,15 +52,22 @@ _MIN_MOVE_PCT = 0.1
 # nothing in-hours and every in-hours checkpoint was a coin flip on noise.
 # A ticker has to move more than 0.75 of its own horizon sigma to be readable.
 _SIGMA_K = 0.75
-# 5-minute bars spanned by each intraday horizon; trading days per daily horizon.
+# 5-minute bars spanned by each horizon's sigma lag: the intraday ones directly,
+# the daily ones as one session (78 bars) scaled by the square root of the
+# trading days spanned. Everything comes from the one intraday series, so the
+# daily series is only fetched for symbols that have no 5-minute bars at all.
+_SESSION_BARS = 78
 _HORIZON_BARS = {GeoHorizon.H1.value: 12, GeoHorizon.H6.value: 72}
-_HORIZON_DAYS = {GeoHorizon.D1.value: 1, GeoHorizon.D3.value: 3, GeoHorizon.D7.value: 5}
+_HORIZON_DAYS = {GeoHorizon.D1.value: 1, GeoHorizon.D3.value: 2, GeoHorizon.D7.value: 5}
 _MIN_SIGMA_SAMPLES = 10
 # A checkpoint with no price at its target is left pending and retried next
-# cycle — a Yahoo stall used to burn it as NEUTRAL forever. After this long the
-# bars are gone from the intraday window and it is recorded as unmeasurable.
-_GIVE_UP_AFTER = timedelta(days=7)
-_INTRADAY = {"period": "5d", "interval": "5m"}
+# cycle — a Yahoo stall used to burn it as NEUTRAL forever. Three days, not
+# seven: a final horizon kept pending keeps its signal ACTIVE, and ACTIVE is
+# what the per-user dedup blocks re-tracking on.
+_GIVE_UP_AFTER = timedelta(days=3)
+# Ten days of 5-minute bars reach past the +7d target with margin; five did
+# not (five trading days is seven calendar days to the hour).
+_INTRADAY = {"period": "10d", "interval": "5m"}
 _DAILY = {"period": "1mo", "interval": "1d"}
 _CONFIDENCE_MOD_CLAMP = 0.3
 
@@ -94,14 +101,24 @@ def _sigma_pct(series: Series | None, lag: int) -> float | None:
     return math.sqrt(sum((m - mean) ** 2 for m in moves) / (len(moves) - 1))
 
 
-def _threshold_pct(intraday: Series | None, daily: Series | None, horizon: str) -> float:
+def _threshold_pct(intraday: Series | None, daily: Series | None, horizon: str) -> float | None:
+    """Readable-move threshold in %, or None when the series cannot calibrate one.
+
+    None is not the floor: a ticker priced without a calibrated threshold used
+    to fall back to 0.1% silently — 45× too loose at +7d — and the resulting
+    coin flip wrote confidence_mod into geo_rule_stats. Uncalibrated is
+    unmeasurable.
+    """
     if horizon in _HORIZON_BARS:
         sigma = _sigma_pct(intraday, _HORIZON_BARS[horizon])
     else:
-        one_day = _sigma_pct(daily, 1)
-        sigma = one_day * math.sqrt(_HORIZON_DAYS[horizon]) if one_day is not None else None
+        days = _HORIZON_DAYS[horizon]
+        session = _sigma_pct(intraday, _SESSION_BARS)
+        if session is None:
+            session = _sigma_pct(daily, 1)
+        sigma = session * math.sqrt(days) if session is not None else None
     if sigma is None:
-        return _MIN_MOVE_PCT
+        return None
     return max(_MIN_MOVE_PCT, _SIGMA_K * sigma)
 
 
@@ -112,6 +129,9 @@ def create_checkpoints(db: Session, signal: GeoSignal) -> None:
         target = (
             add_trading_time(base, delay) if horizon in _TRADING_TIME_HORIZONS else base + delay
         )
+        # One naive-UTC column: add_trading_time answers aware, the calendar
+        # branch answers whatever created_at was.
+        target = target.astimezone(timezone.utc).replace(tzinfo=None) if target.tzinfo else target
         db.add(
             GeoCheckpoint(
                 user_id=signal.user_id,
@@ -222,7 +242,16 @@ def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) ->
     }
     symbols = sorted({t.symbol for s in signals.values() for t in s.tickers})
     intraday = fetch_price_series(symbols, budget=budget, **_INTRADAY) if symbols else {}
-    daily = fetch_price_series(symbols, budget=budget, **_DAILY) if symbols else {}
+    # The daily series backs only what the intraday one cannot: symbols with no
+    # 5-minute bars at all, and targets older than the intraday window. Fetching
+    # it for everything doubled the Yahoo footprint for data never read, and it
+    # shared the budget the intraday pass had just spent.
+    earliest = min((_utc(c.target_at) for c in pending), default=now)
+    need_daily = sorted(
+        sym for sym in symbols
+        if sym not in intraday or intraday[sym][0][0] > earliest
+    )
+    daily = fetch_price_series(need_daily, budget=budget, **_DAILY) if need_daily else {}
 
     evaluated = 0
     for chk in pending:
@@ -237,16 +266,18 @@ def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) ->
             bars = intraday.get(t.symbol)
             use_intraday = bool(bars) and bars[0][0] <= target
             price = _as_of(bars if use_intraday else daily.get(t.symbol), target)
-            if price is not None:
+            threshold = _threshold_pct(bars, daily.get(t.symbol), horizon)
+            # A price without a calibrated threshold is unmeasurable, not "0.1%".
+            if price is not None and threshold is not None:
                 prices[t.symbol] = price
-            thresholds[t.symbol] = _threshold_pct(bars, daily.get(t.symbol), horizon)
+                thresholds[t.symbol] = threshold
 
         if not prices:
             if now - target < _GIVE_UP_AFTER:
                 continue  # retry next cycle: the bars may just not have arrived
-            score, detail, total = None, "sin datos de precio para ningún ticker", 0
+            score, detail = None, "sin datos de precio para ningún ticker"
         else:
-            score, detail, total = _score_basket(signal, prices, thresholds)
+            score, detail, _ = _score_basket(signal, prices, thresholds)
 
         chk.score = score
         chk.outcome = _outcome(score)

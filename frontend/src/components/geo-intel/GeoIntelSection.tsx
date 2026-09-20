@@ -34,6 +34,7 @@ export function GeoIntelSection() {
   // How often the checkpoints were right. Enrichment: the page works without
   // it, so a failure logs and leaves the line out rather than blocking.
   const [accuracy, setAccuracy] = useState<GeoAccuracy | null>(null);
+  const pollTick = useRef(0);
 
   const load = useCallback(() => {
     setPhase("loading");
@@ -92,7 +93,10 @@ export function GeoIntelSection() {
         })
         .catch(bestEffort("geo signals refresh"));
       loadMonitor();
-      loadAccuracy();
+      // The hit rate only moves when the 30-min cron runs: a grouped scan over
+      // the whole checkpoint history every 60 s was 30× over-fetching.
+      pollTick.current += 1;
+      if (pollTick.current % 10 === 0) loadAccuracy();
     }, 60_000);
     return () => clearInterval(id);
   }, [loadMonitor, loadAccuracy]);

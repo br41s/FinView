@@ -466,10 +466,11 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 // human makes, and NEUTRAL is the opposite of INCORRECT: it
                 // means nothing measurable happened. Hollow says "no reading".
                 const hollow = pending || c.outcome === "NEUTRAL";
+                // NEUTRAL with a score is a tie (1-for-2), not "nothing moved".
                 const title = pending
                   ? "pendiente"
                   : c.outcome === "NEUTRAL"
-                  ? `sin movimiento medible${c.detail ? ` — ${c.detail}` : ""}`
+                  ? `${c.score == null ? "sin movimiento medible" : "sin veredicto (empate)"}${c.detail ? ` — ${c.detail}` : ""}`
                   : `${c.score != null ? Math.round(c.score) + "% correct" : "sin movimiento medible"}${c.detail ? ` — ${c.detail}` : ""}`;
                 return (
                   <div key={c.horizon} className="flex flex-col items-center gap-2" title={title}>

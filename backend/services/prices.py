@@ -1,7 +1,7 @@
 """Daily stock price fetching and caching via Yahoo Finance."""
 
 import logging
-from datetime import datetime, date
+from datetime import datetime, time, date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -220,10 +220,18 @@ def _last_closes(data, tickers: list[str]) -> dict[str, float]:
     return result
 
 
-def _close_series(data, tickers: list[str]) -> dict[str, list[tuple[datetime, float]]]:
+# Daily bars come back as tz-naive *dates*. Stamping them at midnight puts day
+# D's close 20 hours before it happened, so an as-of lookup at 15:00 on D read
+# the future; 21:00 UTC is after the US close in both EDT and EST.
+_DAILY_CLOSE_UTC = time(21, 0)
+
+
+def _close_series(
+    data, tickers: list[str], *, daily: bool = False
+) -> dict[str, list[tuple[datetime, float]]]:
     """Full (timestamp, close) series per ticker from a yfinance download frame,
-    timestamps normalised to aware UTC. Same column-shape handling as
-    ``_last_closes``; NaN bars are dropped."""
+    timestamps normalised to aware UTC (daily bars at the session close). Same
+    column-shape handling as ``_last_closes``; NaN bars are dropped."""
     import pandas as pd
 
     result: dict[str, list[tuple[datetime, float]]] = {}
@@ -239,6 +247,8 @@ def _close_series(data, tickers: list[str]) -> dict[str, list[tuple[datetime, fl
         out: list[tuple[datetime, float]] = []
         for ts, val in series.items():
             ts = pd.Timestamp(ts)
+            if daily and ts.tzinfo is None:
+                ts = pd.Timestamp(datetime.combine(ts.date(), _DAILY_CLOSE_UTC))
             ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
             out.append((ts.to_pydatetime(), float(val)))
         return out
@@ -364,7 +374,7 @@ def fetch_price_series(
                 group, period=period, interval=interval, auto_adjust=True,
                 progress=False, threads=True,
             )
-            out.update(_close_series(data, group))
+            out.update(_close_series(data, group, daily=interval.endswith("d")))
         except Exception:
             logger.exception("Error fetching Yahoo Finance series (%s/%s)", period, interval)
     return out

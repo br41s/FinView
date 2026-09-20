@@ -58,12 +58,3 @@ def add_trading_time(start: datetime, delta: timedelta) -> datetime:
                 remaining -= available
         moment = _next_session_open(moment)
 
-
-def in_session(moment: datetime) -> bool:
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    local = moment.astimezone(_NY)
-    if local.weekday() >= 5:
-        return False
-    open_, close = _session(local)
-    return open_ <= local < close

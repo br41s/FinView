@@ -83,10 +83,16 @@ def _mature_signal(db, monkeypatch, horizon: str, *, direction="bullish", price_
     # Force a fresh read so horizon comes back as GeoHorizon member (reproduces bug).
     db.expire_all()
 
-    bar_at = datetime.now(timezone.utc) - timedelta(days=2)
+    # Nine days of hourly bars sitting at price_now (± a hair, so a sigma exists
+    # and the threshold calibrates at the floor): every horizon's target has a
+    # bar, and a 10% move is readable while a 0% one is not.
+    start = datetime.now(timezone.utc) - timedelta(days=9)
+    bars = [
+        (start + timedelta(hours=i), price_now * (1 + (0.0001 if i % 2 else -0.0001)))
+        for i in range(9 * 24)
+    ]
     monkeypatch.setattr(
-        auditor, "fetch_price_series",
-        lambda symbols, budget=None, **kw: {"COPX": [(bar_at, price_now)]},
+        auditor, "fetch_price_series", lambda symbols, budget=None, **kw: {"COPX": bars}
     )
     return signal.id
 
@@ -263,7 +269,11 @@ def test_threshold_scales_with_the_tickers_own_noise():
     w = auditor._threshold_pct(wild, None, "1h")
     assert q == auditor._MIN_MOVE_PCT  # floor: quieter than the floor
     assert w > 1.0  # a ticker that swings 3% needs a real move to be readable
-    assert auditor._threshold_pct(None, None, "3d") == auditor._MIN_MOVE_PCT
+    # No series → no threshold, not the floor: uncalibrated is unmeasurable.
+    assert auditor._threshold_pct(None, None, "3d") is None
+    assert auditor._threshold_pct(wild[:5], None, "1h") is None
+    # Daily horizons calibrate from the same intraday series (one session lag).
+    assert auditor._threshold_pct(wild, None, "1d") is not None
 
 
 def test_ties_are_neutral_not_correct():
@@ -315,8 +325,10 @@ def test_the_daily_series_backs_a_target_older_than_the_intraday_window(db, monk
     now = datetime.now(timezone.utc)
     intraday = _series(now - timedelta(hours=10), timedelta(minutes=5), [120.0] * 50)
     daily = _series(now - timedelta(days=20), timedelta(days=1), [100.0] * 15 + [110.0] * 5)
+    calls: list[tuple[str, list[str]]] = []
 
     def series(symbols, budget=None, *, period, interval):
+        calls.append((interval, list(symbols)))
         return {"COPX": intraday if interval == "5m" else daily}
 
     monkeypatch.setattr(auditor, "fetch_price_series", series)
@@ -325,3 +337,44 @@ def test_the_daily_series_backs_a_target_older_than_the_intraday_window(db, monk
     # target (+7d, i.e. yesterday) is before the intraday window → daily close 110, not 120
     assert "COPX: +10.00%" in chk.detail
     assert _status(db.get(GeoSignal, signal_id)) == "resolved"
+    assert ("1d", ["COPX"]) in calls  # daily fetched because the target predates the window
+
+
+def test_a_priced_ticker_without_a_calibrated_threshold_is_unmeasurable(db, monkeypatch):
+    """Price from a 5-bar series, no sigma possible → pending, not a coin flip at 0.1%."""
+    _mature_signal(db, monkeypatch, GeoHorizon.D1.value)
+    chk = db.query(GeoCheckpoint).one()
+    chk.target_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    db.commit()
+    now = datetime.now(timezone.utc)
+    thin = _series(now - timedelta(hours=2), timedelta(minutes=5), [100.0, 101.0, 103.0, 104.0])
+    monkeypatch.setattr(auditor, "fetch_price_series", lambda *a, **k: {"COPX": thin})
+    assert auditor.evaluate_pending(db, user_id=1) == 0
+    assert db.query(GeoCheckpoint).one().outcome is None
+
+
+def test_the_daily_series_is_only_fetched_when_the_intraday_one_cannot_serve(db, monkeypatch):
+    _mature_signal(db, monkeypatch, GeoHorizon.D1.value)
+    chk = db.query(GeoCheckpoint).one()
+    chk.target_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    db.commit()
+    now = datetime.now(timezone.utc)
+    intraday = _series(now - timedelta(days=9), timedelta(minutes=5), [100.0 + (i % 5) * 0.3 for i in range(400)])
+    calls: list[str] = []
+
+    def series(symbols, budget=None, *, period, interval):
+        calls.append(interval)
+        return {"COPX": intraday}
+
+    monkeypatch.setattr(auditor, "fetch_price_series", series)
+    auditor.evaluate_pending(db, user_id=1)
+    assert calls == ["5m"]
+
+
+def test_checkpoint_targets_are_stored_naive_utc(db):
+    signal = _basket(_ticker())
+    signal.created_at = datetime(2026, 9, 20, 3, 0, tzinfo=timezone.utc)
+    db.add(signal)
+    db.flush()
+    auditor.create_checkpoints(db, signal)
+    assert all(c.target_at.tzinfo is None for c in signal.checkpoints)

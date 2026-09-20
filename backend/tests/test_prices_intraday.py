@@ -113,3 +113,15 @@ def test_an_empty_frame_is_not_a_price():
 def test_a_frame_without_a_close_column_is_survivable():
     """yfinance shapes shift between versions; a missing column must not raise."""
     assert svc._last_closes(pd.DataFrame({"Open": [1.0]}), ["XLE"]) == {}
+
+
+def test_daily_bars_are_stamped_at_the_session_close():
+    """A date-only index at 00:00 put day D's close 20 h before it happened: an
+    as-of lookup at 15:00 on D read the future."""
+    from datetime import timezone
+
+    frame = pd.DataFrame({"Close": [100.0, 101.0]}, index=pd.to_datetime(["2026-09-17", "2026-09-18"]))
+    series = svc._close_series(frame, ["XLE"], daily=True)["XLE"]
+    assert series[0][0].hour == 21 and series[0][0].tzinfo == timezone.utc
+    intraday = svc._close_series(frame, ["XLE"])["XLE"]
+    assert intraday[0][0].hour == 0
