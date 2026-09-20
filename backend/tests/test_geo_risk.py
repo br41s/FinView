@@ -17,6 +17,7 @@ from backend.services.geo.rules import (
     GeoRuleStat,
     base_risk,
     compute_risk,
+    effective_confidence,
     severity_headroom,
 )
 from backend.services.geo.sentinel import GeoEvent
@@ -48,13 +49,17 @@ def test_some_rule_can_notify_on_first_sighting():
 
     Otherwise notify and the LLM are dead code, whatever the channels say.
     """
+    # effective_confidence, not base_confidence: the scope penalty lives there,
+    # and a version of this test on the base number passed while Hormuz was muted.
     reachable = [
         r.id
         for r in FAST_RULES
-        if compute_importance(r.base_confidence * 100, base_risk(r)) >= IMPORTANCE_THRESHOLD
+        if compute_importance(effective_confidence(r, None) * 100, base_risk(r))
+        >= IMPORTANCE_THRESHOLD
     ]
     assert reachable, "no rule can reach IMPORTANCE_THRESHOLD on first sighting"
     assert "conflict-hormuz-strait" in reachable
+    assert "ais-tanker-drop-hormuz" in reachable  # the earliest mechanical Hormuz signal
 
 
 def test_fires_do_not_notify_on_first_sighting():

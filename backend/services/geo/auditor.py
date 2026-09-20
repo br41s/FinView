@@ -247,13 +247,19 @@ def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) ->
     # it for everything doubled the Yahoo footprint for data never read, and it
     # shared the budget the intraday pass had just spent.
     earliest = min((_utc(c.target_at) for c in pending), default=now)
+    # "Too few bars to calibrate" is as good as none: TTF=F has ~36 five-minute
+    # bars in ten days, so its daily horizons had no sigma and the leg never
+    # reached the +7d checkpoint that trains the rules.
     need_daily = sorted(
         sym for sym in symbols
-        if sym not in intraday or intraday[sym][0][0] > earliest
+        if sym not in intraday
+        or intraday[sym][0][0] > earliest
+        or len(intraday[sym]) <= _SESSION_BARS + _MIN_SIGMA_SAMPLES
     )
     daily = fetch_price_series(need_daily, budget=budget, **_DAILY) if need_daily else {}
 
     evaluated = 0
+    uncalibrated: set[str] = set()
     for chk in pending:
         signal = signals.get(chk.signal_id)
         if signal is None:
@@ -268,6 +274,9 @@ def evaluate_pending(db: Session, user_id: int, budget: Budget | None = None) ->
             price = _as_of(bars if use_intraday else daily.get(t.symbol), target)
             threshold = _threshold_pct(bars, daily.get(t.symbol), horizon)
             # A price without a calibrated threshold is unmeasurable, not "0.1%".
+            if price is not None and threshold is None and t.symbol not in uncalibrated:
+                uncalibrated.add(t.symbol)
+                logger.info("geo auditor: %s has no %s sigma — leg unmeasurable", t.symbol, horizon)
             if price is not None and threshold is not None:
                 prices[t.symbol] = price
                 thresholds[t.symbol] = threshold

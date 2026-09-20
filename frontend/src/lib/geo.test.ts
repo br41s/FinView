@@ -131,7 +131,7 @@ describe("tradabilityHint", () => {
       alternate: "WisdomTree Cocoa ETC",
     });
     expect(hint.muted).toBe(true);
-    expect(hint.badge).toBeNull();
+    expect(hint.badge).toBe("s/ruta");
     expect(hint.tooltip).toBe("Sin ruta minorista en la UE — alternativa: WisdomTree Cocoa ETC");
   });
 

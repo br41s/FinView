@@ -57,12 +57,15 @@ class FastRule:
     # from confidence squared the same number and capped importance at 54 against
     # a notify gate of 60 (0 notifications in 1700 prod signals, 2026-09-20 audit).
     risk: int = 0
-    # How wide the event is: site (one port, one mine), local (a country-sized
-    # box or smaller), regional (a multi-country box), global (compound rules,
-    # systemic). "" = inferred from the region box area (see rule_scope). A rule
-    # may only target instruments whose breadth its scope can plausibly move —
-    # the 2026-09-20 audit found 61 of 94 rules pairing a local event with an
-    # all-global basket ("a strong rain in one box, a worldwide ticker").
+    # How far the event's *market impact* reaches — not where the trigger sits:
+    # site (one port's throughput), local (a country's assets), regional (a
+    # multi-country box), global (the whole curve re-prices, systemic risk-off).
+    # A Hormuz closure is a 21-mile trigger with global reach; a Greek fire is
+    # local however large. "" = inferred from the region box area (rule_scope).
+    # A rule may only target instruments whose breadth its reach can plausibly
+    # move — the 2026-09-20 audit found 61 of 94 rules pairing a one-box event
+    # with an all-global basket — so claiming "global" is a claim the chain's
+    # third clause must defend, and review reads it as such.
     scope: str = ""
     # (physical effect, price/flow it moves, why the instrument follows). Written
     # only where the transmission can actually be written down; a rule whose
@@ -154,6 +157,16 @@ INSTRUMENT_TRADABILITY: dict[str, tuple[str, str]] = {
     # NG=F — so intraday checkpoints on it will often resolve as "no data".
     "TTF=F": ("not_tradable", "NGAS (WisdomTree natural gas ETC, Henry Hub — wrong benchmark)"),
     "005930.KS": ("not_tradable", "Samsung GDR (SMSN.L)"),
+    # Retired from every rule on 2026-09-21 but still on live signal rows: the
+    # chip must not render them as cash-buyable. They age out with the signals.
+    "JETS": ("not_tradable", "IAG.MC / RYA.IR (airlines, Madrid / Dublin)"),
+    "BDRY": ("not_tradable", "GOGL.OL (Golden Ocean, Oslo)"),
+    "XRT": ("not_tradable", "ITX.MC (Inditex)"),
+    "SOYB": ("not_tradable", "WisdomTree Soybeans ETC"),
+    "COPX": ("not_tradable", "VanEck Global Mining UCITS"),
+    "REMX": ("not_tradable", "VanEck Rare Earth UCITS"),
+    "LIT": ("options_only", "VOLT (WisdomTree Battery Solutions)"),
+    "GDX": ("options_only", "VanEck Gold Miners UCITS"),
     # EU-listed cash names: buyable as cash at TR / DEGIRO / IBKR / ING
     **{s: ("cash_eu", "") for s in (
         "ANTO.L", "GLEN.L", "IAG.MC", "ITX.MC", "RYA.IR", "RWE.DE", "MUV2.DE", "ALV.DE",
@@ -314,7 +327,7 @@ GEO_REGIONS: dict[str, tuple[float, float, float, float]] = {
     "sahel": (10, 20, -17, 24),
     "nigeria_oil": (4, 10, 2, 9),
     "horn_of_africa": (-2, 18, 32, 52),
-    "drc_mining": (-8, 2, 22, 32),
+    "drc_mining": (-13, 2, 22, 32),  # Kivu tin/tantalum + Katanga copper-cobalt (Kolwezi -10.7)
     "libya": (19, 34, 9, 25),
     "myanmar": (9, 29, 92, 102),
     # Commodity-basin boxes: narrow, single-commodity chokepoints where one
@@ -604,7 +617,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "conflict-mideast-oil", "conflict", "alert.severity=red && region=middle_east_oil",
         "Middle East oil conflict", _t("USO+ XLE+ LMT+ RTX+ ITA+ GLD+"),
         "Oil supply risk, defense demand, systemic risk-off", 0.88,
-        scope="regional",
+        scope="global",
         chain=(
             "a red-severity conflict puts Gulf production, refining and export terminals at risk",
             "a war premium is priced into crude, defense order books re-rate and reserve demand moves into gold",
@@ -615,7 +628,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "conflict-hormuz-strait", "conflict", "region=strait_of_hormuz",
         "Strait of Hormuz tension", _t("USO+ GLD+"),
         "A fifth of seaborne crude transits one 21-mile channel", 0.90,
-        scope="site",
+        scope="global",
         chain=(
             "military action in the strait threatens the transit of roughly a fifth of seaborne crude",
             "there is no alternative route at that volume, so the whole crude curve re-prices and risk assets de-rate",
@@ -637,7 +650,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "conflict-south-china-sea", "conflict", "region=south_china_sea",
         "South China Sea tension", _t("FXI- TSM- LMT+ GLD+"),
         "Regional escalation risk, defense demand, systemic risk-off", 0.75,
-        scope="regional",
+        scope="global",
         chain=(
             "armed incident in the sea lane that carries a third of world trade and the Taiwan approaches",
             "a conflict premium is priced into the regional equity risk and into defense order books",
@@ -648,7 +661,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "conflict-korea", "conflict", "alert.severity=red && region=korean_peninsula",
         "Korean Peninsula conflict", _t("EWY- GLD+"),
         "Seoul is inside artillery range; a red alert is a systemic tail", 0.72,
-        scope="local",
+        scope="global",
         chain=(
             "a red-severity incident on the DMZ puts Seoul's industrial belt at direct risk",
             "Korean assets carry a war discount and reserve demand moves into gold",
@@ -670,7 +683,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "conflict-iran-nuclear", "conflict", "alert.severity=red && region=iran",
         "Iran nuclear/military escalation", _t("USO+ GLD+ LMT+ ITA+"),
         "Oil supply risk, defense demand, systemic risk-off", 0.84,
-        scope="regional",
+        scope="global",
         chain=(
             "a red-severity escalation puts Iranian exports and the Gulf shipping lane at risk",
             "crude prices a war premium, defense procurement accelerates and reserve demand moves into gold",
@@ -705,7 +718,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "ais-tanker-drop-hormuz", "maritime_disruption", "region=strait_of_hormuz",
         "Tanker traffic drop at Hormuz", _t("USO+ GLD+"),
         "Observed transits falling is the chokepoint closing in real time", 0.85,
-        scope="site",
+        scope="global",
         chain=(
             "tanker transits through the strait fall below their normal daily count",
             "Gulf loadings are not reaching the market and the crude curve backwardates",
@@ -952,7 +965,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "air-closure-mideast", "airspace_closure", "region=middle_east_oil",
         "Airspace closure over Middle East", _t("USO+ LMT+ GLD+"),
         "Civil traffic clearing a corridor is the leading indicator of strikes", 0.85,
-        scope="regional",
+        scope="global",
         chain=(
             "civil traffic vacates a Gulf corridor, which precedes or accompanies military action",
             "a war premium is priced into crude and defense procurement expectations rise",
@@ -974,7 +987,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "air-closure-taiwan", "airspace_closure", "region=taiwan",
         "Airspace closure over Taiwan", _t("TSM- FXI- GLD+"),
         "A closed Taiwan corridor is the systemic tail scenario", 0.88,
-        scope="local",
+        scope="global",
         chain=(
             "civil aviation vacates the Taiwan approaches, which only happens around live exercises or worse",
             "leading-edge foundry supply and cross-strait trade are put in question at once",
@@ -985,7 +998,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "air-closure-korea", "airspace_closure", "region=korean_peninsula",
         "Airspace closure over Korea", _t("EWY- GLD+"),
         "A closed corridor over the DMZ is a systemic tail", 0.80,
-        scope="local",
+        scope="global",
         chain=(
             "civil traffic vacates the peninsula corridor around a military event",
             "Korean assets carry a war discount and reserve demand moves into gold",
@@ -996,7 +1009,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "air-closure-iran", "airspace_closure", "region=iran",
         "Airspace closure over Iran", _t("USO+ LMT+ GLD+"),
         "Corridor closure over an OPEC producer precedes strikes", 0.86,
-        scope="regional",
+        scope="global",
         chain=(
             "civil traffic clears Iranian airspace, which precedes or accompanies military action",
             "Iranian export continuity is questioned, crude prices a premium, procurement accelerates",
@@ -1007,7 +1020,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "air-military-mideast", "military_surge", "region=middle_east_oil",
         "Military flight surge in Middle East", _t("USO+ LMT+ GLD+"),
         "Tanker and transport surge is the buildup made visible", 0.83,
-        scope="regional",
+        scope="global",
         chain=(
             "military transport and tanker movements over the Gulf rise well above baseline",
             "the market prices a higher probability of strikes on production and export infrastructure",
@@ -1029,7 +1042,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "air-military-scs", "military_surge", "region=south_china_sea",
         "Military flight surge in South China Sea", _t("FXI- LMT+ TSM- GLD+"),
         "A surge over the sea lane raises the great-power tail", 0.75,
-        scope="regional",
+        scope="global",
         chain=(
             "military air activity over the sea lane and the Taiwan approaches rises above baseline",
             "regional equity risk premia widen, procurement accelerates and reserve demand moves into gold",
@@ -1041,7 +1054,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "gdelt-conflict-mideast", "armed_conflict", "region=middle_east_oil",
         "Armed conflict in Middle East (GDELT)", _t("USO+ XLE+ GLD+ LMT+"),
         "Oil supply risk, defense demand, systemic risk-off", 0.84,
-        scope="regional",
+        scope="global",
         chain=(
             "reported armed conflict in the Gulf puts production and export terminals at risk",
             "a war premium is priced into crude and defense order books re-rate",
@@ -1063,7 +1076,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "gdelt-military-taiwan", "military_escalation", "region=taiwan",
         "Military escalation Taiwan (GDELT)", _t("TSM- FXI- GLD+"),
         "Foundry supply and cross-strait trade at risk at once", 0.82,
-        scope="local",
+        scope="global",
         chain=(
             "reported military escalation around the strait and the Taiwanese approaches",
             "leading-edge foundry continuity and cross-strait trade are questioned together",
@@ -1074,7 +1087,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "gdelt-military-korea", "military_escalation", "region=korean_peninsula",
         "Military escalation Korea (GDELT)", _t("EWY- GLD+"),
         "Seoul's industrial belt is inside the risk radius", 0.76,
-        scope="local",
+        scope="global",
         chain=(
             "reported military escalation on the peninsula",
             "Korean assets carry a war discount and reserve demand moves into gold",
@@ -1085,7 +1098,7 @@ FAST_RULES: tuple[FastRule, ...] = (
         "gdelt-sanctions-iran", "sanctions", "region=iran",
         "Sanctions on Iran (GDELT)", _t("USO+ GLD+ XLE+"),
         "Barrels removed from the export balance", 0.78,
-        scope="regional",
+        scope="global",
         chain=(
             "tightened sanctions cut Iranian crude out of the legal export balance",
             "the marginal barrel gets more expensive and the geopolitical premium widens",

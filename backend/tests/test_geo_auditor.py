@@ -378,3 +378,24 @@ def test_checkpoint_targets_are_stored_naive_utc(db):
     db.flush()
     auditor.create_checkpoints(db, signal)
     assert all(c.target_at.tzinfo is None for c in signal.checkpoints)
+
+
+def test_a_thin_intraday_series_falls_back_to_the_daily_sigma(db, monkeypatch):
+    """TTF=F: ~36 five-minute bars in ten days. Without the daily fallback its
+    daily horizons had no sigma and the leg never reached +7d."""
+    _mature_signal(db, monkeypatch, GeoHorizon.D7.value)
+    now = datetime.now(timezone.utc)
+    thin = _series(now - timedelta(days=9), timedelta(hours=6), [100.0 + (i % 3) * 0.4 for i in range(36)])
+    daily = _series(now - timedelta(days=25), timedelta(days=1), [100.0 + (i % 4) * 0.8 for i in range(22)])
+    calls: list[str] = []
+
+    def series(symbols, budget=None, *, period, interval):
+        calls.append(interval)
+        return {"COPX": thin if interval == "5m" else daily}
+
+    monkeypatch.setattr(auditor, "fetch_price_series", series)
+    assert auditor._threshold_pct(thin, None, "7d") is None
+    assert auditor._threshold_pct(thin, daily, "7d") is not None
+    auditor.evaluate_pending(db, user_id=1)
+    assert calls == ["5m", "1d"]
+    assert db.query(GeoCheckpoint).one().outcome is not None

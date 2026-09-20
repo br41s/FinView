@@ -431,7 +431,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 const hint = tradabilityHint(t);
                 const base =
                   t.priceAtSignal != null
-                    ? `Price at signal: $${t.priceAtSignal.toFixed(2)} · Ver instrumento`
+                    ? `Precio al disparo: ${t.priceAtSignal.toFixed(2)} · Ver instrumento`
                     : "Ver instrumento";
                 return (
                   <button

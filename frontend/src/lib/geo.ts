@@ -171,7 +171,8 @@ export function tradabilityHint(
         muted: false,
       };
     case "not_tradable":
-      return { badge: null, tooltip: `Sin ruta minorista en la UE — ${alt}`, muted: true };
+      // The more severe state needs a legible marker: `title=` does not exist on touch.
+      return { badge: "s/ruta", tooltip: `Sin ruta minorista en la UE — ${alt}`, muted: true };
     default:
       return NO_HINT;
   }
