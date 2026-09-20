@@ -4,7 +4,7 @@ import { GeoMap } from "./GeoMap";
 import { SignalPanel } from "./SignalPanel";
 import { FilterBar, CATEGORIES, type DirectionFilter } from "./FilterBar";
 import { MapLoading, MapEmpty, MapError } from "./MapStates";
-import { type GeoSignal } from "@/lib/geo";
+import { formatAccuracyLine, type GeoAccuracy, type GeoSignal } from "@/lib/geo";
 import { geoHealth } from "@/lib/geoHealth";
 import { api, type GeoSchedulerStatus } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
@@ -31,6 +31,9 @@ export function GeoIntelSection() {
   // Outcome of the last manual run. A cycle that ingests nothing is a result,
   // not silence, and the button used to report both the same way: by stopping.
   const [runOutcome, setRunOutcome] = useState<string | null>(null);
+  // How often the checkpoints were right. Enrichment: the page works without
+  // it, so a failure logs and leaves the line out rather than blocking.
+  const [accuracy, setAccuracy] = useState<GeoAccuracy | null>(null);
 
   const load = useCallback(() => {
     setPhase("loading");
@@ -50,10 +53,15 @@ export function GeoIntelSection() {
       .catch(bestEffort("geo monitor status"));
   }, []);
 
+  const loadAccuracy = useCallback(() => {
+    api.geo.accuracy().then(setAccuracy).catch(bestEffort("geo accuracy"));
+  }, []);
+
   useEffect(() => {
     load();
     loadMonitor();
-  }, [load, loadMonitor]);
+    loadAccuracy();
+  }, [load, loadMonitor, loadAccuracy]);
 
   // Deep link: /geo-intel?ticker=X selects the newest signal affecting X. The
   // Options Monitor only offers the link when a signal actually exists, but the
@@ -84,9 +92,10 @@ export function GeoIntelSection() {
         })
         .catch(bestEffort("geo signals refresh"));
       loadMonitor();
+      loadAccuracy();
     }, 60_000);
     return () => clearInterval(id);
-  }, [loadMonitor]);
+  }, [loadMonitor, loadAccuracy]);
 
   const toggleMonitor = useCallback(async () => {
     if (!monitor) return;
@@ -122,6 +131,9 @@ export function GeoIntelSection() {
   // Recomputed on every poll (the status refetches on the same 60s tick), so a
   // pipeline that stops during the session shows up without a reload.
   const health = useMemo(() => geoHealth(monitor), [monitor]);
+  // Null until the first fetch lands, so nothing time-derived renders on the
+  // server and the line simply stays absent when the endpoint is unreachable.
+  const accuracyLine = useMemo(() => formatAccuracyLine(accuracy), [accuracy]);
 
   const retry = load;
 
@@ -224,6 +236,14 @@ export function GeoIntelSection() {
             )}
             {runOutcome && <span className="text-muted-foreground">{runOutcome}</span>}
           </div>
+        )}
+        {accuracyLine && (
+          <p
+            className="text-[11px] text-[rgba(31,27,22,0.5)]"
+            style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
+          >
+            {accuracyLine}
+          </p>
         )}
       </header>
 
