@@ -1,5 +1,6 @@
 """Tests for geo notifications (channel fan-out, Telegram escaping) and /geo/cron."""
 
+import logging
 from datetime import datetime
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from backend.api.geo import cron_run
 from backend.models import Base, GeoSignal, GeoSignalTicker, User
 from backend.services.geo import notify
+from backend.services.geo.advisor import SignalResult
 from backend.services.geo.notify import _md_escape, notify_signal
 
 
@@ -52,13 +54,18 @@ def test_md_escape_escapes_all_specials():
 
 def test_notify_signal_fans_out_to_all_channels(monkeypatch):
     calls = {}
-    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: calls.setdefault("ntfy", a))
-    monkeypatch.setattr(notify, "send_telegram", lambda text: calls.setdefault("tg", text))
-    monkeypatch.setattr(notify, "send_email", lambda *a: calls.setdefault("email", a))
+    monkeypatch.setattr(
+        notify, "send_ntfy", lambda *a, **k: calls.setdefault("ntfy", a) or True
+    )
+    monkeypatch.setattr(
+        notify, "send_telegram", lambda text: calls.setdefault("tg", text) or True
+    )
+    monkeypatch.setattr(notify, "send_email", lambda *a: calls.setdefault("email", a) or True)
 
-    notify_signal(_signal(), importance=72)
+    delivered = notify_signal(_signal(), importance=72)
 
     assert {"ntfy", "tg", "email"} <= set(calls)
+    assert delivered == {"ntfy": True, "telegram": True, "email": True}
     # Raw specials from the headline must arrive escaped in the Telegram text.
     assert "\\*Tokyo\\*" in calls["tg"]
     assert "\\[USGS\\_live]" in calls["tg"]
@@ -71,7 +78,246 @@ def test_notify_signal_never_raises(monkeypatch):
     monkeypatch.setattr(notify, "send_ntfy", boom)
     monkeypatch.setattr(notify, "send_telegram", boom)
     monkeypatch.setattr(notify, "send_email", boom)
-    notify_signal(_signal(), importance=72)  # must not raise
+    assert notify_signal(_signal(), importance=72) == {  # must not raise
+        "ntfy": False,
+        "telegram": False,
+        "email": False,
+    }
+
+
+def test_notify_signal_reports_every_channel_unconfigured(monkeypatch, caplog):
+    """Prod ran seven days with 0 notification log lines and no way to tell a
+    delivered alert from a swallowed one: the three senders returned False with
+    no log when unconfigured and notify_signal discarded the return values."""
+    from backend.config import settings
+
+    for attr in (
+        "ntfy_topic", "telegram_bot_token", "telegram_chat_id",
+        "notify_email_from", "notify_email_to", "notify_email_password",
+    ):
+        monkeypatch.setattr(settings, attr, "")
+
+    signal = _signal()
+    with caplog.at_level(logging.WARNING):
+        delivered = notify_signal(signal, importance=72)
+
+    assert delivered == {"ntfy": False, "telegram": False, "email": False}
+    assert not any(delivered.values())
+    assert signal.notified_at is None
+    text = caplog.text
+    assert "not configured" in text  # from the senders themselves
+    for channel in ("ntfy", "telegram", "email"):
+        assert f"channel {channel} did not deliver" in text
+
+
+def test_notify_signal_isolates_a_failing_channel(monkeypatch):
+    """One `try` used to wrap all three channels, so a Telegram exception
+    silently dropped the email that came after it."""
+    calls: list[str] = []
+
+    def boom(*a, **k):
+        calls.append("tg")
+        raise RuntimeError("telegram down")
+
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: calls.append("ntfy") or True)
+    monkeypatch.setattr(notify, "send_telegram", boom)
+    monkeypatch.setattr(notify, "send_email", lambda *a: calls.append("email") or True)
+
+    delivered = notify_signal(_signal(), importance=72)
+
+    assert calls == ["ntfy", "tg", "email"]
+    assert delivered == {"ntfy": True, "telegram": False, "email": True}
+
+
+def _gated(signal: GeoSignal) -> SignalResult:
+    return SignalResult(signal=signal, importance=72, is_new=True, should_notify=True)
+
+
+def test_cycle_stamps_notified_at_when_one_channel_delivers(db, monkeypatch):
+    """`notified_at` is the delivery record the pipeline never had.
+
+    Email alone delivering is the point: two dead channels must not make this
+    read as undelivered.
+    """
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: False)
+    monkeypatch.setattr(notify, "send_telegram", lambda text: False)
+    monkeypatch.setattr(notify, "send_email", lambda *a: True)
+
+    signal = _signal()
+    db.add(signal)
+    db.commit()
+
+    notified, failed = orchestrator._dispatch_notifications(db, 1, [_gated(signal)])
+
+    assert (notified, failed) == (1, 0)
+    db.refresh(signal)
+    assert signal.notified_at is not None
+
+
+def test_cycle_counts_an_undelivered_signal_instead_of_stamping_it(db, monkeypatch):
+    """`GeoCycleRun.notified` counted attempts, so a cycle where nothing could
+    possibly be delivered still reported notifications."""
+    from backend.services.geo import orchestrator
+
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: False)
+    monkeypatch.setattr(notify, "send_telegram", lambda text: False)
+    monkeypatch.setattr(notify, "send_email", lambda *a: False)
+
+    signal = _signal()
+    db.add(signal)
+    db.commit()
+
+    notified, failed = orchestrator._dispatch_notifications(db, 1, [_gated(signal)])
+
+    assert (notified, failed) == (0, 1)
+    db.refresh(signal)
+    assert signal.notified_at is None
+
+
+# ── notification_service: unconfigured + transport ────────────────────
+
+
+def test_send_email_uses_a_bounded_smtp_timeout(monkeypatch):
+    """smtplib has no default deadline, and the geo cron is synchronous inside
+    the Cloud Run request — an unreachable Gmail could hold it to the 1800s
+    deadline."""
+    from backend.config import settings
+    from backend.services import notification_service
+
+    monkeypatch.setattr(settings, "notify_email_from", "a@x.com")
+    monkeypatch.setattr(settings, "notify_email_password", "pw")
+    monkeypatch.setattr(settings, "notify_email_to", "b@x.com")
+
+    captured: dict = {}
+
+    class _SMTP:
+        def __init__(self, host, port, timeout=None):
+            captured.update(host=host, port=port, timeout=timeout)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
+        def sendmail(self, *a):
+            pass
+
+    monkeypatch.setattr(notification_service.smtplib, "SMTP", _SMTP)
+    assert notification_service.send_email("s", "<p>b</p>") is True
+    assert captured["timeout"] == notification_service._SMTP_TIMEOUT
+
+
+def test_send_ntfy_retries_once_on_a_5xx(monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+
+    from backend.config import settings
+    from backend.services import notification_service
+
+    monkeypatch.setattr(settings, "ntfy_topic", "finview-test")
+    monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
+
+    class _Resp(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    attempts = []
+
+    def fake_urlopen(req, timeout=None):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, None)
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert notification_service.send_ntfy("t", "m") is True
+    assert len(attempts) == 2
+
+
+def test_send_ntfy_does_not_retry_a_4xx(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    from backend.config import settings
+    from backend.services import notification_service
+
+    monkeypatch.setattr(settings, "ntfy_topic", "finview-test")
+    attempts = []
+
+    def fake_urlopen(req, timeout=None):
+        attempts.append(1)
+        raise urllib.error.HTTPError(req.full_url, 403, "forbidden", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert notification_service.send_ntfy("t", "m") is False
+    assert len(attempts) == 1
+
+
+def test_send_telegram_retries_once_on_a_timeout(monkeypatch):
+    import io
+    import urllib.request
+
+    from backend.config import settings
+    from backend.services import notification_service
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "tok")
+    monkeypatch.setattr(settings, "telegram_chat_id", "-100123")
+    monkeypatch.setattr(settings, "telegram_thread_id", "")
+    monkeypatch.setattr(notification_service.time, "sleep", lambda s: None)
+
+    class _Resp(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    attempts = []
+
+    def fake_urlopen(req, timeout=None):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise TimeoutError("timed out")
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert notification_service.send_telegram("hola") is True
+    assert len(attempts) == 2
+
+
+def test_unconfigured_senders_log_a_warning(monkeypatch, caplog):
+    from backend.config import settings
+    from backend.services import notification_service
+
+    monkeypatch.setattr(settings, "ntfy_topic", "")
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    monkeypatch.setattr(settings, "notify_email_from", "")
+
+    with caplog.at_level(logging.WARNING):
+        assert notification_service.send_ntfy("t", "m") is False
+        assert notification_service.send_telegram("t") is False
+        assert notification_service.send_email("s", "b") is False
+
+    assert "ntfy not configured" in caplog.text
+    assert "Telegram not configured" in caplog.text
+    assert "email not configured" in caplog.text
 
 
 # ── Telegram forum-topic routing ──────────────────────────────────────

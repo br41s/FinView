@@ -70,6 +70,8 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("backtest_signals", "regime", "VARCHAR(12)"),
     ("backtest_signals", "regime_alignment", "VARCHAR(10)"),
     ("options_alerts", "regime_alignment", "VARCHAR(10)"),
+    ("geo_signals", "notified_at", "TIMESTAMP"),
+    ("geo_cycle_runs", "notify_failed", "INTEGER"),
 ]
 
 # Foreign-key columns need explicit indexes: PostgreSQL indexes the *referenced*

@@ -12,6 +12,7 @@ rolling baseline, which is objective (traffic counts, user-independent).
 """
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -365,28 +366,43 @@ def analyze_weather_extremes(points: list[MeteoPoint]) -> list[GeoEvent]:
 
 
 # ── Specialist: GDELT geopolitical ───────────────────────────────────
+# Matched as words, not substrings: "BAN" used to hit Lebanon, Albania,
+# Bangladesh and "central bank", so sanctions swallowed most of the feed, and
+# "STRIKE" claimed every airstrike for protest. A short suffix set keeps the
+# stems working ("sanctions", "restrictions", "demonstrators") without the
+# false positives. Order matters — first match wins, so the broadest list
+# (trade_dispute: TRADE / IMPORT / EXPORT) is checked last.
 _GDELT_ACTOR_PATTERNS = {
-    "sanctions": ("SANCTION", "EMBARGO", "BAN", "RESTRICT", "TARIFF"),
     "military_escalation": ("MILITARY", "ARMY", "NAVY", "FORCE", "DEPLOY", "MISSILE", "NUCLEAR"),
+    "sanctions": ("SANCTION", "EMBARGO", "BAN", "RESTRICT", "TARIFF"),
     "protest": ("PROTEST", "DEMONSTRAT", "RIOT", "STRIKE", "UNREST"),
     "trade_dispute": ("TRADE", "TARIFF", "IMPORT", "EXPORT", "WTO"),
 }
-# category → (financial_type, max_goldstein, min_goldstein, min_mentions, min_sources)
+_PATTERN_SUFFIX = r"(?:S|ES|ED|ING|ER|ERS|OR|ORS|ION|IONS|MENT|MENTS)?\b"
+_GDELT_PATTERN_RE = {
+    category: re.compile(r"\b(?:" + "|".join(patterns) + ")" + _PATTERN_SUFFIX, re.IGNORECASE)
+    for category, patterns in _GDELT_ACTOR_PATTERNS.items()
+}
+# category → (financial_type, max_goldstein, min_goldstein)
+# No mention/source floors: the Doc API supplies no counts (see ingest/gdelt.py),
+# so the old 8–15 mention / 3–5 source floors could only ever be met by the
+# fabricated constants they were written against — and those were below the
+# floors, which is why prod holds 0 GDELT-sourced signals out of 1700.
 _GDELT_FILTERS = {
-    "armed_conflict": ("armed_conflict", -7, None, 10, 5),
-    "military_escalation": ("military_escalation", -5, None, 8, 4),
-    "sanctions": ("sanctions", -4, None, 10, 5),
-    "protest": ("mass_protest", -3, None, 15, 5),
-    "diplomatic_tension": ("diplomatic_tension", -4, None, 8, 3),
-    "trade_dispute": ("trade_dispute", -3, None, 12, 5),
-    "cooperation": ("diplomatic_cooperation", None, 6, 10, 4),
+    "armed_conflict": ("armed_conflict", -7, None),
+    "military_escalation": ("military_escalation", -5, None),
+    "sanctions": ("sanctions", -4, None),
+    "protest": ("mass_protest", -3, None),
+    "diplomatic_tension": ("diplomatic_tension", -4, None),
+    "trade_dispute": ("trade_dispute", -3, None),
+    "cooperation": ("diplomatic_cooperation", None, 6),
 }
 
 
 def _classify_gdelt(evt: GdeltEvent) -> str | None:
-    text = f"{evt.title} {evt.actor1} {evt.actor2}".upper()
-    for category, patterns in _GDELT_ACTOR_PATTERNS.items():
-        if any(p in text for p in patterns):
+    text = f"{evt.title} {evt.actor1} {evt.actor2}"
+    for category, pattern in _GDELT_PATTERN_RE.items():
+        if pattern.search(text):
             return category
     if evt.goldstein_scale <= -7:
         return "armed_conflict"
@@ -407,17 +423,13 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
     region_counts: dict[str, dict] = {}
 
     for evt in gdelt_events:
-        if evt.num_mentions < 5 or evt.num_sources < 3:
-            continue
         category = _classify_gdelt(evt)
         if not category or category not in _GDELT_FILTERS:
             continue
-        ftype, max_g, min_g, min_m, min_s = _GDELT_FILTERS[category]
+        ftype, max_g, min_g = _GDELT_FILTERS[category]
         if max_g is not None and evt.goldstein_scale > max_g:
             continue
         if min_g is not None and evt.goldstein_scale < min_g:
-            continue
-        if evt.num_mentions < min_m or evt.num_sources < min_s:
             continue
 
         regions = match_regions(evt.latitude, evt.longitude)
@@ -443,7 +455,6 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                 timestamp=now,
                 raw_data={
                     "goldsteinScale": evt.goldstein_scale,
-                    "numMentions": evt.num_mentions,
                     "actor1": evt.actor1,
                     "category": category,
                 },
