@@ -555,6 +555,49 @@ class GeoRunResult(BaseModel):
     notified: int | None = None
 
 
+class GeoHorizonAccuracy(BaseModel):
+    """Outcome matrix for one checkpoint horizon over the requested window."""
+
+    correct: int = 0
+    incorrect: int = 0
+    neutral: int = 0
+    pending: int = 0
+    # correct / (correct + incorrect). NEUTRAL is excluded on purpose: it means
+    # "nothing measurable moved", not a thesis that failed, so counting it as a
+    # miss would drag every hit rate toward zero the way the dots already do.
+    # None when the denominator is 0 — no measurement is not 0 %.
+    accuracy: float | None = None
+
+
+class GeoRuleAccuracy(BaseModel):
+    """One `geo_rule_stats` row: what the auditor has learned about a rule.
+
+    Nothing exposed this table before, so the learning loop was unobservable:
+    two rules sat pinned at the -0.30 `confidenceMod` floor with no way to see
+    it, let alone why.
+    """
+
+    ruleId: str
+    category: str
+    baseConfidence: float
+    confidenceMod: float  # auditor-learned adjustment, -0.30..+0.30
+    totalSignals: int
+    correctSignals: int
+    accuracy: float | None = None  # as stored by the auditor; None = never scored
+
+
+class GeoAccuracyOut(BaseModel):
+    """Per-horizon hit rate plus the per-rule learning table."""
+
+    since: datetime
+    horizons: dict[str, GeoHorizonAccuracy]  # keyed 1h|6h|1d|3d|7d
+    rules: list[GeoRuleAccuracy]  # sorted by totalSignals desc
+
+
+class GeoRuleStatsReset(BaseModel):
+    reset: int  # rows zeroed
+
+
 # ── Fiscal onboarding (savings-base IRPF estimate, v1 individual) ────────────
 class FiscalProfileIn(BaseModel):
     age: int | None = None

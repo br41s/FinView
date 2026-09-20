@@ -1,7 +1,7 @@
 import { getSession } from "next-auth/react";
 import { bestEffort } from "./bestEffort";
 
-import type { GeoSignal } from "@/lib/geo";
+import type { GeoAccuracy, GeoSignal } from "@/lib/geo";
 import type { ImportResult, SavingsEstimate } from "@/lib/types";
 import { apiError } from "@/lib/apiError";
 import type { GeoCycleRun } from "@/lib/geoHealth";
@@ -957,6 +957,19 @@ export const api = {
     },
     schedulerStatus: () =>
       fetchJSON<GeoSchedulerStatus>("/geo/scheduler/status"),
+    // Per-horizon hit rate + the learned rule table. `since` is an ISO date;
+    // the backend defaults to 30 days ago, which keeps the pre-2026-09-06
+    // checkpoints (scored by a close-against-itself comparison) out of the read.
+    accuracy: (since?: string) =>
+      fetchJSON<GeoAccuracy>(`/geo/accuracy${since ? `?since=${since}` : ""}`),
+    // Zeroes every learned adjustment. The table is global, not per user, and
+    // there is deliberately no UI for this — it is an owner's tool.
+    resetRuleStats: async () => {
+      const headers = await authHeaders();
+      const res = await fetch(`${BASE}/geo/rule-stats/reset`, { method: "POST", headers });
+      if (!res.ok) throw await apiError(res);
+      return res.json() as Promise<{ reset: number }>;
+    },
     startScheduler: async () => {
       const headers = await authHeaders();
       const res = await fetch(`${BASE}/geo/scheduler/start`, { method: "POST", headers });

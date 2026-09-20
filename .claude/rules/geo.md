@@ -93,16 +93,22 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
   checkpoint resolves the signal and feeds confidence_mod back into geo_rule_stats.
   **A ticker that didn't move is excluded from the basket, not counted against it**, and a
-  checkpoint with nothing measurable is NEUTRAL and teaches the rules nothing. Both used to
-  read as failure, and the pair made the accuracy 0% with no thesis having failed: prices
-  were daily closes, so +1h and +6h compared a close against itself (0.00%), scored 0, went
-  red by construction — and the +7d resolution then charged every matched rule 0.03 for the
-  unscored outcome, pinning rules at the -0.30 floor.
-  Both ends of a measurement now come from intraday bars: `fetch_ticker_prices` resolves
-  5-minute bars first and falls back to the daily close **per symbol**, so a thin listing
-  keeps a price instead of leaving the basket. The portfolio path
-  (`fetch_and_cache_prices`) stays on daily closes — one row per ISIN per day paired with
-  that day's ECB rate. Don't switch it.
+  checkpoint with nothing measurable is NEUTRAL and teaches the rules nothing. Since the
+  2026-09-20 audit (prod had 23.9% accuracy ex-neutral and random baskets scored 61–68%
+  "correct" — the auditor measured nothing) the scorer is:
+  - **the bar at the checkpoint's own target time** (`prices.fetch_price_series`: 5-minute
+    bars inside the 5-day window, the daily close otherwise), never "now" — the cron runs
+    every 30 min, so "now" was a random 60–90 min window for +1h and every horizon due in
+    one cycle received the same price;
+  - **+1h/+6h in trading time** on the US session (`trading_time.py`, DST-aware, no holiday
+    calendar); a Sunday-03:00 signal's +1h lands Monday 10:30 ET;
+  - **a ticker is readable when it moved more than 0.75 of its own horizon sigma**, computed
+    from the same series (floor 0.1%); ties are NEUTRAL;
+  - **no price → pending**, retried next cycle for up to 7 days, then NEUTRAL "sin datos".
+    Never stamp `evaluated_at` on a missing price: a Yahoo stall used to burn every due
+    window forever.
+  The portfolio path (`fetch_and_cache_prices`) stays on daily closes — one row per ISIN
+  per day paired with that day's ECB rate. Don't switch it.
 
 ### Scheduling — prod runs on external cron, NOT APScheduler
 The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives

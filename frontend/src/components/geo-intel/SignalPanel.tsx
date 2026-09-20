@@ -457,20 +457,28 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             <div className="absolute left-0 right-0 top-[7px] h-px bg-[rgba(31,27,22,0.14)]" />
             <div className="relative flex justify-between">
               {signal.checkpoints.map((c) => {
-                const pending = c.evaluatedAt == null;
-                const dotColor = pending
-                  ? undefined
-                  : OUTCOME_COLORS[c.outcome ?? "NEUTRAL"];
+                // An evaluated row with no verdict is pending too. `c.outcome ??
+                // "NEUTRAL"` used to paint it amber, which read as a measured
+                // "no move" the auditor never made.
+                const pending = c.evaluatedAt == null || c.outcome == null;
+                const dotColor = pending ? undefined : OUTCOME_COLORS[c.outcome!];
+                // Amber filled vs red filled at 3.5 px is not a distinction a
+                // human makes, and NEUTRAL is the opposite of INCORRECT: it
+                // means nothing measurable happened. Hollow says "no reading".
+                const hollow = pending || c.outcome === "NEUTRAL";
+                // NEUTRAL with a score is a tie (1-for-2), not "nothing moved".
                 const title = pending
-                  ? "Not yet evaluated"
-                  : `${c.score != null ? Math.round(c.score) + "% correct" : "no measurable tickers"}${c.detail ? ` — ${c.detail}` : ""}`;
+                  ? "pendiente"
+                  : c.outcome === "NEUTRAL"
+                  ? `${c.score == null ? "sin movimiento medible" : "sin veredicto (empate)"}${c.detail ? ` — ${c.detail}` : ""}`
+                  : `${c.score != null ? Math.round(c.score) + "% correct" : "sin movimiento medible"}${c.detail ? ` — ${c.detail}` : ""}`;
                 return (
                   <div key={c.horizon} className="flex flex-col items-center gap-2" title={title}>
                     <span
-                      className="h-3.5 w-3.5 rounded-full border"
+                      className="h-3.5 w-3.5 rounded-full border-2"
                       style={{
                         borderColor: pending ? "rgba(31,27,22,0.25)" : dotColor,
-                        backgroundColor: pending ? "#FEFCF5" : dotColor,
+                        backgroundColor: hollow ? "#FEFCF5" : dotColor,
                       }}
                     />
                     <span
@@ -486,11 +494,11 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             {(() => {
               const lastEvaluated = [...signal.checkpoints]
                 .reverse()
-                .find((c) => c.evaluatedAt != null);
+                .find((c) => c.evaluatedAt != null && c.outcome != null);
               return (
                 <p className="mt-3 text-[11px] text-[rgba(31,27,22,0.5)]">
                   {lastEvaluated
-                    ? `${checkpointLabel(lastEvaluated.horizon)}: ${lastEvaluated.score != null ? Math.round(lastEvaluated.score) + "% correct" : "no measurable tickers"}${lastEvaluated.detail ? ` — ${lastEvaluated.detail}` : ""}`
+                    ? `${checkpointLabel(lastEvaluated.horizon)}: ${lastEvaluated.outcome === "NEUTRAL" || lastEvaluated.score == null ? "sin movimiento medible" : Math.round(lastEvaluated.score) + "% correct"}${lastEvaluated.detail ? ` — ${lastEvaluated.detail}` : ""}`
                     : "Outcome tracking pending — checkpoints fill in as the signal ages."}
                 </p>
               );
