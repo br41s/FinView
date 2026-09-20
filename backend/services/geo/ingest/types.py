@@ -87,14 +87,17 @@ class FlightData:
 
 @dataclass
 class GdeltEvent:
-    """GDELT 2.0 Doc-API derived geopolitical event."""
+    """GDELT 2.0 Doc-API derived geopolitical event.
+
+    No ``num_mentions``/``num_sources``: the Doc API's ``artlist`` mode does not
+    return them, and the placeholder constants that used to stand in for them
+    sat below the sentinel's own floors, so every article was dropped.
+    """
 
     id: str
     title: str
     event_code: str
     goldstein_scale: float
-    num_mentions: int
-    num_sources: int
     avg_tone: float
     latitude: float
     longitude: float
