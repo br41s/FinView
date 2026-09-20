@@ -241,8 +241,30 @@ def _dispatch_notifications(
     return notified, notify_failed
 
 
-def run_cycle(db: Session, user_id: int) -> CycleResult:
-    """Run one full pipeline cycle for a user (blocking; runs ingest in an event loop)."""
+@dataclass
+class CycleInputs:
+    """Everything a cycle computes that is the same for every user.
+
+    The events are global, the rules are global, the prices are global; only
+    dedup, persistence, notification and the auditor's rows are per user. Each
+    user's cycle used to redo the lot — with four accounts that was four price
+    fetches, four series fetches and four sentinel passes over one bundle.
+    """
+
+    bundle: object
+    events: list[GeoEvent]
+    analyses: list[AnalystResult]
+    stats: dict[str, GeoRuleStat]
+    prices: dict[str, float]
+    yahoo: object  # Budget shared by every Yahoo call in the request
+    series_cache: dict[str, dict] = field(default_factory=dict)
+
+
+def prepare_cycle(db: Session) -> CycleInputs:
+    """The user-independent half of a cycle: run once per cron request."""
+    from backend.services.prices import fetch_ticker_prices
+    from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
+
     seed_rule_stats(db)
     stats = _load_stats(db)
 
@@ -250,19 +272,39 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     _hydrate_flight_history(db)
     events = _collect_events(bundle)
     _persist_flight_samples(db)
-    logger.info("geo cycle user=%s: %d events from sources", user_id, len(events))
+    logger.info("geo cycle: %d events from sources", len(events))
 
     # Phase A: rule-only correlation (cheap) for every event.
     analyses = [analyze_event(e, stats, use_llm=False) for e in events]
-
     # Phase B: compound rules (orchestrator-level bucket tally).
     analyses.extend(_compound_analyses(analyses, stats))
+
+    # Phase D: price enrichment for the union of tickers. One allowance for every
+    # Yahoo call the request makes — this fetch and the auditor's, for every user.
+    # Yahoo cannot be bounded per call (see yahoo_budget); a spent budget leaves
+    # checkpoints pending for the next cycle, never scored on nothing.
+    yahoo = Budget(GEO_CYCLE_SECONDS, "geo cycle")
+    symbols = sorted({t.symbol for a in analyses for t in a.tickers})
+    prices = fetch_ticker_prices(symbols, yahoo) if symbols else {}
+    return CycleInputs(bundle, events, analyses, stats, prices, yahoo)
+
+
+def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> CycleResult:
+    """Run one pipeline cycle for a user (blocking).
+
+    ``inputs`` is the shared half from ``prepare_cycle``; a single-user caller
+    (the manual "Run cycle", the in-process scheduler) may omit it.
+    """
+    if inputs is None:
+        inputs = prepare_cycle(db)
+    bundle, events, stats, yahoo = inputs.bundle, inputs.events, inputs.stats, inputs.yahoo
 
     # Phase C: LLM enrichment only for important, rule-backed signals the user
     # doesn't already track — known active signals only get their scores refreshed
     # by the advisor, so re-running the LLM for them every cycle is pure token burn.
+    # Per user because the gate is per user; the call itself is cached per event.
     enriched: list[AnalystResult] = []
-    for a in analyses:
+    for a in inputs.analyses:
         est_importance = compute_importance(a.confidence, a.risk_score)
         use_llm = (
             est_importance >= IMPORTANCE_THRESHOLD
@@ -272,16 +314,13 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
         )
         enriched.append(analyze_event(a.event, stats, use_llm=True) if use_llm else a)
 
-    # Phase D: price enrichment (one batched fetch for the union of tickers).
-    symbols = sorted({t.symbol for a in enriched for t in a.tickers})
-    from backend.services.prices import fetch_ticker_prices
-    from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
+    # The LLM may have added tickers the shared fetch did not cover.
+    prices = inputs.prices
+    extra = sorted({t.symbol for a in enriched for t in a.tickers} - set(prices))
+    if extra:
+        from backend.services.prices import fetch_ticker_prices
 
-    # One allowance for every Yahoo call this cycle makes — this fetch and the
-    # auditor's in Phase F. Yahoo cannot be bounded per call (see yahoo_budget), and
-    # a per-call budget would let one cycle spend it twice over.
-    yahoo = Budget(GEO_CYCLE_SECONDS, f"geo cycle (user {user_id})")
-    prices = fetch_ticker_prices(symbols, yahoo) if symbols else {}
+        prices = {**prices, **fetch_ticker_prices(extra, yahoo)}
 
     # Phase E: persist signals + checkpoints, collect notifications.
     #
@@ -321,7 +360,7 @@ def run_cycle(db: Session, user_id: int) -> CycleResult:
     # Phase F: evaluate any due outcome checkpoints. Runs even when the persist
     # phase lost everything — the auditor is what resolves the signals already on
     # the board, and it must never be blocked by a write that failed upstream.
-    checkpoints = evaluate_pending(db, user_id, yahoo)
+    checkpoints = evaluate_pending(db, user_id, yahoo, inputs.series_cache)
 
     new_signals = sum(1 for r in results if r.is_new)
     logger.info(
@@ -381,17 +420,40 @@ def _record_run(
         logger.warning("geo cycle: could not record run for user %s", user_id, exc_info=True)
 
 
-def run_cycle_for_user(user_id: int) -> CycleResult | None:
+def run_cycle_for_user(user_id: int, inputs: CycleInputs | None = None) -> CycleResult | None:
     """Scheduler/background entry: manages its own DB session, never raises."""
     from backend.database import SessionLocal
 
     started_at = datetime.now(timezone.utc)
     with SessionLocal() as db:
         try:
-            result = run_cycle(db, user_id)
+            result = run_cycle(db, user_id, inputs)
         except Exception as exc:
             logger.exception("geo cycle failed for user %s", user_id)
             _record_run(db, user_id, started_at, None, f"{type(exc).__name__}: {exc}")
             return None
         _record_run(db, user_id, started_at, result, None)
         return result
+
+
+def run_cycles(user_ids: list[int]) -> list[CycleResult | None]:
+    """Cron entry: the shared half once, then one per-user cycle each.
+
+    A failure in the shared half is a failure for every user (each gets a
+    recorded run row saying so), which is the truth: no user could have had a
+    cycle without it.
+    """
+    from backend.database import SessionLocal
+
+    if not user_ids:
+        return []
+    started_at = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        try:
+            inputs = prepare_cycle(db)
+        except Exception as exc:
+            logger.exception("geo cycle: shared preparation failed")
+            for uid in user_ids:
+                _record_run(db, uid, started_at, None, f"{type(exc).__name__}: {exc}")
+            return [None] * len(user_ids)
+    return [run_cycle_for_user(uid, inputs) for uid in user_ids]

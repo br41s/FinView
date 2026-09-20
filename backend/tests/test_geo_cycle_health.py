@@ -185,7 +185,7 @@ def test_one_unwritable_signal_does_not_stop_the_cycle(db, monkeypatch):
     monkeypatch.setattr(orchestrator, "generate_signal", flaky)
     evaluated: list[int] = []
     monkeypatch.setattr(
-        orchestrator, "evaluate_pending", lambda db_, uid, budget=None: evaluated.append(uid) or 0
+        orchestrator, "evaluate_pending", lambda db_, uid, budget=None, series_cache=None: evaluated.append(uid) or 0
     )
 
     result = orchestrator.run_cycle(db, user_id=1)
@@ -200,7 +200,7 @@ def test_cycle_reports_per_source_counts(db, monkeypatch):
     """All-zero source counts are the signature of an ingest outage."""
     analysis = _analysis(_event("evt-1"))
     _stub_cycle_inputs(monkeypatch, [analysis])
-    monkeypatch.setattr(orchestrator, "evaluate_pending", lambda db_, uid, budget=None: 0)
+    monkeypatch.setattr(orchestrator, "evaluate_pending", lambda db_, uid, budget=None, series_cache=None: 0)
 
     result = orchestrator.run_cycle(db, user_id=1)
 
