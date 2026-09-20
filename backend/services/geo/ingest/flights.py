@@ -1,15 +1,21 @@
-"""OpenSky aircraft states over strategic regions → FlightData list.
+"""Aircraft over strategic regions → FlightData list. adsb.lol primary, OpenSky fallback.
 
-WorldHawk's route was viewport-driven (adsb.fi primary, OpenSky fallback). The
-server-side geo cycle has no viewport, so we scan the fixed set of regions the
-airspace_closure / military_surge rules care about, via OpenSky's bounding-box
-``states/all`` query, and dedup by icao24.
+The server-side geo cycle has no viewport, so we scan the fixed set of regions the
+airspace_closure / military_surge rules care about and dedup by icao24.
 
-Auth is optional but close to mandatory in practice: anonymous OpenSky is rate-limited
-hard enough that the source reads as "no flights" most cycles, which is
-indistinguishable from a quiet sky. OpenSky issues **OAuth2 client credentials**
-(client id + secret), exchanged here for a bearer token; the older
-username/password basic auth is kept as a fallback for accounts that still have it.
+**OpenSky is unreachable from Cloud Run** (2026-09-20 audit): every attempt for
+seven days hit a connect timeout on both opensky-network.org hosts, and so did a
+probe from Cloud Build, while the same credentials answer 200 from outside GCP —
+OpenSky drops Google Cloud ranges, so a static NAT IP would not help. adsb.lol
+(readsb-style JSON, no key, answers from GCP) is therefore the primary source: one
+250 nm point query per region centre plus ``/v2/mil`` for every military aircraft
+worldwide, whose ``dbFlags & 1`` is a database flag rather than the callsign
+heuristics OpenSky forced on us. Coverage of the largest boxes is partial but
+*consistent*, which is what the sentinel's rolling baseline compares against.
+
+OpenSky stays as the fallback for the day adsb.lol returns nothing. Its auth is
+OAuth2 client credentials (client id + secret) exchanged for a bearer token; the
+older username/password basic auth is kept for accounts that still have it.
 """
 
 import asyncio
@@ -34,6 +40,11 @@ _TOKEN_MARGIN = 60  # refresh this many seconds before the token actually expire
 _DEFAULT_TOKEN_TTL = 1800  # OpenSky's tokens last ~30 min; used if expires_in is absent
 _CACHE_TTL = 60  # 1 minute
 _cache = TTLCache()
+_ADSB_API = "https://api.adsb.lol/v2"
+_ADSB_RADIUS_NM = 250  # the API's maximum
+# adsb.lol answers 420/429 to concurrent requests from one client (measured: 4 of
+# 8 parallel queries refused), so the region queries run one after another.
+_ADSB_PAUSE = 0.5
 # (access_token, monotonic deadline). Process-local, like every other geo cache.
 _token: tuple[str, float] | None = None
 
@@ -172,6 +183,78 @@ async def _access_token() -> str | None:
     return token
 
 
+def _transform_adsb(aircraft: list[dict]) -> list[FlightData]:
+    """readsb-style aircraft objects (adsb.lol ``ac`` array) → FlightData."""
+    out: list[FlightData] = []
+    for a in aircraft:
+        if not isinstance(a, dict):
+            continue
+        lat, lon = a.get("lat"), a.get("lon")
+        if lat is None or lon is None:
+            continue
+        icao24 = str(a.get("hex") or "").lower()
+        callsign = str(a.get("flight") or "").strip()
+        alt = a.get("alt_baro")
+        on_ground = alt == "ground"
+        if not isinstance(alt, (int, float)):
+            alt = a.get("alt_geom") if isinstance(a.get("alt_geom"), (int, float)) else 0
+        velocity = a.get("gs") or 0
+        squawk = a.get("squawk") if isinstance(a.get("squawk"), str) else None
+        flags = a.get("dbFlags") or 0
+        is_mil = bool(isinstance(flags, int) and flags & 1) or (
+            _is_military_callsign(callsign)
+            or _is_military_squawk(squawk)
+            or _is_military_icao(icao24)
+        )
+        if is_mil:
+            aircraft_type = "military"
+        elif alt > 8000 and velocity > 150:
+            aircraft_type = "commercial"
+        else:
+            aircraft_type = "unknown"
+        out.append(
+            FlightData(
+                icao24=icao24,
+                callsign=callsign,
+                origin_country="",
+                latitude=float(lat),
+                longitude=float(lon),
+                altitude=float(alt),
+                velocity=float(velocity),
+                heading=float(a.get("track") or 0),
+                vertical_rate=float(a.get("baro_rate") or 0),
+                on_ground=on_ground,
+                squawk=squawk,
+                is_military=is_mil,
+                aircraft_type=aircraft_type,
+            )
+        )
+    return out
+
+
+async def _fetch_adsb_url(url: str) -> list[FlightData]:
+    data = await fetch_json(url)
+    if not isinstance(data, dict):
+        return []
+    return _transform_adsb(data.get("ac") or [])
+
+
+async def _fetch_adsb() -> list[FlightData]:
+    """One point query per region centre + the global military list."""
+    urls = [f"{_ADSB_API}/mil"]
+    for lamin, lamax, lomin, lomax in _SCAN_BOXES.values():
+        lat, lon = (lamin + lamax) / 2, (lomin + lomax) / 2
+        urls.append(f"{_ADSB_API}/point/{lat:g}/{lon:g}/{_ADSB_RADIUS_NM}")
+    by_icao: dict[str, FlightData] = {}
+    for i, url in enumerate(urls):
+        if i:
+            await asyncio.sleep(_ADSB_PAUSE)
+        for flight in await _fetch_adsb_url(url):
+            if flight.icao24:
+                by_icao[flight.icao24] = flight
+    return list(by_icao.values())
+
+
 async def _fetch_box(
     box: tuple[float, float, float, float], auth, headers: dict | None = None
 ) -> list[FlightData]:
@@ -187,6 +270,12 @@ async def fetch_flights() -> list[FlightData]:
     cached = _cache.get(_CACHE_TTL)
     if cached is not None:
         return cached
+
+    flights = await _fetch_adsb()
+    if flights:
+        _cache.set(flights)
+        return flights
+    logger.warning("adsb.lol returned no aircraft — falling back to OpenSky")
 
     headers: dict | None = None
     auth = None
