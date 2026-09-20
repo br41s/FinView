@@ -56,6 +56,70 @@ export type GeoSignal = {
   sourceUrl?: string | null; // link to the underlying source event, when captured
 };
 
+// ── Checkpoint accuracy (GET /geo/accuracy) ─────────────────────────
+// The only reading of the outcome loop used to be five dots per signal, so a
+// scorer comparing a daily close against itself could fail thousands of
+// checkpoints at exactly 0 without anyone seeing a number.
+
+export type GeoHorizonAccuracy = {
+  correct: number;
+  incorrect: number;
+  neutral: number;
+  pending: number;
+  /** correct / (correct + incorrect). NEUTRAL is excluded — "nothing
+   *  measurable moved" is not a failed thesis. null = nothing measured. */
+  accuracy: number | null;
+};
+
+export type GeoRuleAccuracy = {
+  ruleId: string;
+  category: string;
+  baseConfidence: number;
+  confidenceMod: number; // auditor-learned, -0.30..+0.30
+  totalSignals: number;
+  correctSignals: number;
+  accuracy: number | null;
+};
+
+export type GeoAccuracy = {
+  since: string;
+  horizons: Partial<Record<GeoCheckpointHorizon, GeoHorizonAccuracy>>;
+  rules: GeoRuleAccuracy[];
+};
+
+const HORIZON_ORDER: GeoCheckpointHorizon[] = ["1h", "6h", "1d", "3d", "7d"];
+
+const DAY = 86_400_000;
+
+/**
+ * One line of hit rate for the Ideas header, e.g.
+ * `Aciertos (30 d): 1h 12 % · 6h 18 % · 1d 30 % · 3d 41 % · 7d 45 % · n=123`
+ *
+ * A horizon with nothing measurable reads `—`, never `0 %`: no measurement is
+ * not a zero hit rate, and conflating the two is the same mistake that painted
+ * NEUTRAL checkpoints as failures. `n` is the sample the percentages rest on —
+ * measured checkpoints (correct + incorrect) across every horizon — so a rate
+ * computed from four data points is visibly not evidence.
+ *
+ * Pure, with `now` injected, for the same reason geoHealth is.
+ */
+export function formatAccuracyLine(
+  data: GeoAccuracy | null,
+  now: number = Date.now(),
+): string | null {
+  if (!data) return null;
+  const days = Math.max(1, Math.round((now - new Date(data.since).getTime()) / DAY));
+  const parts = HORIZON_ORDER.map((h) => {
+    const rate = data.horizons[h]?.accuracy;
+    return `${h} ${rate == null ? "—" : `${Math.round(rate * 100)} %`}`;
+  });
+  const measured = HORIZON_ORDER.reduce((sum, h) => {
+    const bucket = data.horizons[h];
+    return sum + (bucket ? bucket.correct + bucket.incorrect : 0);
+  }, 0);
+  return `Aciertos (${days} d): ${parts.join(" · ")} · n=${measured}`;
+}
+
 export const MARKET_ANCHORS: Record<
   string,
   { lng: number; lat: number; label: string }
