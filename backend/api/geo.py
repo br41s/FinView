@@ -3,16 +3,21 @@
 import json
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
+    GeoAccuracyOut,
     GeoCheckpointOut,
     GeoCycleRunOut,
+    GeoHorizonAccuracy,
+    GeoRuleAccuracy,
     GeoRuleOut,
+    GeoRuleStatsReset,
     GeoRunResult,
     GeoSchedulerStatus,
     GeoSignalOut,
@@ -20,7 +25,14 @@ from backend.api.schemas import (
 )
 from backend.config import settings
 from backend.database import DbSession
-from backend.models import GeoCycleRun, GeoRuleStat, GeoSignal, GeoSignalStatus
+from backend.models import (
+    GeoCheckpoint,
+    GeoCycleRun,
+    GeoHorizon,
+    GeoRuleStat,
+    GeoSignal,
+    GeoSignalStatus,
+)
 from backend.services.geo.rules import RULES_BY_ID, effective_confidence
 
 logger = logging.getLogger(__name__)
@@ -276,6 +288,135 @@ def get_signal(signal_id: int, db: DbSession, user: CurrentUser):
     if signal is None:
         raise HTTPException(status_code=404, detail="Señal no encontrada")
     return _serialize(signal, _load_rule_stats(db, [signal]))
+
+
+_ACCURACY_WINDOW_DAYS = 30
+
+# The outcome names as BacktestOutcome stores them, mapped to the response field
+# each one feeds. Anything else the column might hold is ignored rather than
+# guessed at.
+_OUTCOME_FIELD = {
+    "CORRECT": "correct",
+    "INCORRECT": "incorrect",
+    "NEUTRAL": "neutral",
+}
+
+
+def _naive_utc(value: datetime) -> datetime:
+    """Drop to naive UTC for comparison against the DB's naive columns."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+@router.get("/accuracy", response_model=GeoAccuracyOut)
+def accuracy(
+    db: DbSession,
+    user: CurrentUser,
+    since: datetime | None = Query(None, description="ISO date; default 30 days ago"),
+):
+    """Hit rate per checkpoint horizon plus the per-rule learning table.
+
+    Nothing aggregated this before: the only reading of the loop's accuracy was
+    five 3.5 px dots per signal, so a scorer that was comparing a daily close
+    against itself could fail 4374 checkpoints at exactly 0 without anyone
+    seeing a number. The window defaults to 30 days because the pre-2026-09-06
+    history was scored by that broken comparison and is not evidence about the
+    rules.
+
+    ``accuracy`` is correct / (correct + incorrect) — NEUTRAL is excluded on
+    purpose, because "no measurable move" is not a failed thesis. ``pending``
+    is ``outcome IS NULL`` and is counted regardless of the window: a checkpoint
+    that has never resolved has no date to filter on, and an evaluated-but-null
+    row is pending too, not a neutral one.
+
+    Checkpoints are per user (they carry ``user_id``, like the signals); the
+    rule table is global — see ``reset_rule_stats``.
+    """
+    since_dt = since or datetime.now(timezone.utc) - timedelta(days=_ACCURACY_WINDOW_DAYS)
+    cutoff = _naive_utc(since_dt)
+
+    buckets = {h.value: GeoHorizonAccuracy() for h in GeoHorizon}
+
+    # One grouped scan, not a query per horizon: (horizon, outcome) -> count.
+    rows = (
+        db.query(
+            GeoCheckpoint.horizon,
+            GeoCheckpoint.outcome,
+            func.count(GeoCheckpoint.id),
+        )
+        .filter(
+            GeoCheckpoint.user_id == user.id,
+            or_(GeoCheckpoint.outcome.is_(None), GeoCheckpoint.evaluated_at >= cutoff),
+        )
+        .group_by(GeoCheckpoint.horizon, GeoCheckpoint.outcome)
+        .all()
+    )
+    for horizon, outcome, count in rows:
+        bucket = buckets.get(_ev(horizon))
+        if bucket is None:
+            continue
+        if outcome is None:
+            bucket.pending += int(count)
+            continue
+        field = _OUTCOME_FIELD.get(_ev(outcome))
+        if field:
+            setattr(bucket, field, getattr(bucket, field) + int(count))
+
+    for bucket in buckets.values():
+        measured = bucket.correct + bucket.incorrect
+        bucket.accuracy = bucket.correct / measured if measured else None
+
+    stats = db.query(GeoRuleStat).order_by(GeoRuleStat.total_signals.desc()).all()
+    return GeoAccuracyOut(
+        since=_as_utc(since_dt),
+        horizons=buckets,
+        rules=[
+            GeoRuleAccuracy(
+                ruleId=row.rule_id,
+                category=row.category,
+                baseConfidence=float(row.base_confidence),
+                confidenceMod=float(row.confidence_mod or 0),
+                totalSignals=row.total_signals or 0,
+                correctSignals=row.correct_signals or 0,
+                accuracy=float(row.accuracy) if row.accuracy is not None else None,
+            )
+            for row in stats
+        ],
+    )
+
+
+@router.post("/rule-stats/reset", response_model=GeoRuleStatsReset)
+def reset_rule_stats(db: DbSession, user: CurrentUser):
+    """Zero every learned adjustment in `geo_rule_stats`.
+
+    **The table is global, not per user** — there is one row per rule for the
+    whole installation, so this resets the learning for everybody. That is
+    acceptable today because this is a personal tool with one owner; it is not
+    acceptable the moment a second tenant matters, and there is no UI for it for
+    the same reason.
+
+    It exists because the loop had no escape hatch: `seed_rule_stats` never
+    overwrites, so two rules pinned at the -0.30 `confidence_mod` floor by
+    checkpoints the old scorer failed by construction would stay pinned forever.
+    `base_confidence` is static rule data and is deliberately left alone.
+    """
+    n = (
+        db.query(GeoRuleStat)
+        .update(
+            {
+                GeoRuleStat.confidence_mod: 0,
+                GeoRuleStat.total_signals: 0,
+                GeoRuleStat.correct_signals: 0,
+                GeoRuleStat.accuracy: None,
+                GeoRuleStat.updated_at: datetime.now(timezone.utc),
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    logger.warning("geo_rule_stats reset by user %s — %d rows zeroed", user.id, n)
+    return GeoRuleStatsReset(reset=n)
 
 
 @router.post("/run", response_model=GeoRunResult)
