@@ -110,6 +110,13 @@ def generate_signal(
     )
 
     if existing is not None:
+        # The LLM runs on first sighting only; every later cycle re-analyses with
+        # the rules alone. Its risk therefore sticks until an LLM re-assesses —
+        # a rule-only refresh must not overwrite it, or the override flips back
+        # one cycle later and pages what the model had just judged not worth a
+        # page (2026-09-20: five conflict signals paged on cycle two this way).
+        risk = analysis.risk_score if analysis.llm_narrative else int(existing.risk_score)
+        importance = compute_importance(confidence, risk)
         shift = abs(confidence - round(float(existing.confidence) * 100))
         # notified_at is the retry ledger: a gated signal no channel delivered
         # (outage, rate limit) is re-selected until one does, instead of burning
@@ -119,7 +126,7 @@ def generate_signal(
         )
         existing.confidence = confidence / 100
         existing.importance = importance
-        existing.risk_score = analysis.risk_score
+        existing.risk_score = risk
         existing.direction = direction
         return SignalResult(existing, importance, is_new=False, should_notify=should_notify)
 
