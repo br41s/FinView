@@ -521,6 +521,8 @@ class GeoSignalOut(BaseModel):
     status: str  # active|resolved
     source: str = ""  # ingest feed key (usgs|EONET|gdelt|…)
     sourceUrl: str | None = None  # link to the underlying source event, when captured
+    generated: bool = False  # thesis proposed by the LLM for an event no rule covers
+    narrative: str | None = None  # the LLM's 2–3 sentence reasoning, when generated
 
 
 class GeoCycleRunOut(BaseModel):

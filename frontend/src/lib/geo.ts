@@ -69,6 +69,8 @@ export type GeoSignal = {
   status: "active" | "resolved";
   source?: string; // ingest feed key (usgs|EONET|gdelt|…)
   sourceUrl?: string | null; // link to the underlying source event, when captured
+  generated?: boolean; // thesis proposed by the LLM for an event no rule covers
+  narrative?: string | null; // the LLM's reasoning, when generated
 };
 
 // ── Checkpoint accuracy (GET /geo/accuracy) ─────────────────────────

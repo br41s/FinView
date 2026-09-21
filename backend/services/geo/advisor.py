@@ -32,6 +32,7 @@ _CONFIDENCE_SHIFT = 15  # min confidence delta to re-notify a known event
 # about. The first two notifications the pipeline ever sent (2026-09-20) were
 # Gaza and Syria — from these polygons, unchanged since June.
 _NON_OBSERVED_SOURCES = frozenset({"alerts"})
+_GENERATED_MIN_CONFIDENCE = 75
 
 
 def _pageable(source: str, importance: int, event=None) -> bool:
@@ -42,8 +43,13 @@ def _pageable(source: str, importance: int, event=None) -> bool:
     # resolution, so an ongoing war paged weekly. The sentinel stamps each GDELT
     # event with its region's story count against a 7-day rolling median;
     # unknown (no baseline yet) is not novel.
+    raw = getattr(event, "raw_data", None) or {}
+    # A generated thesis has no rule behind it: it pages only when the model is
+    # itself confident, on top of every other gate.
+    if raw.get("generated") and (raw.get("llmConfidence") or 0) < _GENERATED_MIN_CONFIDENCE:
+        return False
     if source == "gdelt":
-        novelty = ((getattr(event, "raw_data", None) or {}).get("novelty") or {})
+        novelty = (raw.get("novelty") or {})
         return novelty.get("novel") is True
     return True
 

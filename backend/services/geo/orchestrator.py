@@ -27,7 +27,7 @@ from backend.models import (
 
 from . import sentinel
 from .advisor import IMPORTANCE_THRESHOLD, SignalResult, compute_importance, generate_signal
-from .analyst import AnalystResult, AnalystTicker, analyze_event
+from .analyst import AnalystResult, AnalystTicker, analyze_event, analyze_unmatched
 from .auditor import create_checkpoints, evaluate_pending
 from .ingest import fetch_all_sources
 from .notify import notify_signal
@@ -58,6 +58,11 @@ _RUN_RETENTION_DAYS = 7
 _FLIGHT_SAMPLE_MIN_GAP = timedelta(minutes=10)
 _FLIGHT_SAMPLE_RETENTION = timedelta(hours=24)
 _REGION_SAMPLE_RETENTION = timedelta(days=7)
+# Generative path: at most this many LLM calls per cron request for events no
+# rule covers, and only for salient ones (see _salient). Cached per event 6 h.
+_MAX_GENERATIVE_PER_REQUEST = 3
+_SALIENT_MENTIONS = 15
+_SALIENT_MAGNITUDE = 7.0
 _REGION_SAMPLE_MIN_GAP = timedelta(minutes=10)
 
 
@@ -205,6 +210,35 @@ def _macro_regime() -> str | None:
     except Exception:
         logger.warning("geo: macro regime unavailable", exc_info=True)
         return None
+
+
+def _salient(event: GeoEvent) -> bool:
+    """Worth one generative call: red severity, a big quake, or news that is
+    either a novelty spike or widely reported."""
+    if event.severity == "red":
+        return True
+    if event.magnitude is not None and event.magnitude >= _SALIENT_MAGNITUDE:
+        return True
+    raw = event.raw_data or {}
+    if event.source == "gdelt":
+        novelty = raw.get("novelty") or {}
+        return novelty.get("novel") is True or (raw.get("numMentions") or 0) >= _SALIENT_MENTIONS
+    return False
+
+
+def _generative_pass(analyses: list[AnalystResult], regime: str | None) -> int:
+    """Replace the analysis of salient unmatched events with a generated one, in place."""
+    generated = 0
+    for i, a in enumerate(analyses):
+        if a.tickers or not _salient(a.event):
+            continue
+        if generated >= _MAX_GENERATIVE_PER_REQUEST:
+            break
+        result = analyze_unmatched(a.event, regime)
+        generated += 1  # a call was spent whether or not it produced a thesis
+        if result is not None:
+            analyses[i] = result
+    return generated
 
 
 def _collect_events(bundle) -> list[GeoEvent]:
@@ -371,6 +405,10 @@ def prepare_cycle(db: Session) -> CycleInputs:
     analyses = [analyze_event(e, stats, use_llm=False, regime=regime) for e in events]
     # Phase B: compound rules (orchestrator-level bucket tally).
     analyses.extend(_compound_analyses(analyses, stats, regime))
+    # Phase B2: salient events no rule covers get one generative call each.
+    generated = _generative_pass(analyses, regime)
+    if generated:
+        logger.info("geo cycle: %d generative analyses attempted", generated)
 
     # Phase D: price enrichment for the union of tickers. One allowance for every
     # Yahoo call the request makes — this fetch and the auditor's, for every user.

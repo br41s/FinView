@@ -95,6 +95,14 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   an ingest outage, never a calm day. The header of `/geo-intel` renders this
   (`lib/geoHealth.ts`), and `/geo/cron` answers **500** when no user's cycle completes so
   Cloud Scheduler records a failure instead of a green run.
+- **Generative path (events no rule covers)**: after the compound tally, `prepare_cycle` gives
+  a *salient* unmatched event (red severity, M≥7, or GDELT with a novelty spike or ≥15 mentions)
+  one generative LLM call — at most 3 per cron request, cached 6 h per event, "not actionable"
+  cached too. The model must pick from the tradable universe (`INSTRUMENT_BREADTH`) and every
+  field is validated; the result is a signal with **no matched rules** (it never teaches
+  `geo_rule_stats`), stamped `raw_data.generated` with the LLM's confidence, thesis and
+  narrative, rendered in the panel as "Tesis generada por IA · sin regla". It pages only when
+  the model's own confidence is ≥ 75, on top of every other gate.
 - **Macro regime (FRED)**: `prepare_cycle` reads `macro_context()` once per request (cached
   series, synced nightly by the zonas-clave job; no HTTP in the cycle). In a `risk_off` regime
   every conflict / chokepoint / sanctions rule gets +1 risk (`rules.regime_headroom`); compound
