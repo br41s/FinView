@@ -31,7 +31,7 @@ OPERATOR_ONLY = frozenset({
     # Returned to Cloud Scheduler, never to a browser: /geo/cron answers 500 when
     # no user's cycle completed, so a dead pipeline shows up as a failed job
     # instead of a green one. Listed as the raw source literal, f-string and all.
-    "Every geo cycle failed ({len(user_ids)} users); see logs",
+    "The geo cycle failed; see logs",
 })
 
 # Function words that appear in English copy and never in Spanish copy. Nouns

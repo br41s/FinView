@@ -487,7 +487,7 @@ def cron_run(db: DbSession):
     manual /agent/run: a cron tick landing on top of a manual run would other-
     wise double-fetch every chain and write duplicate snapshots.
     """
-    user_ids = [uid for (uid,) in db.query(User.id).all()]
+    user_ids = [uid for (uid,) in db.query(User.id).filter(User.is_active.is_(True)).all()]
     ok = skipped = 0
     for uid in user_ids:
         with _cycle_lock:

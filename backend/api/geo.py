@@ -34,6 +34,7 @@ from backend.models import (
     GeoSignal,
     GeoSignalStatus,
 )
+from backend.services.geo.owner import geo_owner_id
 from backend.services.geo.rules import RULES_BY_ID, effective_confidence, rule_scope, INSTRUMENT_TRADABILITY
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,10 @@ def list_signals(
     status: str = Query("active", pattern="^(active|resolved|all)$"),
     limit: int = Query(100, le=500),
 ):
-    """List a user's geo signals, balanced across categories, filtered by status.
+    """List the shared geo signals, balanced across categories, filtered by status.
+
+    Every account reads the same rows — the system owner's (`geo/owner.py`);
+    ``user`` is the auth gate, not a filter.
 
     The window is chosen so no single high-volume category (fires, compound)
     buries lower-volume but live ones (volcano, conflict, weather). We first rank
@@ -271,7 +275,7 @@ def list_signals(
     rows with tickers/checkpoints.
     """
     ranked = db.query(GeoSignal.id, GeoSignal.display_category).filter(
-        GeoSignal.user_id == user.id
+        GeoSignal.user_id == geo_owner_id(db)
     )
     if status != "all":
         ranked = ranked.filter(GeoSignal.status == status)
@@ -299,7 +303,7 @@ def get_signal(signal_id: int, db: DbSession, user: CurrentUser):
     signal = (
         db.query(GeoSignal)
         .options(*_EAGER)
-        .filter(GeoSignal.id == signal_id, GeoSignal.user_id == user.id)
+        .filter(GeoSignal.id == signal_id, GeoSignal.user_id == geo_owner_id(db))
         .first()
     )
     if signal is None:
@@ -347,8 +351,8 @@ def accuracy(
     that has never resolved has no date to filter on, and an evaluated-but-null
     row is pending too, not a neutral one.
 
-    Checkpoints are per user (they carry ``user_id``, like the signals); the
-    rule table is global — see ``reset_rule_stats``.
+    Checkpoints belong to the system owner like the signals; the rule table is
+    global — see ``reset_rule_stats``.
     """
     since_dt = since or datetime.now(timezone.utc) - timedelta(days=_ACCURACY_WINDOW_DAYS)
     cutoff = _naive_utc(since_dt)
@@ -363,7 +367,7 @@ def accuracy(
             func.count(GeoCheckpoint.id),
         )
         .filter(
-            GeoCheckpoint.user_id == user.id,
+            GeoCheckpoint.user_id == geo_owner_id(db),
             or_(GeoCheckpoint.outcome.is_(None), GeoCheckpoint.evaluated_at >= cutoff),
         )
         .group_by(GeoCheckpoint.horizon, GeoCheckpoint.outcome)
@@ -437,12 +441,13 @@ def reset_rule_stats(db: DbSession, user: CurrentUser):
 
 
 @router.post("/run", response_model=GeoRunResult)
-def trigger_run(user: CurrentUser):
-    """Run inline on request-scoped runtimes; use a local thread otherwise."""
+def trigger_run(db: DbSession, user: CurrentUser):
+    """Run the shared cycle inline on request-scoped runtimes; a local thread otherwise."""
     from backend.services.geo.orchestrator import run_cycle_for_user
 
+    owner = geo_owner_id(db)
     if settings.request_scoped_runtime:
-        result = run_cycle_for_user(user.id)
+        result = run_cycle_for_user(owner)
         if result is None:
             raise HTTPException(status_code=500, detail="El ciclo de Geo-Intel ha fallado")
         return GeoRunResult(
@@ -453,44 +458,35 @@ def trigger_run(user: CurrentUser):
         )
 
     threading.Thread(
-        target=run_cycle_for_user, args=(user.id,), daemon=True
+        target=run_cycle_for_user, args=(owner,), daemon=True
     ).start()
     return GeoRunResult(status="started")
 
 
 @router.post("/cron", include_in_schema=False, dependencies=[CronKey])
 def cron_run(db: DbSession):
-    """External-cron entry (Cloud Scheduler / any cron): one cycle per user.
+    """External-cron entry (Cloud Scheduler / any cron): the one shared cycle.
 
     Runs synchronously so the instance stays alive for the cycle. Auth is the
     shared cron secret — see `require_cron_key`.
 
-    A cycle that fails is swallowed by `run_cycle_for_user`, which is right for
-    one user out of many but wrong for the caller: this endpoint used to answer
-    200 "done" while every cycle blew up, so Cloud Scheduler recorded success and
-    the pipeline could stay dead indefinitely without a single failed run. If
-    there are users and not one cycle completed, the job hears about it.
+    The cycle runs for the system owner, whatever the number of accounts (see
+    `geo/owner.py`). `run_cycle_for_user` swallows its exception and returns
+    None, which is right for the log and wrong for the caller: this endpoint
+    used to answer 200 "done" while the cycle blew up, so Cloud Scheduler
+    recorded success and the pipeline could stay dead indefinitely without a
+    single failed run. A failed cycle is a failed job.
     """
-    from backend.models import User
     from backend.services.geo.orchestrator import run_cycles
 
-    user_ids = [uid for (uid,) in db.query(User.id).all()]
-    ok = sum(1 for result in run_cycles(user_ids) if result is not None)
-    if user_ids and not ok:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Every geo cycle failed ({len(user_ids)} users); see logs",
-        )
-    return {
-        "status": "done",
-        "users": len(user_ids),
-        "cycles_ok": ok,
-        "cycles_failed": len(user_ids) - ok,
-    }
+    (result,) = run_cycles([geo_owner_id(db)])
+    if result is None:
+        raise HTTPException(status_code=500, detail="The geo cycle failed; see logs")
+    return {"status": "done", "cycles_ok": 1, "cycles_failed": 0}
 
 
 @router.post("/scheduler/start")
-def start_scheduler(user: CurrentUser):
+def start_scheduler(db: DbSession, user: CurrentUser):
     from backend.services.geo.scheduler import start_user_schedule
 
     if settings.request_scoped_runtime:
@@ -498,15 +494,15 @@ def start_scheduler(user: CurrentUser):
             status_code=409,
             detail="In-process schedulers are disabled on request-scoped runtimes",
         )
-    start_user_schedule(user.id)
+    start_user_schedule(geo_owner_id(db))
     return {"status": "started", "interval_minutes": settings.geo_monitor_interval_minutes}
 
 
 @router.post("/scheduler/stop")
-def stop_scheduler(user: CurrentUser):
+def stop_scheduler(db: DbSession, user: CurrentUser):
     from backend.services.geo.scheduler import stop_user_schedule
 
-    stop_user_schedule(user.id)
+    stop_user_schedule(geo_owner_id(db))
     return {"status": "stopped"}
 
 
@@ -522,18 +518,19 @@ def scheduler_status(db: DbSession, user: CurrentUser):
     """
     from backend.services.geo.scheduler import is_running
 
-    base = db.query(GeoSignal).filter(GeoSignal.user_id == user.id)
+    owner = geo_owner_id(db)
+    base = db.query(GeoSignal).filter(GeoSignal.user_id == owner)
     total = base.count()
     active = base.filter(GeoSignal.status == GeoSignalStatus.ACTIVE.value).count()
     latest = base.order_by(GeoSignal.created_at.desc()).first()
     run = (
         db.query(GeoCycleRun)
-        .filter(GeoCycleRun.user_id == user.id)
+        .filter(GeoCycleRun.user_id == owner)
         .order_by(GeoCycleRun.started_at.desc())
         .first()
     )
     return GeoSchedulerStatus(
-        running=is_running(user.id),
+        running=is_running(owner),
         external_scheduler=settings.request_scoped_runtime,
         interval_minutes=settings.geo_monitor_interval_minutes,
         total_signals=total,

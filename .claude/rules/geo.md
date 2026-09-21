@@ -69,14 +69,27 @@ mentions 4–6 by category, **sources 1** (NumSources was 1 in 1758/1790 rows, s
 keywords only as fallback; root 17 (coerce, mostly 173 arrest) is deliberately **not** armed
 conflict, and the escalation cluster counts deduped stories, not rows.
 
-### Pipeline (`services/geo/orchestrator.py`, per user)
+### One owner, every reader
+Ideas is the same for every account: the feeds are public, the channels are global env
+vars and the frontend keeps no per-user geo state, so N accounts used to mean N identical
+copies of every row and N cycles. The pipeline runs **once, under a system user**
+(`services/geo/owner.py`, `ideas-system@finview.internal`, inactive, no password) that owns
+`geo_signals` / `geo_checkpoints` / `geo_cycle_runs`; every read, `/run`, `/scheduler/*`
+and `/cron` resolve `geo_owner_id(db)` and `CurrentUser` is only the auth gate. It is a
+`users` row because the three tables carry a NOT NULL FK and there is no Alembic. The boot
+that creates it adopts the **oldest account's** history (one-shot, logged) so the first
+shared cycle does not re-track and re-page every live event; other accounts' copies stay
+unread. The options and zonas-clave crons skip inactive users so the owner never gets a
+portfolio cycle.
+
+### Pipeline (`services/geo/orchestrator.py`, one cycle for the owner)
 `ingest → sentinel (event extraction) → analyst (rule matching, LLM enrichment for
 importance ≥ 60) → compound rules (energy/food/conflict buckets, ≥2 simultaneous) →
 advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pending`.
 - **LLM token gating**: the OpenRouter call fires only on first sighting — skipped when
   the user already has an ACTIVE signal for the event, and results are cached in-memory
   per event id (6h TTL) so N users cost one call. Long-lived feed events cost ~1 call total.
-- **Dedup**: per-user by (source, external_id) on ACTIVE signals — and the DB index says
+- **Dedup**: per owner by (source, external_id) on ACTIVE signals — and the DB index says
   the same thing (`uq_geo_sig_active_dedup`, partial on `status='active'`). It used to be
   a plain UNIQUE over the whole table, which contradicted the pipeline: the auditor
   resolves at +7d while most feeds keep publishing the same id (EONET events stay open
@@ -154,7 +167,7 @@ The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only su
 while the instance is alive — with `--min-instances=0` it dies on scale-to-zero.
 **Prod periodicity = Cloud Scheduler → `POST /api/geo/cron` every 30 min**, authenticated
 by header `X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret
-disables the endpoint). The endpoint runs one cycle per user synchronously so Cloud Run
+disables the endpoint). The endpoint runs the owner's one cycle synchronously so Cloud Run
 keeps CPU until it finishes. Don't convert it to fire-and-forget threads — the instance
 can be reclaimed after the response.
 

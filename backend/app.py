@@ -24,6 +24,7 @@ from backend.api.alt_investments import router as alt_investments_router
 from backend.config import PRODUCTION_LIKE_ENVS, settings
 from backend.database import engine, ensure_columns, ensure_constraints
 from backend.models import Base
+from backend.services.geo.owner import ensure_geo_owner
 from backend.services.geo.scheduler import shutdown_scheduler as shutdown_geo_scheduler
 from backend.services.options_scheduler import shutdown_scheduler
 from backend.services.rate_limit import limiter
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 Base.metadata.create_all(bind=engine)
 ensure_columns()
 ensure_constraints()
+ensure_geo_owner()
 
 
 def _start_instance_background_workers() -> None:
