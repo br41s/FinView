@@ -7,6 +7,7 @@ an existing active signal only re-notifies when confidence shifts ≥ 15.
 
 import json
 import logging
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -33,8 +34,18 @@ _CONFIDENCE_SHIFT = 15  # min confidence delta to re-notify a known event
 _NON_OBSERVED_SOURCES = frozenset({"alerts"})
 
 
-def _pageable(source: str, importance: int) -> bool:
-    return importance >= IMPORTANCE_THRESHOLD and source not in _NON_OBSERVED_SOURCES
+def _pageable(source: str, importance: int, event=None) -> bool:
+    if importance < IMPORTANCE_THRESHOLD or source in _NON_OBSERVED_SOURCES:
+        return False
+    # News pages on a *spike*, not on the baseline: a GDELT bucket is one tracked
+    # signal per (category, region) that is re-tracked after every +7d
+    # resolution, so an ongoing war paged weekly. The sentinel stamps each GDELT
+    # event with its region's story count against a 7-day rolling median;
+    # unknown (no baseline yet) is not novel.
+    if source == "gdelt":
+        novelty = ((getattr(event, "raw_data", None) or {}).get("novelty") or {})
+        return novelty.get("novel") is True
+    return True
 
 # Fine matcher type → coarse frontend display category.
 _DISPLAY_CATEGORY: dict[str, GeoDisplayCategory] = {
@@ -84,6 +95,31 @@ class SignalResult:
     should_notify: bool
 
 
+def _reanchor(db: Session, signal: GeoSignal, prices: dict[str, float]) -> None:
+    """Re-price the basket and restart the pending checkpoints from now.
+
+    The checkpoints of a news bucket were anchored at its creation, which for a
+    signal that pages on a later spike is a quiet day: the auditor would have
+    measured, and the rules would have learned from, a window that does not
+    contain the event that paged. The thesis starts at the spike.
+    """
+    from .auditor import create_checkpoints
+
+    now = datetime.now(timezone.utc)
+    for t in signal.tickers:
+        price = prices.get(t.symbol)
+        if price is not None:
+            t.price_at_signal = price
+            t.resolved = True
+    for chk in list(signal.checkpoints):
+        if chk.outcome is None:
+            db.delete(chk)
+    signal.checkpoints = [c for c in signal.checkpoints if c.outcome is not None]
+    db.flush()
+    signal.created_at = now.replace(tzinfo=None)
+    create_checkpoints(db, signal)
+
+
 def generate_signal(
     db: Session,
     *,
@@ -121,13 +157,22 @@ def generate_signal(
         # notified_at is the retry ledger: a gated signal no channel delivered
         # (outage, rate limit) is re-selected until one does, instead of burning
         # its only attempt on the first cycle.
-        should_notify = _pageable(existing.source, importance) and (
+        should_notify = _pageable(existing.source, importance, event) and (
             shift >= _CONFIDENCE_SHIFT or existing.notified_at is None
         )
         existing.confidence = confidence / 100
         existing.importance = importance
         existing.risk_score = risk
         existing.direction = direction
+        # The bucket's representative story moves with the news: a GDELT signal
+        # is created on a quiet day and pages on the cycle it spikes, and the
+        # push and the panel must carry the spike, not the day-one headline.
+        existing.headline = event.title[:300]
+        existing.lat = event.latitude
+        existing.lng = event.longitude
+        existing.raw_json = json.dumps(event.raw_data)[:4000] if event.raw_data else None
+        if should_notify and existing.notified_at is None and existing.source == "gdelt":
+            _reanchor(db, existing, prices)
         return SignalResult(existing, importance, is_new=False, should_notify=should_notify)
 
     signal = GeoSignal(
@@ -162,5 +207,5 @@ def generate_signal(
             )
         )
 
-    should_notify = _pageable(signal.source, importance)
+    should_notify = _pageable(signal.source, importance, event)
     return SignalResult(signal, importance, is_new=True, should_notify=should_notify)
