@@ -544,6 +544,13 @@ _CLUSTER_MIN_CATEGORIES = 2
 # after (process memory dies at scale-to-zero). A GDELT signal pages only when
 # its region's story count this hour is novel against the median of that window.
 _gdelt_history: dict[str, list[tuple[int, int]]] = {}
+
+
+def _iter_region_ids():
+    from .rules import GEO_REGIONS
+
+    return GEO_REGIONS.keys()
+
 _GDELT_MAX_HISTORY = 48 * 7
 _NOVELTY_MIN_SAMPLES = 12  # six hours of cycles before "novel" means anything
 _NOVELTY_FACTOR = 2.0
@@ -624,14 +631,24 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
             tr["best"] = evt
 
     # Novelty is judged against the window *before* this hour is added to it.
+    # Sampled keys are real region names only: a one-off coordinate cell
+    # ("32_-86") never recurs, never reaches a baseline, and was half the rows.
+    region_ids = set(_iter_region_ids())
     novelty = {
         key: _novelty(key, tally[key]["stories"] if key in tally else 0)
-        for key in set(tally) | _ESCALATION_REGIONS
+        for key in (set(tally) | _ESCALATION_REGIONS)
+        if key in region_ids
     }
     for key, info in novelty.items():
         hist = _gdelt_history.setdefault(key, [])
         hist.append((info["stories"], now))
         del hist[:-_GDELT_MAX_HISTORY]
+    for key, info in novelty.items():
+        if info["stories"]:
+            logger.info(
+                "geo novelty %s: stories=%d baseline=%s novel=%s",
+                key, info["stories"], info["baseline"], info["novel"],
+            )
 
     out: list[GeoEvent] = []
     for event_id, bucket in buckets.items():
@@ -662,7 +679,9 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                     "eventCode": evt.event_code,
                     "sourceUrl": evt.source_url,
                     "storiesThisHour": bucket["stories"],
-                    "novelty": novelty[bucket["region_key"]],
+                    "novelty": novelty.get(
+                        bucket["region_key"], {"stories": bucket["stories"], "baseline": None, "novel": None}
+                    ),
                 },
             )
         )

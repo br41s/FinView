@@ -73,6 +73,32 @@ def test_every_escalation_region_gets_a_sample_including_zero():
     assert sentinel._gdelt_history["ukraine_black_sea"][-1][0] == 2
 
 
+def test_coordinate_cells_are_never_sampled():
+    """A story outside every box keys on "lat_lon"; it never recurs, never
+    reaches a baseline, and was half the rows written per cycle."""
+    sentinel.analyze_gdelt_events([_story(1, lat=-19.0, lon=29.0)])  # Zimbabwe: no box
+    assert all(not k.lstrip("-").split("_")[0].isdigit() for k in sentinel._gdelt_history)
+
+
+def test_every_gdelt_rule_region_is_sampled_every_cycle():
+    """The zero-fill set must cover every region a GDELT rule can fire on, or a
+    rule on a region outside it gets a positives-only baseline and can never be
+    novel — and it would look fine in review."""
+    import re
+
+    from backend.services.geo.rules import FAST_RULES
+
+    gdelt_types = {f[0] for f in sentinel._GDELT_FILTERS.values()}
+    regions = {
+        m.group(1)
+        for r in FAST_RULES
+        if r.category in gdelt_types
+        for m in [re.search(r"region=(\w+)", r.condition)]
+        if m
+    }
+    assert regions <= sentinel._ESCALATION_REGIONS, regions - sentinel._ESCALATION_REGIONS
+
+
 def test_the_cluster_carries_the_region_novelty():
     _history("ukraine_black_sea", [0] * 12)
     rows = [_story(i) for i in range(6)] + [
@@ -123,3 +149,42 @@ def test_region_samples_round_trip(db, monkeypatch):
     db.commit()
     orchestrator._hydrate_region_history(db)
     assert all(s != 9 for s, _ in sentinel._gdelt_history.get("iran", []))
+
+
+def test_a_deferred_page_carries_the_spike_and_reanchors(db):
+    """A bucket created on a quiet day pages on the spike: the push must carry
+    the spike's headline, and the checkpoints must start there, not at creation."""
+    from backend.models import GeoCheckpoint
+
+    quiet = AnalystResult(
+        event=_gdelt_event(False), matched_rules=[],
+        tickers=[AnalystTicker("WEAT", "bullish", "x")], confidence=84.0, risk_score=8,
+        direction="bullish",
+    )
+    first = generate_signal(db, user_id=1, analysis=quiet, prices={"WEAT": 100.0})
+    db.flush()
+    from backend.services.geo.auditor import create_checkpoints
+
+    first.signal.created_at = datetime.now(timezone.utc) - timedelta(days=2)  # the quiet day
+    create_checkpoints(db, first.signal)
+    db.commit()
+    old_targets = {getattr(c.horizon, "value", c.horizon): c.target_at for c in first.signal.checkpoints}
+
+    spike_event = _gdelt_event(True)
+    spike_event.title = "Armed Conflict: RUSSIA → KYIV: fight with artillery"
+    spike = AnalystResult(
+        event=spike_event, matched_rules=[], tickers=[AnalystTicker("WEAT", "bullish", "x")],
+        confidence=84.0, risk_score=8, direction="bullish",
+    )
+    res = generate_signal(db, user_id=1, analysis=spike, prices={"WEAT": 130.0})
+    db.commit()
+    assert res.should_notify is True and res.is_new is False
+    assert res.signal.headline.startswith("Armed Conflict: RUSSIA")
+    assert float(res.signal.tickers[0].price_at_signal) == 130.0
+    fresh = {getattr(c.horizon, "value", c.horizon): c.target_at for c in
+             db.query(GeoCheckpoint).filter_by(signal_id=res.signal.id).all()}
+    assert set(fresh) == set(old_targets)
+    # The daily horizons restart from the spike; the intraday ones are in
+    # trading time and may land on the same session bar (weekend → Monday).
+    assert all(fresh[h] > old_targets[h] for h in ("1d", "3d", "7d"))
+    assert all(fresh[h] >= old_targets[h] for h in ("1h", "6h"))

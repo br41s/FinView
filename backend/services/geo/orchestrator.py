@@ -58,6 +58,7 @@ _RUN_RETENTION_DAYS = 7
 _FLIGHT_SAMPLE_MIN_GAP = timedelta(minutes=10)
 _FLIGHT_SAMPLE_RETENTION = timedelta(hours=24)
 _REGION_SAMPLE_RETENTION = timedelta(days=7)
+_REGION_SAMPLE_MIN_GAP = timedelta(minutes=10)
 
 
 @dataclass
@@ -74,6 +75,8 @@ class CycleResult:
     persist_failures: int = 0
     # Signals the notify gate selected that no channel delivered.
     notify_failed: int = 0
+    # GDELT signals above the importance gate that the novelty gate held back.
+    novelty_suppressed: int = 0
 
 
 def _load_stats(db: Session) -> dict[str, GeoRuleStat]:
@@ -146,15 +149,15 @@ def _persist_flight_samples(db: Session) -> int:
 
 def _hydrate_region_history(db: Session) -> None:
     rows = (
-        db.query(GeoRegionSample)
+        db.query(GeoRegionSample.region, GeoRegionSample.sampled_at, GeoRegionSample.stories)
         .filter(GeoRegionSample.sampled_at >= datetime.now(timezone.utc) - _REGION_SAMPLE_RETENTION)
         .order_by(GeoRegionSample.sampled_at.asc())
         .all()
     )
     history: dict[str, list[tuple[int, int]]] = {}
-    for r in rows:
-        ts = r.sampled_at if r.sampled_at.tzinfo else r.sampled_at.replace(tzinfo=timezone.utc)
-        history.setdefault(r.region, []).append((r.stories, int(ts.timestamp() * 1000)))
+    for region, sampled_at, stories in rows:
+        ts = sampled_at if sampled_at.tzinfo else sampled_at.replace(tzinfo=timezone.utc)
+        history.setdefault(region, []).append((stories, int(ts.timestamp() * 1000)))
     for hist in history.values():
         del hist[:-sentinel._GDELT_MAX_HISTORY]
     sentinel._gdelt_history.clear()
@@ -178,7 +181,7 @@ def _persist_region_samples(db: Session) -> int:
         )
         if latest is not None:
             prev = latest[0] if latest[0].tzinfo else latest[0].replace(tzinfo=timezone.utc)
-            if sampled_at - prev < _FLIGHT_SAMPLE_MIN_GAP:
+            if sampled_at - prev < _REGION_SAMPLE_MIN_GAP:
                 continue
         db.add(GeoRegionSample(region=region, sampled_at=sampled_at, stories=stories))
         written += 1
@@ -438,10 +441,15 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
     checkpoints = evaluate_pending(db, user_id, yahoo, inputs.series_cache)
 
     new_signals = sum(1 for r in results if r.is_new)
+    suppressed = sum(
+        1 for r in results
+        if not r.should_notify and r.importance >= IMPORTANCE_THRESHOLD
+        and r.signal.source == "gdelt" and r.signal.notified_at is None
+    )
     logger.info(
         "geo cycle user=%s done: %d new signals, %d notified, %d undelivered, "
-        "%d checkpoints, %d persist failures",
-        user_id, new_signals, notified, notify_failed, checkpoints, persist_failures,
+        "%d checkpoints, %d persist failures, %d held by the novelty gate",
+        user_id, new_signals, notified, notify_failed, checkpoints, persist_failures, suppressed,
     )
     return CycleResult(
         events=len(events),
@@ -451,6 +459,7 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
         checkpoints_evaluated=checkpoints,
         sources={key: len(getattr(bundle, key, []) or []) for key in _SOURCE_KEYS},
         persist_failures=persist_failures,
+        novelty_suppressed=suppressed,
     )
 
 
