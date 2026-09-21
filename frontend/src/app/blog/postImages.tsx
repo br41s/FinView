@@ -2107,7 +2107,41 @@ function ImgDividendosAustriacos() {
   );
 }
 
+function ImgRsuStockOptions() {
+  return (
+    <div className={styles.postImgRsuStockOptions}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="8" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">RSU: DOS MOMENTOS FISCALES</text>
+        <rect x="150" y="24" width="28" height="28" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="164" y="43" fontSize="10" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">€</text>
+        <text x="164" y="60" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">valor</text>
+        <text x="164" y="67" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">vesting</text>
+        {/* timeline rail */}
+        <line x1="30" y1="72" x2="170" y2="72" stroke="var(--fv-ink-20)" strokeWidth="1.5" />
+        {/* node 1: grant */}
+        <circle cx="40" cy="72" r="7" fill="none" stroke="var(--fv-ink-40)" strokeWidth="1.5" />
+        <text x="40" y="88" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">GRANT</text>
+        <text x="40" y="98" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">no tributa</text>
+        {/* node 2: vesting */}
+        <circle cx="100" cy="72" r="9" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="100" y="75" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">%</text>
+        <text x="100" y="88" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">VESTING</text>
+        <text x="100" y="98" fontSize="5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">nómina · base general</text>
+        {/* node 3: sale */}
+        <circle cx="160" cy="72" r="7" fill="none" stroke="var(--fv-ink-40)" strokeWidth="1.5" />
+        <text x="160" y="88" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">VENTA</text>
+        <text x="160" y="98" fontSize="5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">plusvalía · ahorro</text>
+        {/* connectors */}
+        <path d="M52 72h35" stroke="var(--fv-ink-30)" strokeWidth="1.2" strokeDasharray="3 2" />
+        <path d="M114 72h35" stroke="var(--fv-ink-30)" strokeWidth="1.2" strokeDasharray="3 2" />
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el valor del vesting es tu coste, no cero</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'rsu-stock-options-irpf-espana': ImgRsuStockOptions,
   'dividendos-austriacos-espana': ImgDividendosAustriacos,
   'dividendos-finlandeses-espana': ImgDividendosFinlandeses,
   'dividendos-suecos-espana': ImgDividendosSuecos,
