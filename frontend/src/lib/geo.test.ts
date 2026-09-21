@@ -197,7 +197,7 @@ describe("macroRegimeBadge", () => {
     expect(badge?.tone).toBe("warn");
     expect(badge?.label).toBe("Régimen: risk-off");
     expect(badge?.title).toContain("VIX 31.2");
-    expect(badge?.title).toContain("+1 de riesgo");
+    expect(badge?.title).toContain("nuevos eventos");
   });
 
   it("is muted on neutral and tolerates a missing VIX", () => {

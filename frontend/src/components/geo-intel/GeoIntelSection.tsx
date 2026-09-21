@@ -242,13 +242,14 @@ export function GeoIntelSection() {
             {runOutcome && <span className="text-muted-foreground">{runOutcome}</span>}
             {regimeBadge && (
               <span
-                className={
-                  regimeBadge.tone === "warn"
-                    ? "rounded border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-red-700"
-                    : regimeBadge.tone === "ok"
-                      ? "rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700"
-                      : "rounded border border-border bg-muted px-1.5 py-0.5 text-muted-foreground"
-                }
+                className="rounded border px-1.5 py-0.5"
+                style={{
+                  // the warm palette HEALTH_TONE uses beside it, not Tailwind's generic reds
+                  color: regimeBadge.tone === "warn" ? "#9B3D2C" : regimeBadge.tone === "ok" ? "#6B7A3A" : "rgba(31,27,22,0.6)",
+                  borderColor: regimeBadge.tone === "warn" ? "rgba(155,61,44,0.3)" : regimeBadge.tone === "ok" ? "rgba(107,122,58,0.3)" : "rgba(31,27,22,0.15)",
+                  backgroundColor: regimeBadge.tone === "warn" ? "rgba(155,61,44,0.08)" : regimeBadge.tone === "ok" ? "rgba(107,122,58,0.08)" : "rgba(31,27,22,0.04)",
+                }}
+                role="status"
                 title={regimeBadge.title}
               >
                 {regimeBadge.label}

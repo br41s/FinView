@@ -248,11 +248,13 @@ def severity_headroom(rule: FastRule, event) -> int:
 # Categories whose market impact is amplified by a risk-off regime: when the VIX,
 # the curve, financial stress and credit spreads already say "fragile", the same
 # chokepoint or conflict event moves more. Physical/agricultural events are not
-# regime-sensitive in this sense (a drought is a drought).
+# regime-sensitive in this sense (a drought is a drought). Compound is excluded
+# on purpose: its risk is held at 6 so "≥2 events touching an energy ticker"
+# stays off the phone, and +1 in risk_off would page it every day.
 _REGIME_SENSITIVE = frozenset({
     "conflict", "armed_conflict", "military_escalation", "military_surge",
     "geopolitical_escalation", "sanctions", "trade_dispute", "maritime_disruption",
-    "maritime_rerouting", "maritime_congestion", "airspace_closure", "nuclear", "compound",
+    "maritime_rerouting", "maritime_congestion", "airspace_closure", "nuclear",
 })
 
 

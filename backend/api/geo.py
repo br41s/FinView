@@ -13,6 +13,7 @@ from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     GeoAccuracyOut,
     GeoCheckpointOut,
+    GeoMacroOut,
     GeoCycleRunOut,
     GeoHorizonAccuracy,
     GeoRuleAccuracy,
@@ -534,7 +535,8 @@ def _macro_snapshot() -> dict | None:
     try:
         from backend.services.macro_context import macro_context
 
-        return macro_context()
+        snapshot = macro_context()
+        return GeoMacroOut(**snapshot) if snapshot else None
     except Exception:
         logger.warning("geo status: macro snapshot unavailable", exc_info=True)
         return None

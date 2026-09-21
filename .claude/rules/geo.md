@@ -97,8 +97,10 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   Cloud Scheduler records a failure instead of a green run.
 - **Macro regime (FRED)**: `prepare_cycle` reads `macro_context()` once per request (cached
   series, synced nightly by the zonas-clave job; no HTTP in the cycle). In a `risk_off` regime
-  every conflict / chokepoint / sanctions / compound rule gets +1 risk (`rules.regime_headroom`);
-  physical and agricultural events are unmoved. The regime is stamped on each event's
+  every conflict / chokepoint / sanctions rule gets +1 risk (`rules.regime_headroom`); compound
+  is excluded (its risk is held at 6 so it never pages) and physical/agricultural events are
+  unmoved. The headroom applies at **creation**: a tracked signal keeps its risk across regime
+  flips (the LLM-risk-sticks rule), so the badge speaks of *new* events. The regime is stamped on each event's
   `raw_data.macroRegime`, returned by `/geo/scheduler/status` as `macro`, and shown as a badge
   in the Ideas header. Unavailable macro data means no headroom, never an error.
 - **Novelty gate (GDELT only)**: a news bucket is one tracked signal per (category, region),

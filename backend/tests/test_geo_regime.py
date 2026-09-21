@@ -37,3 +37,14 @@ def test_analyze_event_threads_the_regime_through():
     fragile = analyze_event(ev, {}, use_llm=False, regime="risk_off")
     assert fragile.risk_score == calm.risk_score + 1
     assert base_risk(_rule("conflict-hormuz-strait")) == calm.risk_score
+
+
+def test_risk_off_does_not_put_compound_rules_on_the_phone():
+    """Compound sits at risk 6 so it never pages; +1 in risk_off would page it daily."""
+    from backend.services.geo.advisor import IMPORTANCE_THRESHOLD, compute_importance
+    from backend.services.geo.rules import effective_confidence
+
+    for r in FAST_RULES:
+        if r.category == "compound":
+            risk = base_risk(r) + regime_headroom([r], "risk_off")
+            assert compute_importance(effective_confidence(r, None) * 100, risk) < IMPORTANCE_THRESHOLD
