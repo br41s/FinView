@@ -134,6 +134,27 @@ class VesselSnapshot:
 
 
 @dataclass
+class OfacEntry:
+    """One SDN list change on an OFAC recent-action page."""
+
+    name: str
+    kind: str  # individual|entity|vessel|aircraft
+    programs: tuple[str, ...]  # bracketed tags, e.g. ("IRAN", "IRAN-EO13902")
+    country: str | None  # slug from ingest.ofac.COUNTRY_SLUGS, None when unlisted
+    action: str  # added|removed
+
+
+@dataclass
+class OfacAction:
+    """One dated OFAC recent action (`/recent-actions/YYYYMMDD`)."""
+
+    date: str  # YYYYMMDD
+    url: str
+    title: str
+    entries: list[OfacEntry] = field(default_factory=list)
+
+
+@dataclass
 class SourceBundle:
     """Result of one ingest cycle — all sources gathered together."""
 
@@ -144,3 +165,4 @@ class SourceBundle:
     flights: list[FlightData] = field(default_factory=list)
     gdelt: list[GdeltEvent] = field(default_factory=list)
     vessels: list[VesselSnapshot] = field(default_factory=list)
+    ofac: list[OfacAction] = field(default_factory=list)

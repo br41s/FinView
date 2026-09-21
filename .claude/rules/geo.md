@@ -8,9 +8,9 @@ paths:
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 81 rules / 49 regions
-(`services/geo/rules.py`), 7 ingest sources (seismic, EONET events, FIRMS fires,
-maritime AIS, meteo, flights, GDELT) — every source key optional, a missing
+WorldHawk port: geopolitical/natural events → market signals. 83 rules / 49 regions
+(`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
+maritime AIS, meteo, flights, GDELT, OFAC) — every source key optional, a missing
 key degrades that source to empty.
 
 ### Every rule states its reach and writes down its transmission
@@ -68,6 +68,27 @@ mentions 4–6 by category, **sources 1** (NumSources was 1 in 1758/1790 rows, s
 3–5 floor would drop the whole feed). Classification is CAMEO root code first, actor
 keywords only as fallback; root 17 (coerce, mostly 173 arrest) is deliberately **not** armed
 conflict, and the escalation cluster counts deduped stories, not rows.
+
+### OFAC — official designations, because GDELT does not carry them
+Measured 2026-09-21: five OFAC actions and three BIS orders in a week produced one GDELT
+sanctions signal (actors "MUSLIM → ?"). A wire story only becomes a GDELT signal inside a
+region box — Russia, Cuba, Venezuela, Belarus have none — and the wire never names the
+designated entities, which is the tradable content. `ingest/ofac.py` reads
+`ofac.treasury.gov/recent-actions` (no feed or API exists for the dated delta) and parses
+the **canonical SDN entry format** from the page text — the same format as the Federal
+Register notice and the SDN files, unchanged for decades: kind from `(individual)` /
+`(vessel)`, programs from `[TAG]`s, country from `nationality X` else the first country in
+the address. Window 3 days (a +7 d resolution must not re-track the same action), 5 pages
+max, cached one cycle, page failures skip that page and a dead listing returns the stale
+payload. `sentinel.analyze_ofac_actions` emits one `sanctions` event per (action, country)
+with ≥1 **addition**, matched at the capital: Tehran and Beijing fall in the `iran` /
+`china_industrial` boxes and hit the existing rules; Moscow and Caracas are in no box and
+match through the new condition atom **`country=<slug>`** (`ofac-sanctions-russia`,
+`ofac-sanctions-venezuela`, scope global). ≥8 additions is severity red (+1 risk through
+`severity_headroom`). Removals and modifications are parsed, counted and start nothing —
+a delisting is a different thesis. The generative path does not see OFAC events: with no
+box their reach is "local" and the validator would reject every national instrument, so a
+country without a rule is a rule to write, not an LLM call.
 
 ### One owner, every reader
 Ideas is the same for every account: the feeds are public, the channels are global env
