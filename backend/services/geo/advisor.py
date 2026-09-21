@@ -32,6 +32,7 @@ _CONFIDENCE_SHIFT = 15  # min confidence delta to re-notify a known event
 # about. The first two notifications the pipeline ever sent (2026-09-20) were
 # Gaza and Syria — from these polygons, unchanged since June.
 _NON_OBSERVED_SOURCES = frozenset({"alerts"})
+_GENERATED_MIN_CONFIDENCE = 75
 
 
 def _pageable(source: str, importance: int, event=None) -> bool:
@@ -42,8 +43,17 @@ def _pageable(source: str, importance: int, event=None) -> bool:
     # resolution, so an ongoing war paged weekly. The sentinel stamps each GDELT
     # event with its region's story count against a 7-day rolling median;
     # unknown (no baseline yet) is not novel.
+    raw = getattr(event, "raw_data", None) or {}
+    # A generated thesis has no rule behind it: it pages only when the model is
+    # itself confident, on top of every other gate.
+    if raw.get("generated") and (raw.get("llmConfidence") or 0) < _GENERATED_MIN_CONFIDENCE:
+        logger.info(
+            "geo notify: generated thesis %s held (confidence %s < %s)",
+            getattr(event, "id", "?"), raw.get("llmConfidence"), _GENERATED_MIN_CONFIDENCE,
+        )
+        return False
     if source == "gdelt":
-        novelty = ((getattr(event, "raw_data", None) or {}).get("novelty") or {})
+        novelty = (raw.get("novelty") or {})
         return novelty.get("novel") is True
     return True
 
@@ -93,6 +103,25 @@ class SignalResult:
     importance: int
     is_new: bool
     should_notify: bool
+
+
+def _raw(raw_json: str | None) -> dict:
+    try:
+        raw = json.loads(raw_json) if raw_json else {}
+    except (ValueError, TypeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _raw_json(raw_data: dict | None) -> str | None:
+    """Serialise raw_data within the column, dropping the narrative before
+    truncating: a sliced blob is invalid JSON and reads back as nothing."""
+    if not raw_data:
+        return None
+    text = json.dumps(raw_data)
+    if len(text) > 4000 and "llmNarrative" in raw_data:
+        text = json.dumps({k: v for k, v in raw_data.items() if k != "llmNarrative"})
+    return text[:4000]
 
 
 def _reanchor(db: Session, signal: GeoSignal, prices: dict[str, float]) -> None:
@@ -151,7 +180,17 @@ def generate_signal(
         # a rule-only refresh must not overwrite it, or the override flips back
         # one cycle later and pages what the model had just judged not worth a
         # page (2026-09-20: five conflict signals paged on cycle two this way).
-        risk = analysis.risk_score if analysis.llm_narrative else int(existing.risk_score)
+        # A generated thesis is pinned at first sighting: the basket the auditor
+        # prices is day one's, so the numbers, headline and narrative stay day
+        # one's too — a 6-hour re-call would describe instruments the panel does
+        # not show. Rule-backed signals follow the news.
+        pinned = bool(_raw(existing.raw_json).get("generated"))
+        if pinned:
+            confidence = float(existing.confidence) * 100
+            risk = int(existing.risk_score)
+            direction = existing.direction
+        else:
+            risk = analysis.risk_score if analysis.llm_narrative else int(existing.risk_score)
         importance = compute_importance(confidence, risk)
         shift = abs(confidence - round(float(existing.confidence) * 100))
         # notified_at is the retry ledger: a gated signal no channel delivered
@@ -167,10 +206,11 @@ def generate_signal(
         # The bucket's representative story moves with the news: a GDELT signal
         # is created on a quiet day and pages on the cycle it spikes, and the
         # push and the panel must carry the spike, not the day-one headline.
-        existing.headline = event.title[:300]
-        existing.lat = event.latitude
-        existing.lng = event.longitude
-        existing.raw_json = json.dumps(event.raw_data)[:4000] if event.raw_data else None
+        if not pinned:
+            existing.headline = event.title[:300]
+            existing.lat = event.latitude
+            existing.lng = event.longitude
+            existing.raw_json = _raw_json(event.raw_data)
         if should_notify and existing.notified_at is None and existing.source == "gdelt":
             _reanchor(db, existing, prices)
         return SignalResult(existing, importance, is_new=False, should_notify=should_notify)
@@ -191,7 +231,7 @@ def generate_signal(
         direction=direction,
         status=GeoSignalStatus.ACTIVE.value,
         matched_rule_ids=dumps_rule_ids(analysis.matched_rules),
-        raw_json=json.dumps(event.raw_data)[:4000] if event.raw_data else None,
+        raw_json=_raw_json(event.raw_data),
     )
     db.add(signal)
     db.flush()  # assign signal.id for ticker FKs

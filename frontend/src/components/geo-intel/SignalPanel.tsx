@@ -344,7 +344,30 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             )}
           </div>
 
-          {signal.rules.length === 0 ? (
+          {signal.generated ? (
+            <div className="mt-2.5 flex flex-col gap-1.5 text-[12px]">
+              <span
+                className="w-fit rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
+                style={{ color: "#825416", borderColor: "rgba(130,84,22,0.35)", backgroundColor: "rgba(130,84,22,0.08)" }}
+                title="Ningún criterio escrito cubre este evento: la tesis la propuso el modelo y no alimenta el aprendizaje de reglas."
+              >
+                Tesis generada por IA · sin regla
+              </span>
+              {signal.thesis && (
+                <p className="flex flex-wrap gap-x-2 text-[rgba(31,27,22,0.85)]">
+                  {thesisSegments(signal.thesis).map((seg, i) => (
+                    <span key={i} className="inline-flex items-center gap-x-2">
+                      {i > 0 && <span className="text-[rgba(31,27,22,0.35)]">→</span>}
+                      {seg}
+                    </span>
+                  ))}
+                </p>
+              )}
+              {signal.narrative && (
+                <p className="text-[rgba(31,27,22,0.7)]">{signal.narrative}</p>
+              )}
+            </div>
+          ) : signal.rules.length === 0 ? (
             <p className="mt-2.5 text-[12px] text-[rgba(31,27,22,0.5)]">
               No specific rule matched — scored on base event severity.
             </p>

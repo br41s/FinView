@@ -96,6 +96,16 @@ def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[Geo
     ]
 
 
+def _raw(raw_json: str | None) -> dict:
+    if not raw_json:
+        return {}
+    try:
+        raw = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _source_url(raw_json: str | None) -> str | None:
     """Best-effort link to the underlying source event.
 
@@ -177,6 +187,9 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
         status=_ev(signal.status),
         source=signal.source or "",
         sourceUrl=_source_url(signal.raw_json),
+        generated=bool(_raw(signal.raw_json).get("generated")),
+        narrative=(_raw(signal.raw_json).get("llmNarrative") or None),
+        thesis=(_raw(signal.raw_json).get("llmThesis") or None),
     )
 
 

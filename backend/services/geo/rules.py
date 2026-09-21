@@ -1348,6 +1348,15 @@ def match_rules(event) -> list[FastRule]:
 _SCOPE_LOCAL_MAX_AREA = 200  # deg²; regions up to ~turkey / ukraine are "local"
 
 
+def region_reach(region: str | None) -> str:
+    """Scope inferred from a region box alone: no box → local, small box → local,
+    large box → regional. Used to clamp what a generated thesis may target."""
+    if not region or region not in GEO_REGIONS:
+        return "local"
+    la0, la1, lo0, lo1 = GEO_REGIONS[region]
+    return "local" if (la1 - la0) * (lo1 - lo0) <= _SCOPE_LOCAL_MAX_AREA else "regional"
+
+
 def rule_scope(rule: FastRule) -> str:
     """Explicit scope, or one inferred from the region box: compound and
     region-less rules are global, small boxes local, the rest regional."""
