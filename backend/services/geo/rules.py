@@ -1,6 +1,6 @@
 """Geo-economic correlation rules — Python port of WorldHawk's rules.ts.
 
-81 fast rules + 49 geo-regions + the condition matcher.
+83 fast rules + 49 geo-regions + the condition matcher.
 Direction: ↑ = bullish, ↓ = bearish.
 
 Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's headers say
@@ -375,7 +375,7 @@ def match_regions(lat: float, lon: float) -> list[str]:
     return out
 
 
-# ── 81 fast rules ────────────────────────────────────────────────────
+# ── 83 fast rules ────────────────────────────────────────────────────
 # Every rule carries an explicit ``scope`` and a written ``chain``:
 # (physical effect, the price or flow it moves, why this instrument follows).
 # A leg with no writable third clause is not in the basket.
@@ -1142,6 +1142,31 @@ FAST_RULES: tuple[FastRule, ...] = (
             "the mainland index, the chip sector and the foundry sit on the two ends of that trade",
         ),
     ),
+    # OFAC actions carry a country, not a box: Iran and China designations land
+    # in the boxes above through the capital they are matched at; these two are
+    # the sanctioned producers with no box (see sentinel.analyze_ofac_actions).
+    FastRule(
+        "ofac-sanctions-russia", "sanctions", "country=russia",
+        "OFAC designations on Russia", _t("USO+ XLE+ GLD+"),
+        "Russian barrels and banks pushed further out of the dollar system", 0.74,
+        scope="global",
+        chain=(
+            "OFAC designates Russian banks, producers or shadow-fleet vessels",
+            "Russian crude needs a wider discount to clear and the sanctions premium on the marginal barrel widens",
+            "crude and the energy sector carry the barrel; bullion is the reserve-system hedge",
+        ),
+    ),
+    FastRule(
+        "ofac-sanctions-venezuela", "sanctions", "country=venezuela",
+        "OFAC designations on Venezuela", _t("USO+ XLE+"),
+        "Heavy-sour barrels lose their licensed buyer", 0.70,
+        scope="global",
+        chain=(
+            "OFAC designates Venezuelan oil entities or the counterparts that lift PDVSA cargoes",
+            "those cargoes lose licensed buyers and the heavy-sour balance tightens",
+            "crude and the energy sector are the claim on the barrels that no longer clear",
+        ),
+    ),
     FastRule(
         "gdelt-protest-mideast", "mass_protest", "region=middle_east_oil",
         "Mass protest in Middle East (GDELT)", _t("USO+ XLE+"),
@@ -1299,6 +1324,9 @@ _RE_REGION = re.compile(r"region=(\w+)")
 _RE_MAGNITUDE = re.compile(r"earthquake\.magnitude>=(\d+\.?\d*)")
 _RE_SEVERITY = re.compile(r"alert\.severity=(\w+)")
 _RE_CLUSTER = re.compile(r"fire\.cluster>=(\d+)")
+# Policy events name a country, not a point: OFAC stamps `raw_data.country` and
+# a rule may gate on it where no region box exists (Russia, Venezuela).
+_RE_COUNTRY = re.compile(r"country=(\w+)")
 
 
 def match_rules(event) -> list[FastRule]:
@@ -1339,6 +1367,10 @@ def match_rules(event) -> list[FastRule]:
             cluster_size = (event.raw_data or {}).get("clusterSize")
             if cluster_size is None or cluster_size < int(m.group(1)):
                 continue
+
+        m = _RE_COUNTRY.search(cond)
+        if m and (getattr(event, "raw_data", None) or {}).get("country") != m.group(1):
+            continue
 
         out.append(rule)
 

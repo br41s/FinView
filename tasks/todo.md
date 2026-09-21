@@ -764,5 +764,14 @@ lo mismo a todos y se ahorra el ciclo por usuario. Slice mínimo, sin cambio de 
 - [x] Crons de options y zonas-clave ignoran usuarios inactivos (el owner no tiene cartera).
 - [x] Tests: `test_geo_owner.py` + adaptar los tests de cron en `test_geo_notify_cron.py`.
 - [x] Docs: `.claude/rules/geo.md`, `CLAUDE.md` (conteos), memoria, decisiones.
-- [ ] Verificar: suite backend, ruff, push, 4 checks verdes, merge, siguiente ciclo cron
+- [x] Verificar: suite backend, ruff, push, 4 checks verdes, merge, siguiente ciclo cron
       (un solo ciclo, 0 páginas repetidas, la UI de cualquier cuenta ve las mismas señales).
+
+## OFAC ingest — designaciones oficiales, porque GDELT no las trae — 2026-09-22
+
+- [x] `ingest/ofac.py`: listado + páginas `/recent-actions/YYYYMMDD`, parser del formato
+      canónico SDN (kind, programas, país), ventana 3 días, caché por ciclo, rutas feas.
+- [x] `sentinel.analyze_ofac_actions`: un evento `sanctions` por (acción, país) con altas.
+- [x] `rules.py`: átomo `country=` + `ofac-sanctions-russia` / `ofac-sanctions-venezuela`.
+- [x] Frontend: etiqueta de fuente "OFAC". Docs: `.claude/rules/geo.md`, `CLAUDE.md`.
+- [ ] Verificar: suite, push, 4 checks, merge, primer ciclo con `ofac` en `sources`.

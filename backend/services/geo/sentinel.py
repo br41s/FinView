@@ -14,15 +14,19 @@ rolling baseline, which is objective (traffic counts, user-independent).
 import logging
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
+from .ingest.ofac import COUNTRY_SLUGS
 from .ingest.types import (
     FireHotspot,
     FlightData,
     GdeltEvent,
     MeteoPoint,
     NaturalEvent,
+    OfacAction,
     SeismicEvent,
     VesselSnapshot,
 )
@@ -827,4 +831,82 @@ def analyze_vessels(vessels: list[VesselSnapshot]) -> list[GeoEvent]:
                  "totalVessels": current["total"]},
             ))
 
+    return out
+
+
+# ── OFAC ─────────────────────────────────────────────────────────────
+# Country → the point the rules are matched at (its capital). Tehran and
+# Beijing fall inside the `iran` / `china_industrial` boxes and match the
+# existing sanctions rules; Moscow and Caracas are in no box and match through
+# the rule condition's `country=` atom instead. A country missing here is
+# still counted on the action but starts no event.
+_OFAC_COUNTRY_POINTS = {
+    "russia": (55.75, 37.62), "iran": (35.69, 51.39), "china": (39.90, 116.40),
+    "venezuela": (10.49, -66.88), "cuba": (23.11, -82.37), "belarus": (53.90, 27.57),
+    "north_korea": (39.02, 125.75), "syria": (33.51, 36.29), "myanmar": (16.87, 96.20),
+    "mexico": (19.43, -99.13), "turkey": (39.93, 32.86), "uae": (24.45, 54.38),
+    "india": (28.61, 77.21), "ukraine": (50.45, 30.52), "iraq": (33.31, 44.37),
+    "lebanon": (33.89, 35.50), "yemen": (15.37, 44.19), "libya": (32.89, 13.19),
+    "sudan": (15.50, 32.56), "nigeria": (9.06, 7.49), "eritrea": (15.32, 38.93),
+    "ethiopia": (9.03, 38.74), "nicaragua": (12.11, -86.24), "colombia": (4.71, -74.07),
+    "panama": (8.98, -79.52), "malaysia": (3.14, 101.69), "singapore": (1.35, 103.82),
+    "indonesia": (-6.21, 106.85), "taiwan": (25.03, 121.57), "japan": (35.68, 139.69),
+    "germany": (52.52, 13.41), "cyprus": (35.17, 33.36), "switzerland": (46.95, 7.45),
+    "united_kingdom": (51.51, -0.13),
+}
+# A package this size is a policy move, not housekeeping: severity "red" lets
+# rules.severity_headroom lift the risk one notch (the sanctions rules do not
+# demand a severity themselves).
+_OFAC_RED_ADDITIONS = 8
+
+
+def analyze_ofac_actions(actions: list[OfacAction]) -> list[GeoEvent]:
+    """One ``sanctions`` event per (action date, country) with at least one addition.
+
+    Removals are parsed by the ingest but start nothing: a delisting is a
+    different thesis and this slice does not write it.
+    """
+    out: list[GeoEvent] = []
+    for action in actions:
+        by_country: dict[str, list] = {}
+        for entry in action.entries:
+            if entry.action == "added" and entry.country in _OFAC_COUNTRY_POINTS:
+                by_country.setdefault(entry.country, []).append(entry)
+        try:
+            stamp = datetime.strptime(action.date, "%Y%m%d").replace(hour=12, tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning("ofac action with an unparseable date: %r", action.date)
+            continue
+        ts = int(stamp.timestamp() * 1000)
+        for country, entries in by_country.items():
+            lat, lng = _OFAC_COUNTRY_POINTS[country]
+            programs = list(dict.fromkeys(p for e in entries for p in e.programs))
+            kinds = Counter(e.kind for e in entries)
+            organisations = [e.name for e in entries if e.kind != "individual"]
+            label = COUNTRY_SLUGS[country][0]
+            out.append(GeoEvent(
+                id=f"ofac-{action.date}-{country}",
+                type="sanctions",
+                title=(
+                    f"OFAC designations: {len(entries)} added in {label}"
+                    f" [{', '.join(programs[:3])}]"
+                ),
+                latitude=lat,
+                longitude=lng,
+                source="ofac",
+                timestamp=ts,
+                severity="red" if len(entries) >= _OFAC_RED_ADDITIONS else "orange",
+                region=_most_specific_region(match_regions(lat, lng)),
+                raw_data={
+                    "country": country,
+                    "programs": programs,
+                    "added": len(entries),
+                    "individuals": kinds.get("individual", 0),
+                    "entities": kinds.get("entity", 0),
+                    "vessels": kinds.get("vessel", 0) + kinds.get("aircraft", 0),
+                    "names": (organisations or [e.name for e in entries])[:6],
+                    "url": action.url,
+                    "actionTitle": action.title,
+                },
+            ))
     return out
