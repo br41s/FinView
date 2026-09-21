@@ -18,6 +18,17 @@ export interface GeoSchedulerStatus {
   // The pipeline's own heartbeat. `last_signal_at` cannot distinguish a stopped
   // cycle from a quiet one; this can. See lib/geoHealth.ts.
   last_run: GeoCycleRun | null;
+  // FRED macro snapshot; the regime adds one risk point to geopolitical events.
+  macro?: GeoMacro | null;
+}
+
+export interface GeoMacro {
+  regime: "risk_off" | "neutral" | "risk_on" | string;
+  vix: number | null;
+  yield_spread: number | null;
+  financial_stress: number | null;
+  hy_spread: number | null;
+  as_of: string | null;
 }
 
 export interface GeoRunResult {

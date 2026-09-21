@@ -95,6 +95,12 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   an ingest outage, never a calm day. The header of `/geo-intel` renders this
   (`lib/geoHealth.ts`), and `/geo/cron` answers **500** when no user's cycle completes so
   Cloud Scheduler records a failure instead of a green run.
+- **Macro regime (FRED)**: `prepare_cycle` reads `macro_context()` once per request (cached
+  series, synced nightly by the zonas-clave job; no HTTP in the cycle). In a `risk_off` regime
+  every conflict / chokepoint / sanctions / compound rule gets +1 risk (`rules.regime_headroom`);
+  physical and agricultural events are unmoved. The regime is stamped on each event's
+  `raw_data.macroRegime`, returned by `/geo/scheduler/status` as `macro`, and shown as a badge
+  in the Ideas header. Unavailable macro data means no headroom, never an error.
 - **Novelty gate (GDELT only)**: a news bucket is one tracked signal per (category, region),
   re-tracked after every +7d resolution, so an ongoing war paged weekly. The sentinel stamps
   every GDELT event with `raw_data.novelty = {stories, baseline, novel}` — this hour's story

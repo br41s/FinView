@@ -143,9 +143,9 @@ def _stub_cycle_inputs(monkeypatch, analyses):
     monkeypatch.setattr(orchestrator, "fetch_all_sources", _no_network)
     monkeypatch.setattr(orchestrator, "_collect_events", lambda bundle: [a.event for a in analyses])
     monkeypatch.setattr(
-        orchestrator, "analyze_event", lambda event, stats, use_llm=False: _by_event(analyses, event)
+        orchestrator, "analyze_event", lambda event, stats, use_llm=False, regime=None: _by_event(analyses, event)
     )
-    monkeypatch.setattr(orchestrator, "_compound_analyses", lambda a, stats=None: [])
+    monkeypatch.setattr(orchestrator, "_compound_analyses", lambda a, stats=None, regime=None: [])
     monkeypatch.setattr(
         "backend.services.prices.fetch_ticker_prices", lambda symbols, budget=None: {}
     )

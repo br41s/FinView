@@ -140,7 +140,10 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
 
 
 def analyze_event(
-    event: GeoEvent, stats: dict[str, GeoRuleStat], use_llm: bool = False
+    event: GeoEvent,
+    stats: dict[str, GeoRuleStat],
+    use_llm: bool = False,
+    regime: str | None = None,
 ) -> AnalystResult:
     rules, tickers, confidence, direction = correlate_with_rules(event, stats)
 
@@ -156,7 +159,7 @@ def analyze_event(
                 )
 
     final_conf = confidence if rules else float(llm.get("confidence", 50)) if llm else 50.0
-    risk_score = compute_risk(rules, event, (llm or {}).get("riskScore"))
+    risk_score = compute_risk(rules, event, (llm or {}).get("riskScore"), regime)
     impact = (llm or {}).get("estimatedImpact", {})
     return AnalystResult(
         event=event,

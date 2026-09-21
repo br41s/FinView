@@ -551,6 +551,9 @@ class GeoSchedulerStatus(BaseModel):
     active_signals: int = 0
     last_signal_at: datetime | None = None
     last_run: GeoCycleRunOut | None = None
+    # FRED macro snapshot (regime, vix, yield_spread, financial_stress, hy_spread,
+    # as_of) — the regime adds risk to geopolitical events; shown as a badge.
+    macro: dict | None = None
 
 
 class GeoRunResult(BaseModel):

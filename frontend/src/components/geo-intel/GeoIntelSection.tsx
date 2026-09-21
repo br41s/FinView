@@ -4,7 +4,7 @@ import { GeoMap } from "./GeoMap";
 import { SignalPanel } from "./SignalPanel";
 import { FilterBar, CATEGORIES, type DirectionFilter } from "./FilterBar";
 import { MapLoading, MapEmpty, MapError } from "./MapStates";
-import { formatAccuracyLine, type GeoAccuracy, type GeoSignal } from "@/lib/geo";
+import { formatAccuracyLine, macroRegimeBadge, type GeoAccuracy, type GeoSignal } from "@/lib/geo";
 import { geoHealth } from "@/lib/geoHealth";
 import { api, type GeoSchedulerStatus } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
@@ -135,6 +135,7 @@ export function GeoIntelSection() {
   // Recomputed on every poll (the status refetches on the same 60s tick), so a
   // pipeline that stops during the session shows up without a reload.
   const health = useMemo(() => geoHealth(monitor), [monitor]);
+  const regimeBadge = useMemo(() => macroRegimeBadge(monitor?.macro), [monitor]);
   // Null until the first fetch lands, so nothing time-derived renders on the
   // server and the line simply stays absent when the endpoint is unreachable.
   const accuracyLine = useMemo(() => formatAccuracyLine(accuracy), [accuracy]);
@@ -231,7 +232,7 @@ export function GeoIntelSection() {
             </div>
           </div>
         </div>
-        {(health || runOutcome) && (
+        {(health || runOutcome || regimeBadge) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
             {health && (
               <span className={HEALTH_TONE[health.tone]} role="status">
@@ -239,6 +240,20 @@ export function GeoIntelSection() {
               </span>
             )}
             {runOutcome && <span className="text-muted-foreground">{runOutcome}</span>}
+            {regimeBadge && (
+              <span
+                className={
+                  regimeBadge.tone === "warn"
+                    ? "rounded border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-red-700"
+                    : regimeBadge.tone === "ok"
+                      ? "rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700"
+                      : "rounded border border-border bg-muted px-1.5 py-0.5 text-muted-foreground"
+                }
+                title={regimeBadge.title}
+              >
+                {regimeBadge.label}
+              </span>
+            )}
           </div>
         )}
         {accuracyLine && (

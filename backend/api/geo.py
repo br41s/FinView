@@ -526,4 +526,15 @@ def scheduler_status(db: DbSession, user: CurrentUser):
         active_signals=active,
         last_signal_at=_as_utc(latest.created_at) if latest else None,
         last_run=_serialize_run(run),
+        macro=_macro_snapshot(),
     )
+
+
+def _macro_snapshot() -> dict | None:
+    try:
+        from backend.services.macro_context import macro_context
+
+        return macro_context()
+    except Exception:
+        logger.warning("geo status: macro snapshot unavailable", exc_info=True)
+        return None
