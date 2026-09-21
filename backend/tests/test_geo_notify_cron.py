@@ -693,3 +693,15 @@ def test_a_failed_shared_half_fails_every_user(db, monkeypatch):
         cron_run(db)
     assert [uid for uid, _ in recorded] == [1, 2]
     assert all("ingest exploded" in err for _, err in recorded)
+
+
+def test_email_html_escapes_the_headline(monkeypatch):
+    """Generated theses let region-less, externally authored headlines reach the notifier."""
+    captured: list[str] = []
+    monkeypatch.setattr(notify, "send_ntfy", lambda *a, **k: True)
+    monkeypatch.setattr(notify, "send_telegram", lambda text: True)
+    monkeypatch.setattr(notify, "send_email", lambda title, html: captured.append(html) or True)
+    s = _signal()
+    s.headline = "<script>alert(1)</script> & co"
+    notify_signal(s, importance=72)
+    assert "<script>" not in captured[0] and "&lt;script&gt;" in captured[0]

@@ -523,6 +523,7 @@ class GeoSignalOut(BaseModel):
     sourceUrl: str | None = None  # link to the underlying source event, when captured
     generated: bool = False  # thesis proposed by the LLM for an event no rule covers
     narrative: str | None = None  # the LLM's 2–3 sentence reasoning, when generated
+    thesis: str | None = None  # effect → flow → instrument, when generated
 
 
 class GeoCycleRunOut(BaseModel):

@@ -353,6 +353,16 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
               >
                 Tesis generada por IA · sin regla
               </span>
+              {signal.thesis && (
+                <p className="flex flex-wrap gap-x-2 text-[rgba(31,27,22,0.85)]">
+                  {thesisSegments(signal.thesis).map((seg, i) => (
+                    <span key={i} className="inline-flex items-center gap-x-2">
+                      {i > 0 && <span className="text-[rgba(31,27,22,0.35)]">→</span>}
+                      {seg}
+                    </span>
+                  ))}
+                </p>
+              )}
               {signal.narrative && (
                 <p className="text-[rgba(31,27,22,0.7)]">{signal.narrative}</p>
               )}

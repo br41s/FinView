@@ -189,6 +189,7 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
         sourceUrl=_source_url(signal.raw_json),
         generated=bool(_raw(signal.raw_json).get("generated")),
         narrative=(_raw(signal.raw_json).get("llmNarrative") or None),
+        thesis=(_raw(signal.raw_json).get("llmThesis") or None),
     )
 
 

@@ -11,6 +11,7 @@ channels actually delivered.
 
 import logging
 import time
+from html import escape as _escape_html
 
 from backend.models import GeoSignal
 from backend.services.notification_service import send_email, send_ntfy, send_telegram
@@ -88,7 +89,7 @@ def notify_signal(
             for t in signal.tickers
         )
         html = (
-            f"<h2>🌍 {headline}</h2>"
+            f"<h2>🌍 {_escape_html(headline)}</h2>"
             f"<p>{direction} · importance {importance} · "
             f"risk {signal.risk_score}/10 · {signal.location or ''}</p>"
             f"<table border='1' cellpadding='4' cellspacing='0'>"

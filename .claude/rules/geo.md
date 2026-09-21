@@ -97,12 +97,18 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   Cloud Scheduler records a failure instead of a green run.
 - **Generative path (events no rule covers)**: after the compound tally, `prepare_cycle` gives
   a *salient* unmatched event (red severity, M≥7, or GDELT with a novelty spike or ≥15 mentions)
-  one generative LLM call — at most 3 per cron request, cached 6 h per event, "not actionable"
-  cached too. The model must pick from the tradable universe (`INSTRUMENT_BREADTH`) and every
-  field is validated; the result is a signal with **no matched rules** (it never teaches
-  `geo_rule_stats`), stamped `raw_data.generated` with the LLM's confidence, thesis and
-  narrative, rendered in the panel as "Tesis generada por IA · sin regla". It pages only when
-  the model's own confidence is ≥ 75, on top of every other gate.
+  one generative LLM call — at most 3 *real* calls per cron request (a cache hit is free),
+  cached 6 h per event, "not actionable" cached too. News is tested first and needs a named
+  region (a story in no box is never salient — nearly every conflict bucket is "red", so a
+  severity-first test pointed the calls at wire noise). The model must pick from the tradable
+  universe and no wider than the event's reach (`rules.region_reach`, the same invariant the
+  rules are tested against); confidence is capped at 85 and risk at 8 (importance ≤ 68 — the
+  title it reasons from is external text and must not be able to manufacture a 100). The
+  result is a signal with **no matched rules** (it never teaches `geo_rule_stats`), stamped
+  `raw_data.generated` with the LLM's confidence, thesis chain and narrative, rendered as
+  "Tesis generada por IA · sin regla" with the chain; it is **pinned at first sighting** (a
+  6-hour re-call would describe instruments the priced basket does not hold) and pages only
+  when the model's own confidence is ≥ 75, on top of every other gate.
 - **Macro regime (FRED)**: `prepare_cycle` reads `macro_context()` once per request (cached
   series, synced nightly by the zonas-clave job; no HTTP in the cycle). In a `risk_off` regime
   every conflict / chokepoint / sanctions rule gets +1 risk (`rules.regime_headroom`); compound
@@ -114,9 +120,10 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **Novelty gate (GDELT only)**: a news bucket is one tracked signal per (category, region),
   re-tracked after every +7d resolution, so an ongoing war paged weekly. The sentinel stamps
   every GDELT event with `raw_data.novelty = {stories, baseline, novel}` — this hour's story
-  count against the 7-day rolling median of `geo_region_samples` (zeros included, one row per
-  escalation region per cycle, hydrated/persisted once per cron request like the flight
-  baseline) — and the advisor pages a GDELT signal only when `novel` is True (≥ 3 stories and
+  count against the 7-day rolling median of `geo_region_samples` (one row per cycle for every
+  escalation region, zero or not, and for any other named region only on cycles it has
+  stories — so a non-escalation region's baseline is its median *active* hour and stricter;
+  hydrated/persisted once per cron request like the flight baseline) — and the advisor pages a GDELT signal only when `novel` is True (≥ 3 stories and
   ≥ 2× the median). No baseline yet (first six hours after a cold table) is *not* novel.
   Physical events (quakes, cyclones, AIS drops) are new ids by nature and are not gated.
 - **Notify gate**: importance = round(confidence × risk/10) ≥ 60 → ntfy + Telegram + email

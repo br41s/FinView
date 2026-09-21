@@ -27,7 +27,13 @@ from backend.models import (
 
 from . import sentinel
 from .advisor import IMPORTANCE_THRESHOLD, SignalResult, compute_importance, generate_signal
-from .analyst import AnalystResult, AnalystTicker, analyze_event, analyze_unmatched
+from .analyst import (
+    AnalystResult,
+    AnalystTicker,
+    analyze_event,
+    analyze_unmatched,
+    has_fresh_generative,
+)
 from .auditor import create_checkpoints, evaluate_pending
 from .ingest import fetch_all_sources
 from .notify import notify_signal
@@ -213,17 +219,22 @@ def _macro_regime() -> str | None:
 
 
 def _salient(event: GeoEvent) -> bool:
-    """Worth one generative call: red severity, a big quake, or news that is
-    either a novelty spike or widely reported."""
-    if event.severity == "red":
-        return True
-    if event.magnitude is not None and event.magnitude >= _SALIENT_MAGNITUDE:
-        return True
+    """Worth one generative call: news in a named region that is a novelty spike
+    or widely reported; otherwise red severity or a big quake.
+
+    News is tested first and on its own terms: nearly every conflict bucket
+    carries severity "red" (CAMEO 19x is -10), so a severity-first test made the
+    news clause unreachable and pointed the calls at region-less wire noise.
+    """
     raw = event.raw_data or {}
     if event.source == "gdelt":
+        if event.region is None:
+            return False
         novelty = raw.get("novelty") or {}
         return novelty.get("novel") is True or (raw.get("numMentions") or 0) >= _SALIENT_MENTIONS
-    return False
+    if event.severity == "red":
+        return True
+    return event.magnitude is not None and event.magnitude >= _SALIENT_MAGNITUDE
 
 
 def _generative_pass(analyses: list[AnalystResult], regime: str | None) -> int:
@@ -232,10 +243,15 @@ def _generative_pass(analyses: list[AnalystResult], regime: str | None) -> int:
     for i, a in enumerate(analyses):
         if a.tickers or not _salient(a.event):
             continue
-        if generated >= _MAX_GENERATIVE_PER_REQUEST:
-            break
+        # Only a real call is debited: a cached answer is free, and an ACTIVE
+        # generated signal is re-derived from its cache every cycle — debiting
+        # it would let three live theses starve the path for six hours.
+        spends = not has_fresh_generative(a.event.id)
+        if spends and generated >= _MAX_GENERATIVE_PER_REQUEST:
+            continue
         result = analyze_unmatched(a.event, regime)
-        generated += 1  # a call was spent whether or not it produced a thesis
+        if spends:
+            generated += 1
         if result is not None:
             analyses[i] = result
     return generated
@@ -505,11 +521,12 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
     suppressed = sum(
         1 for r in results
         if not r.should_notify and r.importance >= IMPORTANCE_THRESHOLD
-        and r.signal.source == "gdelt" and r.signal.notified_at is None
+        and r.signal.notified_at is None
+        and (r.signal.source == "gdelt" or "\"generated\": true" in (r.signal.raw_json or ""))
     )
     logger.info(
         "geo cycle user=%s done: %d new signals, %d notified, %d undelivered, "
-        "%d checkpoints, %d persist failures, %d held by the novelty gate",
+        "%d checkpoints, %d persist failures, %d held by the novelty/confidence gates",
         user_id, new_signals, notified, notify_failed, checkpoints, persist_failures, suppressed,
     )
     return CycleResult(

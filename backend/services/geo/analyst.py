@@ -16,6 +16,8 @@ import httpx
 from backend.config import settings
 
 from .rules import (
+    _MAX_BREADTH_FOR_SCOPE,
+    BREADTH_RANK,
     INSTRUMENT_BREADTH,
     INSTRUMENT_TRADABILITY,
     FastRule,
@@ -23,6 +25,7 @@ from .rules import (
     compute_risk,
     effective_confidence,
     match_rules,
+    region_reach,
 )
 from .sentinel import GeoEvent
 
@@ -155,6 +158,16 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
 # matched rules (so it never teaches geo_rule_stats) and a "generated" stamp.
 _GENERATIVE_CACHE: dict[str, tuple[float, dict]] = {}
 _GENERATIVE_MAX_TICKERS = 3  # the paging bar for a generated thesis lives in advisor
+# The model sets both factors of importance for a generated thesis, and the
+# event title it reasons from is external text. Cap what it can claim so a
+# crafted headline cannot manufacture importance 100: 85 × 0.8 → 68 at most.
+_GENERATIVE_MAX_CONFIDENCE = 85
+_GENERATIVE_MAX_RISK = 8
+
+
+def has_fresh_generative(event_id: str) -> bool:
+    cached = _GENERATIVE_CACHE.get(event_id)
+    return bool(cached and time.time() - cached[0] < _LLM_CACHE_TTL)
 
 
 def _universe_block() -> str:
@@ -165,24 +178,34 @@ def _universe_block() -> str:
     return ", ".join(lines)
 
 
-def _validate_generated(body: object) -> dict | None:
-    """The model's answer is data, not a decision: every field is checked."""
+def _validate_generated(body: object, reach: str = "regional") -> dict | None:
+    """The model's answer is data, not a decision: every field is checked.
+
+    ``reach`` is the event's own scope (`rules.region_reach`): a pick wider than
+    it — a worldwide ETF for a one-district event — is dropped, the same
+    invariant every hand-written rule is tested against.
+    """
     if not isinstance(body, dict) or body.get("actionable") is not True:
         return None
+    allowed = _MAX_BREADTH_FOR_SCOPE.get(reach, 1)
     tickers = []
     for t in body.get("tickers") or []:
         if not isinstance(t, dict):
             continue
         sym = str(t.get("symbol") or "").strip()
         direction = str(t.get("direction") or "").strip().lower()
-        if sym in INSTRUMENT_BREADTH and direction in {"bullish", "bearish"}:
-            tickers.append({"symbol": sym, "direction": direction,
-                            "rationale": str(t.get("rationale") or "")[:200]})
+        if sym not in INSTRUMENT_BREADTH or direction not in {"bullish", "bearish"}:
+            continue
+        if BREADTH_RANK[INSTRUMENT_BREADTH[sym]] > allowed:
+            logger.info("geo generative: %s is wider than a %s event — dropped", sym, reach)
+            continue
+        tickers.append({"symbol": sym, "direction": direction,
+                        "rationale": str(t.get("rationale") or "")[:200]})
     if not tickers:
         return None
     try:
-        confidence = max(0, min(100, int(body.get("confidence"))))
-        risk = max(1, min(10, int(body.get("riskScore"))))
+        confidence = max(0, min(_GENERATIVE_MAX_CONFIDENCE, int(body.get("confidence"))))
+        risk = max(1, min(_GENERATIVE_MAX_RISK, int(body.get("riskScore"))))
     except (TypeError, ValueError):
         return None
     thesis = body.get("thesis")
@@ -255,10 +278,14 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         if not isinstance(content, str) or not content.strip():
             logger.warning("geo generative LLM: 200 with no content")
             return None
-        proposal = _validate_generated(json.loads(content))
+        proposal = _validate_generated(json.loads(content), region_reach(event.region))
     except Exception:
         logger.warning("geo generative LLM analysis failed", exc_info=True)
         return None
+    if len(_GENERATIVE_CACHE) > 500:
+        cutoff = time.time() - _LLM_CACHE_TTL
+        for key in [k for k, (ts, _) in _GENERATIVE_CACHE.items() if ts < cutoff]:
+            _GENERATIVE_CACHE.pop(key, None)
     _GENERATIVE_CACHE[event.id] = (time.time(), proposal or {})
     if proposal:
         logger.info("geo generative: %s → %s (conf %s)", event.id,
