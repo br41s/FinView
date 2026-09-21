@@ -169,3 +169,4 @@ habían sido integrados bajo `frontend/src/components/geo-intel/` y evolucionado
 **Regla:** Para decidir si un archivo de staging ya está integrado, buscar su
 ruta definitiva, historial y equivalencia funcional. La ausencia de la ruta
 original en `main` no demuestra que el contenido esté pendiente.
+- **Docs go in the PR, not in a question afterwards** (2026-09-21): shipped 8 PRs and left CLAUDE.md test counts stale until asked. Rule changed in workspace + global CLAUDE.md: scan and update stale docs before opening the PR; never ask whether to.
