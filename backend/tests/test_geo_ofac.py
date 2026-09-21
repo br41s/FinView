@@ -104,10 +104,26 @@ def test_a_line_without_a_program_tag_is_not_an_entry():
     assert action.entries == []
 
 
-def test_garbage_html_yields_an_empty_action_not_an_error():
+def test_garbage_html_yields_an_empty_action_not_an_error(monkeypatch):
     for payload in ("", "<html><body><p>Maintenance", "\x00\x01 not html", "<<<>>>"):
         action = ofac.parse_action_page(payload, "20260917", "u")
         assert action.entries == []
+
+    def boom(self, data):  # html.parser does not raise on markup; prove the guard anyway
+        raise RuntimeError("parser exploded")
+
+    monkeypatch.setattr(ofac._TextExtractor, "feed", boom)
+    assert ofac.parse_action_page(_page([IRAN_INDIVIDUAL]), "20260917", "u").entries == []
+
+
+def test_a_country_word_in_the_name_does_not_win_over_the_address():
+    entry = ofac.parse_entry(
+        "BANK OF CHINA (MOSCOW BRANCH) (a.k.a. BOC RUSSIA, LLC), 20/1 Prospekt Mira, Moscow "
+        "129090, Russia; Registration Number 1027739026543 (Russia) [RUSSIA-EO14024].",
+        "added",
+    )
+    assert entry.name == "BANK OF CHINA"
+    assert entry.country == "russia"
 
 
 def _action(date, *entries):
@@ -227,3 +243,31 @@ def test_fetch_skips_a_missing_detail_page_and_reads_the_rest(monkeypatch):
     actions = asyncio.run(ofac.fetch_ofac())
     assert [(a.date, len(a.entries)) for a in actions] == [("20260917", 1)]
     assert actions[0].entries[0].country == "iran"
+
+
+def test_fetch_keeps_the_stale_payload_when_every_action_page_is_down(monkeypatch):
+    """The listing answering while the pages 5xx is an outage, not a quiet week."""
+    cache = ofac.TTLCache()
+    cache.set([_action("20260917", _entry("iran"))])
+    monkeypatch.setattr(ofac, "_cache", cache)
+    monkeypatch.setattr(ofac, "_CACHE_TTL", 0)
+    monkeypatch.setattr(ofac, "_WINDOW_DAYS", 10_000)
+
+    async def fake(url, **kw):
+        return '<a href="/recent-actions/20260918">a</a>' if url == ofac._LISTING_URL else None
+
+    monkeypatch.setattr(ofac, "fetch_text", fake)
+    assert [a.date for a in asyncio.run(ofac.fetch_ofac())] == ["20260917"]
+
+
+def test_a_listing_with_no_recent_actions_is_a_quiet_week_not_an_outage(monkeypatch):
+    cache = ofac.TTLCache()
+    cache.set([_action("20260901", _entry("iran"))])
+    monkeypatch.setattr(ofac, "_cache", cache)
+    monkeypatch.setattr(ofac, "_CACHE_TTL", 0)
+
+    async def fake(url, **kw):
+        return "<html>no links in the window</html>"
+
+    monkeypatch.setattr(ofac, "fetch_text", fake)
+    assert asyncio.run(ofac.fetch_ofac()) == []

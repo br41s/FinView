@@ -148,11 +148,28 @@ def html_to_lines(html: str) -> list[str]:
     return parser.lines()
 
 
+def split_name(text: str) -> tuple[str, str]:
+    """(name, rest) at the first comma outside parentheses: an a.k.a. list sits
+    inside them and may carry commas of its own before the address starts."""
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            return text[:i], text[i + 1:]
+    return text, ""
+
+
 def _country_of(entry_text: str) -> str | None:
     head = entry_text.split("[", 1)[0]  # the tags and "Linked To" name other places
     m = _RE_NATIONALITY.search(head)
     candidates = [m.group(1)] if m else []
-    for text in (*candidates, head):
+    # The address, never the name: "BANK OF CHINA (MOSCOW BRANCH), ..., Russia"
+    # is a Russian designation, and the name always comes first.
+    _, address = split_name(head)
+    for text in (*candidates, address):
         best: tuple[int, str] | None = None
         for slug, pattern in _COUNTRY_PATTERNS:
             hit = pattern.search(text)
@@ -167,7 +184,7 @@ def parse_entry(text: str, action: str) -> OfacEntry | None:
     tags = _RE_TAG.findall(text)
     if not tags:
         return None
-    name = text.split(",", 1)[0].split(" (", 1)[0].strip()
+    name = split_name(text)[0].split(" (", 1)[0].strip()
     if not name:
         return None
     m = _RE_KIND.search(text)
@@ -228,7 +245,8 @@ async def fetch_ofac() -> list[OfacAction]:
         return _cache.stale or []
 
     actions: list[OfacAction] = []
-    for date in parse_listing(listing):
+    dates = parse_listing(listing)
+    for date in dates:
         url = _ACTION_URL.format(date=date)
         page = await fetch_text(url, timeout=_REQUEST_TIMEOUT)
         if not page:
@@ -240,5 +258,10 @@ async def fetch_ofac() -> list[OfacAction]:
         )
         actions.append(action)
 
+    if dates and not actions:
+        # The listing answered but every action page failed: that is an outage,
+        # not a quiet week, and it must not overwrite the last good payload.
+        logger.warning("ofac: %d action pages listed, none readable", len(dates))
+        return _cache.stale or []
     _cache.set(actions)
     return actions
