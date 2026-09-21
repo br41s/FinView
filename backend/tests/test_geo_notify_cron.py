@@ -424,70 +424,6 @@ def test_has_active_signal_gates_known_events(db):
 # ── /geo/cron shared-secret auth ──────────────────────────────────────
 
 
-def test_cron_runs_cycle_per_user(db, monkeypatch):
-    from backend.config import settings
-    from backend.services.geo import orchestrator
-
-    monkeypatch.setattr(settings, "cron_secret", "s3cret")
-    ran: list[int] = []
-    monkeypatch.setattr(orchestrator, "prepare_cycle", lambda db: object())
-    monkeypatch.setattr(
-        orchestrator, "run_cycle_for_user", lambda uid, inputs=None: ran.append(uid) or object()
-    )
-
-    db.add(User(email="a@x.com"))
-    db.add(User(email="b@x.com"))
-    db.commit()
-
-    result = cron_run(db)
-    assert result["users"] == 2
-    assert result["cycles_ok"] == 2
-    assert sorted(ran) == [1, 2]
-
-
-def test_cron_reports_failure_when_no_cycle_completes(db, monkeypatch):
-    """Cloud Scheduler only sees the status code.
-
-    `run_cycle_for_user` swallows its exception and returns None, so this
-    endpoint answered 200 "done" over a pipeline that failed on every call —
-    every scheduled run looked successful while Ideas produced nothing for weeks.
-    """
-    from fastapi import HTTPException
-
-    from backend.services.geo import orchestrator
-
-    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid, inputs=None: None)
-    db.add(User(email="a@x.com"))
-    db.commit()
-
-    with pytest.raises(HTTPException) as exc:
-        cron_run(db)
-    assert exc.value.status_code == 500
-
-
-def test_cron_succeeds_when_at_least_one_cycle_completes(db, monkeypatch):
-    """One user's blow-up must not fail the whole job — the count carries it."""
-    from backend.services.geo import orchestrator
-
-    monkeypatch.setattr(
-        orchestrator, "run_cycle_for_user", lambda uid, inputs=None: None if uid == 1 else object()
-    )
-    db.add(User(email="a@x.com"))
-    db.add(User(email="b@x.com"))
-    db.commit()
-
-    result = cron_run(db)
-    assert result["cycles_ok"] == 1
-    assert result["cycles_failed"] == 1
-
-
-def test_cron_with_no_users_is_not_a_failure(db, monkeypatch):
-    from backend.services.geo import orchestrator
-
-    monkeypatch.setattr(orchestrator, "run_cycle_for_user", lambda uid, inputs=None: None)
-    assert cron_run(db)["users"] == 0
-
-
 def test_scheduler_status_stamps_utc_on_the_last_signal(db, monkeypatch):
     """`last_signal_at` feeds the header stat and the staleness read; naive would
     shift both by the viewer's offset."""
@@ -644,11 +580,12 @@ def test_a_rule_only_refresh_keeps_the_llm_risk(db):
     assert (res.signal.risk_score, res.importance, res.should_notify) == (9, 72, True)
 
 
-def test_the_shared_half_runs_once_for_all_users(db, monkeypatch):
+def test_the_shared_half_and_the_cycle_run_once(db, monkeypatch):
     """Four accounts used to mean four ingests, four price fetches and four
-    series fetches over one identical bundle."""
+    identical cycles over one bundle; now the owner's cycle is the only one."""
     from backend.config import settings
     from backend.services.geo import orchestrator
+    from backend.services.geo.owner import geo_owner_id
 
     monkeypatch.setattr(settings, "cron_secret", "s3cret")
     prepared: list[int] = []
@@ -665,14 +602,15 @@ def test_the_shared_half_runs_once_for_all_users(db, monkeypatch):
     db.commit()
 
     result = cron_run(db)
-    assert result["cycles_ok"] == 3
+    assert result["cycles_ok"] == 1
     assert prepared == [1]
-    assert seen == [(1, "inputs"), (2, "inputs"), (3, "inputs")]
+    assert seen == [(geo_owner_id(db), "inputs")]
 
 
-def test_a_failed_shared_half_fails_every_user(db, monkeypatch):
+def test_a_failed_shared_half_fails_the_job(db, monkeypatch):
     from backend.config import settings
     from backend.services.geo import orchestrator
+    from backend.services.geo.owner import geo_owner_id
 
     monkeypatch.setattr(settings, "cron_secret", "s3cret")
 
@@ -686,12 +624,11 @@ def test_a_failed_shared_half_fails_every_user(db, monkeypatch):
         lambda db, uid, started, result, error: recorded.append((uid, error)),
     )
     db.add(User(email="a@x.com"))
-    db.add(User(email="b@x.com"))
     db.commit()
 
     with pytest.raises(HTTPException):
         cron_run(db)
-    assert [uid for uid, _ in recorded] == [1, 2]
+    assert [uid for uid, _ in recorded] == [geo_owner_id(db)]
     assert all("ingest exploded" in err for _, err in recorded)
 
 

@@ -750,3 +750,19 @@ zonas_clave_analyzer, tras calcular zonas + indicadores:
 - [ ] Subtítulo (`GeoIntelSection.tsx:143`, "Geopolitical & natural events, plotted as
       financial signals") **pendiente hasta este slice**: hoy la página sigue siendo solo
       eventos geo; cambiarlo antes de que el técnico la alimente la haría mentir.
+
+## Ideas compartido: un owner del sistema para todos los usuarios — 2026-09-21
+
+Decisión del CEO: Ideas se calcula con los mismos datos para todos, así que se muestra
+lo mismo a todos y se ahorra el ciclo por usuario. Slice mínimo, sin cambio de esquema.
+
+- [x] `services/geo/owner.py`: usuario del sistema (inactivo, sin password) dueño de
+      `geo_signals` / `geo_checkpoints` / `geo_cycle_runs`; adopta el histórico de la
+      cuenta más antigua en el arranque que lo crea.
+- [x] `app.py`: `ensure_geo_owner()` tras `ensure_constraints()`.
+- [x] `api/geo.py`: todas las lecturas y `/run`, `/scheduler/*`, `/cron` sobre el owner.
+- [x] Crons de options y zonas-clave ignoran usuarios inactivos (el owner no tiene cartera).
+- [x] Tests: `test_geo_owner.py` + adaptar los tests de cron en `test_geo_notify_cron.py`.
+- [x] Docs: `.claude/rules/geo.md`, `CLAUDE.md` (conteos), memoria, decisiones.
+- [ ] Verificar: suite backend, ruff, push, 4 checks verdes, merge, siguiente ciclo cron
+      (un solo ciclo, 0 páginas repetidas, la UI de cualquier cuenta ve las mismas señales).

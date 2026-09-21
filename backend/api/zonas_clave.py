@@ -297,7 +297,7 @@ def cron_run(db: DbSession):
     # 10/15-minute cycles and cannot form a costly retry loop.
     run_reference_data_maintenance()
 
-    user_ids = [uid for (uid,) in db.query(User.id).all()]
+    user_ids = [uid for (uid,) in db.query(User.id).filter(User.is_active.is_(True)).all()]
     analyzed = signals = alerts = 0
     for uid in user_ids:
         try:

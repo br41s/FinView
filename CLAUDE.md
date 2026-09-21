@@ -30,7 +30,7 @@ need it before touching code.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1029 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 84 frontend tests |
+| Tests | pytest · 1060 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 87 frontend tests |
 | Linter | ruff (line-length 100) |
 
 ---
@@ -166,10 +166,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1029 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1029 pass in ~90s. Those files are not in the repo,
+Backend: `pytest` — 1060 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1060 pass in ~90s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 126 skip and the
-remaining 903 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+remaining 934 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser and the v2 checkpoint scorer — see `.claude/rules/geo.md`.
 
@@ -180,7 +180,7 @@ and ran nothing for months. Gate on a path built from `Path(__file__).resolve().
 `pytest.skip()`, not a module-level `pytestmark` that also takes the pure unit tests down
 with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 84 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 87 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis)
 plus `src/app/blog/posts.test.ts`. **`vitest` must be installed**

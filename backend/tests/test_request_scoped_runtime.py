@@ -18,12 +18,14 @@ def _user(user_id: int = 1) -> SimpleNamespace:
 
 
 def test_geo_cycle_runs_inline(monkeypatch):
+    """The manual run is the shared owner's cycle, whoever presses the button."""
     monkeypatch.setattr(settings, "request_scoped_runtime", True)
+    monkeypatch.setattr(geo_api, "geo_owner_id", lambda db: 11)
     with patch(
         "backend.services.geo.orchestrator.run_cycle_for_user",
         return_value=SimpleNamespace(events=4, new_signals=2, notified=1),
     ) as run_cycle:
-        result = geo_api.trigger_run(_user(11))
+        result = geo_api.trigger_run(MagicMock(), _user(3))
 
     assert result.status == "completed"
     assert (result.events, result.new_signals, result.notified) == (4, 2, 1)
@@ -32,6 +34,7 @@ def test_geo_cycle_runs_inline(monkeypatch):
 
 def test_geo_cycle_reports_inline_failure(monkeypatch):
     monkeypatch.setattr(settings, "request_scoped_runtime", True)
+    monkeypatch.setattr(geo_api, "geo_owner_id", lambda db: 11)
     with (
         patch(
             "backend.services.geo.orchestrator.run_cycle_for_user",
@@ -39,7 +42,7 @@ def test_geo_cycle_reports_inline_failure(monkeypatch):
         ),
         pytest.raises(HTTPException) as exc,
     ):
-        geo_api.trigger_run(_user(11))
+        geo_api.trigger_run(MagicMock(), _user(3))
 
     assert exc.value.status_code == 500
 
@@ -87,7 +90,7 @@ def test_price_warmup_runs_inline(monkeypatch):
 
 @pytest.mark.parametrize(
     "start_scheduler",
-    [geo_api.start_scheduler, zonas_api.start_scheduler],
+    [lambda user: geo_api.start_scheduler(MagicMock(), user), zonas_api.start_scheduler],
 )
 def test_in_process_schedulers_are_rejected(monkeypatch, start_scheduler):
     monkeypatch.setattr(settings, "request_scoped_runtime", True)
