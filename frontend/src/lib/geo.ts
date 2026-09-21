@@ -185,6 +185,29 @@ const SCOPE_LABELS: Record<GeoRuleScope, string> = {
   global: "global",
 };
 
+/** Header badge for the FRED regime. Mirrors the options AnalysisTab badge;
+ *  here it is not annotation-only — a risk-off regime adds one point of risk
+ *  to *new* conflict / chokepoint / sanctions events (a tracked signal keeps
+ *  the risk it was born with), and the tooltip says so. */
+export function macroRegimeBadge(
+  macro?: { regime: string; vix: number | null; as_of: string | null } | null,
+): { label: string; tone: "warn" | "ok" | "muted"; title: string } | null {
+  if (!macro?.regime) return null;
+  const vix = macro.vix == null ? "n/d" : macro.vix.toFixed(1);
+  const asOf = macro.as_of ? ` · FRED ${macro.as_of}` : "";
+  if (macro.regime === "risk_off") {
+    return {
+      label: "Régimen: risk-off",
+      tone: "warn",
+      title: `VIX ${vix}${asOf}. Los nuevos eventos geopolíticos suman +1 de riesgo en este régimen.`,
+    };
+  }
+  if (macro.regime === "risk_on") {
+    return { label: "Régimen: risk-on", tone: "ok", title: `VIX ${vix}${asOf}.` };
+  }
+  return { label: "Régimen: neutral", tone: "muted", title: `VIX ${vix}${asOf}.` };
+}
+
 /** Spanish tag for a rule's scope; null when the row predates scoping. */
 export function scopeLabel(scope?: string): string | null {
   return SCOPE_LABELS[scope as GeoRuleScope] ?? null;

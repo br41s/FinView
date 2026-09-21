@@ -7,6 +7,7 @@ import {
   type GeoAccuracy,
   type GeoCheckpointHorizon,
   type GeoHorizonAccuracy,
+  macroRegimeBadge,
 } from "./geo";
 
 const NOW = new Date("2026-09-20T12:00:00Z").getTime();
@@ -181,5 +182,26 @@ describe("thesisSegments", () => {
   it("drops empty links instead of rendering a dangling arrow", () => {
     expect(thesisSegments("A →  → B")).toEqual(["A", "B"]);
     expect(thesisSegments("   ")).toEqual([]);
+  });
+});
+
+
+describe("macroRegimeBadge", () => {
+  it("is silent without a snapshot", () => {
+    expect(macroRegimeBadge(null)).toBeNull();
+    expect(macroRegimeBadge(undefined)).toBeNull();
+  });
+
+  it("warns on risk-off and says what it does to the score", () => {
+    const badge = macroRegimeBadge({ regime: "risk_off", vix: 31.24, as_of: "2026-09-17" });
+    expect(badge?.tone).toBe("warn");
+    expect(badge?.label).toBe("Régimen: risk-off");
+    expect(badge?.title).toContain("VIX 31.2");
+    expect(badge?.title).toContain("nuevos eventos");
+  });
+
+  it("is muted on neutral and tolerates a missing VIX", () => {
+    const badge = macroRegimeBadge({ regime: "neutral", vix: null, as_of: null });
+    expect(badge).toEqual({ label: "Régimen: neutral", tone: "muted", title: "VIX n/d." });
   });
 });

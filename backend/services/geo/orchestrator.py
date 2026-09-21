@@ -196,6 +196,17 @@ def _persist_region_samples(db: Session) -> int:
     return written
 
 
+def _macro_regime() -> str | None:
+    """The FRED regime from the cached series; None when unavailable. Never raises."""
+    try:
+        from backend.services.macro_context import macro_context
+
+        return (macro_context() or {}).get("regime")
+    except Exception:
+        logger.warning("geo: macro regime unavailable", exc_info=True)
+        return None
+
+
 def _collect_events(bundle) -> list[GeoEvent]:
     events: list[GeoEvent] = []
     events.extend(sentinel.sentinel_scan(bundle.earthquakes, bundle.events, bundle.fires))
@@ -207,7 +218,9 @@ def _collect_events(bundle) -> list[GeoEvent]:
 
 
 def _compound_analyses(
-    analyses: list[AnalystResult], stats: dict[str, GeoRuleStat] | None = None
+    analyses: list[AnalystResult],
+    stats: dict[str, GeoRuleStat] | None = None,
+    regime: str | None = None,
 ) -> list[AnalystResult]:
     """Tally matched-event baskets into compound buckets; emit compound analyses for count ≥ 2."""
     counts = {rid: 0 for rid in _COMPOUND_BUCKETS}
@@ -248,7 +261,7 @@ def _compound_analyses(
                 matched_rules=[rule],
                 tickers=[AnalystTicker(t.symbol, t.direction, rule.description) for t in rule.tickers],
                 confidence=conf,
-                risk_score=compute_risk([rule], event, None),
+                risk_score=compute_risk([rule], event, None, regime),
                 direction=rule.direction,
             )
         )
@@ -317,6 +330,10 @@ class CycleInputs:
     stats: dict[str, GeoRuleStat]
     prices: dict[str, float]
     yahoo: object  # Budget shared by every Yahoo call in the request
+    # FRED macro regime (risk_off | neutral | risk_on | None): read once per
+    # request from the cached series, never fetched here. A risk-off regime adds
+    # one point of risk to conflict / chokepoint / sanctions events.
+    regime: str | None = None
     series_cache: dict[str, dict] = field(default_factory=dict)
     # Symbols any fetch this request has *tried*. "Not in prices" means
     # unresolvable as often as it means "the LLM just added it", and the
@@ -333,6 +350,7 @@ def prepare_cycle(db: Session) -> CycleInputs:
     started_at = datetime.now(timezone.utc)
     seed_rule_stats(db)
     stats = _load_stats(db)
+    regime = _macro_regime()
     # The stats outlive this session (they are read by every user's cycle) and
     # the flight-sample commit below would expire them: a detached, expired
     # GeoRuleStat raises on first attribute access. Snapshot them now.
@@ -346,10 +364,13 @@ def prepare_cycle(db: Session) -> CycleInputs:
     _persist_region_samples(db)
     logger.info("geo cycle: %d events from sources", len(events))
 
+    if regime:
+        for e in events:
+            e.raw_data["macroRegime"] = regime  # persisted with the signal, shown in the panel
     # Phase A: rule-only correlation (cheap) for every event.
-    analyses = [analyze_event(e, stats, use_llm=False) for e in events]
+    analyses = [analyze_event(e, stats, use_llm=False, regime=regime) for e in events]
     # Phase B: compound rules (orchestrator-level bucket tally).
-    analyses.extend(_compound_analyses(analyses, stats))
+    analyses.extend(_compound_analyses(analyses, stats, regime))
 
     # Phase D: price enrichment for the union of tickers. One allowance for every
     # Yahoo call the request makes — this fetch and the auditor's, for every user.
@@ -360,7 +381,7 @@ def prepare_cycle(db: Session) -> CycleInputs:
     prices = fetch_ticker_prices(symbols, yahoo) if symbols else {}
     return CycleInputs(
         bundle, events, analyses, stats, prices, yahoo,
-        attempted=set(symbols), started_at=started_at,
+        regime=regime, attempted=set(symbols), started_at=started_at,
     )
 
 
@@ -387,7 +408,9 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
             and a.event.type != "compound"
             and not _has_active_signal(db, user_id, a.event)
         )
-        enriched.append(analyze_event(a.event, stats, use_llm=True) if use_llm else a)
+        enriched.append(
+            analyze_event(a.event, stats, use_llm=True, regime=inputs.regime) if use_llm else a
+        )
 
     # The LLM may have added tickers the shared fetch did not cover.
     prices = inputs.prices

@@ -8,6 +8,12 @@ from backend.services import fred_rates, macro_context
 from backend.services.macro_context import _classify, macro_context as get_macro, macro_prompt_block
 
 
+@pytest.fixture(autouse=True)
+def _fresh_snapshot(monkeypatch):
+    """macro_context() caches 15 min in-process; every test starts cold."""
+    monkeypatch.setattr(macro_context, "_snapshot", None)
+
+
 # ── Regime classification ────────────────────────────────────────────────
 
 

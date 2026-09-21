@@ -13,6 +13,7 @@ from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     GeoAccuracyOut,
     GeoCheckpointOut,
+    GeoMacroOut,
     GeoCycleRunOut,
     GeoHorizonAccuracy,
     GeoRuleAccuracy,
@@ -526,4 +527,16 @@ def scheduler_status(db: DbSession, user: CurrentUser):
         active_signals=active,
         last_signal_at=_as_utc(latest.created_at) if latest else None,
         last_run=_serialize_run(run),
+        macro=_macro_snapshot(),
     )
+
+
+def _macro_snapshot() -> dict | None:
+    try:
+        from backend.services.macro_context import macro_context
+
+        snapshot = macro_context()
+        return GeoMacroOut(**snapshot) if snapshot else None
+    except Exception:
+        logger.warning("geo status: macro snapshot unavailable", exc_info=True)
+        return None

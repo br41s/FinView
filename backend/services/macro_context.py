@@ -19,6 +19,7 @@ returns None and callers simply omit the annotation.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from backend.config import settings
@@ -81,12 +82,25 @@ def _as_float(v) -> float | None:
     return float(v) if v is not None else None
 
 
+_SNAPSHOT_TTL = 15 * 60
+_snapshot: tuple[float, dict | None] | None = None
+
+
 def macro_context() -> dict | None:
     """Current macro regime snapshot, or None when no macro data is cached.
 
     DB-only (no HTTP). Values are the latest reading within the service's
-    look-back window.
+    look-back window. Cached 15 min in-process: the series change once a day
+    and the Ideas header polls the status endpoint every 60 s per open tab.
     """
+    global _snapshot
+    if _snapshot is not None and time.monotonic() - _snapshot[0] < _SNAPSHOT_TTL:
+        return _snapshot[1]
+    _snapshot = (time.monotonic(), _macro_context_uncached())
+    return _snapshot[1]
+
+
+def _macro_context_uncached() -> dict | None:
     vix = fred_rates.latest_value("VIXCLS")
     spread = fred_rates.latest_value("T10Y2Y")
     stress = fred_rates.latest_value("STLFSI4")
@@ -101,7 +115,14 @@ def macro_context() -> dict | None:
         _as_float(hy),
     )
 
-    as_of = fred_rates._max_cached("VIXCLS") or fred_rates._max_cached("T10Y2Y")
+    # The as-of of a series that actually contributed: _max_cached has no
+    # look-back window, so a stale VIX would have dated fresh data it did not use.
+    as_of = next(
+        (fred_rates._max_cached(sid) for sid, val in (
+            ("VIXCLS", vix), ("T10Y2Y", spread), ("STLFSI4", stress), ("BAMLH0A0HYM2", hy)
+        ) if val is not None),
+        None,
+    )
     return {
         "regime": _classify(vix_f, spread_f, stress_f, hy_f),
         "vix": vix_f,

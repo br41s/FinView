@@ -245,8 +245,30 @@ def severity_headroom(rule: FastRule, event) -> int:
     return 0
 
 
-def compute_risk(rules: list[FastRule], event, llm_risk: int | None) -> int:
-    """Risk 1–10 for a signal: rule base risk + severity headroom, LLM overrides.
+# Categories whose market impact is amplified by a risk-off regime: when the VIX,
+# the curve, financial stress and credit spreads already say "fragile", the same
+# chokepoint or conflict event moves more. Physical/agricultural events are not
+# regime-sensitive in this sense (a drought is a drought). Compound is excluded
+# on purpose: its risk is held at 6 so "≥2 events touching an energy ticker"
+# stays off the phone, and +1 in risk_off would page it every day.
+_REGIME_SENSITIVE = frozenset({
+    "conflict", "armed_conflict", "military_escalation", "military_surge",
+    "geopolitical_escalation", "sanctions", "trade_dispute", "maritime_disruption",
+    "maritime_rerouting", "maritime_congestion", "airspace_closure", "nuclear",
+})
+
+
+def regime_headroom(rules: list[FastRule], regime: str | None) -> int:
+    """+1 risk for a regime-sensitive rule in a risk-off macro regime (FRED)."""
+    if regime != "risk_off":
+        return 0
+    return 1 if any(r.category in _REGIME_SENSITIVE for r in rules) else 0
+
+
+def compute_risk(
+    rules: list[FastRule], event, llm_risk: int | None, regime: str | None = None
+) -> int:
+    """Risk 1–10 for a signal: rule base risk + severity headroom (+ regime), LLM overrides.
 
     Decision 2026-09-20 (memories/decisions/finview.md): "a mix with the LLM
     allowed to override":
@@ -264,7 +286,11 @@ def compute_risk(rules: list[FastRule], event, llm_risk: int | None) -> int:
             logger.warning("geo: ignoring non-numeric LLM riskScore %r", llm_risk)
     if not rules:
         return _DEFAULT_RISK
-    risk = max(base_risk(r) for r in rules) + max(severity_headroom(r, event) for r in rules)
+    risk = (
+        max(base_risk(r) for r in rules)
+        + max(severity_headroom(r, event) for r in rules)
+        + regime_headroom(rules, regime)
+    )
     return max(1, min(10, risk))
 
 

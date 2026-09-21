@@ -543,6 +543,17 @@ class GeoCycleRunOut(BaseModel):
     error: str | None = None
 
 
+class GeoMacroOut(BaseModel):
+    """Mirrors frontend `GeoMacro`; a key rename in macro_context() fails here, not in the badge."""
+
+    regime: str
+    vix: float | None = None
+    yield_spread: float | None = None
+    financial_stress: float | None = None
+    hy_spread: float | None = None
+    as_of: str | None = None
+
+
 class GeoSchedulerStatus(BaseModel):
     running: bool
     external_scheduler: bool = False
@@ -551,6 +562,8 @@ class GeoSchedulerStatus(BaseModel):
     active_signals: int = 0
     last_signal_at: datetime | None = None
     last_run: GeoCycleRunOut | None = None
+    # FRED macro snapshot — the regime adds risk to new geopolitical events.
+    macro: GeoMacroOut | None = None
 
 
 class GeoRunResult(BaseModel):
