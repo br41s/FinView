@@ -970,6 +970,25 @@ class GeoRuleStat(Base):
     )
 
 
+class GeoRegionSample(Base):
+    """GDELT stories per region per cycle — the novelty baseline for the notify gate.
+
+    A conflict bucket like Ukraine is one tracked signal that the auditor
+    resolves after seven days and then tracks again, so an ongoing war paged
+    weekly on re-tracking. A GDELT signal now pages only when its region's
+    story count is *novel* against this rolling window — a spike, not the
+    baseline. One row per escalation region per cycle (zeros included, so a
+    quiet region's baseline is honestly zero); 7-day retention.
+    """
+
+    __tablename__ = "geo_region_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    region: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    sampled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    stories: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class GeoFlightSample(Base):
     """One per-zone flight count per cycle — the airspace rules' rolling baseline.
 

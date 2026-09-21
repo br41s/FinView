@@ -539,6 +539,28 @@ _CHOKEPOINT_MAX_GOLDSTEIN = -8
 _CLUSTER_MIN_STORIES = 10
 _CLUSTER_MIN_CATEGORIES = 2
 
+# Novelty: region → [(stories, ts_ms)] over the last 7 days, hydrated from
+# geo_region_samples by the orchestrator before each analysis and written back
+# after (process memory dies at scale-to-zero). A GDELT signal pages only when
+# its region's story count this hour is novel against the median of that window.
+_gdelt_history: dict[str, list[tuple[int, int]]] = {}
+_GDELT_MAX_HISTORY = 48 * 7
+_NOVELTY_MIN_SAMPLES = 12  # six hours of cycles before "novel" means anything
+_NOVELTY_FACTOR = 2.0
+_NOVELTY_MIN_STORIES = 3
+
+
+def _novelty(region_key: str, stories: int) -> dict:
+    """{stories, baseline, novel}: novel is None until the window has a baseline."""
+    prior = _gdelt_history.get(region_key, [])
+    if len(prior) < _NOVELTY_MIN_SAMPLES:
+        return {"stories": stories, "baseline": None, "novel": None}
+    counts = sorted(s for s, _ in prior)
+    mid = len(counts) // 2
+    baseline = counts[mid] if len(counts) % 2 else (counts[mid - 1] + counts[mid]) / 2
+    novel = stories >= max(_NOVELTY_MIN_STORIES, _NOVELTY_FACTOR * baseline)
+    return {"stories": stories, "baseline": baseline, "novel": novel}
+
 
 def _passes_gdelt_floors(evt: GdeltEvent, region: str | None, min_mentions: int,
                          min_sources: int) -> bool:
@@ -587,7 +609,7 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
         bucket = buckets.setdefault(
             f"gdelt-{category}-{region_key}",
             {"best": evt, "rank": rank, "category": category, "ftype": ftype,
-             "region": region, "stories": 0},
+             "region": region, "region_key": region_key, "stories": 0},
         )
         bucket["stories"] += 1
         if rank < bucket["rank"]:
@@ -600,6 +622,16 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
         tr["sum_g"] += evt.goldstein_scale
         if evt.goldstein_scale < tr["best"].goldstein_scale:
             tr["best"] = evt
+
+    # Novelty is judged against the window *before* this hour is added to it.
+    novelty = {
+        key: _novelty(key, tally[key]["stories"] if key in tally else 0)
+        for key in set(tally) | _ESCALATION_REGIONS
+    }
+    for key, info in novelty.items():
+        hist = _gdelt_history.setdefault(key, [])
+        hist.append((info["stories"], now))
+        del hist[:-_GDELT_MAX_HISTORY]
 
     out: list[GeoEvent] = []
     for event_id, bucket in buckets.items():
@@ -630,6 +662,7 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                     "eventCode": evt.event_code,
                     "sourceUrl": evt.source_url,
                     "storiesThisHour": bucket["stories"],
+                    "novelty": novelty[bucket["region_key"]],
                 },
             )
         )
@@ -663,6 +696,7 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                     "eventCount": tr["stories"],
                     "categories": sorted(tr["categories"]),
                     "avgGoldstein": round(avg_g, 2),
+                    "novelty": novelty[region_key],
                 },
             )
         )

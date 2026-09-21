@@ -95,6 +95,14 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   an ingest outage, never a calm day. The header of `/geo-intel` renders this
   (`lib/geoHealth.ts`), and `/geo/cron` answers **500** when no user's cycle completes so
   Cloud Scheduler records a failure instead of a green run.
+- **Novelty gate (GDELT only)**: a news bucket is one tracked signal per (category, region),
+  re-tracked after every +7d resolution, so an ongoing war paged weekly. The sentinel stamps
+  every GDELT event with `raw_data.novelty = {stories, baseline, novel}` — this hour's story
+  count against the 7-day rolling median of `geo_region_samples` (zeros included, one row per
+  escalation region per cycle, hydrated/persisted once per cron request like the flight
+  baseline) — and the advisor pages a GDELT signal only when `novel` is True (≥ 3 stories and
+  ≥ 2× the median). No baseline yet (first six hours after a cold table) is *not* novel.
+  Physical events (quakes, cyclones, AIS drops) are new ids by nature and are not gated.
 - **Notify gate**: importance = round(confidence × risk/10) ≥ 60 → ntfy + Telegram + email
   via `geo/notify.py` (Telegram text is Markdown-escaped — external headlines contain
   `*_[` and would 400 the Bot API otherwise; keep the escaping).
