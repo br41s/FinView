@@ -814,9 +814,10 @@ def _geo_enum(enum_cls: type[PyEnum]) -> Enum:
 class GeoSignal(Base):
     """A geopolitical / natural-event signal produced by the geo pipeline.
 
-    Per-user (mirrors options / zonas-clave): the pipeline runs per user so each
-    user's watchlist/notification scope is independent. ``event_type`` is the
-    fine matcher category; ``display_category`` is the coarse UI bucket.
+    ``user_id`` is the system owner (`services/geo/owner.py`): the pipeline runs
+    once and every account reads the owner's rows — the column is a NOT NULL FK
+    kept for lack of Alembic, not a tenancy boundary. ``event_type`` is the fine
+    matcher category; ``display_category`` is the coarse UI bucket.
     """
 
     __tablename__ = "geo_signals"

@@ -42,7 +42,6 @@ logger = logging.getLogger(__name__)
 Base.metadata.create_all(bind=engine)
 ensure_columns()
 ensure_constraints()
-ensure_geo_owner()
 
 
 def _start_instance_background_workers() -> None:
@@ -115,6 +114,11 @@ async def lifespan(app: FastAPI):
         # transient DB error: nothing was committed, so the migration simply
         # retries on the next boot. Never take the instance down for this.
         logger.warning("watchlist migration failed — will retry next boot", exc_info=True)
+
+    # Same category: the Ideas owner is created once and adopts the first
+    # account's history on that boot. Its own error handling logs and lets the
+    # next request retry through geo_owner_id.
+    ensure_geo_owner()
 
     if settings.request_scoped_runtime:
         logger.info(
