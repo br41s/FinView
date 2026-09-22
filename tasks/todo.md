@@ -774,4 +774,16 @@ lo mismo a todos y se ahorra el ciclo por usuario. Slice mínimo, sin cambio de 
 - [x] `sentinel.analyze_ofac_actions`: un evento `sanctions` por (acción, país) con altas.
 - [x] `rules.py`: átomo `country=` + `ofac-sanctions-russia` / `ofac-sanctions-venezuela`.
 - [x] Frontend: etiqueta de fuente "OFAC". Docs: `.claude/rules/geo.md`, `CLAUDE.md`.
-- [ ] Verificar: suite, push, 4 checks, merge, primer ciclo con `ofac` en `sources`.
+- [x] Verificar: suite, push, 4 checks, merge, primer ciclo con `ofac` en `sources` (17:30 UTC: ofac=1, página 20260918 parseada, 11 entradas, 0 altas → sin evento, correcto).
+
+## Federal Register ingest — aranceles USTR y altas en la Entity List — 2026-09-22
+
+Medido: en 90 días, 4 acciones arancelarias USTR + 2 reglas BIS Entity List; 0 señales
+`trade_dispute` en toda la historia de la tabla. Mismo patrón que OFAC (país → capital,
+átomo `country=`), sin HTML: API JSON sin clave.
+
+- [x] `ingest/fedreg.py`: una consulta para ambas agencias, clasificación por título, países
+      por título+abstract, ventana 3 días, caché por ciclo, degradación a stale.
+- [x] `sentinel.analyze_fedreg_documents` + regla `fedreg-trade-brazil` (EWZ−).
+- [x] Frontend: etiqueta "Federal Register". Docs: `.claude/rules/geo.md`, `CLAUDE.md`.
+- [ ] Verificar: suite, push, 4 checks, merge, primer ciclo con `fedreg` en `sources`.

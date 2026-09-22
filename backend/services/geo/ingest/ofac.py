@@ -67,6 +67,7 @@ COUNTRY_SLUGS: dict[str, tuple[str, ...]] = {
     "venezuela": ("Venezuela",),
     "cuba": ("Cuba",),
     "belarus": ("Belarus",),
+    "brazil": ("Brazil",),
     "north_korea": ("Korea, North", "North Korea", "Democratic People's Republic of Korea"),
     "syria": ("Syria",),
     "myanmar": ("Burma", "Myanmar"),

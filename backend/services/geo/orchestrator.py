@@ -56,6 +56,7 @@ _COMPOUND_BUCKETS = {
 # Ingest keys counted into GeoCycleRun.sources (SourceBundle attribute names).
 _SOURCE_KEYS = (
     "earthquakes", "events", "fires", "meteo", "flights", "gdelt", "vessels", "ofac",
+    "fedreg",
 )
 _RUN_RETENTION_DAYS = 7
 # Flight baseline: the sentinel keeps the last 12 samples per zone; one cycle per
@@ -265,6 +266,7 @@ def _collect_events(bundle) -> list[GeoEvent]:
     events.extend(sentinel.analyze_gdelt_events(bundle.gdelt))
     events.extend(sentinel.analyze_vessels(bundle.vessels))
     events.extend(sentinel.analyze_ofac_actions(bundle.ofac))
+    events.extend(sentinel.analyze_fedreg_documents(bundle.fedreg))
     return events
 
 

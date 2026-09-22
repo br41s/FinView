@@ -8,10 +8,10 @@ paths:
 
 ## Geo-Intel — architecture
 
-WorldHawk port: geopolitical/natural events → market signals. 83 rules / 49 regions
-(`services/geo/rules.py`), 8 ingest sources (seismic, EONET events, FIRMS fires,
-maritime AIS, meteo, flights, GDELT, OFAC) — every source key optional, a missing
-key degrades that source to empty.
+WorldHawk port: geopolitical/natural events → market signals. 84 rules / 49 regions
+(`services/geo/rules.py`), 9 ingest sources (seismic, EONET events, FIRMS fires,
+maritime AIS, meteo, flights, GDELT, OFAC, Federal Register) — every source key
+optional, a missing key degrades that source to empty.
 
 ### Every rule states its reach and writes down its transmission
 `FastRule.scope` (site/local/regional/global) and `chain` — (physical effect, the price or
@@ -89,6 +89,25 @@ match through the new condition atom **`country=<slug>`** (`ofac-sanctions-russi
 a delisting is a different thesis. The generative path does not see OFAC events: with no
 box their reach is "local" and the validator would reject every national instrument, so a
 country without a rule is a rule to write, not an LLM call.
+
+### Federal Register — USTR tariff actions and BIS Entity List additions
+The trade theses had never fired once (0 `trade_dispute` signals in the table's history):
+GDELT codes a tariff as a diplomatic story, never as a dated action. Measured 2026-09-22
+over 90 days: USTR published 4 tariff actions and BIS 2 Entity List rules — one or two
+events a month, each exactly what `gdelt-trade-dispute-china` and the semiconductor leg of
+`gdelt-sanctions-china` were written for. `ingest/fedreg.py` queries the keyless JSON API
+(`federalregister.gov/api/v1/documents.json`, both agencies, last 3 days, one request,
+cached one cycle, stale payload on failure). **Classification is by title**: a BIS rule
+with "Entity List" and "Addition(s)" is `sanctions` (removals and address revisions are
+not); a USTR notice matching Section 301 / 232 / Notice of Action / Product Exclusions is
+`trade_dispute` unless it is a request for comments, a hearing, a quota allocation, a
+Notorious Markets review or an investigation *initiation*. Countries come from title +
+abstract through the OFAC country table, one event per (document, country) at the capital
+(`sentinel.analyze_fedreg_documents`, stamped 13:45 UTC — the Register's 08:45 ET
+release): China lands in `china_industrial` and hits the GDELT rules, Russia hits
+`ofac-sanctions-russia` through `country=`, Brazil hits the new `fedreg-trade-brazil`
+(EWZ−). Investigation initiations are deliberately not events: the market moves on the
+duty, and an initiation ends in a hearing as often as in a tariff.
 
 ### One owner, every reader
 Ideas is the same for every account: the feeds are public, the channels are global env

@@ -94,6 +94,7 @@ const SOURCE_LABELS: Record<string, string> = {
   windy: "Windy",
   gdelt: "GDELT",
   ofac: "OFAC",
+  fedreg: "Federal Register",
   ais: "AIS marítimo",
   compound: "Regla compuesta",
 };

@@ -1,6 +1,6 @@
 """Geo-economic correlation rules — Python port of WorldHawk's rules.ts.
 
-83 fast rules + 49 geo-regions + the condition matcher.
+84 fast rules + 49 geo-regions + the condition matcher.
 Direction: ↑ = bullish, ↓ = bearish.
 
 Counts, because the spec disagrees with itself: tasks/geo-rules-spec.md's headers say
@@ -375,7 +375,7 @@ def match_regions(lat: float, lon: float) -> list[str]:
     return out
 
 
-# ── 83 fast rules ────────────────────────────────────────────────────
+# ── 84 fast rules ────────────────────────────────────────────────────
 # Every rule carries an explicit ``scope`` and a written ``chain``:
 # (physical effect, the price or flow it moves, why this instrument follows).
 # A leg with no writable third clause is not in the basket.
@@ -1165,6 +1165,19 @@ FAST_RULES: tuple[FastRule, ...] = (
             "OFAC designates Venezuelan oil entities or the counterparts that lift PDVSA cargoes",
             "those cargoes lose licensed buyers and the heavy-sour balance tightens",
             "crude and the energy sector are the claim on the barrels that no longer clear",
+        ),
+    ),
+    # USTR tariff actions arrive through the Federal Register with a country and
+    # no box; China lands in `china_industrial` and hits the GDELT trade rule.
+    FastRule(
+        "fedreg-trade-brazil", "trade_dispute", "country=brazil",
+        "US tariff action on Brazil (Federal Register)", _t("EWZ-"),
+        "Brazilian exporters lose price on their largest single market", 0.68,
+        scope="regional",
+        chain=(
+            "USTR imposes or raises Section 301 duties on Brazilian exports",
+            "Brazilian exporters lose US price competitiveness and the real weakens with the trade balance",
+            "the country ETF is the exporters and the currency in one line",
         ),
     ),
     FastRule(

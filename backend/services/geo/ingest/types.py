@@ -155,6 +155,20 @@ class OfacAction:
 
 
 @dataclass
+class FedRegDocument:
+    """One Federal Register document that is a policy action (see ingest.fedreg)."""
+
+    document_number: str
+    publication_date: str  # YYYY-MM-DD
+    title: str
+    abstract: str
+    url: str
+    agency: str  # bis|ustr
+    category: str  # sanctions|trade_dispute
+    countries: tuple[str, ...]  # slugs from ingest.ofac.COUNTRY_SLUGS, in text order
+
+
+@dataclass
 class SourceBundle:
     """Result of one ingest cycle — all sources gathered together."""
 
@@ -166,3 +180,4 @@ class SourceBundle:
     gdelt: list[GdeltEvent] = field(default_factory=list)
     vessels: list[VesselSnapshot] = field(default_factory=list)
     ofac: list[OfacAction] = field(default_factory=list)
+    fedreg: list[FedRegDocument] = field(default_factory=list)
