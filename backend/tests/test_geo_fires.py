@@ -7,7 +7,7 @@ is what "last day" was supposed to mean.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from backend.services.geo.ingest import fires
 
@@ -60,20 +60,25 @@ def test_fetch_asks_for_two_days_and_filters(monkeypatch):
     monkeypatch.setattr(fires, "_cache", fires.TTLCache())
     monkeypatch.setattr(settings, "firms_map_key", "k")
     urls: list[str] = []
-    today = datetime.now(timezone.utc)
+    # fetch_fires reads the wall clock, so the rows sit an hour either side of
+    # the window: a wrong _WINDOW (30 h, 2 d) or a wrong clock fails this test.
+    now = datetime.now(timezone.utc)
+    inside, outside = now - timedelta(hours=23), now - timedelta(hours=25)
 
     async def fake(url, **kw):
         urls.append(url)
         return "\n".join([
             HEADER,
-            _row(today.strftime("%Y-%m-%d"), today.strftime("%H%M")),
-            _row("2020-01-01", "1200"),
+            _row(inside.strftime("%Y-%m-%d"), inside.strftime("%H%M")),
+            _row(outside.strftime("%Y-%m-%d"), outside.strftime("%H%M")),
         ])
 
     monkeypatch.setattr(fires, "fetch_text", fake)
     got = asyncio.run(fires.fetch_fires())
     assert urls == ["https://firms.modaps.eosdis.nasa.gov/api/area/csv/k/VIIRS_SNPP_NRT/world/2"]
-    assert [h.acq_date for h in got] == [today.strftime("%Y-%m-%d")]
+    assert [(h.acq_date, h.acq_time) for h in got] == [
+        (inside.strftime("%Y-%m-%d"), inside.strftime("%H%M"))
+    ]
 
 
 def test_fetch_degrades_to_the_stale_payload(monkeypatch):
