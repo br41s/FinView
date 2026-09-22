@@ -120,8 +120,19 @@ def parse_document(raw: object) -> FedRegDocument | None:
     )
 
 
+def is_result_envelope(payload: object) -> bool:
+    """The API's own shape: ``results`` when there are documents, and — verified
+    against the live endpoint — just ``{"count": 0, ...}`` with no ``results`` key
+    on a day with none. Both are answers; anything else is not."""
+    if not isinstance(payload, dict):
+        return False
+    if isinstance(payload.get("results"), list):
+        return True
+    return isinstance(payload.get("count"), int)
+
+
 def parse_payload(payload: object, today: datetime | None = None) -> list[FedRegDocument]:
-    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+    if not is_result_envelope(payload) or not isinstance(payload.get("results"), list):
         return []
     floor = ((today or datetime.now(timezone.utc)) - timedelta(days=_WINDOW_DAYS)).strftime(
         "%Y-%m-%d"
@@ -157,7 +168,7 @@ async def fetch_fedreg() -> list[FedRegDocument]:
     if payload is None:
         logger.warning("federal register unavailable")
         return _cache.stale or []
-    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+    if not is_result_envelope(payload):
         logger.warning("federal register payload unusable: %r", str(payload)[:120])
         return _cache.stale or []
     docs = parse_payload(payload, today)
@@ -170,4 +181,7 @@ async def fetch_fedreg() -> list[FedRegDocument]:
     return docs
 
 
-__all__ = ["COUNTRY_SLUGS", "classify", "countries_in", "fetch_fedreg", "parse_payload"]
+__all__ = [
+    "COUNTRY_SLUGS", "classify", "countries_in", "fetch_fedreg", "is_result_envelope",
+    "parse_payload",
+]

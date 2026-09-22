@@ -90,6 +90,24 @@ def test_unusable_payloads_yield_nothing():
         assert fedreg.parse_payload(payload, TODAY) == []
 
 
+def test_a_quiet_day_is_an_answer_not_an_outage(monkeypatch):
+    """Verified against the live API: a window with no documents answers
+    ``{"count": 0}`` with no ``results`` key. Most 3-day windows look like that."""
+    cache = fedreg.TTLCache()
+    cache.set([_fd()])
+    monkeypatch.setattr(fedreg, "_cache", cache)
+    monkeypatch.setattr(fedreg, "_CACHE_TTL", 0)
+
+    async def quiet(url, **kw):
+        return {"description": "Documents matching the search", "count": 0}
+
+    monkeypatch.setattr(fedreg, "fetch_json", quiet)
+    assert asyncio.run(fedreg.fetch_fedreg()) == []
+    assert cache.stale == []  # cached as the day's truth, the old documents gone
+    assert fedreg.is_result_envelope({"count": 0}) is True
+    assert fedreg.is_result_envelope({"error": "rate limited"}) is False
+
+
 def _fd(category="trade_dispute", agency="ustr", countries=("china",), date="2026-09-21",
         number="2026-00001", title="Notice of Action"):
     return FedRegDocument(document_number=number, publication_date=date, title=title,
@@ -111,8 +129,13 @@ def test_one_event_per_document_and_country():
     assert china.type == "trade_dispute" and china.source == "fedreg"
     assert china.title.startswith("USTR: ")
     assert china.region == "china_industrial"
+    # 08:45 Eastern: 12:45 UTC in September (EDT), 13:45 UTC in January (EST).
     assert china.timestamp == int(
-        datetime(2026, 9, 21, 13, 45, tzinfo=timezone.utc).timestamp() * 1000
+        datetime(2026, 9, 21, 12, 45, tzinfo=timezone.utc).timestamp() * 1000
+    )
+    (winter,) = sentinel.analyze_fedreg_documents([_fd(date="2026-01-15")])
+    assert winter.timestamp == int(
+        datetime(2026, 1, 15, 13, 45, tzinfo=timezone.utc).timestamp() * 1000
     )
     assert russia.type == "sanctions" and russia.title.startswith("BIS: ")
     assert brazil.raw_data["country"] == "brazil"

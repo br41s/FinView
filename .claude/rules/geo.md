@@ -103,8 +103,8 @@ not); a USTR notice matching Section 301 / 232 / Notice of Action / Product Excl
 `trade_dispute` unless it is a request for comments, a hearing, a quota allocation, a
 Notorious Markets review or an investigation *initiation*. Countries come from title +
 abstract through the OFAC country table, one event per (document, country) at the capital
-(`sentinel.analyze_fedreg_documents`, stamped 13:45 UTC — the Register's 08:45 ET
-release): China lands in `china_industrial` and hits the GDELT rules, Russia hits
+(`sentinel.analyze_fedreg_documents`, stamped at the Register's 08:45 Eastern release,
+DST-aware — 12:45 UTC in summer, 13:45 in winter): China lands in `china_industrial` and hits the GDELT rules, Russia hits
 `ofac-sanctions-russia` through `country=`, Brazil hits the new `fedreg-trade-brazil`
 (EWZ−). Investigation initiations are deliberately not events: the market moves on the
 duty, and an initiation ends in a hearing as often as in a tariff.

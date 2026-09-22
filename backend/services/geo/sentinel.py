@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
 from .ingest.ofac import COUNTRY_SLUGS
@@ -913,9 +914,11 @@ def analyze_ofac_actions(actions: list[OfacAction]) -> list[GeoEvent]:
     return out
 
 
-# The Federal Register publishes at 08:45 ET; the document's day is stamped at
-# that hour so the +1h/+6h checkpoints start from the release, not midnight.
-_FEDREG_RELEASE_HOUR_UTC = 13
+# The Federal Register publishes at 08:45 Eastern; the document's day is stamped
+# at that hour (DST-aware, like trading_time.py) so the +1h/+6h checkpoints start
+# from the release, not from midnight or from an hour that is only right in winter.
+_FEDREG_RELEASE = (8, 45)
+_EASTERN = ZoneInfo("America/New_York")
 
 
 def analyze_fedreg_documents(docs: list[FedRegDocument]) -> list[GeoEvent]:
@@ -926,7 +929,7 @@ def analyze_fedreg_documents(docs: list[FedRegDocument]) -> list[GeoEvent]:
     for doc in docs:
         try:
             stamp = datetime.strptime(doc.publication_date, "%Y-%m-%d").replace(
-                hour=_FEDREG_RELEASE_HOUR_UTC, minute=45, tzinfo=timezone.utc
+                hour=_FEDREG_RELEASE[0], minute=_FEDREG_RELEASE[1], tzinfo=_EASTERN
             )
         except ValueError:
             logger.warning("fedreg document with an unparseable date: %r", doc.publication_date)
