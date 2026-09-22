@@ -57,6 +57,13 @@ a geometry one — check which categories the boxes you overlap already carry.
   `effective_confidence → importance = round(confidence × risk/10)`, and ≥60 is the
   notify gate. It decides what pushes to a phone.
 
+### FIRMS — a rolling 24 hours, never "today"
+`DAY_RANGE` counts UTC calendar days: `world/1` is today's file, empty at 00:00 UTC until the
+first passes land (~03:30). Prod read 0 hotspots for three hours every night with nothing to
+log. `ingest/fires.py` asks for `world/2` (30 s timeout, ~10 MB) and keeps hotspots acquired
+in the last 24 h by `acq_date` + `acq_time`; an unreadable time is kept and counted, never
+dropped, so a format change cannot silently empty the feed.
+
 ### GDELT — the 15-minute export files, never the DOC API
 The DOC API answers **429 to a single request from Google Cloud** (prod: up in 17% of
 cycles) and carries no Goldstein, no mention counts, no coordinates — so the old ingest
