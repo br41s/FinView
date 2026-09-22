@@ -17,11 +17,13 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
 from .ingest.ofac import COUNTRY_SLUGS
 from .ingest.types import (
     FireHotspot,
+    FedRegDocument,
     FlightData,
     GdeltEvent,
     MeteoPoint,
@@ -834,13 +836,13 @@ def analyze_vessels(vessels: list[VesselSnapshot]) -> list[GeoEvent]:
     return out
 
 
-# ── OFAC ─────────────────────────────────────────────────────────────
+# ── Policy sources (OFAC, Federal Register) ───────────────────────────
 # Country → the point the rules are matched at (its capital). Tehran and
 # Beijing fall inside the `iran` / `china_industrial` boxes and match the
 # existing sanctions rules; Moscow and Caracas are in no box and match through
 # the rule condition's `country=` atom instead. A country missing here is
 # still counted on the action but starts no event.
-_OFAC_COUNTRY_POINTS = {
+_POLICY_COUNTRY_POINTS = {
     "russia": (55.75, 37.62), "iran": (35.69, 51.39), "china": (39.90, 116.40),
     "venezuela": (10.49, -66.88), "cuba": (23.11, -82.37), "belarus": (53.90, 27.57),
     "north_korea": (39.02, 125.75), "syria": (33.51, 36.29), "myanmar": (16.87, 96.20),
@@ -852,7 +854,7 @@ _OFAC_COUNTRY_POINTS = {
     "panama": (8.98, -79.52), "malaysia": (3.14, 101.69), "singapore": (1.35, 103.82),
     "indonesia": (-6.21, 106.85), "taiwan": (25.03, 121.57), "japan": (35.68, 139.69),
     "germany": (52.52, 13.41), "cyprus": (35.17, 33.36), "switzerland": (46.95, 7.45),
-    "united_kingdom": (51.51, -0.13),
+    "united_kingdom": (51.51, -0.13), "brazil": (-15.79, -47.88),
 }
 # A package this size is a policy move, not housekeeping: severity "red" lets
 # rules.severity_headroom lift the risk one notch (the sanctions rules do not
@@ -870,7 +872,7 @@ def analyze_ofac_actions(actions: list[OfacAction]) -> list[GeoEvent]:
     for action in actions:
         by_country: dict[str, list] = {}
         for entry in action.entries:
-            if entry.action == "added" and entry.country in _OFAC_COUNTRY_POINTS:
+            if entry.action == "added" and entry.country in _POLICY_COUNTRY_POINTS:
                 by_country.setdefault(entry.country, []).append(entry)
         try:
             stamp = datetime.strptime(action.date, "%Y%m%d").replace(hour=12, tzinfo=timezone.utc)
@@ -879,7 +881,7 @@ def analyze_ofac_actions(actions: list[OfacAction]) -> list[GeoEvent]:
             continue
         ts = int(stamp.timestamp() * 1000)
         for country, entries in by_country.items():
-            lat, lng = _OFAC_COUNTRY_POINTS[country]
+            lat, lng = _POLICY_COUNTRY_POINTS[country]
             programs = list(dict.fromkeys(p for e in entries for p in e.programs))
             kinds = Counter(e.kind for e in entries)
             organisations = [e.name for e in entries if e.kind != "individual"]
@@ -907,6 +909,53 @@ def analyze_ofac_actions(actions: list[OfacAction]) -> list[GeoEvent]:
                     "names": (organisations or [e.name for e in entries])[:6],
                     "url": action.url,
                     "actionTitle": action.title,
+                },
+            ))
+    return out
+
+
+# The Federal Register publishes at 08:45 Eastern; the document's day is stamped
+# at that hour (DST-aware, like trading_time.py) so the +1h/+6h checkpoints start
+# from the release, not from midnight or from an hour that is only right in winter.
+_FEDREG_RELEASE = (8, 45)
+_EASTERN = ZoneInfo("America/New_York")
+
+
+def analyze_fedreg_documents(docs: list[FedRegDocument]) -> list[GeoEvent]:
+    """One event per (document, named country) — `sanctions` for a BIS Entity
+    List addition, `trade_dispute` for a USTR tariff action — matched at the
+    capital like OFAC. A document naming no listed country starts nothing."""
+    out: list[GeoEvent] = []
+    for doc in docs:
+        try:
+            stamp = datetime.strptime(doc.publication_date, "%Y-%m-%d").replace(
+                hour=_FEDREG_RELEASE[0], minute=_FEDREG_RELEASE[1], tzinfo=_EASTERN
+            )
+        except ValueError:
+            logger.warning("fedreg document with an unparseable date: %r", doc.publication_date)
+            continue
+        ts = int(stamp.timestamp() * 1000)
+        label = "BIS" if doc.agency == "bis" else "USTR"
+        for country in doc.countries:
+            if country not in _POLICY_COUNTRY_POINTS:
+                continue
+            lat, lng = _POLICY_COUNTRY_POINTS[country]
+            out.append(GeoEvent(
+                id=f"fedreg-{doc.document_number}-{country}",
+                type=doc.category,
+                title=f"{label}: {doc.title}"[:200],
+                latitude=lat,
+                longitude=lng,
+                source="fedreg",
+                timestamp=ts,
+                severity="orange",
+                region=_most_specific_region(match_regions(lat, lng)),
+                raw_data={
+                    "country": country,
+                    "agency": doc.agency,
+                    "documentNumber": doc.document_number,
+                    "url": doc.url,
+                    "abstract": doc.abstract[:400],
                 },
             ))
     return out

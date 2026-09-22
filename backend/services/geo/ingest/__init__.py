@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from .events import fetch_events
+from .fedreg import fetch_fedreg
 from .fires import fetch_fires
 from .flights import fetch_flights
 from .gdelt import fetch_gdelt
@@ -18,6 +19,7 @@ from .meteo import fetch_meteo
 from .ofac import fetch_ofac
 from .seismic import fetch_seismic
 from .types import (
+    FedRegDocument,
     FireHotspot,
     FlightData,
     GdeltEvent,
@@ -42,6 +44,7 @@ __all__ = [
     "fetch_gdelt",
     "fetch_vessels",
     "fetch_ofac",
+    "fetch_fedreg",
     "SourceBundle",
     "SeismicEvent",
     "NaturalEvent",
@@ -52,11 +55,12 @@ __all__ = [
     "VesselSnapshot",
     "OfacAction",
     "OfacEntry",
+    "FedRegDocument",
 ]
 
 
 async def fetch_all_sources() -> SourceBundle:
-    """Fetch all 8 sources concurrently. Per-source failures yield empty lists."""
+    """Fetch all 9 sources concurrently. Per-source failures yield empty lists."""
     results = await asyncio.gather(
         fetch_seismic(),
         fetch_events(),
@@ -66,11 +70,12 @@ async def fetch_all_sources() -> SourceBundle:
         fetch_gdelt(),
         fetch_vessels(),
         fetch_ofac(),
+        fetch_fedreg(),
         return_exceptions=True,
     )
     keys = (
         "earthquakes", "events", "fires", "meteo",
-        "flights", "gdelt", "vessels", "ofac",
+        "flights", "gdelt", "vessels", "ofac", "fedreg",
     )
     bundle = SourceBundle()
     for key, result in zip(keys, results):
