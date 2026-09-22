@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'rsu-stock-options-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '22 sep 2026',
+    readTime: '11 min',
+    title: 'RSUs y stock options: cómo tributan las acciones que te da tu empresa',
+    excerpt:
+      'El vesting tributa como nómina en la base general y la venta como plusvalía en la del ahorro. El precio de adquisición es el valor del día que consolidaste, no cero. La exención de 12.000 € y el sell to cover, explicados.',
+  },
+  {
     slug: 'dividendos-austriacos-espana',
     tag: 'Fiscalidad',
     date: '21 sep 2026',
