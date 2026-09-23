@@ -152,13 +152,6 @@ RIGHTS_RE = re.compile(
 # ISIN in parentheses (next line after transaction): "(CA05156X8843)"
 ISIN_PAREN_RE = re.compile(r"\(([A-Z]{2}[A-Z0-9]{10})\)")
 
-# Fund holding: "Fondo Cartera NARANJA ... 954,71  12,28€  11.722,31€"
-FUND_RE = re.compile(
-    r"([\d.,]+)\s+"     # Participaciones
-    r"([\d.,]+)\s*€\s+" # Valor liquidativo
-    r"([\d.,]+)\s*€"    # Importe
-)
-
 
 # ── PDF text extraction ────────────────────────────────────────────────
 

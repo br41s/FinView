@@ -112,31 +112,6 @@ _TX_TYPE_LABELS = [
 # ---------------------------------------------------------------------------
 
 
-def _page_rows(page: pdfplumber.page.Page, tol: float = 3.0) -> list[list[str]]:
-    """Group a page's words into logical rows.
-
-    Rows are anchored on lines that contain an ISIN or an Rx-number
-    (fiscal casilla). Adjacent y-lines within ``tol`` points are merged
-    with the anchor row so that wrapped names/countries join the data
-    row they belong to.
-    """
-    words = page.extract_words()
-    by_y: dict[float, list[tuple[float, str]]] = defaultdict(list)
-    for w in words:
-        y = round(w["top"] / tol) * tol
-        by_y[y].append((w["x0"], w["text"]))
-
-    ordered = sorted(by_y.keys())
-    rows: list[list[str]] = []
-    buffer: list[str] = []
-    for y in ordered:
-        line = [t for _, t in sorted(by_y[y])]
-        buffer.append(" ".join(line))
-        rows.append(buffer.copy())
-        buffer = []
-    return rows
-
-
 def _page_lines(page: pdfplumber.page.Page, tol: float = 3.0) -> list[str]:
     """Return the page text grouped by y-position (tolerant of wrapped cells)."""
     words = page.extract_words()
@@ -565,13 +540,6 @@ def _page_continues_table(text: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-_CASILLA_SUMMARY_RE = re.compile(
-    r"(\d{4})\s+[A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-z0-9ÁÉÍÓÚáéíóúñÑ,\.\s\(\)-]*?"
-    r"(-?\d{1,3}(?:\.\d{3})*,\d+)\s+(-?\d{1,3}(?:\.\d{3})*,\d+)\s+(-?\d{1,3}(?:\.\d{3})*,\d+)",
-    re.DOTALL,
-)
-
-
 def _parse_summary(text: str) -> list[ParsedCasilla]:
     """Extract casillas 0027, 0029, 0030, 0031, 0033, 0034 totals from the
     ``Informe resumido`` page."""
@@ -801,9 +769,6 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
         casillas_modelo_714=casillas_m714,
         source_variant="es_branch",
     )
-
-
-_TOTAL_RE = re.compile(r"Total\s+([\d\.,\s-]+?)(?:\n|$)")
 
 
 def _extract_total(text: str) -> Decimal | None:

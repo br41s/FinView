@@ -18,7 +18,7 @@ import hashlib
 import re
 from collections import defaultdict, deque
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
 import pdfplumber
@@ -44,15 +44,6 @@ def parse_eur_number(s: str) -> Decimal:
     s = s.replace(".", "").replace(",", ".")
     return Decimal(s)
 
-
-def _try_parse_num(s: str) -> Decimal | None:
-    try:
-        return parse_eur_number(s)
-    except (InvalidOperation, ValueError):
-        return None
-
-
-# -- Date parsing --
 
 _DATE_RE = re.compile(r"\d{2}\.\d{2}\.\d{4}")
 
@@ -486,14 +477,6 @@ def _parse_section_iii(pages_text: list[str]) -> list[ParsedCapitalGain]:
 # Section VIII: Modelo 100
 # =============================================================================
 
-_MODELO100_RE = re.compile(
-    r"(.+?)\s+(\d{1,3})\s+(?:Validación\s+)?(-?\d{1,3}(?:\.\d{3})*,\d+)"
-)
-
-
-# The Modelo 100 section is "VIII" in the full-year report but "VII" in the
-# pre-migration partial report (the patrimonio section that normally precedes
-# it is absent), so match on the title rather than a fixed Roman numeral.
 _MODELO100_TITLE_RE = re.compile(r"\b(?:VII|VIII)\.\s+Modelo 100\b")
 
 

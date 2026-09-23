@@ -238,25 +238,6 @@ def _fifo_cost_basis(
     return cost_basis, qty_remaining
 
 
-def _avg_invested_at_dates(buys: list, sells: list, div_dates: list) -> Decimal:
-    """Compute average FIFO cost basis at each dividend payment date."""
-    invested_at_dates = []
-    for ddate in div_dates:
-        buys_up_to = [
-            (abs(tx.quantity), abs(tx.net_amount_eur))
-            for tx in buys if tx.trade_date <= ddate
-        ]
-        sold_up_to = sum(
-            (abs(tx.quantity) for tx in sells if tx.trade_date <= ddate),
-            Decimal("0"),
-        )
-        cost, _ = _fifo_cost_basis(buys_up_to, sold_up_to)
-        invested_at_dates.append(cost)
-    if not invested_at_dates:
-        return Decimal("0")
-    return sum(invested_at_dates, Decimal("0")) / len(invested_at_dates)
-
-
 def _compute_isin_yield(
     d, buys_by_isin: dict, sells_by_isin: dict,
     price_map: dict,

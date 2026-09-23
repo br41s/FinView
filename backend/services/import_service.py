@@ -638,7 +638,9 @@ def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename:
         file_hash=_file_hash_for_storage(db, file_hash, Broker.TR, user_id),
         broker=Broker.TR.value,
         fiscal_year=report.fiscal_year,
-        record_count=len(report.transactions) + len(report.dividends),
+        # Section VI transactions are parsed but not stored (see tx_count below);
+        # the count reflects what this import actually wrote.
+        record_count=len(report.dividends) + len(report.capital_gains),
         source_variant=report.source_variant,
     )
     db.add(import_rec)
