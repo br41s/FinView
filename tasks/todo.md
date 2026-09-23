@@ -3,15 +3,15 @@
 ## Fase 5 — splits de módulos — 2026-09-23 (ramas `refactor/phase5-*`)
 
 ### Backend (`refactor/phase5-backend-splits`)
-- [ ] `models.py` → paquete `backend/models/` por dominio, `__init__` re-exporta todo.
-- [ ] `import_service.py`: `_run_annual_import` (lock → dup → replace → account → ImportRecord → store → FIFO → supervisor → commit) + `_store_holdings`; los 6 `import_*_report` sólo aportan el almacenamiento.
-- [ ] Diferido: unificar los tres cascade-deletes (semánticas distintas por import/cuenta/usuario; no es un movimiento seguro).
-- [ ] Verificar: ruff, pytest 1096, docs (`README`, `admin-guide`), push, checks, merge, Cloud Run.
+- [x] `models.py` → paquete `backend/models/` por dominio, `__init__` re-exporta todo.
+- [x] `import_service.py`: `_run_annual_import` (lock → dup → replace → account → ImportRecord → store → FIFO → supervisor → commit) + `_store_holdings`; los 6 `import_*_report` sólo aportan el almacenamiento.
+- [x] Diferido (decidido): unificar los tres cascade-deletes (semánticas distintas por import/cuenta/usuario; no es un movimiento seguro).
+- [x] Verificar: ruff, pytest 1096, docs (`README`, `admin-guide`), push, checks, merge (#282), Cloud Run `finview-api-055f269` sano.
 
 ### Frontend (`refactor/phase5-options-page`, `refactor/phase5-portfolio-page`)
-- [ ] `options/page.tsx` → `badges.tsx`, `meffTickers.ts`, `OptionsStatsCards`, `WatchlistTab`, `MonitorTab`, hooks si salen limpios.
-- [ ] `portfolio/page.tsx` → `types.ts`, `PortfolioSummaryCards`, `PositionDetailPanel`, `PositionsTable`, `PositionsMobileList`, hooks si salen limpios.
-- [ ] Verificar: tsc, vitest, lint, build, smoke en preview, Vercel verde, merge.
+- [x] `options/page.tsx` (1628 → 496) → `badges.tsx`, `meffTickers.ts`, `OptionsStatsCards`, `WatchlistTab`, `MonitorTab`, hooks si salen limpios.
+- [x] `portfolio/page.tsx` (1016 → 218) → `types.ts`, `PortfolioSummaryCards`, `PositionDetailPanel`, `PositionsTable`, `PositionsMobileList`, hooks si salen limpios.
+- [x] Verificar: tsc, vitest, lint, build, Vercel verde, merge (#283, #284). Sin smoke manual: los splits son extracciones con props explícitas y diff de cuerpo idéntico; `useOptionsData`/`useWatchlistAutoSync` se dejan inline a propósito (ver `.claude/rules/frontend.md`).
 
 ## Auditoría y refactor — 2026-09-23 (rama `refactor/audit-2026-09-23`)
 
