@@ -20,9 +20,27 @@ a slow Yahoo into a stalled user import or a cron cycle that never finishes.
 """
 
 import logging
+import threading
 import time
 
+import yfinance as yf
+
 logger = logging.getLogger(__name__)
+
+# yf.download() has internal shared state that is not thread-safe: two concurrent
+# calls for different tickers can hand one ticker's frame to the other and the
+# wrong price is then persisted. The lock used to live in zonas_clave_analyzer
+# only, while /charts/price-history (a sync route, so one thread per request)
+# and the portfolio price refresh downloaded unguarded. Serializing costs
+# nothing measurable — yfinance's HTTP round-trip dominates — and one lock in
+# one place is the only way to make the guarantee hold for every caller.
+_DOWNLOAD_LOCK = threading.Lock()
+
+
+def download(*args, **kwargs):
+    """``yf.download`` behind the process-wide lock. Every caller goes through here."""
+    with _DOWNLOAD_LOCK:
+        return yf.download(*args, **kwargs)
 
 # One broker import. Two stalled lookups and the rest degrade to "unresolved",
 # which is the outcome a failed lookup already produces. A healthy lookup takes

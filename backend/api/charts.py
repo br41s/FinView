@@ -24,6 +24,7 @@ from backend.api.schemas import (
 )
 from backend.database import DbSession
 from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
+from backend.services import yahoo_budget
 from backend.services.sql_compat import year_month_str, year_range, year_str
 
 router = APIRouter(prefix="/charts", tags=["charts"])
@@ -701,7 +702,6 @@ def price_history(
     import time
 
     import pandas as pd
-    import yfinance as yf
 
     if interval not in _VALID_PERIODS_BY_INTERVAL:
         interval = "1d"
@@ -715,7 +715,7 @@ def price_history(
     if cached and time.time() - cached[1] < _PRICE_HISTORY_TTL:
         return cached[0]
     try:
-        df = yf.download(t, period=period, interval=interval, auto_adjust=True, progress=False)
+        df = yahoo_budget.download(t, period=period, interval=interval, auto_adjust=True, progress=False)
         if df is None or df.empty:
             return []
         if isinstance(df.columns, pd.MultiIndex):

@@ -8,7 +8,6 @@ Pipeline per ticker:
 
 import json
 import logging
-import threading
 import time
 from datetime import datetime, timezone
 
@@ -16,15 +15,9 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-logger = logging.getLogger(__name__)
+from backend.services import yahoo_budget
 
-# yf.download() has internal shared state that isn't thread-safe: calling it
-# concurrently for two different tickers (e.g. add_ticker spawns one
-# background thread per watchlist add) can return one ticker's data for the
-# other, silently persisting the wrong price/zones. Serializing the download
-# itself is cheap (yfinance's own HTTP call already dominates latency) and
-# closes the race without touching the calling threads' architecture.
-_YF_DOWNLOAD_LOCK = threading.Lock()
+logger = logging.getLogger(__name__)
 
 # Download window. Feeds `price_history`, i.e. the chart's MAX scope — that's why
 # it's 20y and not less (see a2bc58e, which also lowered lightweight-charts'
@@ -64,14 +57,13 @@ _MIN_BARS = 2 * _PIVOT_WINDOW + 1
 def fetch_history(ticker: str) -> pd.DataFrame | None:
     """Download up to 20 years of daily OHLCV. Returns DataFrame with Close/High/Low/Volume or None."""
     try:
-        with _YF_DOWNLOAD_LOCK:
-            df = yf.download(
-                ticker,
-                period=_HISTORY_PERIOD,
-                interval=_HISTORY_INTERVAL,
-                auto_adjust=True,
-                progress=False,
-            )
+        df = yahoo_budget.download(
+            ticker,
+            period=_HISTORY_PERIOD,
+            interval=_HISTORY_INTERVAL,
+            auto_adjust=True,
+            progress=False,
+        )
         if df is None or df.empty:
             return None
         # Flatten MultiIndex columns (yfinance sometimes returns them for single tickers)
