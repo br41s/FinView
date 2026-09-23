@@ -24,6 +24,7 @@ import { OptionsStatsCards } from "./OptionsStatsCards";
 import { WatchlistTab } from "./WatchlistTab";
 import type { Alert, AgentStatus, Position, Snapshot, Unusual, WatchlistItem } from "./types";
 import { useBacktest } from "./useBacktest";
+import { useCrossLens } from "./useCrossLens";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
 import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
 import { Badge } from "@/components/ui/badge";
@@ -44,9 +45,7 @@ export default function OptionsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [unusual, setUnusual] = useState<Unusual[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-  // Zonas (técnico) lens state for cross-section toggles: ticker → zonas item id
-  const [zonasMap, setZonasMap] = useState<Map<string, number>>(new Map());
-  const [zonasBusy, setZonasBusy] = useState<Set<string>>(new Set());
+  const { zonasMap, zonasBusy, toggleZonasLens } = useCrossLens();
   // Tickers with an active geo signal — gates the per-alert "Ideas" link.
   const [geoTickers, setGeoTickers] = useState<Set<string>>(new Set());
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
@@ -80,14 +79,6 @@ export default function OptionsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     initialTickerRef.current = params.get("ticker");
-  }, []);
-
-  // Zonas lens info for the watchlist's "Técnico" toggles — best-effort
-  useEffect(() => {
-    api.zonasClav
-      .watchlist()
-      .then((items) => setZonasMap(new Map(items.map((i) => [i.ticker, i.id]))))
-      .catch(bestEffort("zonas lens map for the watchlist"));
   }, []);
 
   // Which tickers have an active geo signal — decides whether an alert offers an
@@ -313,31 +304,6 @@ export default function OptionsPage() {
     setWatchlist((prev) =>
       prev.map((item) => (item.id === id ? { ...item, enabled: !item.enabled } : item)),
     );
-  }
-
-  // ── Zonas (técnico) lens — cross-section toggle from the watchlist ──
-  async function toggleZonasLens(ticker: string, name: string) {
-    if (zonasBusy.has(ticker)) return;
-    setZonasBusy((prev) => new Set(prev).add(ticker));
-    try {
-      const id = zonasMap.get(ticker);
-      if (id != null) {
-        await api.zonasClav.removeTicker(id);
-      } else {
-        // Same semantics as adding from /zonas-clave: fires the S/R analysis.
-        await api.zonasClav.addTicker(ticker, name);
-      }
-      const items = await api.zonasClav.watchlist();
-      setZonasMap(new Map(items.map((i) => [i.ticker, i.id])));
-    } catch (e) {
-      console.error("zonas lens toggle:", e);
-    } finally {
-      setZonasBusy((prev) => {
-        const next = new Set(prev);
-        next.delete(ticker);
-        return next;
-      });
-    }
   }
 
   async function handleAckAlert(id: number) {
