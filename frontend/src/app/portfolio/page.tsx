@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { Briefcase, TrendingUp } from "lucide-react";
 
 import { toast } from "sonner";
-import { api, type OhlcBar } from "@/lib/api";
+import { api } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
 import type { GeoSignal } from "@/lib/geo";
 import { ErrorState } from "@/components/ErrorState";
-import { SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
 import {
   Card,
   CardContent,
@@ -27,24 +26,13 @@ import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import { PortfolioSummaryCards } from "./PortfolioSummaryCards";
 import { PositionsMobileList } from "./PositionsMobileList";
 import { PositionsTable } from "./PositionsTable";
-import type { Position, PositionDetail, Summary } from "./types";
+import type { Position } from "./types";
+import { usePortfolioData } from "./usePortfolioData";
+import { usePositionDetails } from "./usePositionDetails";
 
 function PortfolioContent() {
   const router = useRouter();
   const { privacy, togglePrivacy } = usePrivacyToggle();
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
-  const [pricesLoaded, setPricesLoaded] = useState(false);
-  const [expandedIsin, setExpandedIsin] = useState<string | null>(null);
-  const [ohlcByIsin, setOhlcByIsin] = useState<Map<string, OhlcBar[]>>(new Map());
-  const [chartScope, setChartScope] = useState<ChartScope>("MAX");
-  const [details, setDetails] = useState<Map<string, PositionDetail>>(
-    new Map(),
-  );
-  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const [zcWatchlist, setZcWatchlist] = useState<Set<string>>(new Set());
   const [zcAdding, setZcAdding] = useState<Set<string>>(new Set());
   const [geoByTicker, setGeoByTicker] = useState<Map<string, GeoSignal>>(new Map());
@@ -77,66 +65,19 @@ function PortfolioContent() {
       .catch(bestEffort("geo signal badges"));
   }, []);
 
-  useEffect(() => {
-    async function load() {
-      setError(null);
-
-      // Phase 1: positions + summary without live prices (must succeed)
-      try {
-        const [pos, sum] = await Promise.all([
-          api.portfolio.positions(true) as Promise<Position[]>,
-          api.portfolio.summary(true) as Promise<Summary>,
-        ]);
-        setPositions(pos);
-        setSummary(sum);
-        setLoading(false);
-      } catch (e) {
-        console.error("Failed to load portfolio:", e);
-        setError("No se pudieron cargar los datos de la cartera. Comprueba tu conexión e inténtalo de nuevo.");
-        setLoading(false);
-        return;
-      }
-
-      // Phase 2: live prices (optional — failure leaves prices as "—")
-      try {
-        const [posWithPrices, sumWithPrices] = await Promise.all([
-          api.portfolio.positions() as Promise<Position[]>,
-          api.portfolio.summary() as Promise<Summary>,
-        ]);
-        setPositions(posWithPrices);
-        setSummary(sumWithPrices);
-        setPricesLoaded(true);
-      } catch (e) {
-        console.error("Failed to load live prices:", e);
-        // non-critical — positions already shown without live prices
-      }
-    }
-    load();
-  }, [retryKey]);
-
-  const handleExpand = useCallback(
-    async (isin: string) => {
-      if (expandedIsin === isin) {
-        setExpandedIsin(null);
-        return;
-      }
-      setExpandedIsin(isin);
-      if (!details.has(isin)) {
-        setLoadingDetail(isin);
-        try {
-          const data = (await api.portfolio.positionDetail(
-            isin,
-          )) as PositionDetail;
-          setDetails((prev) => new Map(prev).set(isin, data));
-        } catch (e) {
-          console.error("Failed to load detail:", e);
-        } finally {
-          setLoadingDetail(null);
-        }
-      }
-    },
-    [expandedIsin, details],
-  );
+  // Called after the two badge effects on purpose: effects run in declaration
+  // order, so this keeps the mount-time fetch order zonas → geo → portfolio
+  // → OHLC exactly as it was when everything was inline.
+  const { positions, summary, loading, error, pricesLoaded, retry } = usePortfolioData();
+  const {
+    expandedIsin,
+    details,
+    loadingDetail,
+    handleExpand,
+    ohlcByIsin,
+    chartScope,
+    setChartScope,
+  } = usePositionDetails();
 
   async function handleAddToZonas(p: Position) {
     const ticker = p.ticker ?? p.isin;
@@ -161,25 +102,6 @@ function PortfolioContent() {
     }
   }
 
-  // Fetch OHLC for the expanded position + selected scope. Cached per
-  // "isin:scope" so switching scope/re-expanding doesn't refetch. Best-effort
-  // → empty hides the chart.
-  useEffect(() => {
-    if (!expandedIsin) return;
-    const detail = details.get(expandedIsin);
-    const cacheKey = `${expandedIsin}:${chartScope}`;
-    if (!detail?.ticker || ohlcByIsin.has(cacheKey)) return;
-    const { period, interval } = SCOPE_PARAMS[chartScope];
-    api.charts
-      .priceHistory(detail.ticker, period, interval)
-      .then((bars) =>
-        setOhlcByIsin((prev) => new Map(prev).set(cacheKey, bars)),
-      )
-      .catch(() =>
-        setOhlcByIsin((prev) => new Map(prev).set(cacheKey, [])),
-      );
-  }, [expandedIsin, chartScope, details, ohlcByIsin]);
-
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-6">
@@ -189,7 +111,7 @@ function PortfolioContent() {
   }
 
   if (error) {
-    return <ErrorState message={error} onRetry={() => setRetryKey((k) => k + 1)} />;
+    return <ErrorState message={error} onRetry={retry} />;
   }
 
   return (
