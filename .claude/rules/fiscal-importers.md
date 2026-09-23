@@ -64,4 +64,5 @@ file omits the rate or for manual entries. Ported from OptionsAI.
 - Withholding has three distinct truths: cash withheld, Spanish payment on account and
   foreign withholding. Never deduct total cash or infer a CDI credit from country;
   casilla 588 requires an explicit credit and is capped by quota/effective tax rate.
-- finview_casillas_2024.json in repo root = reference output for fiscal year 2024
+- Reference casilla output for a fiscal year stays out of the repo: it is the owner's real
+  IRPF data. Keep it local (ignored) and compare by hand.

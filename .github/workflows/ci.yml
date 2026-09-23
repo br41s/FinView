@@ -48,7 +48,7 @@ jobs:
             'ruff==0.15.7' 'pytest==9.0.2' 'pytest-asyncio>=0.24'
 
       - name: Lint
-        run: .venv/bin/python -m ruff check backend/
+        run: .venv/bin/python -m ruff check backend/ scripts/
 
       # ~163 tests skip here by design: they need the real broker PDFs/CSVs in
       # files/, which are not in the repo. That also keeps the runner cheap —
