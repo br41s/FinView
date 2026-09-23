@@ -2,7 +2,9 @@
 data/
 files/
 *.db
+*.db-*
 *.sqlite
+*.sqlite3
 
 # Python
 __pycache__/
@@ -24,8 +26,8 @@ design_handoff_finview_intro/
 # Temp
 test_parser.py
 test_api.py
-.env.local
-.env.production
+.env
+.env.*
 *.dump
 .gstack/
 .claude/
@@ -39,3 +41,4 @@ test_api.py
 
 # Local package store
 .pnpm-store/
+finview_casillas_*.json

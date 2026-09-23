@@ -76,16 +76,6 @@ class CapitalGainOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CasillaOut(BaseModel):
-    modelo: int
-    casilla: int
-    description: str
-    amount_eur: Decimal
-    broker: str | None
-
-    model_config = {"from_attributes": True}
-
-
 class BrokerAmount(BaseModel):
     broker: str
     amount_eur: Decimal

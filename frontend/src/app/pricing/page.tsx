@@ -132,7 +132,7 @@ function PricingContent() {
     setLoading(tier);
     try {
       const { url } = await api.billing.checkout(priceId);
-      window.location.href = url;
+      window.location.assign(url);
     } catch {
       router.push(href);
     }

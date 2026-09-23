@@ -25,7 +25,7 @@ import {
   type AltInvestmentType,
   type AltSummary,
 } from "@/lib/api";
-import { formatEur } from "@/lib/format";
+import { fmtCompact, formatEur } from "@/lib/format";
 import {
   Card,
   CardContent,
@@ -77,14 +77,6 @@ const EMPTY_FORM: AltInvestmentInput = {
 
 function fmtMultiple(v: number | null): string {
   return v === null ? "—" : `${v.toFixed(2)}x`;
-}
-
-function fmtCompactEur(v: number | null): string {
-  if (v === null) return "—";
-  if (v >= 1e9) return `€${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `€${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `€${(v / 1e3).toFixed(0)}k`;
-  return `€${v.toFixed(0)}`;
 }
 
 export default function AltInvestmentsPage() {
@@ -329,7 +321,7 @@ export default function AltInvestmentsPage() {
                       <span className="text-[10px] tabular-nums text-muted-foreground">
                         {r.nav !== null && `NAV ${r.nav.toFixed(2)}`}
                         {r.nav !== null && r.fund_size !== null && " · "}
-                        {r.fund_size !== null && `Pat. ${fmtCompactEur(r.fund_size)}`}
+                        {r.fund_size !== null && `Pat. ${fmtCompact(r.fund_size)}`}
                       </span>
                       {r.isin && (
                         <span className="font-mono text-[10px] text-muted-foreground">

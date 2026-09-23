@@ -34,7 +34,7 @@ import { bestEffort } from "@/lib/bestEffort";
 import { AgentChat } from "./AgentChat";
 import { AnalysisTab } from "./AnalysisTab";
 import { BacktestTab } from "./BacktestTab";
-import { fmt } from "./format";
+import { fmt, fmtDateTime } from "@/lib/format";
 import { useBacktest } from "./useBacktest";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
 import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
@@ -137,15 +137,6 @@ function severityColor(s: string) {
   }
 }
 
-function sentimentIcon(s: string | null) {
-  if (!s) return null;
-  if (s.includes("BULLISH"))
-    return <TrendingUp className="h-4 w-4 text-green-500" />;
-  if (s.includes("BEARISH"))
-    return <TrendingDown className="h-4 w-4 text-red-500" />;
-  return <Activity className="h-4 w-4 text-muted-foreground" />;
-}
-
 // ── MEFF Spanish tickers (verified May 2026) ────────────────────────
 
 const MEFF_TICKERS: { ticker: string; name: string }[] = [
@@ -197,7 +188,6 @@ export default function OptionsPage() {
   // Tickers with an active geo signal — gates the per-alert "Ideas" link.
   const [geoTickers, setGeoTickers] = useState<Set<string>>(new Set());
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
-  const [loadingPositions, setLoadingPositions] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [running, setRunning] = useState(false);
   const [newTicker, setNewTicker] = useState("");
@@ -214,7 +204,7 @@ export default function OptionsPage() {
   const [expandedOptionsTicker, setExpandedOptionsTicker] = useState<string | null>(null);
   const [errorPositions, setErrorPositions] = useState<string | null>(null);
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
-  const [retryPositions, setRetryPositions] = useState(0);
+  const [retryPositions] = useState(0);
   const [retryOptions, setRetryOptions] = useState(0);
 
   // N6: auto-expand ticker from URL param (?ticker=X)
@@ -271,18 +261,16 @@ export default function OptionsPage() {
         try {
           const { no_options } = await api.options.checkAvailability(tickers);
           setNoOptionsTickers(new Set(no_options));
-        } catch {
-          // ignore — positions remain visible if check fails
+        } catch (e) {
+          // Positions remain visible if the check fails.
+          bestEffort("options availability check")(e);
         }
       })
       .catch((e) => {
         console.error("Failed to load positions:", e);
         setErrorPositions("No se pudieron cargar las posiciones de cartera.");
       })
-      .finally(() => {
-        setLoadingPositions(false);
-        setAvailabilityChecked(true);
-      });
+      .finally(() => setAvailabilityChecked(true));
   }, [retryPositions]);
 
   // Load options data in parallel (independent of positions)
@@ -352,8 +340,9 @@ export default function OptionsPage() {
         try {
           await api.options.addToWatchlist(ticker, name);
           syncedTickersRef.current.add(ticker);
-        } catch {
-          // ignore — e.g. already added by a concurrent sync, will settle next pass
+        } catch (e) {
+          // E.g. already added by a concurrent sync; settles on the next pass.
+          bestEffort(`options watchlist sync ${ticker}`)(e);
         }
       }
       if (cancelled) return;
@@ -725,7 +714,7 @@ export default function OptionsPage() {
           </CardHeader>
           <CardContent className="hidden sm:block">
             <div className="text-2xl font-bold">{agentStatus?.total_cycles ?? 0}</div>
-            <p className="text-xs text-muted-foreground">{agentStatus?.last_cycle ? `Último: ${new Date(agentStatus.last_cycle).toLocaleString("es-ES")}` : "Sin ciclos aún"}</p>
+            <p className="text-xs text-muted-foreground">{agentStatus?.last_cycle ? `Último: ${fmtDateTime(agentStatus.last_cycle)}` : "Sin ciclos aún"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -1037,7 +1026,7 @@ export default function OptionsPage() {
                                           {a.alert_type}
                                         </Badge>
                                         <span className="text-muted-foreground">
-                                          {new Date(a.timestamp).toLocaleString("es-ES")}
+                                          {fmtDateTime(a.timestamp)}
                                         </span>
                                       </div>
                                       <p className="mt-1 text-foreground">{a.message}</p>
@@ -1320,7 +1309,7 @@ export default function OptionsPage() {
                               return (
                                 <Fragment key={a.id}>
                                   <TableRow className={a.acknowledged ? "opacity-50" : ""}>
-                                    <TableCell className="text-xs">{new Date(a.timestamp).toLocaleString("es-ES")}</TableCell>
+                                    <TableCell className="text-xs">{fmtDateTime(a.timestamp)}</TableCell>
                                     <TableCell className="font-medium">{a.ticker}</TableCell>
                                     <TableCell><Badge variant="outline">{a.alert_type}</Badge></TableCell>
                                     <TableCell>{a.message}</TableCell>
@@ -1395,7 +1384,7 @@ export default function OptionsPage() {
                           <TableBody>
                             {unusual.map((u) => (
                               <TableRow key={u.id}>
-                                <TableCell className="text-xs">{new Date(u.timestamp).toLocaleString("es-ES")}</TableCell>
+                                <TableCell className="text-xs">{fmtDateTime(u.timestamp)}</TableCell>
                                 <TableCell className="font-medium">{u.ticker}</TableCell>
                                 <TableCell><Badge variant={u.option_type === "CALL" ? "default" : "secondary"}>{u.option_type}</Badge></TableCell>
                                 <TableCell>${fmt(u.strike)}</TableCell>
@@ -1483,7 +1472,7 @@ export default function OptionsPage() {
                                 <Fragment key={s.id}>
                                   <TableRow className={s.alerted ? "" : "opacity-60"}>
                                     <TableCell className="text-xs">
-                                      {new Date(s.created_at).toLocaleString("es-ES")}
+                                      {fmtDateTime(s.created_at)}
                                     </TableCell>
                                     <TableCell className="font-medium">{s.ticker}</TableCell>
                                     <TableCell>

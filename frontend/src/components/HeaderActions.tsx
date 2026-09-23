@@ -30,7 +30,7 @@ export function HeaderActions({ privacy, onTogglePrivacy }: HeaderActionsProps) 
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => (window.location.href = "/billing")}
+        onClick={() => window.location.assign(new URL("/billing", window.location.origin))}
         title="Facturación"
         aria-label="Facturación"
       >

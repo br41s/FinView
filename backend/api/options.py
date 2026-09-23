@@ -1,10 +1,10 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
 import json
+import logging
 import threading
 import time
 
-import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
@@ -30,6 +30,8 @@ from backend.api.schemas import (
 )
 from backend.config import settings
 from backend.database import DbSession
+from backend.services import options_scheduler
+from backend.services.llm_envelope import chat
 from backend.models import (
     BacktestSignal,
     FollowedInstrument,
@@ -49,6 +51,8 @@ from backend.services.options_scraper import fetch_expirations, fetch_options, f
 # ticker → (has_options, timestamp); 24-hour TTL
 _availability_cache: dict[str, tuple[bool, float]] = {}
 _AVAIL_TTL = 86_400  # seconds
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -429,7 +433,6 @@ def check_options_availability(body: _TickerListIn, user: CurrentUser):
 
 # ── Agent Control ────────────────────────────────────────────────────
 
-_scheduler_running = False
 _cycles_in_progress: set[int] = set()
 _cycle_lock = threading.Lock()
 
@@ -536,7 +539,7 @@ def agent_status(db: DbSession, user: CurrentUser):
         .scalar()
     )
     return AgentStatusOut(
-        running=_scheduler_running,
+        running=options_scheduler.is_running(user.id),
         external_scheduler=settings.request_scoped_runtime,
         interval_minutes=settings.options_monitor_interval_minutes,
         last_cycle=last_log.timestamp if last_log else None,
@@ -582,22 +585,14 @@ def start_scheduler(user: CurrentUser):
             status_code=409,
             detail="In-process schedulers are disabled on request-scoped runtimes",
         )
-    global _scheduler_running
-    from backend.services.options_scheduler import start_user_schedule
-
-    start_user_schedule(user.id)
-    _scheduler_running = True
+    options_scheduler.start_user_schedule(user.id)
     return {"status": "started", "interval_minutes": settings.options_monitor_interval_minutes}
 
 
 @router.post("/agent/stop")
 def stop_scheduler(user: CurrentUser):
     """Stop the APScheduler background job."""
-    global _scheduler_running
-    from backend.services.options_scheduler import stop_user_schedule
-
-    stop_user_schedule(user.id)
-    _scheduler_running = False
+    options_scheduler.stop_user_schedule(user.id)
     return {"status": "stopped"}
 
 
@@ -786,16 +781,12 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
     ]
     messages.append({"role": "user", "content": body.question.strip()})
 
-    response = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-        json={
-            "model": settings.openrouter_model,
-            "max_tokens": 1024,
-            "messages": [{"role": "system", "content": system_prompt}] + messages,
-        },
-        timeout=60.0,
+    answer, error = chat(
+        [{"role": "system", "content": system_prompt}] + messages,
+        context="options ask",
+        max_tokens=1024,
     )
-    response.raise_for_status()
-    answer = response.json()["choices"][0]["message"]["content"] or "Sin respuesta."
+    if answer is None:
+        logger.warning("options ask failed — %s", error)
+        raise HTTPException(status_code=502, detail="El asistente no ha podido responder. Inténtalo de nuevo.")
     return AskOut(answer=answer)

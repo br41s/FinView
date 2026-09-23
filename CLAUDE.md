@@ -25,13 +25,13 @@ need it before touching code.
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
 | AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, default `deepseek/deepseek-v4-flash`. One shared model for options analysis + geo analyst. |
-| Frontend | Next.js 15 · React 19 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
+| Frontend | Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1093 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 87 frontend tests |
-| Linter | ruff (line-length 100) |
+| Tests | pytest · 1096 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 94 frontend tests |
+| Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
 
@@ -112,6 +112,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 - API error `detail` a user can reach is written in Spanish; operator-only paths (cron
   rejection, Stripe webhook, `FINVIEW_*` config errors) stay English and are listed in
   `test_error_copy.py`, which fails the suite on an unlisted English string.
+- Every frontend API call goes through `request()` in `src/lib/api.ts` (via `fetchJSON`,
+  `send`, `postForm` or `download`). It owns the auth header, the single retry on a stale
+  401 and the `res.ok` check. Never call `fetch` directly for `/api/*`: four hand-written
+  deletes once reported success on a 4xx/5xx and the item came back on reload.
 - Never `.catch(() => {})` in the frontend. Use `bestEffort("label")` from
   `src/lib/bestEffort.ts` — it still swallows, but logs, so a persistent failure is
   findable. `bestEffort.test.ts` fails if a bare swallow comes back.
@@ -166,10 +170,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1093 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1093 pass in ~90s. Those files are not in the repo,
+Backend: `pytest` — 1096 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1096 pass in ~90s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 126 skip and the
-remaining 967 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+remaining 970 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser and the v2 checkpoint scorer — see `.claude/rules/geo.md`.
 
@@ -180,9 +184,9 @@ and ran nothing for months. Gate on a path built from `Path(__file__).resolve().
 `pytest.skip()`, not a module-level `pytestmark` that also takes the pure unit tests down
 with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 87 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 94 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
-`geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis)
+`format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis)
 plus `src/app/blog/posts.test.ts`. **`vitest` must be installed**
 or `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.

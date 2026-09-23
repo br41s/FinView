@@ -25,9 +25,9 @@ export function MapError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex h-full w-full items-center justify-center p-6">
       <div className="max-w-xs rounded-xl border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] px-5 py-4 text-center shadow-[0_4px_16px_rgba(31,27,22,0.08)]">
-        <p className="text-[13px] text-[#1F1B16]">Couldn't load signals</p>
+        <p className="text-[13px] text-[#1F1B16]">Couldn&apos;t load signals</p>
         <p className="mt-1 text-[11px] text-[rgba(31,27,22,0.6)]">
-          The feed didn't respond. You can try again.
+          The feed didn&apos;t respond. You can try again.
         </p>
         <button
           type="button"

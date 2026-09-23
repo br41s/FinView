@@ -53,7 +53,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
   changed="$(git diff --name-only "$range")"
   echo "$changed" | grep -q '^frontend/' && frontend_touched=1
-  echo "$changed" | grep -qE '^(backend/|pyproject\.toml|requirements\.txt)' && backend_touched=1
+  # scripts/ and cloudbuild.yaml have tests of their own (test_cloud_run_guard,
+  # test_cloudbuild_policy) and uv.lock is pinned by test_requirements_sync.
+  echo "$changed" | grep -qE '^(backend/|scripts/|cloudbuild\.yaml|pyproject\.toml|requirements\.txt|uv\.lock)' && backend_touched=1
 done
 
 fail() {
@@ -100,7 +102,7 @@ if [ "$backend_touched" -eq 1 ]; then
 
   if [ ${#ruff_cmd[@]} -gt 0 ]; then
     echo "pre-push: backend changed — running ruff…"
-    "${ruff_cmd[@]}" check "$repo_root/backend/" || fail "ruff found lint errors."
+    "${ruff_cmd[@]}" check "$repo_root/backend/" "$repo_root/scripts/" || fail "ruff found lint errors."
   else
     echo "pre-push: ⚠ ruff not installed — skipping backend lint."
   fi

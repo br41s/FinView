@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -39,6 +39,9 @@ from backend.importers.base import (
     ParsedWithholding,
     TRTaxReport,
     TxType,
+    ISIN_RE,
+    parse_dmy,
+    parse_eur_decimal,
 )
 
 # ---------------------------------------------------------------------------
@@ -46,25 +49,16 @@ from backend.importers.base import (
 # ---------------------------------------------------------------------------
 
 _EUR_NUM = re.compile(r"-?\d{1,3}(?:\.\d{3})*,\d+")
-_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
 _DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-
-
-def _parse_num(token: str) -> Decimal:
-    return Decimal(token.replace(".", "").replace(",", "."))
 
 
 def _try_num(token: str) -> Decimal | None:
     if not token or token == "n/a":
         return None
     try:
-        return _parse_num(token)
+        return parse_eur_decimal(token)
     except (InvalidOperation, ValueError):
         return None
-
-
-def _parse_date_slash(s: str) -> date:
-    return datetime.strptime(s, "%d/%m/%Y").date()
 
 
 # Countries, ordered longest-first so "Estados Unidos" beats "España".
@@ -112,31 +106,6 @@ _TX_TYPE_LABELS = [
 # ---------------------------------------------------------------------------
 
 
-def _page_rows(page: pdfplumber.page.Page, tol: float = 3.0) -> list[list[str]]:
-    """Group a page's words into logical rows.
-
-    Rows are anchored on lines that contain an ISIN or an Rx-number
-    (fiscal casilla). Adjacent y-lines within ``tol`` points are merged
-    with the anchor row so that wrapped names/countries join the data
-    row they belong to.
-    """
-    words = page.extract_words()
-    by_y: dict[float, list[tuple[float, str]]] = defaultdict(list)
-    for w in words:
-        y = round(w["top"] / tol) * tol
-        by_y[y].append((w["x0"], w["text"]))
-
-    ordered = sorted(by_y.keys())
-    rows: list[list[str]] = []
-    buffer: list[str] = []
-    for y in ordered:
-        line = [t for _, t in sorted(by_y[y])]
-        buffer.append(" ".join(line))
-        rows.append(buffer.copy())
-        buffer = []
-    return rows
-
-
 def _page_lines(page: pdfplumber.page.Page, tol: float = 3.0) -> list[str]:
     """Return the page text grouped by y-position (tolerant of wrapped cells)."""
     words = page.extract_words()
@@ -180,8 +149,8 @@ def _extract_header(pages_text: list[str]) -> tuple[str, date, date]:
     period = _PERIOD_RE.search(joined)
     if not period:
         raise ValueError("No se encontró el período en el PDF (formato ES-IBAN).")
-    start = _parse_date_slash(period.group(1))
-    end = _parse_date_slash(period.group(2))
+    start = parse_dmy(period.group(1))
+    end = parse_dmy(period.group(2))
     return (client.group(1) if client else "", start, end)
 
 
@@ -224,7 +193,7 @@ def _split_row_prefix(line: str) -> dict | None:
     post = tokens[date_idx + 1:]
 
     isin = None
-    if _ISIN_RE.match(pre[0]):
+    if ISIN_RE.fullmatch(pre[0]):
         isin = pre[0]
         name_tokens = pre[1:]
     elif pre[0].upper() == "N/A":
@@ -244,7 +213,7 @@ def _split_row_prefix(line: str) -> dict | None:
     return {
         "isin": isin,
         "name": name,
-        "date": _parse_date_slash(date_token),
+        "date": parse_dmy(date_token),
         "country": country,
         "type": tx_type,
         "nums": nums_raw,
@@ -330,7 +299,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
     pre = tokens[:eur_idx]
     post = tokens[eur_idx + 1:]
 
-    if not pre or not _ISIN_RE.match(pre[0]):
+    if not pre or not ISIN_RE.fullmatch(pre[0]):
         return None
 
     isin = pre[0]
@@ -347,7 +316,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
 
     if len(post) < 6 or not _DATE_RE.match(post[0]):
         return None
-    sell_date = _parse_date_slash(post[0])
+    sell_date = parse_dmy(post[0])
 
     # Optional tipo tokens (may be wrapped to adjacent lines, so it's OK
     # to have none here). Walk until we hit qty (a comma-number).
@@ -366,7 +335,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
     i += 1
     if qty is None or i >= len(post) or not _DATE_RE.match(post[i]):
         return None
-    buy_date = _parse_date_slash(post[i])
+    buy_date = parse_dmy(post[i])
     i += 1
 
     rest = post[i:]
@@ -478,7 +447,7 @@ def _parse_m714_row(line: str, casilla: int) -> ParsedPortfolioHolding | None:
     # Remaining tokens on the left: [ISIN?] [País?] <descripción...>
     isin = None
     country = ""
-    if tokens and _ISIN_RE.match(tokens[0]):
+    if tokens and ISIN_RE.fullmatch(tokens[0]):
         isin = tokens[0]
         tokens = tokens[1:]
     if tokens:
@@ -565,13 +534,6 @@ def _page_continues_table(text: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-_CASILLA_SUMMARY_RE = re.compile(
-    r"(\d{4})\s+[A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-z0-9ÁÉÍÓÚáéíóúñÑ,\.\s\(\)-]*?"
-    r"(-?\d{1,3}(?:\.\d{3})*,\d+)\s+(-?\d{1,3}(?:\.\d{3})*,\d+)\s+(-?\d{1,3}(?:\.\d{3})*,\d+)",
-    re.DOTALL,
-)
-
-
 def _parse_summary(text: str) -> list[ParsedCasilla]:
     """Extract casillas 0027, 0029, 0030, 0031, 0033, 0034 totals from the
     ``Informe resumido`` page."""
@@ -592,7 +554,7 @@ def _parse_summary(text: str) -> list[ParsedCasilla]:
                     modelo=100,
                     casilla=int(code),
                     description=f"Casilla {code}",
-                    amount_eur=_parse_num(m.group(1)),
+                    amount_eur=parse_eur_decimal(m.group(1)),
                 )
             )
     return out
@@ -614,7 +576,7 @@ def _parse_base_general(text: str) -> list[ParsedCasilla]:
                     modelo=100,
                     casilla=casilla,
                     description="Ganancia/pérdida transmisión",
-                    amount_eur=_parse_num(m.group(1)),
+                    amount_eur=parse_eur_decimal(m.group(1)),
                 )
             )
     return out
@@ -803,14 +765,11 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
     )
 
 
-_TOTAL_RE = re.compile(r"Total\s+([\d\.,\s-]+?)(?:\n|$)")
-
-
 def _extract_total(text: str) -> Decimal | None:
     """Return the LAST EUR number on the ``Total`` line (value fiscal)."""
     for line in reversed(text.splitlines()):
         if line.strip().startswith("Total"):
             nums = _EUR_NUM.findall(line)
             if nums:
-                return _parse_num(nums[-1])
+                return parse_eur_decimal(nums[-1])
     return None

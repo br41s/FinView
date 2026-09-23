@@ -2,7 +2,30 @@ import { getSession } from "next-auth/react";
 import { bestEffort } from "./bestEffort";
 
 import type { GeoAccuracy, GeoSignal } from "@/lib/geo";
-import type { ImportResult, SavingsEstimate } from "@/lib/types";
+import type {
+  CapitalGain,
+  CapitalGainsBreakdown,
+  Casilla,
+  CompanyDividendsYearly,
+  CrossBrokerLot,
+  DashboardStats,
+  DataIssue,
+  DividendSummary,
+  DividendYield,
+  DividendsByCountry,
+  DividendsMonthly,
+  FIFOAdjustment,
+  FiscalProfile,
+  ImportRecord,
+  ImportResult,
+  ManualSavingsIncome,
+  OptionAssignment,
+  PatrimonioComposition,
+  SavingsEstimate,
+  TopDividendPayer,
+  WithholdingsByCountry,
+  YearlyComparisonResult,
+} from "@/lib/types";
 import { apiError } from "@/lib/apiError";
 import type { GeoCycleRun } from "@/lib/geoHealth";
 
@@ -282,11 +305,13 @@ async function authHeaders(): Promise<HeadersInit> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function fetchJSON<T>(
-  path: string,
-  init?: RequestInit,
-  _retried = false,
-): Promise<T> {
+/**
+ * One authenticated round-trip: bearer header, a single retry on a stale 401,
+ * and `apiError` on any non-OK status. JSON reads, JSON mutations, multipart
+ * uploads and CSV downloads all sit on top, so no call path can skip the retry
+ * or forget the `ok` check again.
+ */
+async function request(path: string, init?: RequestInit, _retried = false): Promise<Response> {
   const headers = await authHeaders();
   const res = await fetch(`${BASE}${path}`, {
     cache: "no-store",
@@ -297,11 +322,41 @@ async function fetchJSON<T>(
   // Drop it and retry once with a freshly-resolved token.
   if (res.status === 401 && !_retried) {
     clearAuthToken();
-    return fetchJSON<T>(path, init, true);
+    return request(path, init, true);
   }
   if (!res.ok) throw await apiError(res);
+  return res;
+}
+
+async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await request(path, init);
   // 204 carries no body; res.json() would throw on the empty payload.
   return res.status === 204 ? (undefined as T) : res.json();
+}
+
+/** JSON mutation. `body` is serialised when given; omit it for bodiless calls. */
+async function send<T = unknown>(
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  return fetchJSON<T>(
+    path,
+    body === undefined
+      ? { method }
+      : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+}
+
+/** Save a server-generated file through the browser, via the same retry path. */
+async function download(path: string, filename: string): Promise<void> {
+  const res = await request(path);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -343,13 +398,13 @@ export const uploadBBVAReport = (files: File[]) =>
   postForm<ImportResult>("/imports/bbva", files, "files");
 
 export async function deleteImport(importId: number) {
-  const data = await fetchJSON(`/imports/${importId}`, { method: "DELETE" });
+  const data = await send("DELETE", `/imports/${importId}`);
   invalidateCache();
   return data;
 }
 
 export async function deleteAllImports() {
-  const data = await fetchJSON("/imports/all", { method: "DELETE" });
+  const data = await send("DELETE", "/imports/all");
   invalidateCache();
   return data;
 }
@@ -359,15 +414,12 @@ export async function resolveIssue(
   action: string,
   data?: Record<string, unknown>,
 ) {
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/imports/issues/${issueId}/resolve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify({ action, data }),
+  const result = await send<DataIssue>("POST", `/imports/issues/${issueId}/resolve`, {
+    action,
+    data,
   });
-  if (!res.ok) throw await apiError(res);
   invalidateCache();
-  return res.json();
+  return result;
 }
 
 // ── Alternative Investments types ────────────────────────────────────
@@ -464,45 +516,30 @@ export interface AltSummary {
 
 export const api = {
   dashboard: (year?: number) =>
-    fetchCached(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
-  fiscalSummary: (year: number) => fetchCached(`/fiscal/summary/${year}`),
+    fetchCached<DashboardStats>(`/fiscal/dashboard${qs({ fiscal_year: year })}`),
   casillas: (year?: number) =>
-    fetchCached(`/fiscal/casillas${qs({ fiscal_year: year })}`),
+    fetchCached<Casilla[]>(`/fiscal/casillas${qs({ fiscal_year: year })}`),
   exportFiscal: async (year: number, format: "json" | "csv" = "json") => {
-    const headers = await authHeaders();
-    const res = await fetch(`${BASE}/fiscal/export/${year}?format=${format}`, {
-      cache: "no-store",
-      headers,
-    });
-    if (!res.ok) throw await apiError(res);
     if (format === "csv") {
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `finview_casillas_${year}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await download(`/fiscal/export/${year}?format=csv`, `finview_casillas_${year}.csv`);
       return null;
     }
-    return res.json();
+    return fetchJSON(`/fiscal/export/${year}?format=json`);
   },
   dividends: (year?: number) =>
-    fetchCached(`/transactions/dividends/summary${qs({ fiscal_year: year })}`),
+    fetchCached<DividendSummary[]>(`/transactions/dividends/summary${qs({ fiscal_year: year })}`),
   capitalGains: (year?: number) =>
-    fetchCached(`/transactions/capital-gains${qs({ fiscal_year: year })}`),
+    fetchCached<CapitalGain[]>(`/transactions/capital-gains${qs({ fiscal_year: year })}`),
   crossBrokerLots: (year: number) =>
-    fetchCached(`/fiscal/cross-broker-lots${qs({ fiscal_year: year })}`),
+    fetchCached<CrossBrokerLot[]>(`/fiscal/cross-broker-lots${qs({ fiscal_year: year })}`),
   fifoAdjustments: (year: number) =>
-    fetchCached(`/fiscal/fifo-adjustments${qs({ fiscal_year: year })}`),
+    fetchCached<FIFOAdjustment[]>(`/fiscal/fifo-adjustments${qs({ fiscal_year: year })}`),
   optionAssignments: (year: number) =>
-    fetchCached(`/fiscal/option-assignments${qs({ fiscal_year: year })}`),
-  crossValidation: (year: number) =>
-    fetchCached(`/fiscal/cross-validation/${year}`),
-  yearlyComparison: () => fetchCached("/fiscal/yearly-comparison"),
+    fetchCached<OptionAssignment[]>(`/fiscal/option-assignments${qs({ fiscal_year: year })}`),
+  yearlyComparison: () => fetchCached<YearlyComparisonResult>("/fiscal/yearly-comparison"),
 
   // Fiscal onboarding — savings-base estimate (v1 individual)
-  fiscalProfile: (year: number) => fetchJSON(`/fiscal/profile/${year}`),
+  fiscalProfile: (year: number) => fetchJSON<FiscalProfile>(`/fiscal/profile/${year}`),
   saveFiscalProfile: async (
     year: number,
     body: {
@@ -514,17 +551,12 @@ export const api = {
       prior_gp_loss: string;
     },
   ) => {
-    const headers = await authHeaders();
-    const res = await fetch(`${BASE}/fiscal/profile/${year}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw await apiError(res);
+    const data = await send("PUT", `/fiscal/profile/${year}`, body);
     invalidateCache(`/fiscal/estimate/${year}`);
-    return res.json();
+    return data;
   },
-  manualIncome: (year: number) => fetchJSON(`/fiscal/manual-income/${year}`),
+  manualIncome: (year: number) =>
+    fetchJSON<ManualSavingsIncome[]>(`/fiscal/manual-income/${year}`),
   addManualIncome: async (body: {
     fiscal_year: number;
     category: "INTEREST" | "DIVIDEND" | "GAIN" | "LOSS";
@@ -532,49 +564,25 @@ export const api = {
     amount_eur: string;
     withholding_eur: string;
   }) => {
-    const headers = await authHeaders();
-    const res = await fetch(`${BASE}/fiscal/manual-income`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw await apiError(res);
+    const data = await send("POST", "/fiscal/manual-income", body);
     invalidateCache(`/fiscal/estimate/${body.fiscal_year}`);
-    return res.json();
+    return data;
   },
   deleteManualIncome: async (id: number, year: number) => {
-    const headers = await authHeaders();
-    const res = await fetch(`${BASE}/fiscal/manual-income/${id}`, {
-      method: "DELETE",
-      headers,
-    });
-    // Without this the request could 404 or 500 and the UI would still report
-    // the entry as deleted, then show it again on the next load.
-    if (!res.ok) throw await apiError(res);
+    // `send` throws on a non-OK status: without that the request could 404 or
+    // 500 and the UI would still report the entry as deleted, then show it
+    // again on the next load.
+    await send("DELETE", `/fiscal/manual-income/${id}`);
     invalidateCache(`/fiscal/estimate/${year}`);
   },
-  savingsEstimate: (year: number): Promise<SavingsEstimate> =>
-    fetchCached(`/fiscal/estimate/${year}`),
-  exportSavingsEstimate: async (year: number) => {
-    const headers = await authHeaders();
-    const res = await fetch(`${BASE}/fiscal/estimate/${year}/export?format=csv`, {
-      cache: "no-store",
-      headers,
-    });
-    if (!res.ok) throw await apiError(res);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `finview_estimacion_ahorro_${year}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  },
+  savingsEstimate: (year: number) => fetchCached<SavingsEstimate>(`/fiscal/estimate/${year}`),
+  exportSavingsEstimate: (year: number) =>
+    download(`/fiscal/estimate/${year}/export?format=csv`, `finview_estimacion_ahorro_${year}.csv`),
   transactions: (params?: Record<string, string>) => {
     const qstr = params ? "?" + new URLSearchParams(params).toString() : "";
     return fetchJSON(`/transactions/${qstr}`);
   },
-  imports: () => fetchJSON("/imports/"),
+  imports: () => fetchJSON<ImportRecord[]>("/imports/"),
 
   // Portfolio
   portfolio: {
@@ -591,93 +599,55 @@ export const api = {
     // Fire-and-forget cache warm: the caller does not await it and the pages
     // work without it, so a failure only costs a slower first price load.
     warmPrices: () =>
-      fetchJSON("/portfolio/warm-prices", { method: "POST" }).catch(
-        bestEffort("portfolio price cache warm"),
-      ),
+      send("POST", "/portfolio/warm-prices").catch(bestEffort("portfolio price cache warm")),
   },
 
   // Accounts
   accounts: {
     list: () => fetchJSON("/accounts/"),
-    create: async (data: {
-      broker: string;
-      account_id: string;
-      name?: string;
-      currency?: string;
-    }) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/accounts/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
-    update: async (id: number, data: { name?: string; currency?: string }) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/accounts/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
+    create: (data: { broker: string; account_id: string; name?: string; currency?: string }) =>
+      send("POST", "/accounts/", data),
+    update: (id: number, data: { name?: string; currency?: string }) =>
+      send("PATCH", `/accounts/${id}`, data),
     delete: async (id: number) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/accounts/${id}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
+      await send("DELETE", `/accounts/${id}`);
     },
   },
 
   // Billing
   billing: {
     subscription: () => fetchJSON("/billing/subscription"),
-    checkout: async (priceId: string) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/billing/checkout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ price_id: priceId }),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ url: string }>;
-    },
-    portal: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/billing/portal`, {
-        method: "POST",
-        headers: { ...headers },
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ url: string }>;
-    },
+    checkout: (priceId: string) =>
+      send<{ url: string }>("POST", "/billing/checkout", { price_id: priceId }),
+    portal: () => send<{ url: string }>("POST", "/billing/portal"),
   },
 
   // Charts — cached client-side (5 min); invalidated on import/delete.
   charts: {
     dividendsByCountry: (year?: number) =>
-      fetchCached(`/charts/dividends-by-country${qs({ fiscal_year: year })}`),
+      fetchCached<DividendsByCountry[]>(`/charts/dividends-by-country${qs({ fiscal_year: year })}`),
     dividendsMonthly: (year?: number) =>
-      fetchCached(`/charts/dividends-monthly${qs({ fiscal_year: year })}`),
+      fetchCached<DividendsMonthly[]>(`/charts/dividends-monthly${qs({ fiscal_year: year })}`),
     topDividendPayers: (year?: number, limit = 10) =>
-      fetchCached(
+      fetchCached<TopDividendPayer[]>(
         `/charts/top-dividend-payers${qs({ limit, fiscal_year: year })}`,
       ),
     capitalGainsBreakdown: (year?: number) =>
-      fetchCached(`/charts/capital-gains-breakdown${qs({ fiscal_year: year })}`),
+      fetchCached<CapitalGainsBreakdown[]>(
+        `/charts/capital-gains-breakdown${qs({ fiscal_year: year })}`,
+      ),
     patrimonioComposition: (year?: number) =>
-      fetchCached(`/charts/patrimonio-composition${qs({ fiscal_year: year })}`),
+      fetchCached<PatrimonioComposition[]>(
+        `/charts/patrimonio-composition${qs({ fiscal_year: year })}`,
+      ),
     dividendYield: (year?: number) =>
-      fetchCached(`/charts/dividend-yield${qs({ fiscal_year: year })}`),
+      fetchCached<DividendYield[]>(`/charts/dividend-yield${qs({ fiscal_year: year })}`),
     withholdingsByCountry: (year?: number) =>
-      fetchCached(`/charts/withholdings-by-country${qs({ fiscal_year: year })}`),
+      fetchCached<WithholdingsByCountry[]>(
+        `/charts/withholdings-by-country${qs({ fiscal_year: year })}`,
+      ),
     dividendsByCompanyYearly: () =>
-      fetchCached("/charts/dividends-by-company-yearly"),
+      fetchCached<CompanyDividendsYearly[]>("/charts/dividends-by-company-yearly"),
     priceHistory: (ticker: string, period = "2y", interval = "1d") =>
       fetchJSON<OhlcBar[]>(`/charts/price-history${qs({ ticker, period, interval })}`),
     fundamentals: (ticker: string) =>
@@ -688,37 +658,21 @@ export const api = {
   options: {
     watchlist: () => fetchCached("/options/watchlist"),
     addToWatchlist: async (ticker: string, name = "") => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/watchlist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ ticker, name }),
-      });
-      if (!res.ok) throw await apiError(res);
+      const data = await send("POST", "/options/watchlist", { ticker, name });
       invalidateCache("/options/watchlist");
-      return res.json();
+      return data;
     },
     toggleWatchlistItem: async (id: number) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/watchlist/${id}`, {
-        method: "PATCH",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
+      const data = await send("PATCH", `/options/watchlist/${id}`);
       invalidateCache("/options/watchlist");
-      return res.json();
+      return data;
     },
     removeFromWatchlist: async (id: number) => {
-      const headers = await authHeaders();
-      await fetch(`${BASE}/options/watchlist/${id}`, {
-        method: "DELETE",
-        headers,
-      });
+      await send("DELETE", `/options/watchlist/${id}`);
       invalidateCache("/options/watchlist");
     },
     snapshots: (ticker?: string, days = 7) =>
       fetchCached(`/options/snapshots${qs({ ticker, days })}`),
-    snapshotChain: (id: number) => fetchJSON(`/options/snapshots/${id}/chain`),
     tickerChain: (ticker: string, expiration?: string) =>
       fetchJSON(`/options/chain/${encodeURIComponent(ticker)}${expiration ? `?expiration=${encodeURIComponent(expiration)}` : ""}`),
     tickerExpirations: (ticker: string) =>
@@ -726,32 +680,19 @@ export const api = {
     hiddenPortfolioTickers: () =>
       fetchCached<string[]>("/options/portfolio/hidden"),
     hidePortfolioTicker: async (ticker: string) => {
-      const headers = await authHeaders();
-      await fetch(`${BASE}/options/portfolio/hidden`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ ticker }),
-      });
+      await send("POST", "/options/portfolio/hidden", { ticker });
       invalidateCache("/options/portfolio/hidden");
     },
     unhidePortfolioTicker: async (ticker: string) => {
-      const headers = await authHeaders();
-      await fetch(`${BASE}/options/portfolio/hidden/${encodeURIComponent(ticker)}`, {
-        method: "DELETE",
-        headers,
-      });
+      await send("DELETE", `/options/portfolio/hidden/${encodeURIComponent(ticker)}`);
       invalidateCache("/options/portfolio/hidden");
     },
-    checkAvailability: async (tickers: string[]) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/check-availability`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ tickers }),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ has_options: string[]; no_options: string[] }>;
-    },
+    checkAvailability: (tickers: string[]) =>
+      send<{ has_options: string[]; no_options: string[] }>(
+        "POST",
+        "/options/check-availability",
+        { tickers },
+      ),
     alerts: (ticker?: string, unread?: boolean, days = 7) =>
       fetchJSON(
         `/options/alerts${qs({
@@ -760,24 +701,8 @@ export const api = {
           days,
         })}`,
       ),
-    ackAlert: async (id: number) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/alerts/${id}/ack`, {
-        method: "PATCH",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
-    ackAllAlerts: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/alerts/ack-all`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
+    ackAlert: (id: number) => send("PATCH", `/options/alerts/${id}/ack`),
+    ackAllAlerts: () => send("POST", "/options/alerts/ack-all"),
     unusual: (ticker?: string, days = 7) =>
       fetchJSON(`/options/unusual${qs({ ticker, days })}`),
     agentStatus: () => fetchJSON("/options/agent/status"),
@@ -800,43 +725,11 @@ export const api = {
           as_of: string | null;
         } | null;
       }>("/options/agent/last-analysis"),
-    runCycle: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/agent/run`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ status: string }>;
-    },
-    analyzeTicker: async (ticker: string) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/agent/analyze-ticker`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ ticker }),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<TickerAnalysis>;
-    },
-    startAgent: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/agent/start`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
-    stopAgent: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/agent/stop`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
+    runCycle: () => send<{ status: string }>("POST", "/options/agent/run"),
+    analyzeTicker: (ticker: string) =>
+      send<TickerAnalysis>("POST", "/options/agent/analyze-ticker", { ticker }),
+    startAgent: () => send("POST", "/options/agent/start"),
+    stopAgent: () => send("POST", "/options/agent/stop"),
     backtestSignals: (params?: { ticker?: string; days?: number }) =>
       fetchJSON(`/options/backtest${qs(params ?? {})}`),
     backtestStats: (ticker?: string) =>
@@ -857,25 +750,9 @@ export const api = {
           { rows: number; ticker_days: number; rows_per_ticker_day: number | null }
         >;
       }>(`/options/backtest/calibration${qs({ days })}`),
-    backtestEvaluate: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/backtest/evaluate`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
-    ask: async (question: string, history: { role: string; content: string }[] = []) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/options/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ question, history }),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ answer: string }>;
-    },
+    backtestEvaluate: () => send("POST", "/options/backtest/evaluate"),
+    ask: (question: string, history: { role: string; content: string }[] = []) =>
+      send<{ answer: string }>("POST", "/options/ask", { question, history }),
   },
 
   // Zonas Clave
@@ -885,23 +762,11 @@ export const api = {
     search: (q: string) =>
       fetchJSON<ZcTickerSearchResult[]>(`/zonas-clave/search?q=${encodeURIComponent(q)}`),
 
-    addTicker: async (ticker: string, name = "") => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/zonas-clave/watchlist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ ticker, name }),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<ZcWatchlistItem>;
-    },
+    addTicker: (ticker: string, name = "") =>
+      send<ZcWatchlistItem>("POST", "/zonas-clave/watchlist", { ticker, name }),
 
     removeTicker: async (id: number) => {
-      const headers = await authHeaders();
-      await fetch(`${BASE}/zonas-clave/watchlist/${id}`, {
-        method: "DELETE",
-        headers,
-      });
+      await send("DELETE", `/zonas-clave/watchlist/${id}`);
     },
 
     analysis: (ticker: string) =>
@@ -912,60 +777,24 @@ export const api = {
     signals: (days = 7) =>
       fetchJSON<TechnicalSignal[]>(`/zonas-clave/signals${qs({ days })}`),
 
-    triggerAnalysis: async (ticker: string) => {
-      const headers = await authHeaders();
-      const res = await fetch(
-        `${BASE}/zonas-clave/analyze/${encodeURIComponent(ticker)}`,
-        { method: "POST", headers },
-      );
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<ZcAnalysis>;
-    },
+    triggerAnalysis: (ticker: string) =>
+      send<ZcAnalysis>("POST", `/zonas-clave/analyze/${encodeURIComponent(ticker)}`),
 
-    triggerAll: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/zonas-clave/analyze-all`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ status: string }>;
-    },
+    triggerAll: () => send<{ status: string }>("POST", "/zonas-clave/analyze-all"),
 
     schedulerStatus: () =>
       fetchJSON<ZcSchedulerStatus>("/zonas-clave/scheduler/status"),
 
-    startScheduler: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/zonas-clave/scheduler/start`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
+    startScheduler: () => send("POST", "/zonas-clave/scheduler/start"),
 
-    stopScheduler: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/zonas-clave/scheduler/stop`, {
-        method: "POST",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
+    stopScheduler: () => send("POST", "/zonas-clave/scheduler/stop"),
   },
 
   // Geo-Intel
   geo: {
     signals: (status: "active" | "resolved" | "all" = "active") =>
       fetchJSON<GeoSignal[]>(`/geo/signals?status=${status}`),
-    run: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/geo/run`, { method: "POST", headers });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<GeoRunResult>;
-    },
+    run: () => send<GeoRunResult>("POST", "/geo/run"),
     schedulerStatus: () =>
       fetchJSON<GeoSchedulerStatus>("/geo/scheduler/status"),
     // Per-horizon hit rate + the learned rule table. `since` is an ISO date;
@@ -975,24 +804,9 @@ export const api = {
       fetchJSON<GeoAccuracy>(`/geo/accuracy${since ? `?since=${since}` : ""}`),
     // Zeroes every learned adjustment. The table is global, not per user, and
     // there is deliberately no UI for this — it is an owner's tool.
-    resetRuleStats: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/geo/rule-stats/reset`, { method: "POST", headers });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<{ reset: number }>;
-    },
-    startScheduler: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/geo/scheduler/start`, { method: "POST", headers });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
-    stopScheduler: async () => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/geo/scheduler/stop`, { method: "POST", headers });
-      if (!res.ok) throw await apiError(res);
-      return res.json();
-    },
+    resetRuleStats: () => send<{ reset: number }>("POST", "/geo/rule-stats/reset"),
+    startScheduler: () => send("POST", "/geo/scheduler/start"),
+    stopScheduler: () => send("POST", "/geo/scheduler/stop"),
   },
 
   // Alternative investments (private banking)
@@ -1009,33 +823,11 @@ export const api = {
           limit: 20,
         })}`,
       ),
-    create: async (data: AltInvestmentInput) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/alt-investments/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<AltInvestment>;
-    },
-    update: async (id: number, data: Partial<AltInvestmentInput>) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/alt-investments/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw await apiError(res);
-      return res.json() as Promise<AltInvestment>;
-    },
+    create: (data: AltInvestmentInput) => send<AltInvestment>("POST", "/alt-investments/", data),
+    update: (id: number, data: Partial<AltInvestmentInput>) =>
+      send<AltInvestment>("PATCH", `/alt-investments/${id}`, data),
     delete: async (id: number) => {
-      const headers = await authHeaders();
-      const res = await fetch(`${BASE}/alt-investments/${id}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (!res.ok) throw await apiError(res);
+      await send("DELETE", `/alt-investments/${id}`);
     },
   },
 };

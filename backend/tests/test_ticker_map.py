@@ -172,3 +172,20 @@ def test_the_ticker_map_wins_over_a_stale_cache_row(db):
     db.flush()
 
     assert prices._resolve_ticker(UNKNOWN_ISIN, db) == "AAPL"
+
+
+@pytest.mark.parametrize(
+    "ticker,expected",
+    [
+        ("ENI.MI", "EUR"),   # Milan — priced as USD before the table was shared
+        ("NOKIA.HE", "EUR"),
+        ("KBC.BR", "EUR"),
+        ("NESN.SW", "CHF"),
+        ("VOLV-B.ST", "SEK"),
+        ("VOD.L", "GBP"),
+        ("AAPL", "USD"),
+        (None, "USD"),
+    ],
+)
+def test_currency_for_ticker_covers_every_venue_the_portfolio_prices(ticker, expected):
+    assert ticker_map.currency_for_ticker(ticker) == expected

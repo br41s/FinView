@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 
 import { api, type TickerAnalysis, type OhlcBar } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
+import { fmt, fmtPct } from "@/lib/format";
 import { PriceChart, type PriceLine } from "@/components/charts/PriceChart";
 import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
 import { Button } from "@/components/ui/button";
@@ -24,13 +26,8 @@ interface Chain {
 }
 
 // summary IV/HV/skew are already in percent units (e.g. 87.84 = 87.84%),
-// matching the options page convention — do NOT multiply by 100.
-function pct(v: number | null | undefined): string {
-  return v == null ? "—" : `${v.toFixed(1)}%`;
-}
-function num(v: number | null | undefined, d = 2): string {
-  return v == null ? "—" : v.toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
-}
+// matching the options page convention — fmtPct expects exactly that, so do
+// NOT multiply by 100.
 
 // Split "## 1. Title\nbody" markdown into sections for card rendering.
 function parseSections(text: string): { title: string; body: string }[] {
@@ -83,7 +80,8 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
         const exps = (d as { expirations: string[] }).expirations ?? [];
         setExpirations(exps);
       })
-      .catch(() => {
+      .catch((e) => {
+        bestEffort(`options expirations ${symbol}`)(e);
         if (!cancelled) setExpirations([]);
       });
     return () => {
@@ -102,7 +100,8 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
       .then((d) => {
         if (!cancelled) setChain(d as Chain);
       })
-      .catch(() => {
+      .catch((e) => {
+        bestEffort(`options chain ${symbol} ${expiry}`)(e);
         if (!cancelled) setChain(null);
       })
       .finally(() => {
@@ -173,7 +172,7 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
       const below = strikes.filter((s) => s <= spot).slice(-3);
       const above = strikes.filter((s) => s > spot).slice(0, 3);
       for (const s of [...below, ...above]) {
-        lines.push({ price: s, color: "#f59e0b", strength: 0.5, title: num(s) });
+        lines.push({ price: s, color: "#f59e0b", strength: 0.5, title: fmt(s) });
       }
     }
     return lines;
@@ -206,11 +205,11 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
           <div className="space-y-3">
             {/* Summary chips */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-medium">{num(analysis.summary.current_price)}</span>
+              <span className="font-medium">{fmt(analysis.summary.current_price)}</span>
               {ivBadge(analysis.summary)}
               <span className="text-muted-foreground">
-                P/C vol {num(analysis.summary.put_call_ratio_volume)} · IV {pct(analysis.summary.avg_call_iv)} / HV{" "}
-                {pct(analysis.summary.historical_volatility)}
+                P/C vol {fmt(analysis.summary.put_call_ratio_volume)} · IV {fmtPct(analysis.summary.avg_call_iv)} / HV{" "}
+                {fmtPct(analysis.summary.historical_volatility)}
               </span>
               {analysis.summary.market_sentiment && (
                 <Badge variant="outline">{analysis.summary.market_sentiment}</Badge>
@@ -306,10 +305,10 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.strike} className="border-t">
-                    <td className="px-2 py-1 text-emerald-600">{num(r.call?.lastPrice ?? null)}</td>
+                    <td className="px-2 py-1 text-emerald-600">{fmt(r.call?.lastPrice ?? null)}</td>
                     <td className="px-2 py-1 text-muted-foreground">{r.call?.volume?.toLocaleString() ?? "—"}</td>
-                    <td className="px-2 py-1 text-center font-medium">{num(r.strike)}</td>
-                    <td className="px-2 py-1 text-red-600">{num(r.put?.lastPrice ?? null)}</td>
+                    <td className="px-2 py-1 text-center font-medium">{fmt(r.strike)}</td>
+                    <td className="px-2 py-1 text-red-600">{fmt(r.put?.lastPrice ?? null)}</td>
                     <td className="px-2 py-1 text-muted-foreground">{r.put?.volume?.toLocaleString() ?? "—"}</td>
                   </tr>
                 ))}

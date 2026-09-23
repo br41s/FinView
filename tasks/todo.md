@@ -1,5 +1,36 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Auditoría y refactor — 2026-09-23 (rama `refactor/audit-2026-09-23`)
+
+Informe completo: `tasks/audit-2026-09-23.md`.
+
+### Fase 1 — bugs
+- [x] Una sola tabla sufijo→moneda (`prices.py` / `fred_rates.py`).
+- [x] Lock de `yf.download` compartido (charts, prices, zonas-clave).
+- [x] Webhook Stripe sin bloquear el event loop.
+- [x] Rutas de upload: helper único, límite de tamaño, `logger.exception`, 422 sólo para parse.
+- [x] `api.ts`: helper `send()` con `res.ok` + retry 401 para todas las mutaciones.
+- [x] Flag de scheduler de opciones por usuario.
+- [x] Toaster con tema.
+- [x] pre-push: trigger incluye `scripts/`, `cloudbuild.yaml`, `uv.lock`.
+- [x] `.gitignore`: `.env`, `*.db-*`, `*.sqlite3`. Destrackear `finview_casillas_2024.json`.
+
+### Fase 2 — código muerto
+- [x] Frontend: 7 ficheros shadcn/intro, ruta `portfolio/[isin]`, 3 métodos API + tipos, `d3-geo`, `@mdx-js/react`.
+- [x] Backend: helpers listados en el informe; Section VI no infla `record_count`.
+
+### Fase 3 — helpers compartidos
+- [x] `importers/base.py`: `file_sha256`, `parse_eur_decimal`, `parse_dmy`, `ISIN_RE`.
+- [x] ISIN→ticker: `ticker_map.resolve` primero en scraper y supervisor.
+- [x] `llm_envelope.chat()` para las 6 llamadas OpenRouter.
+- [x] Frontend: `lib/format.ts`, `components/ErrorState.tsx`, `bestEffort` en catches mudos.
+
+### Fase 4 — docs y lint
+- [x] CLAUDE.md (Next 16 / TS 6, counts), README counts, `.claude/rules/frontend.md`.
+- [x] ESLint (`eslint-config-next`) + script `lint` — 0 errores, 46 warnings (React Compiler rules en `warn`, deuda previa).
+- [ ] Verificar: ruff, pytest, tsc, vitest, build, pre-push, Vercel preview verde, merge.
+
+
 ## Incidente Cloud Run: crash-loop y prevención de coste — 2026-08-01
 
 - [x] Confirmar qué revisión/servicio mantiene tiempo facturable y aislar la causa
@@ -786,4 +817,4 @@ Medido: en 90 días, 4 acciones arancelarias USTR + 2 reglas BIS Entity List; 0 
       por título+abstract, ventana 3 días, caché por ciclo, degradación a stale.
 - [x] `sentinel.analyze_fedreg_documents` + regla `fedreg-trade-brazil` (EWZ−).
 - [x] Frontend: etiqueta "Federal Register". Docs: `.claude/rules/geo.md`, `CLAUDE.md`.
-- [ ] Verificar: suite, push, 4 checks, merge, primer ciclo con `fedreg` en `sources`.
+- [x] Verificar: suite, push, 4 checks, merge, primer ciclo con `fedreg` en `sources` (03:00 UTC 2026-09-22: fedreg=0 sin aviso — ventana vacía tratada como respuesta, no como caída).

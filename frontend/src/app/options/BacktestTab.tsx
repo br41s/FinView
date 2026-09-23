@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/table";
 import { TabsContent } from "@/components/ui/tabs";
 
-import { fmt } from "./format";
+import { fmt } from "@/lib/format";
 import type { AlignBucket, Calibration } from "./types";
 import type { Backtest } from "./useBacktest";
 

@@ -24,6 +24,7 @@ from backend.api.schemas import (
 )
 from backend.database import DbSession
 from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
+from backend.services import yahoo_budget
 from backend.services.sql_compat import year_month_str, year_range, year_str
 
 router = APIRouter(prefix="/charts", tags=["charts"])
@@ -235,25 +236,6 @@ def _fifo_cost_basis(
             cost_basis += buy_cost
             qty_remaining += buy_qty
     return cost_basis, qty_remaining
-
-
-def _avg_invested_at_dates(buys: list, sells: list, div_dates: list) -> Decimal:
-    """Compute average FIFO cost basis at each dividend payment date."""
-    invested_at_dates = []
-    for ddate in div_dates:
-        buys_up_to = [
-            (abs(tx.quantity), abs(tx.net_amount_eur))
-            for tx in buys if tx.trade_date <= ddate
-        ]
-        sold_up_to = sum(
-            (abs(tx.quantity) for tx in sells if tx.trade_date <= ddate),
-            Decimal("0"),
-        )
-        cost, _ = _fifo_cost_basis(buys_up_to, sold_up_to)
-        invested_at_dates.append(cost)
-    if not invested_at_dates:
-        return Decimal("0")
-    return sum(invested_at_dates, Decimal("0")) / len(invested_at_dates)
 
 
 def _compute_isin_yield(
@@ -701,7 +683,6 @@ def price_history(
     import time
 
     import pandas as pd
-    import yfinance as yf
 
     if interval not in _VALID_PERIODS_BY_INTERVAL:
         interval = "1d"
@@ -715,7 +696,7 @@ def price_history(
     if cached and time.time() - cached[1] < _PRICE_HISTORY_TTL:
         return cached[0]
     try:
-        df = yf.download(t, period=period, interval=interval, auto_adjust=True, progress=False)
+        df = yahoo_budget.download(t, period=period, interval=interval, auto_adjust=True, progress=False)
         if df is None or df.empty:
             return []
         if isinstance(df.columns, pd.MultiIndex):

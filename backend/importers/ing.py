@@ -5,7 +5,6 @@ Supports two document types:
 - Certificado de Operaciones (operations certificate): buy/sell transactions only
 """
 
-import hashlib
 import re
 from datetime import date
 from decimal import Decimal
@@ -19,24 +18,14 @@ from backend.importers.base import (
     ParsedTransaction,
     TxType,
     country_from_isin,
+    parse_dmy,
+    parse_eur_decimal,
 )
 
 _D = Decimal
 _ESPAÑA = "España"
 
 # ── Number / date helpers ──────────────────────────────────────────────
-
-
-def _parse_decimal(s: str) -> Decimal:
-    """European format: 1.384,27 → 1384.27; also handles '1.384,27€'."""
-    s = s.strip().rstrip("€").strip()
-    return _D(s.replace(".", "").replace(",", "."))
-
-
-def _parse_date(s: str) -> date:
-    """DD/MM/YYYY → date."""
-    d, m, y = s.split("/")
-    return date(int(y), int(m), int(d))
 
 
 # ── Well-known ISINs (Spanish stocks from ING holdings) ────────────────
@@ -152,13 +141,6 @@ RIGHTS_RE = re.compile(
 # ISIN in parentheses (next line after transaction): "(CA05156X8843)"
 ISIN_PAREN_RE = re.compile(r"\(([A-Z]{2}[A-Z0-9]{10})\)")
 
-# Fund holding: "Fondo Cartera NARANJA ... 954,71  12,28€  11.722,31€"
-FUND_RE = re.compile(
-    r"([\d.,]+)\s+"     # Participaciones
-    r"([\d.,]+)\s*€\s+" # Valor liquidativo
-    r"([\d.,]+)\s*€"    # Importe
-)
-
 
 # ── PDF text extraction ────────────────────────────────────────────────
 
@@ -185,8 +167,8 @@ def _parse_interest(text: str, fiscal_year: int) -> list[ParsedTransaction]:
     """Parse interest section (Intereses de cuentas)."""
     results = []
     for m in INTEREST_RE.finditer(text):
-        gross = _parse_decimal(m.group(2))
-        withholding = _parse_decimal(m.group(3))
+        gross = parse_eur_decimal(m.group(2))
+        withholding = parse_eur_decimal(m.group(3))
         if gross <= 0:
             continue
         results.append(ParsedTransaction(
@@ -221,8 +203,8 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
     for m in DIV_RE.finditer(text):
         name = m.group(1).strip()
         isin = m.group(2)
-        gross = _parse_decimal(m.group(3))
-        withholding = _parse_decimal(m.group(4))
+        gross = parse_eur_decimal(m.group(3))
+        withholding = parse_eur_decimal(m.group(4))
         results.append(ParsedTransaction(
             tx_type=TxType.DIVIDEND,
             trade_date=date(fiscal_year, 12, 31),
@@ -254,8 +236,8 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
 
         for m in DIV_NO_ISIN_RE.finditer(text):
             name = m.group(1).strip()
-            gross = _parse_decimal(m.group(2))
-            withholding = _parse_decimal(m.group(3))
+            gross = parse_eur_decimal(m.group(2))
+            withholding = parse_eur_decimal(m.group(3))
             isin = _resolve_isin(name, isin_map)
             results.append(ParsedTransaction(
                 tx_type=TxType.DIVIDEND,
@@ -326,10 +308,10 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             continue
 
         name = m.group(1).strip()
-        trade_date = _parse_date(m.group(2))
+        trade_date = parse_dmy(m.group(2))
         op_type_str = m.group(3)
         qty = _D(m.group(4))
-        amount = _parse_decimal(m.group(5))
+        amount = parse_eur_decimal(m.group(5))
 
         if op_type_str in ("VENTA", "BAJA POR CANJE"):
             tx_type = TxType.SELL
@@ -369,10 +351,10 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
     # Parse rights (Transmisión de derechos de suscripción)
     for m in RIGHTS_RE.finditer(text):
         raw_name = m.group(1).strip()
-        trade_date = _parse_date(m.group(2))
+        trade_date = parse_dmy(m.group(2))
         qty = _D(m.group(3))
-        amount = _parse_decimal(m.group(4))
-        withholding = _parse_decimal(m.group(5))
+        amount = parse_eur_decimal(m.group(4))
+        withholding = parse_eur_decimal(m.group(5))
 
         # Extract stock name from "REPSOL, S.A." → "REPSOL"
         # Also strip trailing date codes: "IBERDROLA 07.2025" → "IBERDROLA"
@@ -420,8 +402,8 @@ def _parse_holdings(text: str, fiscal_year: int) -> list[ParsedPortfolioHolding]
             continue
         isin = hm.group(1)
         qty = _D(hm.group(2))
-        price = _parse_decimal(hm.group(3))
-        value = _parse_decimal(hm.group(4))
+        price = parse_eur_decimal(hm.group(3))
+        value = parse_eur_decimal(hm.group(4))
 
         # Name from next line or from dividend map
         name = isin_name.get(isin, "")
@@ -466,8 +448,8 @@ def _parse_holdings(text: str, fiscal_year: int) -> list[ParsedPortfolioHolding]
 
             name = hm.group(1).strip()
             qty = _D(hm.group(2))
-            price = _parse_decimal(hm.group(3))
-            value = _parse_decimal(hm.group(4))
+            price = parse_eur_decimal(hm.group(3))
+            value = parse_eur_decimal(hm.group(4))
             isin = _KNOWN_ISINS.get(name.upper(), "")
 
             holdings.append(ParsedPortfolioHolding(
@@ -495,12 +477,12 @@ def _parse_cert_transactions(text: str) -> list[ParsedTransaction]:
     name_isin: dict[str, str] = {k.upper(): v for k, v in _KNOWN_ISINS.items()}
     results = []
     for m in CERT_TX_RE.finditer(text):
-        trade_date = _parse_date(m.group(1))
+        trade_date = parse_dmy(m.group(1))
         name = m.group(2).strip()
         qty_signed = int(m.group(3))
-        price = _parse_decimal(m.group(4))
+        price = parse_eur_decimal(m.group(4))
         currency = m.group(5)
-        amount = _parse_decimal(m.group(6))
+        amount = parse_eur_decimal(m.group(6))
 
         qty = _D(abs(qty_signed))
         tx_type = TxType.BUY if qty_signed > 0 else TxType.SELL
@@ -553,10 +535,3 @@ def parse_ing_report(pdf_path: Path) -> INGAnnualReport:
     )
 
 
-def compute_file_hash(pdf_path: Path) -> str:
-    """Compute SHA-256 hash of a PDF file."""
-    h = hashlib.sha256()
-    with open(pdf_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()

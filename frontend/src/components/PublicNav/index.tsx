@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import styles from './index.module.css';
@@ -44,10 +45,10 @@ export function PublicNav() {
   return (
     <header className={styles.header}>
       <nav className={styles.nav}>
-        <a href="/" className={styles.brand}>
+        <Link href="/" className={styles.brand}>
           <LogoMark />
           finview
-        </a>
+        </Link>
 
         {/* Desktop links */}
         <div className={styles.links}>

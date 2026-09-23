@@ -11,7 +11,6 @@ Column layouts vary between years (e.g. 2024 has 10 dividend columns,
 2023/2025 have 14). We detect columns by header name, not index.
 """
 
-import hashlib
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -91,13 +90,6 @@ def _require_col(headers: list[str], *names: str) -> int:
     if idx is None:
         raise ValueError(f"Column not found: {names} in {headers}")
     return idx
-
-
-def compute_file_hash(xlsx_path: Path) -> str:
-    """SHA-256 hash of the XLSX file."""
-    h = hashlib.sha256()
-    h.update(xlsx_path.read_bytes())
-    return h.hexdigest()
 
 
 def _read_sheet(wb: openpyxl.Workbook, name: str) -> tuple[list[str], list[tuple]]:

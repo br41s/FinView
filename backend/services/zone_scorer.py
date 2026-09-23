@@ -15,10 +15,9 @@ import json
 import logging
 import time
 
-import httpx
 
 from backend.config import settings
-from backend.services.llm_envelope import extract_content
+from backend.services.llm_envelope import chat
 
 logger = logging.getLogger(__name__)
 
@@ -114,34 +113,26 @@ def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> d
         return cached[1]
 
     try:
-        resp = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": settings.openrouter_model,
-                "messages": [
-                    {"role": "system", "content": _SYSTEM},
-                    {"role": "user", "content": _build_prompt(ticker, candidate, indicators)},
-                ],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.2,
-                # The default model is a REASONING model: max_tokens covers the
-                # chain-of-thought *and* the answer, and the thinking goes first.
-                # The answer here is tiny (an int + one sentence), but prod showed
-                # the model spending 500 reasoning tokens and hitting the cap with
-                # `finish_reason: length` and `content: null` — 200 and 500 both
-                # died that way, having produced nothing.
-                #
-                # Sized for reasoning headroom, not for the answer. If the model
-                # is ever swapped for a non-reasoning one this is simply generous.
-                "max_tokens": 2000,
-            },
+        content, _ = chat(
+            [
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": _build_prompt(ticker, candidate, indicators)},
+            ],
+            context=f"zone scorer {ticker}",
             timeout=20.0,
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            # The default model is a REASONING model: max_tokens covers the
+            # chain-of-thought *and* the answer, and the thinking goes first.
+            # The answer here is tiny (an int + one sentence), but prod showed
+            # the model spending 500 reasoning tokens and hitting the cap with
+            # `finish_reason: length` and `content: null` — 200 and 500 both
+            # died that way, having produced nothing.
+            #
+            # Sized for reasoning headroom, not for the answer. If the model
+            # is ever swapped for a non-reasoning one this is simply generous.
+            max_tokens=2000,
         )
-        if resp.status_code != 200:
-            logger.warning("zone scorer HTTP %s for %s", resp.status_code, ticker)
-            return None
-        content, _ = extract_content(resp.json(), f"zone scorer {ticker}")
         if content is None:
             return None
         try:

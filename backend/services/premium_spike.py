@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class _Key(NamedTuple):
 class _Baseline:
     ema: float
     samples: int = 0
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # Per-user baseline store: user_id → { _Key → _Baseline }
@@ -119,7 +119,7 @@ def detect_spikes(
             new_ema = EMA_ALPHA * premium + (1 - EMA_ALPHA) * baseline.ema
             baseline.ema = new_ema
             baseline.samples += 1
-            baseline.last_seen = datetime.utcnow()
+            baseline.last_seen = datetime.now(timezone.utc)
 
             # Check for spike only once we have enough history
             if baseline.samples < MIN_SAMPLES:
@@ -171,8 +171,3 @@ def _aggregate_ticker_spikes(ticker: str, hits: list[dict]) -> dict | None:
         "message": msg,
         "_spike_count": n,
     }
-
-
-def reset_baselines(user_id: int) -> None:
-    """Clear all baselines for a user (e.g. on watchlist change)."""
-    _baselines.pop(user_id, None)

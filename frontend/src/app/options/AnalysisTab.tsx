@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { fmtDateTime } from "@/lib/format";
 
 /**
  * The last agent report, moved out of page.tsx unchanged along with the badge
@@ -159,7 +160,7 @@ export function AnalysisTab() {
               </div>
               <CardDescription>
                 {analysis.timestamp
-                  ? `Ciclo #${analysis.cycle ?? "—"} · ${new Date(analysis.timestamp).toLocaleString("es-ES")}`
+                  ? `Ciclo #${analysis.cycle ?? "—"} · ${fmtDateTime(analysis.timestamp)}`
                   : "Fecha desconocida"}
               </CardDescription>
             </div>

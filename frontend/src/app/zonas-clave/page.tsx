@@ -20,6 +20,7 @@ import {
   type ZcTickerSearchResult,
   type OhlcBar,
 } from "@/lib/api";
+import { fmt } from "@/lib/format";
 import { bestEffort } from "@/lib/bestEffort";
 import { SCOPE_PARAMS } from "@/lib/chartMarkers";
 import { ZonasClaveChart } from "@/components/charts/ZonasClaveChart";
@@ -51,14 +52,6 @@ type Scope = "1D" | "1W" | "1M" | "1Y" | "5Y" | "MAX";
 const SCOPES: Scope[] = ["1D", "1W", "1M", "1Y", "5Y", "MAX"];
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-function fmt(n: number | null | undefined, d = 2): string {
-  if (n == null) return "—";
-  return n.toLocaleString("es-ES", {
-    minimumFractionDigits: d,
-    maximumFractionDigits: d,
-  });
-}
 
 const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/;
 
@@ -195,8 +188,9 @@ export default function ZonasClavePage() {
             break;
           }
         }
-      } catch {
-        // silent — backend may not have the result yet
+      } catch (e) {
+        // The backend may not have the result yet; the next tick retries.
+        bestEffort("zonas-clave analysis poll")(e);
       }
     }, 3000);
     return () => clearInterval(interval);
@@ -321,7 +315,13 @@ export default function ZonasClavePage() {
       return;
     }
     const handle = setTimeout(() => {
-      api.zonasClav.search(q).then(setRemoteMatches).catch(() => setRemoteMatches([]));
+      api.zonasClav
+        .search(q)
+        .then(setRemoteMatches)
+        .catch((e) => {
+          bestEffort("zonas-clave ticker search")(e);
+          setRemoteMatches([]);
+        });
     }, 300);
     return () => clearTimeout(handle);
   }, [searchInput]);
