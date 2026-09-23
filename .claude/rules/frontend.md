@@ -33,12 +33,22 @@ error state instead.
 
 ## Options page layout
 
-`app/options/page.tsx` was 2,457 lines; the self-contained parts now sit beside it:
-`BacktestTab.tsx`, `AgentChat.tsx`, `AnalysisTab.tsx`, `useBacktest.ts`, `types.ts`
-(number/date formatting is shared app-wide in `src/lib/format.ts`). The watchlist and monitor tabs are still inline — they read 26 and 15
-bindings from the component, so extracting them means untangling shared state, not moving
-code. `useBacktest` is held by the page, not the tab: Radix unmounts inactive
-`TabsContent`, so owning it in the tab would refetch on every tab switch.
+`app/options/page.tsx` was 2,457 lines, then 1,628, now ~500: it owns the state, the
+effects and the handlers, and composes modules that sit beside it — `WatchlistTab.tsx`,
+`MonitorTab.tsx` (with `AlertsPanel`, `UnusualPanel`, `TechnicalSignalsPanel` and the
+`TickerLinks` chips as named components), `OptionsStatsCards.tsx`, `BacktestTab.tsx`,
+`AgentChat.tsx`, `AnalysisTab.tsx`, `badges.tsx`, `meffTickers.ts`, `useBacktest.ts`,
+`useCrossLens.ts`, `types.ts` (number/date formatting is shared app-wide in
+`src/lib/format.ts`).
+
+The watchlist and monitor tabs read 19 and 14 bindings from the page and receive every one
+as an **explicit prop** — no context, no store. State stays on the page because both tabs
+and the stats cards read the same alerts/watchlist, and Radix unmounts inactive
+`TabsContent`, so owning any of it in a tab would drop it (and refetch) on every tab switch;
+that is also why `useBacktest` is held by the page, not its tab. Two hooks were left inline
+on purpose: a `useOptionsData` would have to hand back six setters the page's handlers
+write to, and the watchlist auto-sync effect reads seven page bindings and depends on the
+`watchlistRef` dance documented above it.
 
 ## Price charts (lightweight-charts) — shared infra
 
