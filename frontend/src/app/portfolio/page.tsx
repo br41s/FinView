@@ -4,12 +4,7 @@ import { Fragment, useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
-  ArrowUpRight,
-  ArrowDownRight,
   TrendingUp,
-  Wallet,
-  PieChart,
-  BarChart3,
   ChevronDown,
   ChevronRight,
   Target,
@@ -55,6 +50,7 @@ import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
+import { PortfolioSummaryCards } from "./PortfolioSummaryCards";
 import { TX_COLORS, TX_LABELS, type Position, type PositionDetail, type Summary } from "./types";
 
 function PortfolioContent() {
@@ -196,15 +192,6 @@ function PortfolioContent() {
   if (error) {
     return <ErrorState message={error} onRetry={() => setRetryKey((k) => k + 1)} />;
   }
-
-  const plKnown = summary?.unrealized_pl != null;
-  const plPositive = (summary?.unrealized_pl ?? 0) >= 0;
-  const plColor = !plKnown
-    ? "text-muted-foreground"
-    : plPositive
-      ? "text-emerald-600"
-      : "text-red-600";
-  const PlIcon = plPositive ? ArrowUpRight : ArrowDownRight;
 
   // Shared between the desktop table's expanded row and the mobile card's
   // expanded section — same detail content, different container.
@@ -438,99 +425,7 @@ function PortfolioContent() {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                Valor de mercado
-              </CardTitle>
-              <Wallet className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {pricesLoaded ? (
-                <>
-                  <div className="text-2xl font-bold fv-sensitive">
-                    {summary.total_market_value != null ? `${fmt(summary.total_market_value)} €` : "—"}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {summary.valuation_complete ? (
-                      <>Invertido: <span className="fv-sensitive">{summary.total_invested != null ? `${fmt(summary.total_invested)} €` : "—"}</span></>
-                    ) : (
-                      "Valoración incompleta"
-                    )}
-                  </p>
-                </>
-              ) : (
-                <LoadingDots text="" />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                Rentabilidad
-              </CardTitle>
-              {pricesLoaded ? (
-                <PlIcon className={`h-4 w-4 ${plColor}`} />
-              ) : (
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              )}
-            </CardHeader>
-            <CardContent>
-              {pricesLoaded ? (
-                <>
-                  <div className={`text-2xl font-bold fv-sensitive ${plColor}`}>
-                    {plKnown && plPositive ? "+" : ""}
-                    {plKnown ? `${fmt(summary.unrealized_pl)} €` : "—"}
-                  </div>
-                  <p className={`text-xs ${plColor}`}>
-                    {plKnown && plPositive ? "+" : ""}
-                    {plKnown
-                      ? `${fmt(summary.unrealized_pl_pct)}%`
-                      : !summary.cost_basis_complete
-                        ? "Coste incompleto"
-                        : "Valoración incompleta"}
-                  </p>
-                </>
-              ) : (
-                <LoadingDots text="" />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Posiciones</CardTitle>
-              <PieChart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {summary.total_positions}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {summary.unique_assets} activos · {summary.brokers} brokers
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total invertido
-              </CardTitle>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold fv-sensitive">
-                {summary.total_invested != null ? `${fmt(summary.total_invested)} €` : "—"}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {summary.cost_basis_complete ? "Coste base total" : "Coste incompleto"}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        <PortfolioSummaryCards summary={summary} pricesLoaded={pricesLoaded} />
       )}
 
       {/* Positions Table */}
