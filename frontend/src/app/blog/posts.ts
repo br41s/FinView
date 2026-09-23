@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-japoneses-espana',
+    tag: 'Fiscalidad',
+    date: '24 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos japoneses en España: cómo recuperar el 15,42 % retenido de más',
+    excerpt:
+      'Japón retiene el 20,42 % de tus dividendos, pero el convenio de 2018 limita el impuesto al 5 %. Cómo declarar el bruto en el IRPF y cómo reclamar el exceso a la Agencia Tributaria japonesa.',
+  },
+  {
     slug: 'rsu-stock-options-irpf-espana',
     tag: 'Fiscalidad',
     date: '22 sep 2026',
