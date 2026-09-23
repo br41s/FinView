@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { bestEffort } from "@/lib/bestEffort";
 
 // Minimal typings for the Cloudflare Turnstile global injected by the script.
 interface TurnstileOptions {
@@ -67,9 +68,8 @@ export function Turnstile({
           "error-callback": () => onExpire?.(),
         });
       })
-      .catch(() => {
-        // Script blocked/unreachable: leave the token empty so submit is gated.
-      });
+      // Script blocked/unreachable: leave the token empty so submit stays gated.
+      .catch(bestEffort("turnstile script load"));
     return () => {
       cancelled = true;
       if (widgetId.current && window.turnstile) {

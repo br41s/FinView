@@ -10,21 +10,21 @@ import {
   Wallet,
   PieChart,
   BarChart3,
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   Target,
   Loader2,
-  AlertCircle,
   AlertTriangle,
 } from "lucide-react";
 
 import { toast } from "sonner";
 import { api, type OhlcBar } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
+import { fmt } from "@/lib/format";
 import type { GeoSignal } from "@/lib/geo";
 import { getAccountValueDisplay } from "@/lib/portfolioValues";
 import { PriceChart } from "@/components/charts/PriceChart";
+import { ErrorState } from "@/components/ErrorState";
 import {
   executionMarkers,
   alignMarkersToBars,
@@ -124,14 +124,6 @@ interface PositionDetail {
   transactions: TxHistory[];
   dividends_by_year: DividendByYear[];
   dividend_events?: { date: string; net_eur: number }[];
-}
-
-function fmt(n: number | null | undefined, decimals = 2): string {
-  if (n == null) return "—";
-  return n.toLocaleString("es-ES", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
 }
 
 const TX_LABELS: Record<string, string> = {
@@ -287,20 +279,7 @@ function PortfolioContent() {
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center gap-4">
-        <div className="rounded-full bg-destructive/10 p-4">
-          <AlertCircle className="h-8 w-8 text-destructive" />
-        </div>
-        <div>
-          <h3 className="text-lg font-medium mb-1">Error al cargar datos</h3>
-          <p className="text-sm text-muted-foreground max-w-md">{error}</p>
-        </div>
-        <Button variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
-          Reintentar
-        </Button>
-      </div>
-    );
+    return <ErrorState message={error} onRetry={() => setRetryKey((k) => k + 1)} />;
   }
 
   const plKnown = summary?.unrealized_pl != null;

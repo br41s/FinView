@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type Fundamentals } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
+import { fmtPct } from "@/lib/format";
 
 /**
  * Fundamental context for a ticker on the Ideas desk.
@@ -19,10 +20,6 @@ function compactMoney(v: number, currency?: string): string {
   const n = v / (unit[1] as number);
   const sym = currency === "EUR" ? "€" : currency === "USD" ? "$" : "";
   return `${sym}${n.toFixed(n >= 100 ? 0 : 1)}${unit[0]}`;
-}
-
-function pct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
 }
 
 function num(v: number): string {
@@ -65,10 +62,10 @@ export function FundamentalsCard({ symbol }: { symbol: string }) {
   if (data.trailing_pe) rows.push(["PER", num(data.trailing_pe)]);
   if (data.forward_pe) rows.push(["PER fwd", num(data.forward_pe)]);
   if (data.price_to_book) rows.push(["P/VC", num(data.price_to_book)]);
-  if (data.dividend_yield) rows.push(["Dividendo", pct(data.dividend_yield)]);
-  if (data.profit_margins) rows.push(["Margen neto", pct(data.profit_margins)]);
-  if (data.return_on_equity) rows.push(["ROE", pct(data.return_on_equity)]);
-  if (data.revenue_growth) rows.push(["Crec. ventas", pct(data.revenue_growth)]);
+  if (data.dividend_yield) rows.push(["Dividendo", fmtPct(100 * data.dividend_yield)]);
+  if (data.profit_margins) rows.push(["Margen neto", fmtPct(100 * data.profit_margins)]);
+  if (data.return_on_equity) rows.push(["ROE", fmtPct(100 * data.return_on_equity)]);
+  if (data.revenue_growth) rows.push(["Crec. ventas", fmtPct(100 * data.revenue_growth)]);
   if (data.debt_to_equity) rows.push(["Deuda/FP", num(data.debt_to_equity)]);
   if (data.beta) rows.push(["Beta", num(data.beta)]);
 

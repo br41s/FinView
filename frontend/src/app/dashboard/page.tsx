@@ -24,7 +24,6 @@ import type {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { FileUpload } from "@/components/FileUpload";
 import { ImportedFilesList } from "@/components/ImportedFilesList";
@@ -55,7 +54,6 @@ import {
   FileText,
   LineChart,
   CalendarRange,
-  AlertCircle,
   Info,
 } from "lucide-react";
 import {
@@ -65,26 +63,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatEur } from "@/lib/format";
-
-function ErrorState({
-  message,
-  onRetry,
-}: Readonly<{ message: string; onRetry: () => void }>) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
-      <div className="rounded-full bg-destructive/10 p-4">
-        <AlertCircle className="h-8 w-8 text-destructive" />
-      </div>
-      <div>
-        <h3 className="text-lg font-medium mb-1">Error al cargar datos</h3>
-        <p className="text-sm text-muted-foreground max-w-md">{message}</p>
-      </div>
-      <Button variant="outline" onClick={onRetry}>
-        Reintentar
-      </Button>
-    </div>
-  );
-}
+import { ErrorState } from "@/components/ErrorState";
 
 function DashboardSkeleton() {
   return (
@@ -233,7 +212,7 @@ function DashboardContent() {
       (api.charts.dividendYield(y) as Promise<DividendYield[]>)
         .then(set(setDividendYield))
         .catch((e) => console.error("dividend-yield:", e)),
-      (api.yearlyComparison() as Promise<{ years: YearlyMetrics[] }>)
+      api.yearlyComparison()
         .then((d) => set(setYearlyComparison)(d.years))
         .catch((e) => console.error("yearly-comparison:", e)),
     ];

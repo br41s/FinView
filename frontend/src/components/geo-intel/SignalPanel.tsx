@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Check, ExternalLink, Target } from "lucide-react";
 import { scopeLabel, thesisSegments, tradabilityHint, type GeoSignal } from "@/lib/geo";
 import { api } from "@/lib/api";
+import { bestEffort } from "@/lib/bestEffort";
 import { PrecioTab } from "@/components/instrument/PrecioTab";
 import { FundamentalsCard } from "./FundamentalsCard";
 import { ListSkeleton } from "./MapStates";
@@ -38,7 +39,8 @@ function AddToZonasButton({ symbol }: { symbol: string }) {
       })
       // Can't tell whether it's already there — offer the button anyway. The
       // backend 409s on a duplicate, which is a better failure than hiding it.
-      .catch(() => {
+      .catch((e) => {
+        bestEffort("zonas-clave watchlist membership")(e);
         if (!cancelled) setState("idle");
       });
     return () => {
