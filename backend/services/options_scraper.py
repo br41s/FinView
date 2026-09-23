@@ -14,6 +14,8 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
+from backend.services import ticker_map
+
 logger = logging.getLogger(__name__)
 
 MAX_EXPIRATIONS = 3  # ~6 weeks of data
@@ -127,9 +129,17 @@ def _safe_float(val, default: float = 0.0) -> float:
 
 
 def _resolve_isin(isin: str) -> str | None:
-    """Resolve an ISIN to a ticker symbol via Yahoo Finance search. Result is cached."""
+    """Resolve an ISIN to a ticker symbol. Curated map first, then Yahoo search; cached.
+
+    The curated map is where corporate actions are known (AENA's pre/post-split
+    ISINs share one ticker on purpose); a raw Yahoo search does not know that.
+    """
     if isin in _ISIN_CACHE:
         return _ISIN_CACHE[isin]
+    curated = ticker_map.CURATED.get(isin)
+    if curated:
+        _ISIN_CACHE[isin] = curated
+        return curated
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}&quotesCount=1&newsCount=0"
         resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
