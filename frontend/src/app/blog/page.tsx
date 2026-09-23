@@ -88,10 +88,10 @@ export default function BlogPage() {
       <section className={styles.postsSection}>
         <div className={styles.postsGrid}>
           {posts.map(({ slug, tag, date, readTime, title, excerpt }) => {
-            const Image = POST_IMAGES[slug];
+            const Illustration = POST_IMAGES[slug];
             return (
               <article key={slug} className={styles.postCard}>
-                <Image />
+                <Illustration />
                 <div className={styles.postBody}>
                   <div className={styles.postMeta}>
                     <span className={styles.postTag}>{tag}</span>

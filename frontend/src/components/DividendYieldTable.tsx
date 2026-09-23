@@ -252,14 +252,3 @@ export function DividendYieldTable({
     </div>
   );
 }
-
-function YieldBadge({ value }: Readonly<{ value: number }>) {
-  if (value <= 0) return <span className="text-muted-foreground/70">—</span>;
-
-  let color = "text-muted-foreground";
-  if (value >= 10) color = "text-green-400 font-semibold";
-  else if (value >= 5) color = "text-green-400";
-  else if (value >= 3) color = "text-blue-400";
-
-  return <span className={color}>{value.toFixed(2)}%</span>;
-}
