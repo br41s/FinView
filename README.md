@@ -45,7 +45,7 @@ Acceder a `http://localhost:3000`.
 FinView/
 ├── backend/
 │   ├── app.py              # FastAPI app + CORS + startup
-│   ├── models.py           # SQLAlchemy ORM (Account, Transaction, TaxLot, etc.)
+│   ├── models/             # SQLAlchemy ORM, one module per domain (ledger, options, geo, …)
 │   ├── database.py         # Engine + session factory
 │   ├── api/
 │   │   ├── imports.py      # POST endpoints para cada broker

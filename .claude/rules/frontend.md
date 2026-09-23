@@ -50,6 +50,20 @@ on purpose: a `useOptionsData` would have to hand back six setters the page's ha
 write to, and the watchlist auto-sync effect reads seven page bindings and depends on the
 `watchlistRef` dance documented above it.
 
+## Portfolio page layout
+
+`app/portfolio/page.tsx` was 1,016 lines; it is now ~220 and owns only the header,
+the Zonas Clave / geo badge state and `handleAddToZonas`. Beside it: `types.ts`
+(response shapes, `TX_LABELS`/`TX_COLORS`, `PositionsListProps`),
+`PortfolioSummaryCards.tsx` (fail-closed totals render "—" plus the reason),
+`PositionDetailPanel.tsx` (the expanded row, shared by desktop and mobile),
+`PositionsTable.tsx` / `PositionsMobileList.tsx` (same `PositionsListProps`, no
+context), `usePortfolioData.ts` (two-phase load + retry) and `usePositionDetails.ts`
+(expand state, detail cache, OHLC cache, chart scope). The two hooks are called
+*after* the badge effects on purpose: effects run in declaration order and the
+mount-time fetch order (zonas → geo → portfolio → OHLC) is unchanged from the inline
+version.
+
 ## Price charts (lightweight-charts) — shared infra
 
 `components/charts/PriceChart.tsx` is the one generic price chart used everywhere

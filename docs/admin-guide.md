@@ -421,7 +421,7 @@ def compute_file_hash(path: Path) -> str: ...
 
 ### 11.2 Broker enum
 
-En `backend/models.py`:
+En `backend/models/base.py` (el paquete `backend/models/` re-exporta todo):
 ```python
 class Broker(str, Enum):
     NEW_BROKER = "NEW_BROKER"
