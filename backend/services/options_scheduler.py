@@ -37,6 +37,10 @@ def start_user_schedule(user_id: int) -> None:
     logger.info("Started options monitor for user %d (every %d min)", user_id, settings.options_monitor_interval_minutes)
 
 
+def is_running(user_id: int) -> bool:
+    return user_id in _active_jobs
+
+
 def stop_user_schedule(user_id: int) -> None:
     """Stop the periodic monitoring job for a user."""
     job_id = _active_jobs.pop(user_id, None)

@@ -30,6 +30,7 @@ from backend.api.schemas import (
 )
 from backend.config import settings
 from backend.database import DbSession
+from backend.services import options_scheduler
 from backend.models import (
     BacktestSignal,
     FollowedInstrument,
@@ -429,7 +430,6 @@ def check_options_availability(body: _TickerListIn, user: CurrentUser):
 
 # ── Agent Control ────────────────────────────────────────────────────
 
-_scheduler_running = False
 _cycles_in_progress: set[int] = set()
 _cycle_lock = threading.Lock()
 
@@ -536,7 +536,7 @@ def agent_status(db: DbSession, user: CurrentUser):
         .scalar()
     )
     return AgentStatusOut(
-        running=_scheduler_running,
+        running=options_scheduler.is_running(user.id),
         external_scheduler=settings.request_scoped_runtime,
         interval_minutes=settings.options_monitor_interval_minutes,
         last_cycle=last_log.timestamp if last_log else None,
@@ -582,22 +582,14 @@ def start_scheduler(user: CurrentUser):
             status_code=409,
             detail="In-process schedulers are disabled on request-scoped runtimes",
         )
-    global _scheduler_running
-    from backend.services.options_scheduler import start_user_schedule
-
-    start_user_schedule(user.id)
-    _scheduler_running = True
+    options_scheduler.start_user_schedule(user.id)
     return {"status": "started", "interval_minutes": settings.options_monitor_interval_minutes}
 
 
 @router.post("/agent/stop")
 def stop_scheduler(user: CurrentUser):
     """Stop the APScheduler background job."""
-    global _scheduler_running
-    from backend.services.options_scheduler import stop_user_schedule
-
-    stop_user_schedule(user.id)
-    _scheduler_running = False
+    options_scheduler.stop_user_schedule(user.id)
     return {"status": "stopped"}
 
 
