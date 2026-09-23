@@ -34,8 +34,8 @@ error state instead.
 ## Options page layout
 
 `app/options/page.tsx` was 2,457 lines; the self-contained parts now sit beside it:
-`BacktestTab.tsx`, `AgentChat.tsx`, `AnalysisTab.tsx`, `useBacktest.ts`, `types.ts`,
-`format.ts`. The watchlist and monitor tabs are still inline — they read 26 and 15
+`BacktestTab.tsx`, `AgentChat.tsx`, `AnalysisTab.tsx`, `useBacktest.ts`, `types.ts`
+(number/date formatting is shared app-wide in `src/lib/format.ts`). The watchlist and monitor tabs are still inline — they read 26 and 15
 bindings from the component, so extracting them means untangling shared state, not moving
 code. `useBacktest` is held by the page, not the tab: Radix unmounts inactive
 `TabsContent`, so owning it in the tab would refetch on every tab switch.
@@ -51,10 +51,10 @@ Attribution logo on (Apache-2.0). Theme-aware via next-themes (canvas can't read
   yfinance, period whitelisted {6mo,1y,2y,5y,10y,max}, best-effort (returns `[]` on any
   failure → caller hides the chart). Read-only; never touches FIFO/transactions.
 - **lib/chartMarkers.ts**: `executionMarkers(txs)` (BUY ▲ / SELL ▼ / DIVIDEND ●, same-day
-  same-type collapsed into one marker labelled with the count) + `sliceOhlc(bars, scope)`
+  same-type collapsed into one marker labelled with the count)
   + `CHART_SCOPES` (1D / 1W / 1M / 1A / 5A / MAX, client-side slicing).
 - **Used in**:
-  - `/portfolio` list expansion + `/portfolio/[isin]`: candles + buy/sell/dividend markers.
+  - `/portfolio` list expansion: candles + buy/sell/dividend markers.
     Dividends come from `position_detail`'s `dividend_events` (kept out of `transactions`
     so the history table stays buy/sell only). Window auto-sized to the oldest trade.
   - `OpcionesTab` (`components/instrument/OpcionesTab.tsx`): underlying candles +

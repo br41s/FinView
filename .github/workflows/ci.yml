@@ -50,7 +50,7 @@ jobs:
       - name: Lint
         run: .venv/bin/python -m ruff check backend/ scripts/
 
-      # ~163 tests skip here by design: they need the real broker PDFs/CSVs in
+      # 126 tests skip here by design: they need the real broker PDFs/CSVs in
       # files/, which are not in the repo. That also keeps the runner cheap —
       # the two-minute test_import_service block is among the tests that skip.
       - name: Test
