@@ -1,8 +1,10 @@
 """API endpoints for file import."""
 
+import logging
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import and_, or_
@@ -49,6 +51,7 @@ from backend.services.import_service import (
     delete_all_imports,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 
@@ -77,7 +80,65 @@ def enforce_import_quota(db: DbSession, user: CurrentUser) -> None:
 ImportQuota = Depends(enforce_import_quota)
 
 
-@router.post("/tr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF o CSV"}, 422: {"description": "Error al procesar el archivo"}})
+# Broker exports are a few hundred KB; the largest real one (a multi-year IBKR
+# CSV) is under 5 MB. Past this it is not a broker report, and it used to be
+# read whole into memory before anyone looked at it.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+T = TypeVar("T")
+
+
+def _require_suffix(upload: UploadFile, suffix: str, detail: str) -> None:
+    if not upload.filename or not upload.filename.lower().endswith(suffix):
+        raise HTTPException(status_code=400, detail=detail)
+
+
+def _spool(upload: UploadFile, suffix: str) -> Path:
+    """Copy the upload to a temp file in chunks, refusing anything over MAX_UPLOAD_BYTES."""
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    path = Path(tmp.name)
+    copied = 0
+    try:
+        while chunk := upload.file.read(1 << 20):
+            copied += len(chunk)
+            if copied > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"El archivo supera el tamaño máximo de {MAX_UPLOAD_BYTES >> 20} MB",
+                )
+            tmp.write(chunk)
+    except BaseException:
+        tmp.close()
+        path.unlink(missing_ok=True)
+        raise
+    tmp.close()
+    return path
+
+
+def _run_import(kind: str, parse: Callable[[], T], store: Callable[[T], dict]) -> dict:
+    """Parse, then store — and tell the two failures apart.
+
+    A parse failure is the user's file: 422 with the parser's message, as before.
+    A failure after parsing is ours (DB, locks, FIFO): every route used to fold it
+    into the same 422 with ``str(e)`` and no server log, so a FIFO bug looked like
+    a bad PDF to the user and left nothing to debug. Now it is a logged 500.
+    """
+    try:
+        report = parse()
+    except Exception as e:
+        logger.warning("Upload rejected: %s could not be parsed: %s", kind, e)
+        raise HTTPException(status_code=422, detail=f"Error al procesar {kind}: {e}")
+    try:
+        return store(report)
+    except Exception:
+        logger.exception("Import of %s failed after parsing", kind)
+        raise HTTPException(
+            status_code=500,
+            detail="Error interno al guardar la importación. Inténtalo de nuevo más tarde.",
+        )
+
+
+@router.post("/tr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF o CSV"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el archivo"}})
 def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a Trade Republic Tax Report PDF or Transaction export CSV.
 
@@ -88,151 +149,109 @@ def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     name = (file.filename or "").lower()
     if name.endswith(".pdf"):
         is_csv = False
-        suffix = ".pdf"
     elif name.endswith(".csv"):
         is_csv = True
-        suffix = ".csv"
     else:
         raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF o CSV")
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        content = file.file.read()
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    path = _spool(file, ".csv" if is_csv else ".pdf")
     try:
         if is_csv:
-            file_hash = tr_csv_compute_hash(tmp_path)
-            report = parse_tr_csv(tmp_path)
-            result = import_tr_csv_report(db, report, file_hash, file.filename, user_id=user.id)
-        else:
-            file_hash = compute_file_hash(tmp_path)
-            report = parse_tr_tax_report(tmp_path)
-            result = import_tr_report(db, report, file_hash, file.filename, user_id=user.id)
-        return result
-    except Exception as e:
-        kind = "CSV" if is_csv else "PDF"
-        raise HTTPException(status_code=422, detail=f"Error al procesar el {kind}: {e}")
+            return _run_import(
+                "el CSV",
+                lambda: parse_tr_csv(path),
+                lambda r: import_tr_csv_report(db, r, tr_csv_compute_hash(path), file.filename, user_id=user.id),
+            )
+        return _run_import(
+            "el PDF",
+            lambda: parse_tr_tax_report(path),
+            lambda r: import_tr_report(db, r, compute_file_hash(path), file.filename, user_id=user.id),
+        )
     finally:
-        tmp_path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
-@router.post("/degiro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post("/degiro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el PDF"}})
 def upload_dg_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a DEGIRO Annual Report PDF."""
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        content = file.file.read()
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    _require_suffix(file, ".pdf", "Solo se aceptan archivos PDF")
+    path = _spool(file, ".pdf")
     try:
-        file_hash = dg_compute_hash(tmp_path)
-        report = parse_dg_annual_report(tmp_path)
-        result = import_dg_report(db, report, file_hash, file.filename, user_id=user.id)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
+        return _run_import(
+            "el PDF",
+            lambda: parse_dg_annual_report(path),
+            lambda r: import_dg_report(db, r, dg_compute_hash(path), file.filename, user_id=user.id),
+        )
     finally:
-        tmp_path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
-@router.post("/ibkr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos CSV"}, 422: {"description": "Error al procesar el CSV"}})
+@router.post("/ibkr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos CSV"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el CSV"}})
 def upload_ibkr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an IBKR Activity Statement CSV."""
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos CSV")
-
-    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
-        content = file.file.read()
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    _require_suffix(file, ".csv", "Solo se aceptan archivos CSV")
+    path = _spool(file, ".csv")
     try:
-        file_hash = ibkr_compute_hash(tmp_path)
-        report = parse_ibkr_activity_statement(tmp_path)
-        result = import_ibkr_report(db, report, file_hash, file.filename, user_id=user.id)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error al procesar el CSV: {e}")
+        return _run_import(
+            "el CSV",
+            lambda: parse_ibkr_activity_statement(path),
+            lambda r: import_ibkr_report(db, r, ibkr_compute_hash(path), file.filename, user_id=user.id),
+        )
     finally:
-        tmp_path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
-@router.post("/ing", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post("/ing", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el PDF"}})
 def upload_ing_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an ING Información Fiscal PDF."""
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        content = file.file.read()
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    _require_suffix(file, ".pdf", "Solo se aceptan archivos PDF")
+    path = _spool(file, ".pdf")
     try:
-        file_hash = ing_compute_hash(tmp_path)
-        report = parse_ing_report(tmp_path)
-        result = import_ing_report(db, report, file_hash, file.filename, user_id=user.id)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error al procesar el PDF: {e}")
+        return _run_import(
+            "el PDF",
+            lambda: parse_ing_report(path),
+            lambda r: import_ing_report(db, r, ing_compute_hash(path), file.filename, user_id=user.id),
+        )
     finally:
-        tmp_path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
-@router.post("/bbva", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 422: {"description": "Error al procesar los PDFs"}})
+@router.post("/bbva", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar los PDFs"}})
 def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3 BBVA PDFs")], db: DbSession, user: CurrentUser):
     """Upload 1-3 BBVA PDFs (operaciones, dividendos, patrimonio)."""
     if not files or len(files) > 3:
         raise HTTPException(status_code=400, detail="Se aceptan entre 1 y 3 archivos PDF de BBVA")
     for f in files:
-        if not f.filename or not f.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail=f"Solo se aceptan archivos PDF: {f.filename}")
+        _require_suffix(f, ".pdf", f"Solo se aceptan archivos PDF: {f.filename}")
 
-    tmp_paths: list[Path] = []
+    paths: list[Path] = []
     try:
         for f in files:
-            tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-            content = f.file.read()
-            tmp.write(content)
-            tmp.close()
-            tmp_paths.append(Path(tmp.name))
-
-        file_hash = bbva_compute_hash(tmp_paths)
-        report = parse_bbva_pdfs(tmp_paths)
+            paths.append(_spool(f, ".pdf"))
         filenames = ", ".join(f.filename or "unknown" for f in files)
-        result = import_bbva_report(db, report, file_hash, filenames, user_id=user.id)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error al procesar los PDFs de BBVA: {e}")
+        return _run_import(
+            "los PDFs de BBVA",
+            lambda: parse_bbva_pdfs(paths),
+            lambda r: import_bbva_report(db, r, bbva_compute_hash(paths), filenames, user_id=user.id),
+        )
     finally:
-        for p in tmp_paths:
+        for p in paths:
             p.unlink(missing_ok=True)
 
 
-@router.post("/etoro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos XLSX"}, 422: {"description": "Error al procesar el XLSX"}})
+@router.post("/etoro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos XLSX"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el XLSX"}})
 def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an eToro annual account statement XLSX."""
-    if not file.filename or not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos XLSX")
-
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-        content = file.file.read()
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    _require_suffix(file, ".xlsx", "Solo se aceptan archivos XLSX")
+    path = _spool(file, ".xlsx")
     try:
-        file_hash = etoro_compute_hash(tmp_path)
-        report = parse_etoro_statement(tmp_path)
-        result = import_etoro_report(db, report, file_hash, file.filename, user_id=user.id)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error al procesar el XLSX de eToro: {e}")
+        return _run_import(
+            "el XLSX de eToro",
+            lambda: parse_etoro_statement(path),
+            lambda r: import_etoro_report(db, r, etoro_compute_hash(path), file.filename, user_id=user.id),
+        )
     finally:
-        tmp_path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
 @router.get("", response_model=list[ImportRecordOut], include_in_schema=False)

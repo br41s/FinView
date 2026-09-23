@@ -260,3 +260,57 @@ def test_the_subscription_endpoint_reports_usage():
         assert r.json()["imports_this_month"] == 2
     finally:
         app.dependency_overrides.clear()
+
+
+def test_an_oversized_upload_is_refused_before_parsing(monkeypatch):
+    """The routes used to read the whole body into memory with no limit."""
+    from backend.api import imports as imports_api
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as s:
+        user, _account = _user(s)
+        s.commit()
+        uid = user.id
+
+    monkeypatch.setattr(imports_api, "MAX_UPLOAD_BYTES", 10)
+    client, app = _client(Session, uid)
+    try:
+        r = client.post("/api/imports/tr", files={"file": ("x.pdf", b"x" * 11, "application/pdf")})
+        assert r.status_code == 413, r.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_failure_after_parsing_is_a_logged_500_not_a_422(monkeypatch, caplog):
+    """A FIFO or DB error is ours, not the user's file — it must not read as a bad PDF."""
+    from backend.api import imports as imports_api
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as s:
+        user, _account = _user(s)
+        s.commit()
+        uid = user.id
+
+    monkeypatch.setattr(imports_api, "parse_tr_tax_report", lambda _p: object())
+
+    def boom(*_a, **_k):
+        raise RuntimeError("fifo exploded")
+
+    monkeypatch.setattr(imports_api, "import_tr_report", boom)
+    client, app = _client(Session, uid)
+    try:
+        with caplog.at_level("ERROR"):
+            r = client.post("/api/imports/tr", files={"file": ("x.pdf", b"%PDF", "application/pdf")})
+        assert r.status_code == 500, r.text
+        assert "fifo exploded" not in r.text
+        assert "fifo exploded" in caplog.text
+    finally:
+        app.dependency_overrides.clear()
