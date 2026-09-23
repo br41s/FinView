@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Activity,
-  BarChart3,
   Bell,
   Bot,
   CheckCircle2,
@@ -22,7 +21,6 @@ import {
   RefreshCw,
   Target,
   Trash2,
-  TrendingUp,
   Zap,
   AlertCircle,
 } from "lucide-react";
@@ -35,6 +33,7 @@ import { AnalysisTab } from "./AnalysisTab";
 import { BacktestTab } from "./BacktestTab";
 import { AlignmentTag, BreakProbability, DirBadge, severityColor } from "./badges";
 import { MEFF_TICKERS } from "./meffTickers";
+import { OptionsStatsCards } from "./OptionsStatsCards";
 import type { Alert, AgentStatus, Position, Snapshot, Unusual, WatchlistItem } from "./types";
 import { fmt, fmtDateTime } from "@/lib/format";
 import { useBacktest } from "./useBacktest";
@@ -483,18 +482,6 @@ export default function OptionsPage() {
     return (b.break_probability ?? -1) - (a.break_probability ?? -1);
   });
 
-  // Global P/C sentiment — average put_call_ratio_volume across all latest snapshots
-  const globalPC = (() => {
-    const ratios = Array.from(latestByTicker.values())
-      .map((s) => (s.put_call_ratio_volume != null ? Number(s.put_call_ratio_volume) : null))
-      .filter((v): v is number => v !== null && !isNaN(v));
-    if (ratios.length === 0) return null;
-    const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-    const label = avg < 0.7 ? "Alcista" : avg > 1.0 ? "Bajista" : "Neutral";
-    const color = avg < 0.7 ? "text-emerald-600" : avg > 1.0 ? "text-red-600" : "text-amber-500";
-    return { avg, label, color, count: ratios.length };
-  })();
-
   // Portfolio tickers with no options chain — surfaced as a note so their
   // absence from the list is explained rather than mysterious.
   const noOptPositions = positions.filter(
@@ -578,87 +565,15 @@ export default function OptionsPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
-            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Posiciones</span> en cartera · {watchlist.length} en watchlist</p>
-            <span className="ml-3 shrink-0 text-base font-bold">{positions.length}</span>
-          </div>
-          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
-            <CardTitle className="text-sm font-medium">Posiciones</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="hidden sm:block">
-            <div className="text-2xl font-bold">{positions.length}</div>
-            <p className="text-xs text-muted-foreground">en cartera · {watchlist.length} en watchlist</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
-            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Ciclos</span>{" "}{agentStatus?.last_cycle ? `último ${new Date(agentStatus.last_cycle).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}` : "sin ciclos aún"}</p>
-            <span className="ml-3 shrink-0 text-base font-bold">{agentStatus?.total_cycles ?? 0}</span>
-          </div>
-          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
-            <CardTitle className="text-sm font-medium">Ciclos</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="hidden sm:block">
-            <div className="text-2xl font-bold">{agentStatus?.total_cycles ?? 0}</div>
-            <p className="text-xs text-muted-foreground">{agentStatus?.last_cycle ? `Último: ${fmtDateTime(agentStatus.last_cycle)}` : "Sin ciclos aún"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
-            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Alertas</span> {alerts.length} total (7d)</p>
-            <span className="ml-3 shrink-0 text-base font-bold">{unreadAlerts.length}</span>
-          </div>
-          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
-            <CardTitle className="text-sm font-medium">Alertas</CardTitle>
-            <Bell className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="hidden sm:block">
-            <div className="text-2xl font-bold">{unreadAlerts.length}</div>
-            <p className="text-xs text-muted-foreground">{alerts.length} total (7d)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
-            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Smart Money</span> actividad inusual (7d)</p>
-            <span className="ml-3 shrink-0 text-base font-bold">{unusual.length}</span>
-          </div>
-          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
-            <CardTitle className="text-sm font-medium">Smart Money</CardTitle>
-            <Zap className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="hidden sm:block">
-            <div className="text-2xl font-bold">{unusual.length}</div>
-            <p className="text-xs text-muted-foreground">Actividad inusual (7d)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <div className="flex items-center justify-between px-4 py-3 sm:hidden">
-            <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">Sentimiento</span> P/C {globalPC ? `${globalPC.avg.toFixed(2)} · ${globalPC.count} tickers` : "—"}</p>
-            <span className={`ml-3 shrink-0 text-base font-bold ${globalPC?.color ?? "text-muted-foreground"}`}>{globalPC?.label ?? "—"}</span>
-          </div>
-          <CardHeader className="hidden flex-row items-center justify-between pb-2 sm:flex">
-            <CardTitle className="text-sm font-medium">Sentimiento P/C</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="hidden sm:block">
-            {globalPC ? (
-              <>
-                <div className={`text-2xl font-bold ${globalPC.color}`}>{globalPC.label}</div>
-                <p className="text-xs text-muted-foreground">P/C medio {globalPC.avg.toFixed(2)} · {globalPC.count} tickers</p>
-              </>
-            ) : (
-              <>
-                <div className="text-2xl font-bold text-muted-foreground">—</div>
-                <p className="text-xs text-muted-foreground">Sin datos aún</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <OptionsStatsCards
+        positionsCount={positions.length}
+        watchlistCount={watchlist.length}
+        agentStatus={agentStatus}
+        alertsTotal={alerts.length}
+        unreadCount={unreadAlerts.length}
+        unusualCount={unusual.length}
+        latestSnapshots={Array.from(latestByTicker.values())}
+      />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
