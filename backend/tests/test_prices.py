@@ -6,11 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.models import Base, PriceCache
-from backend.services import prices as svc
+from backend.services import prices as svc, ticker_map
 
 
 def test_singapore_suffix_uses_sgd():
-    assert svc._ticker_currency("U11.SI") == "SGD"
+    assert ticker_map.currency_for_ticker("U11.SI") == "SGD"
 
 
 def test_shared_yahoo_ticker_prices_every_requested_isin(monkeypatch):

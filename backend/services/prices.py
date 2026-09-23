@@ -7,29 +7,12 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
-from backend.services import exchange_rates, ticker_map
+from backend.services import exchange_rates, ticker_map, yahoo_budget
 from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, PORTFOLIO_SECONDS, Budget
 
 logger = logging.getLogger(__name__)
 
 # Exchange suffix → trading currency
-_EXCHANGE_CURRENCY: dict[str, str] = {
-    ".MC": "EUR", ".DE": "EUR", ".PA": "EUR", ".AS": "EUR",
-    ".LS": "EUR", ".VI": "EUR",
-    ".L": "GBP",
-    ".OL": "NOK",
-    ".CO": "DKK",
-    ".SI": "SGD",
-    ".SA": "BRL",
-}
-
-
-def _ticker_currency(ticker: str) -> str:
-    """Determine the trading currency from the Yahoo Finance ticker suffix."""
-    for suffix, currency in _EXCHANGE_CURRENCY.items():
-        if ticker.endswith(suffix):
-            return currency
-    return "USD"  # US stocks have no suffix
 
 
 def _resolve_ticker(isin: str, db: Session) -> str | None:
@@ -102,7 +85,7 @@ def fetch_and_cache_prices(
     non_eur_currencies: set[str] = set()
     ticker_currencies: dict[str, str] = {}
     for ticker in ticker_to_isins:
-        ccy = _ticker_currency(ticker)
+        ccy = ticker_map.currency_for_ticker(ticker)
         ticker_currencies[ticker] = ccy
         if ccy != "EUR":
             non_eur_currencies.add(ccy)
@@ -295,11 +278,6 @@ def _fetch_yahoo_prices(
     single round trip. With one, the work is split so the budget has somewhere to
     look — chunking without a budget would only add round trips and bound nothing.
     """
-    try:
-        import yfinance as yf
-    except ImportError:
-        logger.error("yfinance not installed")
-        return {}
 
     groups = (
         [tickers[i : i + _STALL_CHUNK] for i in range(0, len(tickers), _STALL_CHUNK)]
@@ -319,7 +297,7 @@ def _fetch_yahoo_prices(
             )
             break
         try:
-            data = yf.download(
+            data = yahoo_budget.download(
                 group,
                 period=period,
                 interval=interval,
@@ -350,11 +328,6 @@ def fetch_price_series(
     used to receive the identical price. Same chunking/budget rules as
     ``_fetch_yahoo_prices``; symbols without bars are absent, never empty.
     """
-    try:
-        import yfinance as yf
-    except ImportError:
-        logger.error("yfinance not installed")
-        return {}
     unique = list(dict.fromkeys(tickers))
     groups = (
         [unique[i : i + _STALL_CHUNK] for i in range(0, len(unique), _STALL_CHUNK)]
@@ -370,7 +343,7 @@ def fetch_price_series(
             )
             break
         try:
-            data = yf.download(
+            data = yahoo_budget.download(
                 group, period=period, interval=interval, auto_adjust=True,
                 progress=False, threads=True,
             )
@@ -447,7 +420,7 @@ def get_currency_info(db: Session, isins: list[str]) -> dict[str, dict]:
     for r in rows:
         ccy = r.original_currency
         if not ccy and r.yahoo_ticker:
-            ccy = _ticker_currency(r.yahoo_ticker)
+            ccy = ticker_map.currency_for_ticker(r.yahoo_ticker)
         result[r.isin] = {
             "currency": ccy or "EUR",
             "original_price": str(r.original_price) if r.original_price else None,
@@ -459,7 +432,7 @@ def get_currency_info(db: Session, isins: list[str]) -> dict[str, dict]:
     for isin in isins:
         if isin not in result:
             ticker = known.get(isin)
-            ccy = _ticker_currency(ticker) if ticker else "EUR"
+            ccy = ticker_map.currency_for_ticker(ticker) if ticker else "EUR"
             result[isin] = {"currency": ccy, "original_price": None, "fx_rate": None}
 
     return result

@@ -29,6 +29,29 @@ logger = logging.getLogger(__name__)
 MANUAL = "manual"
 YFINANCE = "yfinance"
 
+# Yahoo ticker suffix → trading currency. The only copy: prices.py and
+# fred_rates.py each kept their own and drifted, so a Milan or Helsinki ticker
+# was valued as USD and converted at the dollar rate without a warning.
+EXCHANGE_CURRENCY: dict[str, str] = {
+    ".MC": "EUR", ".DE": "EUR", ".PA": "EUR", ".AS": "EUR", ".LS": "EUR", ".VI": "EUR",
+    ".MI": "EUR", ".BR": "EUR", ".HE": "EUR", ".IR": "EUR",
+    ".L": "GBP",
+    ".SW": "CHF",
+    ".OL": "NOK",
+    ".CO": "DKK",
+    ".ST": "SEK",
+    ".SI": "SGD",
+    ".SA": "BRL",
+}
+
+
+def currency_for_ticker(ticker: str | None) -> str:
+    """Trading currency from the Yahoo suffix; no suffix means a US listing."""
+    if not ticker or "." not in ticker:
+        return "USD"
+    suffix = "." + ticker.rsplit(".", 1)[-1].upper()
+    return EXCHANGE_CURRENCY.get(suffix, "USD")
+
 
 CURATED: dict[str, str] = {
     # Spain

@@ -30,6 +30,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from backend.config import settings
 from backend.database import SessionLocal, engine
 from backend.models import FredRate
+from backend.services import ticker_map
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,6 @@ _FALLBACK: dict[str, float] = {
 # Euro-area ticker suffixes (MEFF + Eurex euro venues). Everything else —
 # plain US tickers, ISINs, and non-euro European venues (.L/.SW/.OL/.ST/.CO…)
 # — resolves to USD for now (adding GBP/CHF series is a Phase-2 follow-up).
-_EUR_SUFFIXES = {"MC", "DE", "PA", "AS", "MI", "BR", "VI", "HE", "LS"}
-
 # Look-back window when resolving a rate for a date (weekends/holidays/stale).
 _LOOKBACK_DAYS = 14
 
@@ -62,11 +61,9 @@ _LOOKBACK_DAYS = 14
 
 
 def currency_for_ticker(ticker: str | None) -> str:
-    """Infer the option-pricing currency from a ticker symbol."""
-    if not ticker or "." not in ticker:
-        return "USD"
-    suffix = ticker.rsplit(".", 1)[-1].upper()
-    return "EUR" if suffix in _EUR_SUFFIXES else "USD"
+    """Option-pricing currency for a ticker: EUR or USD, the two series tracked."""
+    ccy = ticker_map.currency_for_ticker(ticker)
+    return ccy if ccy in _SERIES else "USD"
 
 
 # ── FRED feed helpers ───────────────────────────────────────────────────────
