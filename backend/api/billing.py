@@ -3,6 +3,7 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from backend.api.auth import CurrentUser
@@ -97,7 +98,9 @@ async def stripe_webhook(request: Request):
         )
 
     try:
-        result = handle_webhook_event(payload, sig_header)
+        # Stripe signature check + DB work are blocking; the route stays async
+        # for `await request.body()`, so the work leaves the event loop here.
+        result = await run_in_threadpool(handle_webhook_event, payload, sig_header)
         return result
     except ValueError:
         logger.warning("Stripe webhook signature validation failed")
