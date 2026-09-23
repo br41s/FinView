@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import type { DividendYield } from "@/lib/types";
+import { SortHeader, type SortDir } from "@/components/SortHeader";
 import { formatEur, formatCurrency, plColor } from "@/lib/format";
 
 type SortKey =
@@ -12,8 +13,6 @@ type SortKey =
   | "current_value"
   | "pl"
   | "pl_pct";
-
-type SortDir = "asc" | "desc";
 
 function num(v: string | number): number {
   return typeof v === "string" ? Number.parseFloat(v) || 0 : v;
@@ -99,29 +98,7 @@ export function DividendYieldTable({
     }
   }
 
-  function SortHeader({
-    k,
-    children,
-    align = "right",
-    className,
-  }: {
-    k: SortKey;
-    children: React.ReactNode;
-    align?: "left" | "right";
-    className?: string;
-  }) {
-    const active = sortKey === k;
-    return (
-      <th
-        className={`py-2 cursor-pointer select-none hover:text-foreground transition-colors ${className ?? ""} ${align === "left" ? "text-left" : "text-right"}`}
-        onClick={() => handleSort(k)}
-      >
-        <span className={active ? "text-foreground" : ""}>
-          {children} {active ? (sortDir === "asc" ? "↑" : "↓") : ""}
-        </span>
-      </th>
-    );
-  }
+  const headerProps = { sortKey, sortDir, onSort: handleSort };
 
   return (
     <div className="bg-card border border-border rounded-xl p-6">
@@ -135,25 +112,25 @@ export function DividendYieldTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-muted-foreground text-xs">
-              <SortHeader k="name" align="left">
+              <SortHeader {...headerProps} k="name" align="left">
                 Empresa
               </SortHeader>
-              <SortHeader
+              <SortHeader {...headerProps}
                 k="country"
                 align="left"
                 className="hidden md:table-cell"
               >
                 País
               </SortHeader>
-              <SortHeader k="currency" align="left" className="hidden sm:table-cell">
+              <SortHeader {...headerProps} k="currency" align="left" className="hidden sm:table-cell">
                 Divisa
               </SortHeader>
-              <SortHeader k="total_invested">
+              <SortHeader {...headerProps} k="total_invested">
                 Invertido
               </SortHeader>
-              <SortHeader k="current_value">Valor actual</SortHeader>
-              <SortHeader k="pl">+/-</SortHeader>
-              <SortHeader k="pl_pct" className="hidden sm:table-cell">
+              <SortHeader {...headerProps} k="current_value">Valor actual</SortHeader>
+              <SortHeader {...headerProps} k="pl">+/-</SortHeader>
+              <SortHeader {...headerProps} k="pl_pct" className="hidden sm:table-cell">
                 % +/-
               </SortHeader>
             </tr>

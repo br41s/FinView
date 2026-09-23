@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { DividendSummary, DividendYield } from "@/lib/types";
+import { SortHeader, type SortDir } from "@/components/SortHeader";
 import { formatEur } from "@/lib/format";
 
 type SortKey =
@@ -13,8 +14,6 @@ type SortKey =
   | "total_net_eur"
   | "pct_cobrado"
   | "payment_count";
-
-type SortDir = "asc" | "desc";
 
 function pctCobradoValue(netEur: string, investedEur: string): number {
   const net = Number.parseFloat(netEur);
@@ -89,43 +88,21 @@ export function DividendsTable({
     return 0;
   });
 
-  function SortHeader({
-    k,
-    children,
-    align = "right",
-    className,
-  }: {
-    k: SortKey;
-    children: React.ReactNode;
-    align?: "left" | "right";
-    className?: string;
-  }) {
-    const active = sortKey === k;
-    return (
-      <th
-        className={`py-2 cursor-pointer select-none hover:text-foreground transition-colors ${className ?? ""} ${align === "left" ? "text-left" : "text-right"}`}
-        onClick={() => handleSort(k)}
-      >
-        <span className={active ? "text-foreground" : ""}>
-          {children} {active ? (sortDir === "asc" ? "↑" : "↓") : ""}
-        </span>
-      </th>
-    );
-  }
+  const headerProps = { sortKey, sortDir, onSort: handleSort };
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-muted-foreground">
-            <SortHeader k="name" align="left">Empresa</SortHeader>
-            <SortHeader k="country" align="left" className="hidden sm:table-cell">País</SortHeader>
-            <SortHeader k="invested" className="hidden sm:table-cell">Invertido</SortHeader>
-            <SortHeader k="total_gross_eur">Bruto</SortHeader>
-            <SortHeader k="total_withholding_eur" className="hidden sm:table-cell">Retención</SortHeader>
-            <SortHeader k="total_net_eur">Neto</SortHeader>
-            <SortHeader k="pct_cobrado" className="hidden md:table-cell">% cobrado</SortHeader>
-            <SortHeader k="payment_count">Pagos</SortHeader>
+            <SortHeader {...headerProps} k="name" align="left">Empresa</SortHeader>
+            <SortHeader {...headerProps} k="country" align="left" className="hidden sm:table-cell">País</SortHeader>
+            <SortHeader {...headerProps} k="invested" className="hidden sm:table-cell">Invertido</SortHeader>
+            <SortHeader {...headerProps} k="total_gross_eur">Bruto</SortHeader>
+            <SortHeader {...headerProps} k="total_withholding_eur" className="hidden sm:table-cell">Retención</SortHeader>
+            <SortHeader {...headerProps} k="total_net_eur">Neto</SortHeader>
+            <SortHeader {...headerProps} k="pct_cobrado" className="hidden md:table-cell">% cobrado</SortHeader>
+            <SortHeader {...headerProps} k="payment_count">Pagos</SortHeader>
           </tr>
         </thead>
         <tbody>
