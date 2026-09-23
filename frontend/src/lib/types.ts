@@ -87,17 +87,6 @@ export interface FIFOAdjustment {
   note: string;
 }
 
-export interface FiscalSummary {
-  fiscal_year: number;
-  total_dividends_gross: string;
-  total_dividends_net: string;
-  total_withholdings: string;
-  total_gains: string;
-  total_losses: string;
-  net_capital_gains: string;
-  casillas: Casilla[];
-}
-
 export interface DividendSummary {
   isin: string;
   name: string;
@@ -229,28 +218,6 @@ export interface OptionAssignment {
   stock_quantity: string;
   stock_isin: string;
   premium_eur: string;
-}
-
-// Cross-validation types
-export interface CrossValidationRow {
-  modelo: number;
-  casilla: number;
-  description: string;
-  finview_amount: string;
-  compare_amount: string;
-  tr_amount: string | null;
-  difference: string | null;
-  status: string;
-  is_multi_broker: boolean;
-  brokers: BrokerAmount[];
-}
-
-export interface CrossValidationResult {
-  fiscal_year: number;
-  rows: CrossValidationRow[];
-  total_match: number;
-  total_mismatch: number;
-  total_no_ref: number;
 }
 
 // Yearly comparison types
