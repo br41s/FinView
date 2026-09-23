@@ -27,7 +27,7 @@ Informe completo: `tasks/audit-2026-09-23.md`.
 
 ### Fase 4 — docs y lint
 - [x] CLAUDE.md (Next 16 / TS 6, counts), README counts, `.claude/rules/frontend.md`.
-- [x] ESLint (`eslint-config-next`) + script `lint` — 0 errores, 46 warnings (React Compiler rules en `warn`, deuda previa).
+- [x] ESLint (`eslint-config-next`) + script `lint` — 0 errores, 0 warnings; las reglas React Compiler vuelven a `error` (PR de seguimiento).
 - [ ] Verificar: ruff, pytest, tsc, vitest, build, pre-push, Vercel preview verde, merge.
 
 
