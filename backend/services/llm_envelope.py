@@ -20,7 +20,48 @@ from __future__ import annotations
 
 import logging
 
+import httpx
+
+from backend.config import settings
+
 logger = logging.getLogger(__name__)
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def chat(
+    messages: list[dict], *, context: str, timeout: float = 60.0, **params
+) -> tuple[str | None, str | None]:
+    """One OpenRouter chat completion. Returns ``(content, error)`` like extract_content.
+
+    Six call sites built this request by hand; one of them read
+    ``choices[0].message.content`` raw and turned a null into a 500. Transport
+    errors and non-200s come back as ``error`` too, so callers have exactly one
+    branch to write. ``params`` are passed through (max_tokens, temperature,
+    response_format).
+    """
+    if not settings.openrouter_api_key:
+        return None, "FINVIEW_OPENROUTER_API_KEY not configured."
+    try:
+        resp = httpx.post(
+            OPENROUTER_URL,
+            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+            json={"model": settings.openrouter_model, "messages": messages, **params},
+            timeout=timeout,
+        )
+    except Exception as exc:
+        logger.warning("%s: OpenRouter request failed — %s: %s", context, type(exc).__name__, exc)
+        return None, f"{type(exc).__name__}: {exc}"
+    if resp.status_code != 200:
+        body = str(resp.text)[:300]
+        logger.warning("%s: OpenRouter HTTP %s — %s", context, resp.status_code, body)
+        return None, f"OpenRouter HTTP {resp.status_code}: {body}"
+    try:
+        body = resp.json()
+    except ValueError:
+        logger.warning("%s: OpenRouter 200 with a non-JSON body", context)
+        return None, "The model's response was not JSON"
+    return extract_content(body, context)
 
 
 def extract_content(body: dict, context: str) -> tuple[str | None, str | None]:

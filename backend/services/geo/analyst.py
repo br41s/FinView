@@ -11,9 +11,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-import httpx
 
 from backend.config import settings
+from backend.services.llm_envelope import chat
 
 from .rules import (
     _MAX_BREADTH_FOR_SCOPE,
@@ -103,39 +103,19 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
         '"confidence": 75, "riskScore": 6}'
     )
     try:
-        resp = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": settings.openrouter_model,
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.3,
-                # Reasoning model: this budget covers the chain-of-thought before
-                # the answer. Prod measured 500 reasoning tokens alone, so 500
-                # total left nothing for the JSON. See zone_scorer for the full
-                # post-mortem.
-                "max_tokens": 2000,
-            },
+        content, _ = chat(
+            [{"role": "user", "content": prompt}],
+            context="geo LLM",
             timeout=20.0,
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            # Reasoning model: this budget covers the chain-of-thought before
+            # the answer. Prod measured 500 reasoning tokens alone, so 500
+            # total left nothing for the JSON. See zone_scorer for the full
+            # post-mortem.
+            max_tokens=2000,
         )
-        if resp.status_code != 200:
-            logger.warning("geo LLM HTTP %s", resp.status_code)
-            return None
-        # A 200 doesn't guarantee text: the default model reasons first, and if
-        # max_tokens runs out mid-thought it returns `content: null` with
-        # `finish_reason: length`. json.loads(None) raises, which the outer
-        # except would swallow into a generic "geo LLM analysis failed" — the
-        # exact shape of bug that hid in zone_scorer for a full prod cycle.
-        body = resp.json()
-        choices = body.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            logger.warning(
-                "geo LLM: 200 with no content — finish_reason=%r usage=%s",
-                choices[0].get("finish_reason") if choices else None,
-                body.get("usage"),
-            )
+        if content is None:
             return None
         result = json.loads(content)
         # Cache only successes so transient failures retry next cycle.
@@ -258,25 +238,15 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         '"confidence": 0, "riskScore": 1, "narrative": "2-3 sentences"}'
     )
     try:
-        resp = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": settings.openrouter_model,
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.2,
-                "max_tokens": 2000,
-            },
+        content, _ = chat(
+            [{"role": "user", "content": prompt}],
+            context="geo generative LLM",
             timeout=20.0,
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=2000,
         )
-        if resp.status_code != 200:
-            logger.warning("geo generative LLM HTTP %s", resp.status_code)
-            return None
-        choices = resp.json().get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            logger.warning("geo generative LLM: 200 with no content")
+        if content is None:
             return None
         proposal = _validate_generated(json.loads(content), region_reach(event.region))
     except Exception:

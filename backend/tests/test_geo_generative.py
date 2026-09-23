@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+from backend.services import llm_envelope
 from backend.services.geo import analyst, orchestrator
 from backend.services.geo.advisor import _pageable
 from backend.services.geo.analyst import AnalystResult, _validate_generated, analyze_unmatched
@@ -105,7 +106,7 @@ def test_not_actionable_is_cached_and_costs_one_call(monkeypatch):
 
         return R()
 
-    monkeypatch.setattr(analyst.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_envelope.httpx, "post", fake_post)
     ev = _event()
     assert analyze_unmatched(ev) is None
     assert analyze_unmatched(ev) is None

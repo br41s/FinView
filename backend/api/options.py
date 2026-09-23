@@ -1,10 +1,10 @@
 """Options monitor API — watchlist, snapshots, alerts, agent control."""
 
 import json
+import logging
 import threading
 import time
 
-import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
@@ -31,6 +31,7 @@ from backend.api.schemas import (
 from backend.config import settings
 from backend.database import DbSession
 from backend.services import options_scheduler
+from backend.services.llm_envelope import chat
 from backend.models import (
     BacktestSignal,
     FollowedInstrument,
@@ -50,6 +51,8 @@ from backend.services.options_scraper import fetch_expirations, fetch_options, f
 # ticker → (has_options, timestamp); 24-hour TTL
 _availability_cache: dict[str, tuple[bool, float]] = {}
 _AVAIL_TTL = 86_400  # seconds
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -778,16 +781,12 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
     ]
     messages.append({"role": "user", "content": body.question.strip()})
 
-    response = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-        json={
-            "model": settings.openrouter_model,
-            "max_tokens": 1024,
-            "messages": [{"role": "system", "content": system_prompt}] + messages,
-        },
-        timeout=60.0,
+    answer, error = chat(
+        [{"role": "system", "content": system_prompt}] + messages,
+        context="options ask",
+        max_tokens=1024,
     )
-    response.raise_for_status()
-    answer = response.json()["choices"][0]["message"]["content"] or "Sin respuesta."
+    if answer is None:
+        logger.warning("options ask failed — %s", error)
+        raise HTTPException(status_code=502, detail="El asistente no ha podido responder. Inténtalo de nuevo.")
     return AskOut(answer=answer)

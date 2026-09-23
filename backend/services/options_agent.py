@@ -9,11 +9,10 @@ import logging
 import time
 from datetime import datetime
 
-import httpx
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.services.llm_envelope import extract_content
+from backend.services.llm_envelope import chat
 from backend.database import SessionLocal
 from backend.models import (
     FollowedInstrument,
@@ -307,7 +306,6 @@ def _run_claude_analysis(
     tickers: list[str], alerts: list[dict], unusual: list[dict]
 ) -> tuple[str | None, str | None]:
     """Run AI analysis via OpenRouter. Returns (text, error_message)."""
-    response = None
     try:
         n_high = sum(1 for a in alerts if a.get("severity") == "HIGH")
         has_meff = any(t.endswith(".MC") for t in tickers)
@@ -334,30 +332,21 @@ def _run_claude_analysis(
                 "\n## 6. Contexto MEFF\n[No hay tickers MEFF en este ciclo — sección omitida.]\n",
             )
 
-        response = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": settings.openrouter_model,
-                "max_tokens": 1500,
-                "messages": [
-                    {"role": "system", "content": _CLAUDE_SYSTEM},
-                    {"role": "user", "content": user_content},
-                ],
-            },
-            timeout=60.0,
+        # A failed call must not become (None, None) — that reads to the UI as
+        # "AI not configured" rather than "the call failed".
+        text, error = chat(
+            [
+                {"role": "system", "content": _CLAUDE_SYSTEM},
+                {"role": "user", "content": user_content},
+            ],
+            context="options agent",
+            max_tokens=1500,
         )
-        response.raise_for_status()
-        # A 200 with content: null must not become (None, None) — that reads to
-        # the UI as "AI not configured" rather than "the call failed".
-        text, envelope_error = extract_content(response.json(), "options agent")
         if text is None:
-            logger.error("OpenRouter analysis returned no text — %s", envelope_error)
-            return None, envelope_error
-        return text, None
+            logger.error("OpenRouter analysis failed — %s", error)
+        return text, error
     except Exception as exc:
-        body = response.text[:500] if response is not None else "no response"
-        error_msg = f"{type(exc).__name__}: {exc} | response: {body}"
+        error_msg = f"{type(exc).__name__}: {exc}"
         logger.error("OpenRouter analysis failed — %s", error_msg)
         return None, error_msg
 
@@ -427,7 +416,6 @@ def _run_ticker_claude_analysis(
     ticker: str, summary: dict, alerts: list[dict], unusual: list[dict]
 ) -> tuple[str | None, str | None]:
     """Focused single-ticker AI analysis via OpenRouter. Returns (text, error)."""
-    response = None
     try:
         def _f(v, pct=False):
             # IV/HV/skew from the analyzer are already in percent units (e.g. 87.84),
@@ -456,28 +444,19 @@ def _run_ticker_claude_analysis(
             macro_block=macro_prompt_block(),
         )
 
-        response = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": settings.openrouter_model,
-                "max_tokens": 1500,
-                "messages": [
-                    {"role": "system", "content": _CLAUDE_TICKER_SYSTEM},
-                    {"role": "user", "content": user_content},
-                ],
-            },
-            timeout=60.0,
+        text, error = chat(
+            [
+                {"role": "system", "content": _CLAUDE_TICKER_SYSTEM},
+                {"role": "user", "content": user_content},
+            ],
+            context=f"options agent {ticker}",
+            max_tokens=1500,
         )
-        response.raise_for_status()
-        text, envelope_error = extract_content(response.json(), f"options agent {ticker}")
         if text is None:
-            logger.error("OpenRouter ticker analysis (%s) returned no text — %s", ticker, envelope_error)
-            return None, envelope_error
-        return text, None
+            logger.error("OpenRouter ticker analysis failed (%s) — %s", ticker, error)
+        return text, error
     except Exception as exc:
-        body = response.text[:500] if response is not None else "no response"
-        error_msg = f"{type(exc).__name__}: {exc} | response: {body}"
+        error_msg = f"{type(exc).__name__}: {exc}"
         logger.error("OpenRouter ticker analysis failed (%s) — %s", ticker, error_msg)
         return None, error_msg
 
