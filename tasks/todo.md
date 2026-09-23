@@ -1,5 +1,18 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Fase 5 — splits de módulos — 2026-09-23 (ramas `refactor/phase5-*`)
+
+### Backend (`refactor/phase5-backend-splits`)
+- [ ] `models.py` → paquete `backend/models/` por dominio, `__init__` re-exporta todo.
+- [ ] `import_service.py`: `_run_annual_import` (lock → dup → replace → account → ImportRecord → store → FIFO → supervisor → commit) + `_store_holdings`; los 6 `import_*_report` sólo aportan el almacenamiento.
+- [ ] Diferido: unificar los tres cascade-deletes (semánticas distintas por import/cuenta/usuario; no es un movimiento seguro).
+- [ ] Verificar: ruff, pytest 1096, docs (`README`, `admin-guide`), push, checks, merge, Cloud Run.
+
+### Frontend (`refactor/phase5-options-page`, `refactor/phase5-portfolio-page`)
+- [ ] `options/page.tsx` → `badges.tsx`, `meffTickers.ts`, `OptionsStatsCards`, `WatchlistTab`, `MonitorTab`, hooks si salen limpios.
+- [ ] `portfolio/page.tsx` → `types.ts`, `PortfolioSummaryCards`, `PositionDetailPanel`, `PositionsTable`, `PositionsMobileList`, hooks si salen limpios.
+- [ ] Verificar: tsc, vitest, lint, build, smoke en preview, Vercel verde, merge.
+
 ## Auditoría y refactor — 2026-09-23 (rama `refactor/audit-2026-09-23`)
 
 Informe completo: `tasks/audit-2026-09-23.md`.

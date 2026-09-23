@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 
@@ -599,96 +600,149 @@ def _store_casillas(
     return results
 
 
-def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
-    """Import a parsed TR Tax Report into the database.
+def _store_holdings(
+    db: Session, holdings, account_id: int, import_id: int, fiscal_year: int, broker: Broker
+) -> int:
+    """Persist a broker's year-end holdings as the snapshot rows for this import."""
+    count = 0
+    for h in holdings:
+        db.add(PortfolioHolding(
+            import_id=import_id,
+            account_id=account_id,
+            fiscal_year=fiscal_year,
+            broker=broker.value,
+            isin=h.isin,
+            name=h.name,
+            country=h.country,
+            currency=h.currency,
+            quantity=h.quantity,
+            price=h.price,
+            value_eur=h.value_dec31_eur,
+        ))
+        count += 1
+    return count
 
-    Returns summary dict with counts and status.
+
+def _run_annual_import(
+    db: Session,
+    *,
+    broker: Broker,
+    account_key: str,
+    fiscal_year: int,
+    file_hash: str,
+    filename: str,
+    user_id: int | None,
+    record_count: int,
+    store: Callable[[Account, ImportRecord], dict],
+    source_variant: str | None = None,
+    portfolio_snapshot_complete: bool | None = None,
+    duplicate_message: str = "Este archivo ya fue importado el {when}",
+) -> dict:
+    """The sequence every annual broker import runs; `store` is the broker-specific part.
+
+    lock → exact-duplicate check → same-year replace → account → ImportRecord →
+    ``store(account, import_rec)`` (returns the ``counts`` dict) → cross-broker FIFO →
+    data supervisor → commit. Six importers used to carry their own copy of this
+    and had drifted (holdings were saved for two brokers and only counted for the
+    rest, the duplicate wording differed, the replace step was copied verbatim).
     """
-    lock_import_slot(db, user_id, Broker.TR.value, report.fiscal_year, file_hash)
-    # Check exact file duplicate
-    existing = _check_duplicate(db, file_hash, Broker.TR, user_id)
+    lock_import_slot(db, user_id, broker.value, fiscal_year, file_hash)
+    existing = _check_duplicate(db, file_hash, broker, user_id)
     if existing:
         return {
             "status": "duplicate",
-            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
+            "message": duplicate_message.format(when=existing.imported_at.isoformat()),
             "import_id": existing.id,
         }
 
-    # Check if same broker+year+variant already imported → auto-replace.
-    # Keying on the variant lets a migration year's pre- and post-migration
-    # reports coexist while re-uploading either one still replaces itself.
+    # Same broker+year (+variant) already imported → auto-replace. Keying on the
+    # variant lets a migration year's pre- and post-migration reports coexist
+    # while re-uploading either one still replaces itself.
     replaced_id = None
-    fifo_start_year = report.fiscal_year
-    year_dup = _check_year_duplicate(
-        db, Broker.TR, report.fiscal_year, user_id, report.source_variant
-    )
+    fifo_start_year = fiscal_year
+    year_dup = _check_year_duplicate(db, broker, fiscal_year, user_id, source_variant)
     if year_dup:
         replaced_id = year_dup.id
         deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
         fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
 
-    # One TR account (like every other broker). The client number changes on a
-    # DE→ES migration and the ES report carries none, so keying on it would
-    # fragment one broker into several accounts and break position reconciliation.
-    account = _get_or_create_account(db, Broker.TR, TR_ACCOUNT_ID, user_id)
+    account = _get_or_create_account(db, broker, account_key, user_id)
 
     import_rec = ImportRecord(
         account_id=account.id,
         filename=filename,
-        file_hash=_file_hash_for_storage(db, file_hash, Broker.TR, user_id),
-        broker=Broker.TR.value,
-        fiscal_year=report.fiscal_year,
-        # Section VI transactions are parsed but not stored (see tx_count below);
-        # the count reflects what this import actually wrote.
-        record_count=len(report.dividends) + len(report.capital_gains),
-        source_variant=report.source_variant,
+        file_hash=_file_hash_for_storage(db, file_hash, broker, user_id),
+        broker=broker.value,
+        fiscal_year=fiscal_year,
+        record_count=record_count,
     )
+    if source_variant is not None:
+        import_rec.source_variant = source_variant
+    if portfolio_snapshot_complete is not None:
+        import_rec.portfolio_snapshot_complete = portfolio_snapshot_complete
     db.add(import_rec)
     db.flush()
 
-    # Store dividends
-    div_count = 0
-    for div in report.dividends:
-        _store_transaction(db, div, account.id, import_rec.id)
-        div_count += 1
+    counts = store(account, import_rec)
 
-    # The PDF is fiscal-only: its raw transaction list (legacy Section VI) is
-    # NOT stored. The transaction CSV is the single position ledger, so importing
-    # Section VI too would double-count every trade the CSV already carries
-    # (and leave phantom open lots for positions sold after the report's period).
-    tx_count = 0
-
-    # Store capital gains as FIFO lots
-    lots = _store_capital_gains_as_lots(db, report.capital_gains, account.id, import_rec.id)
-
-    # Store casillas (Modelo 100 + 714)
-    all_casillas = report.casillas_modelo_100 + report.casillas_modelo_714
-    _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR, user_id=user_id, import_id=import_rec.id)
-
-    # Recalculate cross-broker FIFO
     fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
-
-    # Run data supervisor checks
     issues = _run_supervisor(db, import_rec.id)
-
     db.commit()
 
     return {
         "status": "replaced" if replaced_id else "success",
         "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
         "import_id": import_rec.id,
-        "fiscal_year": report.fiscal_year,
-        "counts": {
+        "fiscal_year": fiscal_year,
+        "counts": {**counts, "fifo_cross_broker": fifo_result["lots_created"]},
+        "issues": issues,
+    }
+
+
+def import_tr_report(db: Session, report: TRTaxReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
+    """Import a parsed TR Tax Report into the database.
+
+    Returns summary dict with counts and status.
+    """
+    def store(account: Account, import_rec: ImportRecord) -> dict:
+        div_count = 0
+        for div in report.dividends:
+            _store_transaction(db, div, account.id, import_rec.id)
+            div_count += 1
+
+        # The PDF is fiscal-only: its raw transaction list (legacy Section VI) is
+        # NOT stored. The transaction CSV is the single position ledger, so importing
+        # Section VI too would double-count every trade the CSV already carries
+        # (and leave phantom open lots for positions sold after the report's period).
+        lots = _store_capital_gains_as_lots(db, report.capital_gains, account.id, import_rec.id)
+
+        all_casillas = report.casillas_modelo_100 + report.casillas_modelo_714
+        _store_casillas(db, all_casillas, report.fiscal_year, Broker.TR, user_id=user_id, import_id=import_rec.id)
+        return {
             "dividends": div_count,
-            "transactions": tx_count,
+            "transactions": 0,
             "capital_gains": len(lots),
             "casillas": len(all_casillas),
             "holdings": len(report.holdings),
             "withholdings": len(report.withholdings),
-            "fifo_cross_broker": fifo_result["lots_created"],
-        },
-        "issues": issues,
-    }
+        }
+
+    # One TR account (like every other broker). The client number changes on a
+    # DE→ES migration and the ES report carries none, so keying on it would
+    # fragment one broker into several accounts and break position reconciliation.
+    return _run_annual_import(
+        db,
+        broker=Broker.TR,
+        account_key=TR_ACCOUNT_ID,
+        fiscal_year=report.fiscal_year,
+        file_hash=file_hash,
+        filename=filename,
+        user_id=user_id,
+        # Section VI transactions are parsed but not stored; count what is written.
+        record_count=len(report.dividends) + len(report.capital_gains),
+        source_variant=report.source_variant,
+        store=store,
+    )
 
 
 def import_tr_csv_report(
@@ -968,369 +1022,176 @@ def _compute_broker_casillas(
 
 def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed DEGIRO Annual Report into the database."""
-    lock_import_slot(db, user_id, Broker.DEGIRO.value, report.fiscal_year, file_hash)
-    existing = _check_duplicate(db, file_hash, Broker.DEGIRO, user_id)
-    if existing:
+    def store(account: Account, import_rec: ImportRecord) -> dict:
+        div_count = 0
+        for div in report.dividends:
+            _store_transaction(db, div, account.id, import_rec.id)
+            div_count += 1
+        tx_count = 0
+        for tx in report.transactions:
+            _store_transaction(db, tx, account.id, import_rec.id)
+            tx_count += 1
+        lots = _create_dg_tax_lots(
+            db, report.gains_summary, report.transactions,
+            account.id, import_rec.id, report.fiscal_year,
+        )
+        casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
         return {
-            "status": "duplicate",
-            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
-            "import_id": existing.id,
-        }
-
-    # Check if same broker+year already imported → auto-replace
-    replaced_id = None
-    fifo_start_year = report.fiscal_year
-    year_dup = _check_year_duplicate(db, Broker.DEGIRO, report.fiscal_year, user_id)
-    if year_dup:
-        replaced_id = year_dup.id
-        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
-        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
-
-    account = _get_or_create_account(db, Broker.DEGIRO, "DEGIRO", user_id)
-
-    import_rec = ImportRecord(
-        account_id=account.id,
-        filename=filename,
-        file_hash=_file_hash_for_storage(db, file_hash, Broker.DEGIRO, user_id),
-        broker=Broker.DEGIRO.value,
-        fiscal_year=report.fiscal_year,
-        record_count=len(report.transactions) + len(report.dividends),
-    )
-    db.add(import_rec)
-    db.flush()
-
-    # Store dividends
-    div_count = 0
-    for div in report.dividends:
-        _store_transaction(db, div, account.id, import_rec.id)
-        div_count += 1
-
-    # Store all transactions
-    tx_count = 0
-    for tx in report.transactions:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        tx_count += 1
-
-    # Create TaxLots from gains summary
-    lots = _create_dg_tax_lots(
-        db, report.gains_summary, report.transactions,
-        account.id, import_rec.id, report.fiscal_year,
-    )
-
-    # Compute and store casillas from transaction/lot data
-    casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
-
-    # Recalculate cross-broker FIFO
-    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
-
-    # Run data supervisor checks
-    issues = _run_supervisor(db, import_rec.id)
-
-    db.commit()
-
-    return {
-        "status": "replaced" if replaced_id else "success",
-        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
-        "import_id": import_rec.id,
-        "fiscal_year": report.fiscal_year,
-        "counts": {
             "dividends": div_count,
             "transactions": tx_count,
             "capital_gains": len(lots),
             "casillas": len(casillas),
             "holdings": len(report.holdings),
             "gains_summary": len(report.gains_summary),
-            "fifo_cross_broker": fifo_result["lots_created"],
-        },
-        "issues": issues,
-    }
+        }
+
+    return _run_annual_import(
+        db,
+        broker=Broker.DEGIRO,
+        account_key="DEGIRO",
+        fiscal_year=report.fiscal_year,
+        file_hash=file_hash,
+        filename=filename,
+        user_id=user_id,
+        record_count=len(report.transactions) + len(report.dividends),
+        store=store,
+    )
 
 
 def import_ing_report(db: Session, report: INGAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed ING Información Fiscal PDF into the database."""
-    lock_import_slot(db, user_id, Broker.ING.value, report.fiscal_year, file_hash)
-    existing = _check_duplicate(db, file_hash, Broker.ING, user_id)
-    if existing:
+    def store(account: Account, import_rec: ImportRecord) -> dict:
+        int_count = 0
+        for tx in report.interest:
+            _store_transaction(db, tx, account.id, import_rec.id)
+            int_count += 1
+        div_count = 0
+        for div in report.dividends:
+            _store_transaction(db, div, account.id, import_rec.id)
+            div_count += 1
+        tx_count = 0
+        for tx in report.transactions:
+            _store_transaction(db, tx, account.id, import_rec.id)
+            tx_count += 1
+        hold_count = _store_holdings(
+            db, report.holdings, account.id, import_rec.id, report.fiscal_year, Broker.ING
+        )
+        casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
         return {
-            "status": "duplicate",
-            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
-            "import_id": existing.id,
-        }
-
-    replaced_id = None
-    fifo_start_year = report.fiscal_year
-    year_dup = _check_year_duplicate(db, Broker.ING, report.fiscal_year, user_id)
-    if year_dup:
-        replaced_id = year_dup.id
-        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
-        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
-
-    account = _get_or_create_account(db, Broker.ING, "ING", user_id)
-
-    record_count = len(report.interest) + len(report.dividends) + len(report.transactions)
-    import_rec = ImportRecord(
-        account_id=account.id,
-        filename=filename,
-        file_hash=_file_hash_for_storage(db, file_hash, Broker.ING, user_id),
-        broker=Broker.ING.value,
-        fiscal_year=report.fiscal_year,
-        record_count=record_count,
-        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
-    )
-    db.add(import_rec)
-    db.flush()
-
-    # Store interest
-    int_count = 0
-    for tx in report.interest:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        int_count += 1
-
-    # Store dividends
-    div_count = 0
-    for div in report.dividends:
-        _store_transaction(db, div, account.id, import_rec.id)
-        div_count += 1
-
-    # Store buy/sell transactions
-    tx_count = 0
-    for tx in report.transactions:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        tx_count += 1
-
-    # Store year-end holdings
-    hold_count = 0
-    for h in report.holdings:
-        db.add(PortfolioHolding(
-            import_id=import_rec.id,
-            account_id=account.id,
-            fiscal_year=report.fiscal_year,
-            broker=Broker.ING.value,
-            isin=h.isin,
-            name=h.name,
-            country=h.country,
-            currency=h.currency,
-            quantity=h.quantity,
-            price=h.price,
-            value_eur=h.value_dec31_eur,
-        ))
-        hold_count += 1
-
-    # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.ING, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
-
-    # Recalculate cross-broker FIFO
-    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
-
-    # Run data supervisor checks
-    issues = _run_supervisor(db, import_rec.id)
-
-    db.commit()
-
-    return {
-        "status": "replaced" if replaced_id else "success",
-        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
-        "import_id": import_rec.id,
-        "fiscal_year": report.fiscal_year,
-        "counts": {
             "interest": int_count,
             "dividends": div_count,
             "transactions": tx_count,
             "casillas": len(casillas),
             "holdings": hold_count,
-            "fifo_cross_broker": fifo_result["lots_created"],
-        },
-        "issues": issues,
-    }
+        }
+
+    return _run_annual_import(
+        db,
+        broker=Broker.ING,
+        account_key="ING",
+        fiscal_year=report.fiscal_year,
+        file_hash=file_hash,
+        filename=filename,
+        user_id=user_id,
+        record_count=len(report.interest) + len(report.dividends) + len(report.transactions),
+        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
+        store=store,
+    )
 
 
 def import_bbva_report(db: Session, report: BBVAAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed BBVA annual report (from 1-3 PDFs) into the database."""
-    lock_import_slot(db, user_id, Broker.BBVA.value, report.fiscal_year, file_hash)
-    existing = _check_duplicate(db, file_hash, Broker.BBVA, user_id)
-    if existing:
-        return {
-            "status": "duplicate",
-            "message": f"Estos archivos ya fueron importados el {existing.imported_at.isoformat()}",
-            "import_id": existing.id,
-        }
+    def store(account: Account, import_rec: ImportRecord) -> dict:
+        div_count = 0
+        for div in report.dividends:
+            _store_transaction(db, div, account.id, import_rec.id)
+            div_count += 1
+        tx_count = 0
+        for tx in report.transactions:
+            _store_transaction(db, tx, account.id, import_rec.id)
+            tx_count += 1
 
-    replaced_id = None
-    fifo_start_year = report.fiscal_year
-    year_dup = _check_year_duplicate(db, Broker.BBVA, report.fiscal_year, user_id)
-    if year_dup:
-        replaced_id = year_dup.id
-        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
-        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
+        # Store custody fee as a FEE transaction if > 0
+        fee_count = 0
+        if report.custody_fee > 0:
+            fee_tx = ParsedTransaction(
+                tx_type=TxType.FEE,
+                trade_date=date(report.fiscal_year, 12, 31),
+                isin="",
+                name="Gastos custodia BBVA",
+                country="España",
+                quantity=Decimal("0"),
+                price=Decimal("0"),
+                currency="EUR",
+                gross_amount=report.custody_fee,
+                fees=report.custody_fee,
+                net_amount_eur=-report.custody_fee,
+            )
+            _store_transaction(db, fee_tx, account.id, import_rec.id)
+            fee_count = 1
 
-    account = _get_or_create_account(db, Broker.BBVA, "BBVA", user_id)
-
-    record_count = len(report.dividends) + len(report.transactions)
-    import_rec = ImportRecord(
-        account_id=account.id,
-        filename=filename,
-        file_hash=_file_hash_for_storage(db, file_hash, Broker.BBVA, user_id),
-        broker=Broker.BBVA.value,
-        fiscal_year=report.fiscal_year,
-        record_count=record_count,
-        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
-    )
-    db.add(import_rec)
-    db.flush()
-
-    # Store dividends
-    div_count = 0
-    for div in report.dividends:
-        _store_transaction(db, div, account.id, import_rec.id)
-        div_count += 1
-
-    # Store buy/sell transactions
-    tx_count = 0
-    for tx in report.transactions:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        tx_count += 1
-
-    # Store custody fee as a FEE transaction if > 0
-    fee_count = 0
-    if report.custody_fee > 0:
-        fee_tx = ParsedTransaction(
-            tx_type=TxType.FEE,
-            trade_date=date(report.fiscal_year, 12, 31),
-            isin="",
-            name="Gastos custodia BBVA",
-            country="España",
-            quantity=Decimal("0"),
-            price=Decimal("0"),
-            currency="EUR",
-            gross_amount=report.custody_fee,
-            fees=report.custody_fee,
-            net_amount_eur=-report.custody_fee,
+        hold_count = _store_holdings(
+            db, report.holdings, account.id, import_rec.id, report.fiscal_year, Broker.BBVA
         )
-        _store_transaction(db, fee_tx, account.id, import_rec.id)
-        fee_count = 1
-
-    # Store year-end holdings
-    hold_count = 0
-    for h in report.holdings:
-        db.add(PortfolioHolding(
-            import_id=import_rec.id,
-            account_id=account.id,
-            fiscal_year=report.fiscal_year,
-            broker=Broker.BBVA.value,
-            isin=h.isin,
-            name=h.name,
-            country=h.country,
-            currency=h.currency,
-            quantity=h.quantity,
-            price=h.price,
-            value_eur=h.value_dec31_eur,
-        ))
-        hold_count += 1
-
-    # Compute casillas from stored transactions
-    casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
-
-    # Recalculate cross-broker FIFO
-    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
-
-    # Run data supervisor checks
-    issues = _run_supervisor(db, import_rec.id)
-
-    db.commit()
-
-    return {
-        "status": "replaced" if replaced_id else "success",
-        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
-        "import_id": import_rec.id,
-        "fiscal_year": report.fiscal_year,
-        "counts": {
+        casillas = _compute_broker_casillas(db, Broker.BBVA, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
+        return {
             "dividends": div_count,
             "transactions": tx_count,
             "fees": fee_count,
             "casillas": len(casillas),
             "holdings": hold_count,
-            "fifo_cross_broker": fifo_result["lots_created"],
-        },
-        "issues": issues,
-    }
+        }
+
+    return _run_annual_import(
+        db,
+        broker=Broker.BBVA,
+        account_key="BBVA",
+        fiscal_year=report.fiscal_year,
+        file_hash=file_hash,
+        filename=filename,
+        user_id=user_id,
+        record_count=len(report.dividends) + len(report.transactions),
+        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
+        duplicate_message="Estos archivos ya fueron importados el {when}",
+        store=store,
+    )
 
 
 def import_etoro_report(db: Session, report: EToroAnnualReport, file_hash: str, filename: str, user_id: int | None = None) -> dict:
     """Import a parsed eToro annual account statement into the database."""
-    lock_import_slot(db, user_id, Broker.ETORO.value, report.fiscal_year, file_hash)
-    existing = _check_duplicate(db, file_hash, Broker.ETORO, user_id)
-    if existing:
+    def store(account: Account, import_rec: ImportRecord) -> dict:
+        div_count = 0
+        for div in report.dividends:
+            _store_transaction(db, div, account.id, import_rec.id)
+            div_count += 1
+        # Open positions (buys still held)
+        tx_count = 0
+        for tx in report.transactions:
+            _store_transaction(db, tx, account.id, import_rec.id)
+            tx_count += 1
+        # Closed positions → BUY+SELL pairs + TaxLots with realized P&L
+        lots = _store_capital_gains_as_lots(
+            db, report.closed_positions, account.id, import_rec.id
+        )
+        tx_count += len(lots) * 2
+        casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
         return {
-            "status": "duplicate",
-            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
-            "import_id": existing.id,
-        }
-
-    replaced_id = None
-    fifo_start_year = report.fiscal_year
-    year_dup = _check_year_duplicate(db, Broker.ETORO, report.fiscal_year, user_id)
-    if year_dup:
-        replaced_id = year_dup.id
-        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
-        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
-
-    account = _get_or_create_account(db, Broker.ETORO, "ETORO", user_id)
-
-    record_count = (
-        len(report.dividends) + len(report.transactions) + len(report.closed_positions) * 2
-    )
-    import_rec = ImportRecord(
-        account_id=account.id,
-        filename=filename,
-        file_hash=_file_hash_for_storage(db, file_hash, Broker.ETORO, user_id),
-        broker=Broker.ETORO.value,
-        fiscal_year=report.fiscal_year,
-        record_count=record_count,
-    )
-    db.add(import_rec)
-    db.flush()
-
-    # Dividends
-    div_count = 0
-    for div in report.dividends:
-        _store_transaction(db, div, account.id, import_rec.id)
-        div_count += 1
-
-    # Open positions (buys still held)
-    tx_count = 0
-    for tx in report.transactions:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        tx_count += 1
-
-    # Closed positions → BUY+SELL pairs + TaxLots with realized P&L
-    lots = _store_capital_gains_as_lots(
-        db, report.closed_positions, account.id, import_rec.id
-    )
-    tx_count += len(lots) * 2
-
-    casillas = _compute_broker_casillas(db, Broker.ETORO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
-
-    # Recalculate cross-broker FIFO
-    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
-
-    # Run data supervisor checks
-    issues = _run_supervisor(db, import_rec.id)
-
-    db.commit()
-
-    return {
-        "status": "replaced" if replaced_id else "success",
-        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
-        "import_id": import_rec.id,
-        "fiscal_year": report.fiscal_year,
-        "counts": {
             "dividends": div_count,
             "transactions": tx_count,
             "casillas": len(casillas),
-            "fifo_cross_broker": fifo_result["lots_created"],
-        },
-        "issues": issues,
-    }
+        }
+
+    return _run_annual_import(
+        db,
+        broker=Broker.ETORO,
+        account_key="ETORO",
+        fiscal_year=report.fiscal_year,
+        file_hash=file_hash,
+        filename=filename,
+        user_id=user_id,
+        record_count=len(report.dividends) + len(report.transactions) + len(report.closed_positions) * 2,
+        store=store,
+    )
 
 
 def _create_ibkr_tax_lots(
@@ -1415,116 +1276,74 @@ def import_ibkr_report(
     db: Session, report: IBKRAnnualReport, file_hash: str, filename: str, user_id: int | None = None
 ) -> dict:
     """Import a parsed IBKR Activity Statement into the database."""
-    lock_import_slot(db, user_id, Broker.IBKR.value, report.fiscal_year, file_hash)
-    existing = _check_duplicate(db, file_hash, Broker.IBKR, user_id)
-    if existing:
+    def store(account: Account, import_rec: ImportRecord) -> dict:
+        div_count = 0
+        for div in report.dividends:
+            _store_transaction(db, div, account.id, import_rec.id)
+            div_count += 1
+        int_count = 0
+        for intr in report.interest:
+            _store_transaction(db, intr, account.id, import_rec.id)
+            int_count += 1
+        # Individual trades (informational)
+        tx_count = 0
+        for tx in report.trades:
+            _store_transaction(db, tx, account.id, import_rec.id)
+            tx_count += 1
+        # TaxLots from IBKR's realized P/L (source of truth)
+        lots = _create_ibkr_tax_lots(
+            db, report.realized_gains, account.id, import_rec.id, report.fiscal_year
+        )
+        # Detected option assignments (informational for IRPF audit)
+        for a in report.assignments:
+            db.add(OptionAssignmentRecord(
+                import_id=import_rec.id,
+                fiscal_year=report.fiscal_year,
+                assignment_date=a.assignment_date,
+                underlying=a.underlying,
+                option_symbol=a.option_symbol,
+                option_type="PUT" if a.option_type == "P" else "CALL",
+                strike=a.strike,
+                stock_quantity=a.stock_quantity,
+                stock_isin=a.stock_isin,
+                premium_eur=a.premium_eur,
+            ))
+        casillas = _compute_broker_casillas(
+            db, Broker.IBKR, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id
+        )
         return {
-            "status": "duplicate",
-            "message": f"Este archivo ya fue importado el {existing.imported_at.isoformat()}",
-            "import_id": existing.id,
-        }
-
-    # Check if same broker+year already imported → auto-replace
-    replaced_id = None
-    fifo_start_year = report.fiscal_year
-    year_dup = _check_year_duplicate(db, Broker.IBKR, report.fiscal_year, user_id)
-    if year_dup:
-        replaced_id = year_dup.id
-        deleted_from_year = _delete_import_data(db, year_dup.id, recalculate=False)
-        fifo_start_year = min(fifo_start_year, deleted_from_year or fifo_start_year)
-
-    account = _get_or_create_account(db, Broker.IBKR, report.account_id, user_id)
-
-    import_rec = ImportRecord(
-        account_id=account.id,
-        filename=filename,
-        file_hash=_file_hash_for_storage(db, file_hash, Broker.IBKR, user_id),
-        broker=Broker.IBKR.value,
-        fiscal_year=report.fiscal_year,
-        record_count=(
-            len(report.trades) + len(report.dividends) + len(report.interest)
-        ),
-    )
-    db.add(import_rec)
-    db.flush()
-
-    # Store dividends
-    div_count = 0
-    for div in report.dividends:
-        _store_transaction(db, div, account.id, import_rec.id)
-        div_count += 1
-
-    # Store interest
-    int_count = 0
-    for intr in report.interest:
-        _store_transaction(db, intr, account.id, import_rec.id)
-        int_count += 1
-
-    # Store individual trades (informational)
-    tx_count = 0
-    for tx in report.trades:
-        _store_transaction(db, tx, account.id, import_rec.id)
-        tx_count += 1
-
-    # Create TaxLots from IBKR's realized P/L (source of truth)
-    lots = _create_ibkr_tax_lots(
-        db, report.realized_gains, account.id, import_rec.id, report.fiscal_year
-    )
-
-    # Store detected option assignments (informational for IRPF audit)
-    for a in report.assignments:
-        db.add(OptionAssignmentRecord(
-            import_id=import_rec.id,
-            fiscal_year=report.fiscal_year,
-            assignment_date=a.assignment_date,
-            underlying=a.underlying,
-            option_symbol=a.option_symbol,
-            option_type="PUT" if a.option_type == "P" else "CALL",
-            strike=a.strike,
-            stock_quantity=a.stock_quantity,
-            stock_isin=a.stock_isin,
-            premium_eur=a.premium_eur,
-        ))
-
-    # Compute casillas from the stored data
-    casillas = _compute_broker_casillas(
-        db, Broker.IBKR, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id
-    )
-
-    # Recalculate cross-broker FIFO
-    fifo_result = recalculate_fifo_from_year(db, fifo_start_year, user_id=user_id)
-
-    # Run data supervisor checks
-    issues = _run_supervisor(db, import_rec.id)
-
-    db.commit()
-
-    return {
-        "status": "replaced" if replaced_id else "success",
-        "message": f"Reemplazó importación anterior (ID {replaced_id})" if replaced_id else None,
-        "import_id": import_rec.id,
-        "fiscal_year": report.fiscal_year,
-        "counts": {
             "dividends": div_count,
             "interest": int_count,
             "transactions": tx_count,
             "capital_gains": len(lots),
             "casillas": len(casillas),
             "holdings": len(report.holdings),
-            "fifo_cross_broker": fifo_result["lots_created"],
             "option_assignments": len(report.assignments),
-        },
-        "issues": issues,
-        "assignments": [
-            {
-                "date": a.assignment_date.isoformat(),
-                "underlying": a.underlying,
-                "option": a.option_symbol,
-                "type": "PUT" if a.option_type == "P" else "CALL",
-                "strike": str(a.strike),
-                "shares": str(a.stock_quantity),
-                "premium_eur": str(a.premium_eur),
-            }
-            for a in report.assignments
-        ],
-    }
+        }
+
+    result = _run_annual_import(
+        db,
+        broker=Broker.IBKR,
+        account_key=report.account_id,
+        fiscal_year=report.fiscal_year,
+        file_hash=file_hash,
+        filename=filename,
+        user_id=user_id,
+        record_count=len(report.trades) + len(report.dividends) + len(report.interest),
+        store=store,
+    )
+    if result["status"] == "duplicate":
+        return result
+    result["assignments"] = [
+        {
+            "date": a.assignment_date.isoformat(),
+            "underlying": a.underlying,
+            "option": a.option_symbol,
+            "type": "PUT" if a.option_type == "P" else "CALL",
+            "strike": str(a.strike),
+            "shares": str(a.stock_quantity),
+            "premium_eur": str(a.premium_eur),
+        }
+        for a in report.assignments
+    ]
+    return result
