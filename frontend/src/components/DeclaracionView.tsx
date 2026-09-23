@@ -25,24 +25,30 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
   const [profile, setProfile] = useState<FiscalProfile | null>(null);
   const [manual, setManual] = useState<ManualSavingsIncome[]>([]);
   const [estimate, setEstimate] = useState<SavingsEstimate | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The year whose initial load has settled. "Loading" is derived from it, so
+  // a fiscalYear change shows the spinner without a synchronous reset in the
+  // effect, and a late response for another year cannot end this year's load.
+  const [loadedYear, setLoadedYear] = useState<number | null>(null);
+  const loading = loadedYear !== fiscalYear;
   const [saving, setSaving] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const [p, m, e] = await Promise.all([
-      api.fiscalProfile(fiscalYear) as Promise<FiscalProfile>,
-      api.manualIncome(fiscalYear) as Promise<ManualSavingsIncome[]>,
-      api.savingsEstimate(fiscalYear),
-    ]);
-    setProfile(p);
-    setManual(m);
-    setEstimate(e);
-  }, [fiscalYear]);
+  const refresh = useCallback(
+    () =>
+      Promise.all([
+        api.fiscalProfile(fiscalYear) as Promise<FiscalProfile>,
+        api.manualIncome(fiscalYear) as Promise<ManualSavingsIncome[]>,
+        api.savingsEstimate(fiscalYear),
+      ]).then(([p, m, e]) => {
+        setProfile(p);
+        setManual(m);
+        setEstimate(e);
+      }),
+    [fiscalYear],
+  );
 
   useEffect(() => {
-    setLoading(true);
-    refresh().finally(() => setLoading(false));
-  }, [refresh]);
+    refresh().finally(() => setLoadedYear(fiscalYear));
+  }, [refresh, fiscalYear]);
 
   async function saveProfile() {
     if (!profile) return;

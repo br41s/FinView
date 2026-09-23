@@ -36,8 +36,9 @@ export function GeoIntelSection() {
   const [accuracy, setAccuracy] = useState<GeoAccuracy | null>(null);
   const pollTick = useRef(0);
 
+  // Does not flip phase to "loading" itself: on mount it already is, and the
+  // retry button sets it before calling this.
   const load = useCallback(() => {
-    setPhase("loading");
     api.geo
       .signals("all")
       .then((data) => {
@@ -140,7 +141,10 @@ export function GeoIntelSection() {
   // server and the line simply stays absent when the endpoint is unreachable.
   const accuracyLine = useMemo(() => formatAccuracyLine(accuracy), [accuracy]);
 
-  const retry = load;
+  const retry = useCallback(() => {
+    setPhase("loading");
+    load();
+  }, [load]);
 
   const runCycle = useCallback(async () => {
     setRunning(true);

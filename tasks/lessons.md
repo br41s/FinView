@@ -170,3 +170,25 @@ habían sido integrados bajo `frontend/src/components/geo-intel/` y evolucionado
 ruta definitiva, historial y equivalencia funcional. La ausencia de la ruta
 original en `main` no demuestra que el contenido esté pendiente.
 - **Docs go in the PR, not in a question afterwards** (2026-09-21): shipped 8 PRs and left CLAUDE.md test counts stale until asked. Rule changed in workspace + global CLAUDE.md: scan and update stale docs before opening the PR; never ask whether to.
+
+## Un fallo de build en `.next` con ENOTEMPTY es Finder, no el código
+
+**Patrón:** `pnpm build` murió dos veces con `ENOTEMPTY: directory not empty, rmdir
+'.next/server/app'` durante la auditoría del 2026-09-23. Se gastaron dos ciclos antes
+de ver que el directorio contenía un `.DS_Store` recién escrito por Finder mientras
+Next limpiaba.
+
+**Regla:** si el build falla SOLO con ENOTEMPTY sobre `.next/...`, relanzar una vez
+antes de investigar. Un fallo real se reproduce; este no.
+
+## Lo que un subagente deja en el índice viaja en tu siguiente commit
+
+**Patrón:** un subagente de frontend hizo `git rm` de nueve ficheros muertos mientras yo
+committeaba backend con `git add <rutas>` explícitas. `git commit` commitea el índice
+completo: las nueve eliminaciones aterrizaron dentro de un `fix(imports)` ajeno y hubo
+que reagrupar con stash + reset --soft.
+
+**Regla:** a los subagentes que comparten el worktree se les dice "no stagees, no hagas
+`git rm`; reporta las eliminaciones". Y antes de cada commit propio:
+`git status --short | grep '^[ADMR] '` — si hay algo staged que no es tuyo,
+`git restore --staged` antes de commitear.

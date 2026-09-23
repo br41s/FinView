@@ -24,24 +24,28 @@ const DIR_COLORS = {
  * it would be prop drilling. `enable_zonas` on the backend is idempotent-ish
  * (409 when already followed), so a double click is harmless.
  */
+type AddState = "idle" | "busy" | "added" | "error";
+
 function AddToZonasButton({ symbol }: { symbol: string }) {
-  const [state, setState] = useState<"idle" | "checking" | "busy" | "added" | "error">("checking");
+  // State is stored with the symbol it belongs to: a different symbol reads as
+  // "checking" by derivation, with no synchronous reset inside the effect.
+  const [membership, setMembership] = useState<{ symbol: string; state: AddState } | null>(null);
+  const state = membership?.symbol === symbol ? membership.state : "checking";
 
   useEffect(() => {
     let cancelled = false;
-    setState("checking");
     api.zonasClav
       .watchlist()
       .then((items) => {
         if (cancelled) return;
         const already = items.some((i) => i.ticker.toUpperCase() === symbol.toUpperCase());
-        setState(already ? "added" : "idle");
+        setMembership({ symbol, state: already ? "added" : "idle" });
       })
       // Can't tell whether it's already there — offer the button anyway. The
       // backend 409s on a duplicate, which is a better failure than hiding it.
       .catch((e) => {
         bestEffort("zonas-clave watchlist membership")(e);
-        if (!cancelled) setState("idle");
+        if (!cancelled) setMembership({ symbol, state: "idle" });
       });
     return () => {
       cancelled = true;
@@ -49,12 +53,12 @@ function AddToZonasButton({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   const add = useCallback(async () => {
-    setState("busy");
+    setMembership({ symbol, state: "busy" });
     try {
       await api.zonasClav.addTicker(symbol);
-      setState("added");
+      setMembership({ symbol, state: "added" });
     } catch {
-      setState("error");
+      setMembership({ symbol, state: "error" });
     }
   }, [symbol]);
 

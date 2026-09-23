@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ChevronDown,
@@ -144,7 +144,6 @@ export default function ZonasClavePage() {
 
   // Initial load
   useEffect(() => {
-    setError(null);
     Promise.all([
       api.zonasClav.watchlist(),
       api.zonasClav.allAnalyses(),
@@ -234,20 +233,27 @@ export default function ZonasClavePage() {
     }
   }
 
-  async function handleRefresh(ticker: string) {
+  // The request and its bookkeeping. The caller marks the ticker busy first:
+  // handlers do it inline, the 5Y/MAX auto-refresh does it during render.
+  const runAnalysis = useCallback(
+    (ticker: string) =>
+      api.zonasClav
+        .triggerAnalysis(ticker)
+        .then((result) => setAnalyses((prev) => ({ ...prev, [ticker]: result })))
+        .catch((e) => console.error("Analysis failed:", e))
+        .finally(() =>
+          setAnalyzing((prev) => {
+            const next = new Set(prev);
+            next.delete(ticker);
+            return next;
+          }),
+        ),
+    [],
+  );
+
+  function handleRefresh(ticker: string) {
     setAnalyzing((prev) => new Set(prev).add(ticker));
-    try {
-      const result = await api.zonasClav.triggerAnalysis(ticker);
-      setAnalyses((prev) => ({ ...prev, [ticker]: result }));
-    } catch (e) {
-      console.error("Analysis failed:", e);
-    } finally {
-      setAnalyzing((prev) => {
-        const next = new Set(prev);
-        next.delete(ticker);
-        return next;
-      });
-    }
+    return runAnalysis(ticker);
   }
 
   async function handleRefreshAll() {
@@ -308,12 +314,12 @@ export default function ZonasClavePage() {
 
   // Debounced live search against Yahoo Finance (any ticker worldwide, not just
   // portfolio holdings) — mirrors the alt-investments CNMV search box pattern.
+  // Below two characters there is no remote search: drop the previous matches
+  // at once (adjusting state during render) so nothing stale lingers.
+  if (searchInput.trim().length < 2 && remoteMatches.length > 0) setRemoteMatches([]);
   useEffect(() => {
     const q = searchInput.trim();
-    if (q.length < 2) {
-      setRemoteMatches([]);
-      return;
-    }
+    if (q.length < 2) return;
     const handle = setTimeout(() => {
       api.zonasClav
         .search(q)
@@ -354,25 +360,53 @@ export default function ZonasClavePage() {
   const isAnalyzing = selectedTicker ? analyzing.has(selectedTicker) : false;
 
   // When 5Y/MAX is selected and stored data covers < 4 years, auto-refresh to
-  // pull the full 20y history the analyzer now fetches.
+  // pull the full 20y history the analyzer now fetches. The (ticker, scope)
+  // pair being fetched is recorded during render — React's "adjust state on
+  // change" pattern — so the ticker is marked busy (spinner, no double fire)
+  // before the effect below starts the request; the effect itself sets no
+  // state. A pair fires once: after a failed refresh the data is still short,
+  // and the record is what stops it from firing again until scope or ticker
+  // changes. It is cleared as soon as the full history is in (or another
+  // scope/ticker no longer needs it) so a later visit re-evaluates.
+  // Coverage is measured from the first bar to when the analysis ran (not to
+  // now — render must stay pure, and a stale analysis does not gain history by
+  // ageing).
+  const firstBar = analysis?.price_history[0]?.date;
+  const yearsStored =
+    analysis && firstBar
+      ? (new Date(analysis.timestamp).getTime() - new Date(firstBar + "T12:00:00").getTime()) /
+        (365.25 * 24 * 3600 * 1000)
+      : null;
+  const autoRefreshTicker =
+    selectedTicker !== null && (scope === "5Y" || scope === "MAX") && yearsStored !== null && yearsStored < 4
+      ? selectedTicker
+      : null;
+  const [autoRefresh, setAutoRefresh] = useState<{ ticker: string; scope: Scope } | null>(null);
+  if (autoRefreshTicker !== null) {
+    if (
+      !analyzing.has(autoRefreshTicker) &&
+      (autoRefresh?.ticker !== autoRefreshTicker || autoRefresh.scope !== scope)
+    ) {
+      setAutoRefresh({ ticker: autoRefreshTicker, scope });
+      setAnalyzing((prev) => new Set(prev).add(autoRefreshTicker));
+    }
+  } else if (autoRefresh !== null) {
+    setAutoRefresh(null);
+  }
   useEffect(() => {
-    if (!selectedTicker || !analysis || isAnalyzing) return;
-    if (scope !== "5Y" && scope !== "MAX") return;
-    const firstBar = analysis.price_history[0]?.date;
-    if (!firstBar) return;
-    const yearsStored =
-      (Date.now() - new Date(firstBar + "T12:00:00").getTime()) / (365.25 * 24 * 3600 * 1000);
-    if (yearsStored < 4) handleRefresh(selectedTicker);
-  }, [scope, selectedTicker]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (autoRefresh) runAnalysis(autoRefresh.ticker);
+  }, [autoRefresh, runAnalysis]);
 
   // 1D/1W/1M get real intraday candles from yfinance instead of slicing the
   // stored daily analysis down to a handful of bars. S/R zone lines (from the
   // daily analysis) stay overlaid regardless — they're a daily/weekly concept.
+  // Leaving the intraday scopes drops their bars at once (adjusted during
+  // render), so coming back starts from an empty chart until the fetch lands.
+  if (scope !== "1D" && scope !== "1W" && scope !== "1M" && intradayBars.length > 0) {
+    setIntradayBars([]);
+  }
   useEffect(() => {
-    if (!selectedTicker || (scope !== "1D" && scope !== "1W" && scope !== "1M")) {
-      setIntradayBars([]);
-      return;
-    }
+    if (!selectedTicker || (scope !== "1D" && scope !== "1W" && scope !== "1M")) return;
     let cancelled = false;
     const { period, interval } = SCOPE_PARAMS[scope];
     api.charts
@@ -457,7 +491,14 @@ export default function ZonasClavePage() {
           <CardContent className="py-16 text-center space-y-3">
             <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
             <p className="text-sm text-muted-foreground">{error}</p>
-            <Button variant="outline" size="sm" onClick={() => setRetryKey((k) => k + 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setError(null);
+                setRetryKey((k) => k + 1);
+              }}
+            >
               Reintentar
             </Button>
           </CardContent>

@@ -1,17 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { HorizonArt } from './HorizonArt';
 import { PublicNav } from '@/components/PublicNav';
 import styles from './intro.module.css';
 
-export function FinviewIntro() {
-  const [replayCount, setReplayCount] = useState(0);
-  const textKey = `intro-${replayCount}`;
+// Server/hydration render as 0 (matching the HTML), the mounted client as 1:
+// the key change remounts <main> once after hydration so the CSS intro
+// animation replays, exactly as the old mount-time increment did.
+const subscribeNoop = () => () => {};
 
-  useEffect(() => {
-    setReplayCount(c => c + 1);
-  }, []);
+export function FinviewIntro() {
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
+  const [replays, setReplays] = useState(0);
+  const replayCount = replays + (mounted ? 1 : 0);
+  const textKey = `intro-${replayCount}`;
 
   return (
     <div className={styles.page}>
@@ -51,7 +58,7 @@ export function FinviewIntro() {
 
       <button
         type="button"
-        onClick={() => setReplayCount(c => c + 1)}
+        onClick={() => setReplays(c => c + 1)}
         className={styles.replay}
       >
         ↺ repetir

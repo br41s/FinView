@@ -27,34 +27,37 @@ function num(v: number): string {
 }
 
 export function FundamentalsCard({ symbol }: { symbol: string }) {
-  const [data, setData] = useState<Fundamentals | null>(null);
-  const [state, setState] = useState<"loading" | "done">("loading");
+  // The result is stored with the symbol it answers, so a symbol change reads
+  // as "loading" by derivation rather than a synchronous reset in the effect.
+  const [loaded, setLoaded] = useState<{ symbol: string; data: Fundamentals | null } | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
-    setState("loading");
-    setData(null);
     api.charts
       .fundamentals(symbol)
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) setLoaded({ symbol, data: d });
       })
       // Best-effort by design: a failure and "this ticker has no fundamentals"
       // are the same outcome here — show nothing.
-      .catch(bestEffort("fundamentals for the signal panel"))
-      .finally(() => {
-        if (!cancelled) setState("done");
+      .catch((e) => {
+        bestEffort("fundamentals for the signal panel")(e);
+        if (!cancelled) setLoaded({ symbol, data: null });
       });
     return () => {
       cancelled = true;
     };
   }, [symbol]);
 
-  if (state === "loading") {
+  const current = loaded?.symbol === symbol ? loaded : null;
+  if (!current) {
     return (
       <p className="text-[11px] text-[rgba(31,27,22,0.4)]">Cargando fundamentales…</p>
     );
   }
+  const data = current.data;
   if (!data || Object.keys(data).length === 0) return null;
 
   const rows: [string, string][] = [];
