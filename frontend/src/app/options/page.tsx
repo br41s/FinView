@@ -35,6 +35,7 @@ import { AnalysisTab } from "./AnalysisTab";
 import { BacktestTab } from "./BacktestTab";
 import { AlignmentTag, BreakProbability, DirBadge, severityColor } from "./badges";
 import { MEFF_TICKERS } from "./meffTickers";
+import type { Alert, AgentStatus, Position, Snapshot, Unusual, WatchlistItem } from "./types";
 import { fmt, fmtDateTime } from "@/lib/format";
 import { useBacktest } from "./useBacktest";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
@@ -50,80 +51,6 @@ import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import { OpcionesTab } from "@/components/instrument/OpcionesTab";
-
-// ── Types ───────────────────────────────────────────────────────────
-
-interface Position {
-  isin: string;
-  ticker: string | null;
-  name: string;
-  country: string | null;
-  broker: string;
-  quantity: number;
-  avg_cost_eur: number;
-  total_cost_eur: number;
-  current_price_eur: number | null;
-  market_value_eur: number | null;
-  unrealized_pl_eur: number | null;
-  unrealized_pl_pct: number | null;
-  weight_pct: number | null;
-}
-
-interface Snapshot {
-  id: number;
-  timestamp: string;
-  ticker: string;
-  current_price: string | number;
-  call_volume: number;
-  put_volume: number;
-  put_call_ratio_volume: string | number | null;
-  avg_call_iv: string | number | null;
-  avg_put_iv: string | number | null;
-  historical_volatility: string | number | null;
-  iv_skew: string | number | null;
-  market_sentiment: string | null;
-}
-
-interface Alert {
-  id: number;
-  timestamp: string;
-  ticker: string;
-  alert_type: string;
-  message: string;
-  severity: string;
-  acknowledged: boolean;
-  regime_alignment?: string | null;
-}
-
-interface Unusual {
-  id: number;
-  timestamp: string;
-  ticker: string;
-  option_type: string;
-  strike: string | number;
-  expiration: string;
-  volume: number;
-  open_interest: number;
-  vol_oi_ratio: string | number;
-  implied_volatility: string | number | null;
-  last_price: string | number | null;
-}
-
-interface AgentStatus {
-  running: boolean;
-  external_scheduler: boolean;
-  interval_minutes: number;
-  last_cycle: string | null;
-  total_cycles: number;
-}
-
-interface WatchlistItem {
-  id: number;
-  ticker: string;
-  name: string;
-  enabled: boolean;
-  created_at: string;
-}
 
 // ── Component ───────────────────────────────────────────────────────
 
