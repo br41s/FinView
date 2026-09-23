@@ -455,7 +455,8 @@ class TestMigrationYearCoexistence:
     side by side and their casillas aggregate instead of overwriting."""
 
     def _import_both(self, db, user_id):
-        from backend.importers.tr import compute_file_hash, parse_tr_tax_report
+        from backend.importers.base import file_sha256 as compute_file_hash
+        from backend.importers.tr import parse_tr_tax_report
         from backend.services.import_service import import_tr_report
 
         de = parse_tr_tax_report(TR_DE_PDF)
@@ -519,8 +520,9 @@ class TestPdfCsvComposition:
     from the PDFs, cost basis from the CSV, with no income double-counting."""
 
     def _import_all(self, db, user_id):
-        from backend.importers.tr import compute_file_hash as ph, parse_tr_tax_report
-        from backend.importers.tr_csv import compute_file_hash as ch, parse_tr_csv
+        from backend.importers.base import file_sha256 as ph, file_sha256 as ch
+        from backend.importers.tr import parse_tr_tax_report
+        from backend.importers.tr_csv import parse_tr_csv
         from backend.services.import_service import import_tr_csv_report, import_tr_report
 
         import_tr_report(db, parse_tr_tax_report(TR_DE_PDF), ph(TR_DE_PDF), "de.pdf", user_id)
@@ -598,8 +600,9 @@ class TestLegacyPdfNoLedgerDoubleCount:
     contributing its year's casillas."""
 
     def _import(self, db, user_id):
-        from backend.importers.tr import compute_file_hash as ph, parse_tr_tax_report
-        from backend.importers.tr_csv import compute_file_hash as ch, parse_tr_csv
+        from backend.importers.base import file_sha256 as ph, file_sha256 as ch
+        from backend.importers.tr import parse_tr_tax_report
+        from backend.importers.tr_csv import parse_tr_csv
         from backend.services.import_service import import_tr_csv_report, import_tr_report
 
         import_tr_report(db, parse_tr_tax_report(TR_2024_PDF), ph(TR_2024_PDF), "2024.pdf", user_id)

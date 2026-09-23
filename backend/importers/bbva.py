@@ -8,7 +8,6 @@ BBVA provides 3 separate PDFs per fiscal year:
 Each PDF is parsed independently and combined into a single BBVAAnnualReport.
 """
 
-import hashlib
 import re
 from datetime import date
 from decimal import Decimal
@@ -22,6 +21,7 @@ from backend.importers.base import (
     ParsedTransaction,
     TxType,
     country_from_isin,
+    parse_eur_decimal,
 )
 
 _D = Decimal
@@ -37,12 +37,6 @@ _KNOWN_ISINS: dict[str, str] = {
 
 
 # ── Number helpers ─────────────────────────────────────────────────────
-
-
-def _parse_decimal(s: str) -> Decimal:
-    """European format: 14.903,60 → 14903.60; also handles '8,020000'."""
-    s = s.strip().rstrip("€").strip()
-    return _D(s.replace(".", "").replace(",", "."))
 
 
 def _parse_date_short(s: str) -> date:
@@ -142,10 +136,10 @@ def _parse_operaciones(text: str, fiscal_year: int, isin_map: dict[str, str]) ->
         trade_date = _parse_date_short(m.group(1))
         op_code = m.group(2)
         name = m.group(3).strip()
-        qty = _parse_decimal(m.group(4))
-        bruto = _parse_decimal(m.group(5))
-        gastos = _parse_decimal(m.group(6)) if m.group(6) else _D("0")
-        efectivo = _parse_decimal(m.group(7))
+        qty = parse_eur_decimal(m.group(4))
+        bruto = parse_eur_decimal(m.group(5))
+        gastos = parse_eur_decimal(m.group(6)) if m.group(6) else _D("0")
+        efectivo = parse_eur_decimal(m.group(7))
 
         if op_code in _BUY_CODES:
             tx_type = TxType.BUY
@@ -178,8 +172,8 @@ def _parse_dividendos(text: str, fiscal_year: int, isin_map: dict[str, str]) -> 
     for m in DIV_RE.finditer(text):
         name = m.group(1).strip()
         payment_date = _parse_date_long(m.group(2))
-        gross = _parse_decimal(m.group(4))
-        withholding = _parse_decimal(m.group(5))
+        gross = parse_eur_decimal(m.group(4))
+        withholding = parse_eur_decimal(m.group(5))
 
         isin = isin_map.get(name.upper(), _KNOWN_ISINS.get(name.upper(), ""))
 
@@ -203,7 +197,7 @@ def _parse_dividendos(text: str, fiscal_year: int, isin_map: dict[str, str]) -> 
     custody_fee = _D("0")
     cfm = CUSTODY_FEE_RE.search(text)
     if cfm:
-        custody_fee = _parse_decimal(cfm.group(1))
+        custody_fee = parse_eur_decimal(cfm.group(1))
 
     return results, custody_fee
 
@@ -216,9 +210,9 @@ def _parse_patrimonio(text: str, fiscal_year: int) -> tuple[list[ParsedPortfolio
     for m in HOLD_RE.finditer(text):
         isin = m.group(1)
         name = m.group(2).strip()
-        qty = _parse_decimal(m.group(3))
-        price = _parse_decimal(m.group(4))
-        value = _parse_decimal(m.group(5))
+        qty = parse_eur_decimal(m.group(3))
+        price = parse_eur_decimal(m.group(4))
+        value = parse_eur_decimal(m.group(5))
 
         isin_map[name.upper()] = isin
 
@@ -288,10 +282,3 @@ def parse_bbva_pdfs(pdf_paths: list[Path]) -> BBVAAnnualReport:
     )
 
 
-def compute_file_hash(pdf_paths: list[Path]) -> str:
-    """Compute a combined SHA-256 hash of all BBVA PDFs."""
-    h = hashlib.sha256()
-    for path in sorted(pdf_paths):
-        with open(path, "rb") as f:
-            h.update(f.read())
-    return h.hexdigest()

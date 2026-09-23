@@ -12,31 +12,14 @@ from sqlalchemy import and_, or_
 from backend.api.auth import CurrentUser
 from backend.api.schemas import DataIssueOut, ImportRecordOut, ImportResult, ResolveIssueRequest
 from backend.database import DbSession
-from backend.importers.bbva import (
-    compute_file_hash as bbva_compute_hash,
-    parse_bbva_pdfs,
-)
-from backend.importers.dg import (
-    compute_file_hash as dg_compute_hash,
-    parse_dg_annual_report,
-)
-from backend.importers.etoro import (
-    compute_file_hash as etoro_compute_hash,
-    parse_etoro_statement,
-)
-from backend.importers.ibkr import (
-    compute_file_hash as ibkr_compute_hash,
-    parse_ibkr_activity_statement,
-)
-from backend.importers.ing import (
-    compute_file_hash as ing_compute_hash,
-    parse_ing_report,
-)
-from backend.importers.tr import compute_file_hash, parse_tr_tax_report
-from backend.importers.tr_csv import (
-    compute_file_hash as tr_csv_compute_hash,
-    parse_tr_csv,
-)
+from backend.importers.base import file_sha256
+from backend.importers.bbva import parse_bbva_pdfs
+from backend.importers.dg import parse_dg_annual_report
+from backend.importers.etoro import parse_etoro_statement
+from backend.importers.ibkr import parse_ibkr_activity_statement
+from backend.importers.ing import parse_ing_report
+from backend.importers.tr import parse_tr_tax_report
+from backend.importers.tr_csv import parse_tr_csv
 from backend.models import Account, DataIssue, ImportRecord
 from backend.services.billing_service import count_imports_this_month, import_allowance
 from backend.services.import_service import (
@@ -160,12 +143,12 @@ def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
             return _run_import(
                 "el CSV",
                 lambda: parse_tr_csv(path),
-                lambda r: import_tr_csv_report(db, r, tr_csv_compute_hash(path), file.filename, user_id=user.id),
+                lambda r: import_tr_csv_report(db, r, file_sha256(path), file.filename, user_id=user.id),
             )
         return _run_import(
             "el PDF",
             lambda: parse_tr_tax_report(path),
-            lambda r: import_tr_report(db, r, compute_file_hash(path), file.filename, user_id=user.id),
+            lambda r: import_tr_report(db, r, file_sha256(path), file.filename, user_id=user.id),
         )
     finally:
         path.unlink(missing_ok=True)
@@ -180,7 +163,7 @@ def upload_dg_report(file: UploadFile, db: DbSession, user: CurrentUser):
         return _run_import(
             "el PDF",
             lambda: parse_dg_annual_report(path),
-            lambda r: import_dg_report(db, r, dg_compute_hash(path), file.filename, user_id=user.id),
+            lambda r: import_dg_report(db, r, file_sha256(path), file.filename, user_id=user.id),
         )
     finally:
         path.unlink(missing_ok=True)
@@ -195,7 +178,7 @@ def upload_ibkr_report(file: UploadFile, db: DbSession, user: CurrentUser):
         return _run_import(
             "el CSV",
             lambda: parse_ibkr_activity_statement(path),
-            lambda r: import_ibkr_report(db, r, ibkr_compute_hash(path), file.filename, user_id=user.id),
+            lambda r: import_ibkr_report(db, r, file_sha256(path), file.filename, user_id=user.id),
         )
     finally:
         path.unlink(missing_ok=True)
@@ -210,7 +193,7 @@ def upload_ing_report(file: UploadFile, db: DbSession, user: CurrentUser):
         return _run_import(
             "el PDF",
             lambda: parse_ing_report(path),
-            lambda r: import_ing_report(db, r, ing_compute_hash(path), file.filename, user_id=user.id),
+            lambda r: import_ing_report(db, r, file_sha256(path), file.filename, user_id=user.id),
         )
     finally:
         path.unlink(missing_ok=True)
@@ -232,7 +215,7 @@ def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3
         return _run_import(
             "los PDFs de BBVA",
             lambda: parse_bbva_pdfs(paths),
-            lambda r: import_bbva_report(db, r, bbva_compute_hash(paths), filenames, user_id=user.id),
+            lambda r: import_bbva_report(db, r, file_sha256(paths), filenames, user_id=user.id),
         )
     finally:
         for p in paths:
@@ -248,7 +231,7 @@ def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
         return _run_import(
             "el XLSX de eToro",
             lambda: parse_etoro_statement(path),
-            lambda r: import_etoro_report(db, r, etoro_compute_hash(path), file.filename, user_id=user.id),
+            lambda r: import_etoro_report(db, r, file_sha256(path), file.filename, user_id=user.id),
         )
     finally:
         path.unlink(missing_ok=True)

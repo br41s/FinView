@@ -14,7 +14,6 @@ Sections parsed:
 - IX:   Pre-calculated Modelo 714 casillas
 """
 
-import hashlib
 import re
 from collections import defaultdict, deque
 from datetime import date, datetime
@@ -31,18 +30,12 @@ from backend.importers.base import (
     ParsedWithholding,
     TRTaxReport,
     TxType,
+    parse_eur_decimal,
 )
 
 # -- Number parsing (European format: 1.234,56) --
 
 _EUR_NUM = re.compile(r"-?\d{1,3}(?:\.\d{3})*,\d+")
-
-
-def parse_eur_number(s: str) -> Decimal:
-    """Parse European-format number string: '1.234,56' -> Decimal('1234.56')."""
-    s = s.strip()
-    s = s.replace(".", "").replace(",", ".")
-    return Decimal(s)
 
 
 _DATE_RE = re.compile(r"\d{2}\.\d{2}\.\d{4}")
@@ -142,9 +135,9 @@ def _build_vi_transaction(tx_match, current_isin, current_name):
     tx_type_str = tx_match.group(1)
     trade_date = parse_date(tx_match.group(2))
     currency = tx_match.group(3)
-    exchange_rate = parse_eur_number(tx_match.group(4))
-    quantity = parse_eur_number(tx_match.group(5))
-    amount = parse_eur_number(tx_match.group(6))
+    exchange_rate = parse_eur_decimal(tx_match.group(4))
+    quantity = parse_eur_decimal(tx_match.group(5))
+    amount = parse_eur_decimal(tx_match.group(6))
     tx_type = _TX_TYPE_MAP.get(tx_type_str, TxType.DIVIDEND)
     price = abs(amount / quantity) if quantity != 0 else Decimal("0")
 
@@ -166,7 +159,7 @@ def _build_vi_transaction(tx_match, current_isin, current_name):
 def _build_capital_gain(pending_buys, pending_sells, pl_match, current_isin, current_name, current_country):
     """Build a ParsedCapitalGain from accumulated buys/sells and a P&L match."""
     period_text = pl_match.group(1)
-    pl_amount = parse_eur_number(pl_match.group(2))
+    pl_amount = parse_eur_decimal(pl_match.group(2))
     casilla = int(pl_match.group(3))
     holding = "<1y" if period_text == "menos" else ">1y"
 
@@ -210,11 +203,11 @@ def _parse_withholding_data(line, current_isin, current_name, current_country, c
     nums = _EUR_NUM.findall(line)
     if len(nums) < 4:
         return None
-    income = parse_eur_number(nums[0])
-    withholding = parse_eur_number(nums[1])
+    income = parse_eur_decimal(nums[0])
+    withholding = parse_eur_decimal(nums[1])
     rate_str = re.search(r"(\d+,\d+)%", line)
-    rate = parse_eur_number(rate_str.group(1)) if rate_str else Decimal("0")
-    double_tax = parse_eur_number(nums[-1])
+    rate = parse_eur_decimal(rate_str.group(1)) if rate_str else Decimal("0")
+    double_tax = parse_eur_decimal(nums[-1])
 
     return ParsedWithholding(
         country=current_country or "",
@@ -314,23 +307,23 @@ _INT_RE = re.compile(
 
 def _build_dividend_tx(m, tx_type, isin, name, country):
     """Build a ParsedTransaction from a dividend/interest regex match."""
-    withholding = abs(parse_eur_number(m.group(8)))
+    withholding = abs(parse_eur_decimal(m.group(8)))
     return ParsedTransaction(
         tx_type=tx_type,
         trade_date=parse_date(m.group(1)),
         isin=isin,
         name=name,
         country=country or "",
-        quantity=parse_eur_number(m.group(3)),
-        price=parse_eur_number(m.group(4)),
+        quantity=parse_eur_decimal(m.group(3)),
+        price=parse_eur_decimal(m.group(4)),
         currency=m.group(2),
-        fees=parse_eur_number(m.group(5)),
-        gross_amount=parse_eur_number(m.group(7)),
+        fees=parse_eur_decimal(m.group(5)),
+        gross_amount=parse_eur_decimal(m.group(7)),
         withholding_tax=withholding,
         domestic_withholding_tax=Decimal("0"),
         foreign_withholding_tax=withholding,
-        exchange_rate=parse_eur_number(m.group(9)),
-        net_amount_eur=parse_eur_number(m.group(10)) - withholding,
+        exchange_rate=parse_eur_decimal(m.group(9)),
+        net_amount_eur=parse_eur_decimal(m.group(10)) - withholding,
         casilla=int(m.group(12)),
     )
 
@@ -417,11 +410,11 @@ def _parse_bs_entry(bs_match):
         "type": bs_match.group(1),
         "date": parse_date(bs_match.group(2)),
         "currency": bs_match.group(3),
-        "quantity": parse_eur_number(bs_match.group(4)),
-        "price": parse_eur_number(bs_match.group(5)),
-        "fees": parse_eur_number(bs_match.group(6)),
-        "total_eur": parse_eur_number(bs_match.group(11)),
-        "fees_eur": parse_eur_number(bs_match.group(12)),
+        "quantity": parse_eur_decimal(bs_match.group(4)),
+        "price": parse_eur_decimal(bs_match.group(5)),
+        "fees": parse_eur_decimal(bs_match.group(6)),
+        "total_eur": parse_eur_decimal(bs_match.group(11)),
+        "fees_eur": parse_eur_decimal(bs_match.group(12)),
     }
 
 
@@ -505,7 +498,7 @@ def _parse_section_viii(pages_text: list[str]) -> list[ParsedCasilla]:
                     modelo=100,
                     casilla=casilla_num,
                     description=desc_prefix,
-                    amount_eur=parse_eur_number(m.group(1)),
+                    amount_eur=parse_eur_decimal(m.group(1)),
                 ))
 
     return results
@@ -538,7 +531,7 @@ def _parse_section_ix(pages_text: list[str]) -> list[ParsedCasilla]:
                     modelo=714,
                     casilla=casilla_num,
                     description=desc_prefix,
-                    amount_eur=parse_eur_number(m.group(1)),
+                    amount_eur=parse_eur_decimal(m.group(1)),
                 ))
 
     return results
@@ -575,10 +568,10 @@ def _parse_section_vii(pages_text: list[str]) -> list[ParsedPortfolioHolding]:
                 asset_type=m.group(4),
                 country=m.group(5).strip(),
                 casilla_714=int(m.group(6)),
-                quantity=parse_eur_number(m.group(7)),
-                avg_q4_balance=parse_eur_number(m.group(8)),
-                value_dec31_eur=parse_eur_number(m.group(9)),
-                fiscal_valuation=parse_eur_number(m.group(10)),
+                quantity=parse_eur_decimal(m.group(7)),
+                avg_q4_balance=parse_eur_decimal(m.group(8)),
+                value_dec31_eur=parse_eur_decimal(m.group(9)),
+                fiscal_valuation=parse_eur_decimal(m.group(10)),
             ))
 
     return results
@@ -726,10 +719,3 @@ def parse_tr_tax_report(pdf_path: str | Path) -> TRTaxReport:
     )
 
 
-def compute_file_hash(path: str | Path) -> str:
-    """Compute SHA-256 hash of a file for dedup."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()

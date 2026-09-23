@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -39,6 +39,9 @@ from backend.importers.base import (
     ParsedWithholding,
     TRTaxReport,
     TxType,
+    ISIN_RE,
+    parse_dmy,
+    parse_eur_decimal,
 )
 
 # ---------------------------------------------------------------------------
@@ -46,25 +49,16 @@ from backend.importers.base import (
 # ---------------------------------------------------------------------------
 
 _EUR_NUM = re.compile(r"-?\d{1,3}(?:\.\d{3})*,\d+")
-_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
 _DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-
-
-def _parse_num(token: str) -> Decimal:
-    return Decimal(token.replace(".", "").replace(",", "."))
 
 
 def _try_num(token: str) -> Decimal | None:
     if not token or token == "n/a":
         return None
     try:
-        return _parse_num(token)
+        return parse_eur_decimal(token)
     except (InvalidOperation, ValueError):
         return None
-
-
-def _parse_date_slash(s: str) -> date:
-    return datetime.strptime(s, "%d/%m/%Y").date()
 
 
 # Countries, ordered longest-first so "Estados Unidos" beats "España".
@@ -155,8 +149,8 @@ def _extract_header(pages_text: list[str]) -> tuple[str, date, date]:
     period = _PERIOD_RE.search(joined)
     if not period:
         raise ValueError("No se encontró el período en el PDF (formato ES-IBAN).")
-    start = _parse_date_slash(period.group(1))
-    end = _parse_date_slash(period.group(2))
+    start = parse_dmy(period.group(1))
+    end = parse_dmy(period.group(2))
     return (client.group(1) if client else "", start, end)
 
 
@@ -199,7 +193,7 @@ def _split_row_prefix(line: str) -> dict | None:
     post = tokens[date_idx + 1:]
 
     isin = None
-    if _ISIN_RE.match(pre[0]):
+    if ISIN_RE.fullmatch(pre[0]):
         isin = pre[0]
         name_tokens = pre[1:]
     elif pre[0].upper() == "N/A":
@@ -219,7 +213,7 @@ def _split_row_prefix(line: str) -> dict | None:
     return {
         "isin": isin,
         "name": name,
-        "date": _parse_date_slash(date_token),
+        "date": parse_dmy(date_token),
         "country": country,
         "type": tx_type,
         "nums": nums_raw,
@@ -305,7 +299,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
     pre = tokens[:eur_idx]
     post = tokens[eur_idx + 1:]
 
-    if not pre or not _ISIN_RE.match(pre[0]):
+    if not pre or not ISIN_RE.fullmatch(pre[0]):
         return None
 
     isin = pre[0]
@@ -322,7 +316,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
 
     if len(post) < 6 or not _DATE_RE.match(post[0]):
         return None
-    sell_date = _parse_date_slash(post[0])
+    sell_date = parse_dmy(post[0])
 
     # Optional tipo tokens (may be wrapped to adjacent lines, so it's OK
     # to have none here). Walk until we hit qty (a comma-number).
@@ -341,7 +335,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
     i += 1
     if qty is None or i >= len(post) or not _DATE_RE.match(post[i]):
         return None
-    buy_date = _parse_date_slash(post[i])
+    buy_date = parse_dmy(post[i])
     i += 1
 
     rest = post[i:]
@@ -453,7 +447,7 @@ def _parse_m714_row(line: str, casilla: int) -> ParsedPortfolioHolding | None:
     # Remaining tokens on the left: [ISIN?] [País?] <descripción...>
     isin = None
     country = ""
-    if tokens and _ISIN_RE.match(tokens[0]):
+    if tokens and ISIN_RE.fullmatch(tokens[0]):
         isin = tokens[0]
         tokens = tokens[1:]
     if tokens:
@@ -560,7 +554,7 @@ def _parse_summary(text: str) -> list[ParsedCasilla]:
                     modelo=100,
                     casilla=int(code),
                     description=f"Casilla {code}",
-                    amount_eur=_parse_num(m.group(1)),
+                    amount_eur=parse_eur_decimal(m.group(1)),
                 )
             )
     return out
@@ -582,7 +576,7 @@ def _parse_base_general(text: str) -> list[ParsedCasilla]:
                     modelo=100,
                     casilla=casilla,
                     description="Ganancia/pérdida transmisión",
-                    amount_eur=_parse_num(m.group(1)),
+                    amount_eur=parse_eur_decimal(m.group(1)),
                 )
             )
     return out
@@ -777,5 +771,5 @@ def _extract_total(text: str) -> Decimal | None:
         if line.strip().startswith("Total"):
             nums = _EUR_NUM.findall(line)
             if nums:
-                return _parse_num(nums[-1])
+                return parse_eur_decimal(nums[-1])
     return None

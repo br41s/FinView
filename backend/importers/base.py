@@ -1,9 +1,43 @@
-"""Base types for all importers."""
+"""Base types and the parsing helpers every importer shares."""
 
+import hashlib
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from pathlib import Path
+
+# ── Shared parsing helpers ─────────────────────────────────────────────
+# Each importer used to carry its own copy of these (seven file hashes, six
+# European-decimal parsers, three DD/MM/YYYY parsers) and they had drifted.
+
+ISIN_RE = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
+
+
+def file_sha256(paths: str | Path | Iterable[Path]) -> str:
+    """SHA-256 used for import dedup. Several paths hash in sorted order."""
+    if isinstance(paths, (str, Path)):
+        paths = [Path(paths)]
+    h = hashlib.sha256()
+    for path in sorted(Path(p) for p in paths):
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 16), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
+def parse_eur_decimal(s: str) -> Decimal:
+    """European format: '1.384,27€' → Decimal('1384.27')."""
+    s = s.strip().rstrip("€").strip()
+    return Decimal(s.replace(".", "").replace(",", "."))
+
+
+def parse_dmy(s: str) -> date:
+    """'DD/MM/YYYY' → date."""
+    return datetime.strptime(s.strip(), "%d/%m/%Y").date()
+
 
 # ── Shared country resolution ──────────────────────────────────────────
 

@@ -8,7 +8,8 @@ import pytest
 from decimal import Decimal
 from pathlib import Path
 
-from backend.importers.tr import parse_tr_tax_report, parse_eur_number, parse_date
+from backend.importers.base import parse_eur_decimal
+from backend.importers.tr import parse_tr_tax_report, parse_date
 from backend.importers.base import TxType
 
 # Path to real test data (same convention as test_import_service.py)
@@ -20,19 +21,19 @@ TR_PDF_PATH = Path(__file__).resolve().parents[2] / "files" / "TR-Tax Report 202
 
 class TestParseEurNumber:
     def test_simple(self):
-        assert parse_eur_number("1.234,56") == Decimal("1234.56")
+        assert parse_eur_decimal("1.234,56") == Decimal("1234.56")
 
     def test_negative(self):
-        assert parse_eur_number("-2.155,109352") == Decimal("-2155.109352")
+        assert parse_eur_decimal("-2.155,109352") == Decimal("-2155.109352")
 
     def test_no_thousands(self):
-        assert parse_eur_number("530,00") == Decimal("530.00")
+        assert parse_eur_decimal("530,00") == Decimal("530.00")
 
     def test_large(self):
-        assert parse_eur_number("42.577,900000") == Decimal("42577.900000")
+        assert parse_eur_decimal("42.577,900000") == Decimal("42577.900000")
 
     def test_small_decimal(self):
-        assert parse_eur_number("0,08612") == Decimal("0.08612")
+        assert parse_eur_decimal("0,08612") == Decimal("0.08612")
 
 
 class TestParseDate:

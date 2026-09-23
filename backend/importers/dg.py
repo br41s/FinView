@@ -7,7 +7,6 @@ Extracts:
 - Transaction history (Beneficios y pérdidas derivadas)
 """
 
-import hashlib
 import re
 from datetime import date
 from decimal import Decimal
@@ -22,23 +21,14 @@ from backend.importers.base import (
     ParsedTransaction,
     TxType,
     country_from_isin,
+    parse_dmy,
+    parse_eur_decimal,
 )
 from backend.services.transaction_amounts import trade_net_amount
 
 # ── Number / date helpers ──────────────────────────────────────────────
 
 _D = Decimal
-
-
-def _parse_decimal(s: str) -> Decimal:
-    """European format: 1.300,00 → 1300.00"""
-    return _D(s.replace(".", "").replace(",", "."))
-
-
-def _parse_date(s: str) -> date:
-    """DD/MM/YYYY → date."""
-    d, m, y = s.split("/")
-    return date(int(y), int(m), int(d))
 
 
 # ── Regex patterns ─────────────────────────────────────────────────────
@@ -158,9 +148,9 @@ def _parse_dividends(text: str, fiscal_year: int) -> list[ParsedTransaction]:
             continue
         country = country_from_isin(m.group(1))
         name = m.group(2).strip()
-        gross = _parse_decimal(m.group(3))
-        withholding = _parse_decimal(m.group(4))
-        net = _parse_decimal(m.group(5))
+        gross = parse_eur_decimal(m.group(3))
+        withholding = parse_eur_decimal(m.group(4))
+        net = parse_eur_decimal(m.group(5))
 
         dividends.append(ParsedTransaction(
             tx_type=TxType.DIVIDEND,
@@ -202,9 +192,9 @@ def _parse_gains_summary(text: str) -> list[ParsedGainLoss]:
         results.append(ParsedGainLoss(
             isin=m.group(2),
             name=m.group(1).strip(),
-            realized_pl_eur=_parse_decimal(m.group(3)),
-            commission_eur=_parse_decimal(m.group(4)),
-            transaction_tax_eur=_parse_decimal(m.group(5)),
+            realized_pl_eur=parse_eur_decimal(m.group(3)),
+            commission_eur=parse_eur_decimal(m.group(4)),
+            transaction_tax_eur=parse_eur_decimal(m.group(5)),
         ))
     return results
 
@@ -224,8 +214,8 @@ def _parse_holdings(text: str, _fiscal_year: int) -> list[ParsedPortfolioHolding
             continue
         isin = m.group(2)
         qty = _D(m.group(5))
-        price = _parse_decimal(m.group(7))
-        value = _parse_decimal(m.group(8))
+        price = parse_eur_decimal(m.group(7))
+        value = parse_eur_decimal(m.group(8))
 
         holdings.append(ParsedPortfolioHolding(
             isin=isin,
@@ -260,16 +250,16 @@ def _parse_transactions(text: str) -> list[ParsedTransaction]:
         if not m:
             continue
 
-        trade_date = _parse_date(m.group(1))
+        trade_date = parse_dmy(m.group(1))
         isin = m.group(3)
         trade_type = m.group(4)
         qty = _D(m.group(5))
-        price = _parse_decimal(m.group(6))
-        eur_value = _parse_decimal(m.group(8))
-        commission = _parse_decimal(m.group(9))
-        fx_rate = _parse_decimal(m.group(10))
+        price = parse_eur_decimal(m.group(6))
+        eur_value = parse_eur_decimal(m.group(8))
+        commission = parse_eur_decimal(m.group(9))
+        fx_rate = parse_eur_decimal(m.group(10))
         pl_raw = m.group(11)
-        realized_pl = _parse_decimal(pl_raw) if pl_raw else None
+        realized_pl = parse_eur_decimal(pl_raw) if pl_raw else None
 
         tx_type = TxType.BUY if trade_type == "C" else TxType.SELL
 
@@ -368,10 +358,3 @@ def parse_dg_annual_report(pdf_path: Path) -> DGAnnualReport:
     )
 
 
-def compute_file_hash(pdf_path: Path) -> str:
-    """Compute SHA-256 hash of a PDF file."""
-    h = hashlib.sha256()
-    with open(pdf_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()

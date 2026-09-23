@@ -9,13 +9,14 @@ from decimal import Decimal
 from datetime import date
 from pathlib import Path
 
-from backend.importers.ing import (
-    parse_ing_report,
-    compute_file_hash,
-    _parse_decimal,
-    _parse_date,
+from backend.importers.ing import parse_ing_report
+from backend.importers.base import (
+    TxType,
+    country_from_isin,
+    file_sha256 as compute_file_hash,
+    parse_dmy as _parse_date,
+    parse_eur_decimal as _parse_decimal,
 )
-from backend.importers.base import TxType, country_from_isin
 
 _D = Decimal
 

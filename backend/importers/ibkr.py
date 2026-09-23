@@ -9,7 +9,6 @@ than computing it ourselves.
 """
 
 import csv
-import hashlib
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -80,13 +79,6 @@ def _parse_date(value: str) -> date:
     """Parse IBKR date format '2024-12-19, 16:20:00' or '2024-12-19'."""
     date_str = value.split(",")[0].strip()
     return date.fromisoformat(date_str)
-
-
-def compute_file_hash(path: Path) -> str:
-    """SHA-256 hash for deduplication."""
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
 
 
 def _parse_sections(text: str) -> dict[str, list[list[str]]]:
