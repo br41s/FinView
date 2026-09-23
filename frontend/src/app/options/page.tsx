@@ -34,6 +34,7 @@ import { AgentChat } from "./AgentChat";
 import { AnalysisTab } from "./AnalysisTab";
 import { BacktestTab } from "./BacktestTab";
 import { AlignmentTag, BreakProbability, DirBadge, severityColor } from "./badges";
+import { MEFF_TICKERS } from "./meffTickers";
 import { fmt, fmtDateTime } from "@/lib/format";
 import { useBacktest } from "./useBacktest";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
@@ -123,41 +124,6 @@ interface WatchlistItem {
   enabled: boolean;
   created_at: string;
 }
-
-// ── MEFF Spanish tickers (verified May 2026) ────────────────────────
-
-const MEFF_TICKERS: { ticker: string; name: string }[] = [
-  { ticker: "ACX.MC", name: "Acerinox" },
-  { ticker: "AENA.MC", name: "AENA" },
-  { ticker: "AMS.MC", name: "Amadeus IT" },
-  { ticker: "ANA.MC", name: "Acciona" },
-  { ticker: "BBVA.MC", name: "BBVA" },
-  { ticker: "BKT.MC", name: "Bankinter" },
-  { ticker: "CABK.MC", name: "CaixaBank" },
-  { ticker: "CIE.MC", name: "CIE Automotive" },
-  { ticker: "CLNX.MC", name: "Cellnex" },
-  { ticker: "COL.MC", name: "Inmobiliaria Colonial" },
-  { ticker: "ELE.MC", name: "Endesa" },
-  { ticker: "ENG.MC", name: "Enagás" },
-  { ticker: "FER.MC", name: "Ferrovial" },
-  { ticker: "GRF.MC", name: "Grifols" },
-  { ticker: "IAG.MC", name: "IAG (Iberia)" },
-  { ticker: "IBE.MC", name: "Iberdrola" },
-  { ticker: "IDR.MC", name: "Indra" },
-  { ticker: "ITX.MC", name: "Inditex" },
-  { ticker: "MAP.MC", name: "MAPFRE" },
-  { ticker: "MEL.MC", name: "Meliá Hotels" },
-  { ticker: "MRL.MC", name: "Merlin Properties" },
-  { ticker: "NTGY.MC", name: "Naturgy" },
-  { ticker: "PHM.MC", name: "PharmaMar" },
-  { ticker: "RED.MC", name: "REDEIA" },
-  { ticker: "REP.MC", name: "Repsol" },
-  { ticker: "SAB.MC", name: "Banco Sabadell" },
-  { ticker: "SAN.MC", name: "Banco Santander" },
-  { ticker: "SLR.MC", name: "Solaria" },
-  { ticker: "TEF.MC", name: "Telefónica" },
-  { ticker: "VIS.MC", name: "Viscofan" },
-];
 
 // ── Component ───────────────────────────────────────────────────────
 
