@@ -33,6 +33,7 @@ import { bestEffort } from "@/lib/bestEffort";
 import { AgentChat } from "./AgentChat";
 import { AnalysisTab } from "./AnalysisTab";
 import { BacktestTab } from "./BacktestTab";
+import { AlignmentTag, BreakProbability, DirBadge, severityColor } from "./badges";
 import { fmt, fmtDateTime } from "@/lib/format";
 import { useBacktest } from "./useBacktest";
 import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
@@ -121,19 +122,6 @@ interface WatchlistItem {
   name: string;
   enabled: boolean;
   created_at: string;
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function severityColor(s: string) {
-  switch (s) {
-    case "HIGH":
-      return "destructive";
-    case "MEDIUM":
-      return "secondary";
-    default:
-      return "outline";
-  }
 }
 
 // ── MEFF Spanish tickers (verified May 2026) ────────────────────────
@@ -1555,74 +1543,6 @@ export default function OptionsPage() {
         </TabsContent>
       </Tabs>
     </div>
-  );
-}
-
-/** Macro-regime alignment tag for an alert (Phase 2b, informational only). */
-function DirBadge({ direction }: { direction: "BULLISH" | "BEARISH" }) {
-  const bullish = direction === "BULLISH";
-  return (
-    <Badge
-      variant="outline"
-      className={`text-xs ${
-        bullish
-          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600"
-          : "border-red-500/20 bg-red-500/10 text-red-600"
-      }`}
-      title={
-        bullish
-          ? "El precio se acerca a la zona por debajo: romperla sería al alza"
-          : "El precio se acerca a la zona por encima: romperla sería a la baja"
-      }
-    >
-      {bullish ? "↑ Alcista" : "↓ Bajista"}
-    </Badge>
-  );
-}
-
-function BreakProbability({ signal }: { signal: TechnicalSignal }) {
-  // null means the model couldn't score it — never render that as 0%, which
-  // would read as "certainly won't break" rather than "we don't know".
-  if (signal.break_probability == null) {
-    return (
-      <Badge variant="outline" className="text-xs text-muted-foreground" title="El modelo no pudo puntuar esta señal">
-        sin puntuar
-      </Badge>
-    );
-  }
-  return (
-    <Badge
-      variant={signal.alerted ? "destructive" : "outline"}
-      className="text-xs tabular-nums"
-      title={
-        signal.alerted
-          ? "Supera el umbral de alerta (70%), que es provisional y no está calibrado"
-          : "Por debajo del umbral de alerta (70%). Se guarda igual, para poder calibrarlo"
-      }
-    >
-      {signal.break_probability}%
-    </Badge>
-  );
-}
-
-function AlignmentTag({ alignment }: { alignment?: string | null }) {
-  if (!alignment || alignment === "neutral") return null;
-  const aligned = alignment === "aligned";
-  const color = aligned
-    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-    : "bg-amber-500/10 text-amber-600 border-amber-500/20";
-  return (
-    <Badge
-      variant="outline"
-      className={`text-xs ${color}`}
-      title={
-        aligned
-          ? "A favor del régimen macro (informativo — no cambia la señal)"
-          : "En contra del régimen macro (informativo — no cambia la señal)"
-      }
-    >
-      {aligned ? "macro ✓" : "macro ✗"}
-    </Badge>
   );
 }
 
