@@ -597,7 +597,7 @@ export function FileUpload({ onImported }: FileUploadProps) {
         setLoading(false);
       }
     },
-    [onImported, notifyResult, uploadBroker],
+    [notifyResult, uploadBroker],
   );
 
   return (

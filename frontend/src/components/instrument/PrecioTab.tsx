@@ -7,21 +7,27 @@ import { PriceChart } from "@/components/charts/PriceChart";
 import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
 import { Skeleton } from "@/components/ui/skeleton";
 
+// The loaded bars are stored together with the request they answer, so a
+// symbol/scope change reads as "loading" (null) without a synchronous reset in
+// the effect — the derived value flips to null the moment the key changes.
+const requestKey = (symbol: string, scope: ChartScope) => `${symbol}:${scope}`;
+
 export function PrecioTab({ symbol }: { symbol: string }) {
-  const [bars, setBars] = useState<OhlcBar[] | null>(null);
+  const [loaded, setLoaded] = useState<{ key: string; bars: OhlcBar[] } | null>(null);
   const [scope, setScope] = useState<ChartScope>("1A");
+  const bars = loaded?.key === requestKey(symbol, scope) ? loaded.bars : null;
 
   useEffect(() => {
     let cancelled = false;
-    setBars(null);
+    const key = requestKey(symbol, scope);
     const { period, interval } = SCOPE_PARAMS[scope];
     api.charts
       .priceHistory(symbol, period, interval)
       .then((b) => {
-        if (!cancelled) setBars(b);
+        if (!cancelled) setLoaded({ key, bars: b });
       })
       .catch(() => {
-        if (!cancelled) setBars([]);
+        if (!cancelled) setLoaded({ key, bars: [] });
       });
     return () => {
       cancelled = true;

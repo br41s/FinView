@@ -54,35 +54,55 @@ function ivBadge(summary: TickerAnalysis["summary"]) {
   return <Badge variant="outline">IV normal</Badge>;
 }
 
+// Fetched data is stored together with the request it answers (symbol, or
+// symbol + expiry / scope). A request change then reads as "not loaded" by
+// derivation instead of a synchronous reset inside the effect, and a stale
+// response can never be mistaken for the current one.
 export function OpcionesTab({ symbol }: { symbol: string }) {
   const [analysis, setAnalysis] = useState<TickerAnalysis | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  const [expirations, setExpirations] = useState<string[] | null>(null);
-  const [expIdx, setExpIdx] = useState(0);
-  const [chain, setChain] = useState<Chain | null>(null);
-  const [chainLoading, setChainLoading] = useState(false);
+  const [loadedExpirations, setLoadedExpirations] = useState<{
+    symbol: string;
+    expirations: string[];
+  } | null>(null);
+  const [expIdxState, setExpIdxState] = useState<{ symbol: string; idx: number }>({
+    symbol,
+    idx: 0,
+  });
+  // `key` is symbol + expiry (gates the table's skeleton); `symbol` alone keeps
+  // the previous expiry's strikes on the chart while the next chain loads.
+  const [loadedChain, setLoadedChain] = useState<{
+    key: string;
+    symbol: string;
+    chain: Chain | null;
+  } | null>(null);
 
-  const [ohlc, setOhlc] = useState<OhlcBar[] | null>(null);
+  const [loadedOhlc, setLoadedOhlc] = useState<{ key: string; bars: OhlcBar[] } | null>(null);
   const [scope, setScope] = useState<ChartScope>("1A");
+
+  const expirations = loadedExpirations?.symbol === symbol ? loadedExpirations.expirations : null;
+  const expIdx = expIdxState.symbol === symbol ? expIdxState.idx : 0;
+  const expiry = expirations?.[expIdx];
+  const chainKey = `${symbol}:${expiry}`;
+  const chain = loadedChain?.symbol === symbol ? loadedChain.chain : null;
+  const chainLoading = expiry != null && loadedChain?.key !== chainKey;
+  const ohlc = loadedOhlc?.key === `${symbol}:${scope}` ? loadedOhlc.bars : null;
 
   // Load expirations once per symbol.
   useEffect(() => {
     let cancelled = false;
-    setExpirations(null);
-    setChain(null);
-    setExpIdx(0);
     api.options
       .tickerExpirations(symbol)
       .then((d) => {
         if (cancelled) return;
         const exps = (d as { expirations: string[] }).expirations ?? [];
-        setExpirations(exps);
+        setLoadedExpirations({ symbol, expirations: exps });
       })
       .catch((e) => {
         bestEffort(`options expirations ${symbol}`)(e);
-        if (!cancelled) setExpirations([]);
+        if (!cancelled) setLoadedExpirations({ symbol, expirations: [] });
       });
     return () => {
       cancelled = true;
@@ -90,22 +110,18 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   // Load the chain for the selected expiry.
-  const expiry = expirations?.[expIdx];
   useEffect(() => {
     if (!expiry) return;
     let cancelled = false;
-    setChainLoading(true);
+    const key = `${symbol}:${expiry}`;
     api.options
       .tickerChain(symbol, expiry)
       .then((d) => {
-        if (!cancelled) setChain(d as Chain);
+        if (!cancelled) setLoadedChain({ key, symbol, chain: d as Chain });
       })
       .catch((e) => {
         bestEffort(`options chain ${symbol} ${expiry}`)(e);
-        if (!cancelled) setChain(null);
-      })
-      .finally(() => {
-        if (!cancelled) setChainLoading(false);
+        if (!cancelled) setLoadedChain({ key, symbol, chain: null });
       });
     return () => {
       cancelled = true;
@@ -115,15 +131,15 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
   // Underlying OHLC for the strikes-overlay chart (ported from the old Cartera view).
   useEffect(() => {
     let cancelled = false;
-    setOhlc(null);
+    const key = `${symbol}:${scope}`;
     const { period, interval } = SCOPE_PARAMS[scope];
     api.charts
       .priceHistory(symbol, period, interval)
       .then((b) => {
-        if (!cancelled) setOhlc(b);
+        if (!cancelled) setLoadedOhlc({ key, bars: b });
       })
       .catch(() => {
-        if (!cancelled) setOhlc([]);
+        if (!cancelled) setLoadedOhlc({ key, bars: [] });
       });
     return () => {
       cancelled = true;
@@ -262,7 +278,7 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
             <div className="flex items-center gap-1 text-xs">
               <button
                 disabled={expIdx === 0}
-                onClick={() => setExpIdx((i) => Math.max(0, i - 1))}
+                onClick={() => setExpIdxState({ symbol, idx: Math.max(0, expIdx - 1) })}
                 className="rounded p-0.5 hover:bg-muted disabled:opacity-30"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -273,7 +289,9 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
               </span>
               <button
                 disabled={expIdx >= expirations.length - 1}
-                onClick={() => setExpIdx((i) => Math.min(expirations.length - 1, i + 1))}
+                onClick={() =>
+                  setExpIdxState({ symbol, idx: Math.min(expirations.length - 1, expIdx + 1) })
+                }
                 className="rounded p-0.5 hover:bg-muted disabled:opacity-30"
               >
                 <ChevronRight className="h-3.5 w-3.5" />

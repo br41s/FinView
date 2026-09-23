@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -38,6 +38,17 @@ function markerRadius(importance: number) {
   return 6 + t * 10; // 6–16
 }
 
+type View = { center: [number, number]; zoom: number };
+
+// Where the map flies for a selection: onto the signal, or back to the default
+// view when nothing (or nothing visible) is selected.
+function flyTarget(selectedId: string | null, signals: GeoSignal[]): View {
+  const target = selectedId ? signals.find((s) => s.id === selectedId) : null;
+  return target
+    ? { center: [target.lng, target.lat], zoom: SELECTED_ZOOM }
+    : { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
+}
+
 type Props = {
   signals?: GeoSignal[];
   onSelectSignal?: (s: GeoSignal) => void;
@@ -56,29 +67,29 @@ export function GeoMap({
   const setHoverId = (id: string | null) => onHoverSignal?.(id);
   const hoverId = hoveredId;
 
-  const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  // The view is state, not derived from the selection, because the user can
+  // also pan/zoom it (onMoveEnd below).
+  const [view, setView] = useState<View>(() => flyTarget(selectedId, signals));
+  const { center, zoom } = view;
   // Only the programmatic fly-to (selection) should ease over 900ms; a live
   // wheel/drag gesture must track the cursor 1:1, so we disable the transition
   // the moment the user starts moving the map.
-  const [animate, setAnimate] = useState(false);
+  const [animate, setAnimate] = useState(true);
 
   // Fly to the selected signal; return to the default view on deselect. Driven
   // entirely by selectedId so map-marker clicks and Live Feed clicks (which set
-  // the same `selected` state upstream) both trigger the same zoom effect.
-  useEffect(() => {
-    const target = selectedId
-      ? signals.find((s) => s.id === selectedId)
-      : null;
+  // the same `selected` state upstream) both trigger the same zoom. `signals`
+  // identity is part of the trigger on purpose: every poll hands down a new
+  // array and re-centres the view, as it always has.
+  //
+  // Adjusted during render rather than in an effect: React re-runs the render
+  // with the new state before committing, so the flown-to view is what paints.
+  const [flownTo, setFlownTo] = useState({ selectedId, signals });
+  if (flownTo.selectedId !== selectedId || flownTo.signals !== signals) {
+    setFlownTo({ selectedId, signals });
     setAnimate(true);
-    if (target) {
-      setCenter([target.lng, target.lat]);
-      setZoom(SELECTED_ZOOM);
-    } else {
-      setCenter(DEFAULT_CENTER);
-      setZoom(DEFAULT_ZOOM);
-    }
-  }, [selectedId, signals]);
+    setView(flyTarget(selectedId, signals));
+  }
 
   const detail = zoom >= DETAIL_ZOOM;
 
@@ -114,8 +125,7 @@ export function GeoMap({
           maxZoom={6}
           onMoveStart={() => setAnimate(false)}
           onMoveEnd={({ coordinates, zoom: z }) => {
-            setCenter(coordinates);
-            setZoom(z);
+            setView({ center: coordinates, zoom: z });
           }}
         >
           <Geographies geography={detail ? WORLD_TOPO_50 : WORLD_TOPO_110}>

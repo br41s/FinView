@@ -52,16 +52,17 @@ export function ImportedFilesList({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
 
-  const loadRecords = useCallback(async () => {
-    try {
-      const data = await api.imports();
-      setRecords(data as ImportRecord[]);
-    } catch {
-      toast.error("Error al cargar importaciones");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // A promise chain rather than async/await: every setState runs inside a
+  // continuation, so the mount effect can call this synchronously.
+  const loadRecords = useCallback(
+    () =>
+      api
+        .imports()
+        .then((data) => setRecords(data as ImportRecord[]))
+        .catch(() => toast.error("Error al cargar importaciones"))
+        .finally(() => setLoading(false)),
+    [],
+  );
 
   useEffect(() => {
     loadRecords();
