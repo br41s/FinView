@@ -57,15 +57,12 @@ function AccountsContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadAccounts() {
-    try {
-      const data = (await api.accounts.list()) as AccountItem[];
-      setAccounts(data);
-    } catch (e) {
-      console.error("Failed to load accounts:", e);
-    } finally {
-      setLoading(false);
-    }
+  function loadAccounts() {
+    return api.accounts
+      .list()
+      .then((data) => setAccounts(data as AccountItem[]))
+      .catch((e) => console.error("Failed to load accounts:", e))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {

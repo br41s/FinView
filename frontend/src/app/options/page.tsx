@@ -23,7 +23,6 @@ import {
   Target,
   Trash2,
   TrendingUp,
-  TrendingDown,
   Zap,
   AlertCircle,
 } from "lucide-react";
@@ -206,6 +205,12 @@ export default function OptionsPage() {
   const [errorOptions, setErrorOptions] = useState<string | null>(null);
   const [retryPositions] = useState(0);
   const [retryOptions, setRetryOptions] = useState(0);
+  // The error banner clears when the user retries, not when the effect
+  // re-runs: the reset belongs to the event, the fetch to the effect.
+  function retryOptionsLoad() {
+    setErrorOptions(null);
+    setRetryOptions((k) => k + 1);
+  }
 
   // N6: auto-expand ticker from URL param (?ticker=X)
   const initialTickerRef = useRef<string | null>(null);
@@ -250,7 +255,6 @@ export default function OptionsPage() {
 
   // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
   useEffect(() => {
-    setErrorPositions(null);
     api.portfolio
       .positions(true)
       .then(async (pos) => {
@@ -275,7 +279,6 @@ export default function OptionsPage() {
 
   // Load options data in parallel (independent of positions)
   useEffect(() => {
-    setErrorOptions(null);
     Promise.all([
       api.options.snapshots() as Promise<Snapshot[]>,
       api.options.alerts() as Promise<Alert[]>,
@@ -319,11 +322,17 @@ export default function OptionsPage() {
   // user just removed. Instead, `syncedTickersRef` remembers every ticker
   // this effect has ever seen on the watchlist (added by it or already
   // there), so a manual removal sticks — the effect only re-fires when the
-  // portfolio itself changes.
+  // portfolio itself changes. The current list is read through
+  // `watchlistRef`, kept in sync by the effect above it, so the effect sees
+  // the latest value without depending on it.
   const syncedTickersRef = useRef<Set<string>>(new Set());
+  const watchlistRef = useRef(watchlist);
+  useEffect(() => {
+    watchlistRef.current = watchlist;
+  }, [watchlist]);
   useEffect(() => {
     if (!availabilityChecked || loadingOptions || positions.length === 0) return;
-    const watchlistSet = new Set(watchlist.map((w) => w.ticker));
+    const watchlistSet = new Set(watchlistRef.current.map((w) => w.ticker));
     for (const ticker of watchlistSet) syncedTickersRef.current.add(ticker);
     const toAdd = selectPositionsToSync(
       positions,
@@ -810,7 +819,7 @@ export default function OptionsPage() {
               <CardContent className="py-10 text-center space-y-3">
                 <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
                 <p className="text-sm text-muted-foreground">{errorOptions}</p>
-                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
+                <Button variant="outline" size="sm" onClick={retryOptionsLoad}>
                   Reintentar
                 </Button>
               </CardContent>
@@ -1189,7 +1198,7 @@ export default function OptionsPage() {
               <CardContent className="py-10 text-center space-y-3">
                 <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
                 <p className="text-sm text-muted-foreground">{errorOptions}</p>
-                <Button variant="outline" size="sm" onClick={() => setRetryOptions((k) => k + 1)}>
+                <Button variant="outline" size="sm" onClick={retryOptionsLoad}>
                   Reintentar
                 </Button>
               </CardContent>

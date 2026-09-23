@@ -56,7 +56,6 @@ function BillingContent() {
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    setError(null);
     api.billing
       .subscription()
       .then((data) => setSub(data as Subscription))
@@ -89,7 +88,14 @@ function BillingContent() {
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center">
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
-        <Button variant="outline" size="sm" onClick={() => setRetryKey((k) => k + 1)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setError(null);
+            setRetryKey((k) => k + 1);
+          }}
+        >
           Reintentar
         </Button>
       </div>

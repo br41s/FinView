@@ -161,7 +161,12 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
-  const [filterCountry, setFilterCountry] = useState<string | null>(null);
+  // Country filter, stamped with the year it was set for so it can be cleared
+  // when the year changes (see the render-time adjustment below).
+  const [countryFilter, setCountryFilter] = useState<{
+    year: number | null;
+    country: string | null;
+  }>({ year: null, country: null });
 
   // Chart data
   const [divByCountry, setDivByCountry] = useState<DividendsByCountry[]>([]);
@@ -189,13 +194,13 @@ function DashboardContent() {
   // (slow) request in flight; only the latest load is allowed to set state.
   const loadSeq = useRef(0);
 
-  const loadData = useCallback(async (year?: number | null) => {
+  // Fetches only. The sync resets that precede a load (`loading`, `error`,
+  // the year-only tables) live in `beginLoad` and are called by the handlers
+  // that start one; the mount/year-change effect below needs none of them
+  // because the year handlers already applied them.
+  const loadData = useCallback((year?: number | null) => {
     const seq = ++loadSeq.current;
     const isCurrent = () => seq === loadSeq.current;
-
-    setLoading(true);
-    setSecondaryLoading(true);
-    setError(null);
     const y = year ?? undefined;
 
     // Fire-and-forget: warm price cache in background so portfolio/options load fast
@@ -228,10 +233,6 @@ function DashboardContent() {
           .then(set(setOptionAssignments))
           .catch((e) => console.error("option-assignments:", e)),
       );
-    } else {
-      setCrossBrokerLots([]);
-      setFifoAdjustments([]);
-      setOptionAssignments([]);
     }
     void Promise.allSettled(secondary).then(() => {
       if (isCurrent()) setSecondaryLoading(false);
@@ -241,54 +242,69 @@ function DashboardContent() {
     // All fast SQL aggregations, fired together in a single round-trip group.
     // This is everything the default (gráficas) view needs, so first paint
     // waits only on these — not on the slow yfinance call above.
-    try {
-      const [
-        dashData,
-        casData,
-        divData,
-        gainsData,
-        divC,
-        divM,
-        topP,
-        gainsB,
-        patrim,
-        withh,
-        compDiv,
-      ] = await Promise.all([
-        api.dashboard(y) as Promise<DashboardStats>,
-        api.casillas(y) as Promise<Casilla[]>,
-        api.dividends(y) as Promise<DividendSummary[]>,
-        api.capitalGains(y) as Promise<CapitalGain[]>,
-        api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
-        api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
-        api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
-        api.charts.capitalGainsBreakdown(y) as Promise<CapitalGainsBreakdown[]>,
-        api.charts.patrimonioComposition(y) as Promise<PatrimonioComposition[]>,
-        api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
-        api.charts.dividendsByCompanyYearly() as Promise<
-          CompanyDividendsYearly[]
-        >,
-      ]);
-      if (!isCurrent()) return;
-      setStats(dashData);
-      setCasillas(casData);
-      setDividends(divData);
-      setGains(gainsData);
-      setDivByCountry(divC);
-      setDivMonthly(divM);
-      setTopPayers(topP);
-      setGainsBreakdown(gainsB);
-      setPatrimonio(patrim);
-      setWithholdings(withh);
-      setCompanyDividends(compDiv);
-    } catch (e) {
-      console.error("Error loading data:", e);
-      if (isCurrent())
-        setError("No se pudieron cargar los datos del dashboard. Comprueba tu conexión e inténtalo de nuevo.");
-    } finally {
-      if (isCurrent()) setLoading(false);
-    }
+    return Promise.all([
+      api.dashboard(y) as Promise<DashboardStats>,
+      api.casillas(y) as Promise<Casilla[]>,
+      api.dividends(y) as Promise<DividendSummary[]>,
+      api.capitalGains(y) as Promise<CapitalGain[]>,
+      api.charts.dividendsByCountry(y) as Promise<DividendsByCountry[]>,
+      api.charts.dividendsMonthly(y) as Promise<DividendsMonthly[]>,
+      api.charts.topDividendPayers(y) as Promise<TopDividendPayer[]>,
+      api.charts.capitalGainsBreakdown(y) as Promise<CapitalGainsBreakdown[]>,
+      api.charts.patrimonioComposition(y) as Promise<PatrimonioComposition[]>,
+      api.charts.withholdingsByCountry(y) as Promise<WithholdingsByCountry[]>,
+      api.charts.dividendsByCompanyYearly() as Promise<
+        CompanyDividendsYearly[]
+      >,
+    ])
+      .then(
+        ([dashData, casData, divData, gainsData, divC, divM, topP, gainsB, patrim, withh, compDiv]) => {
+          if (!isCurrent()) return;
+          setStats(dashData);
+          setCasillas(casData);
+          setDividends(divData);
+          setGains(gainsData);
+          setDivByCountry(divC);
+          setDivMonthly(divM);
+          setTopPayers(topP);
+          setGainsBreakdown(gainsB);
+          setPatrimonio(patrim);
+          setWithholdings(withh);
+          setCompanyDividends(compDiv);
+        },
+      )
+      .catch((e) => {
+        console.error("Error loading data:", e);
+        if (isCurrent())
+          setError("No se pudieron cargar los datos del dashboard. Comprueba tu conexión e inténtalo de nuevo.");
+      })
+      .finally(() => {
+        if (isCurrent()) setLoading(false);
+      });
   }, []);
+
+  function beginLoad(year: number | null) {
+    setLoading(true);
+    setSecondaryLoading(true);
+    setError(null);
+    if (year === null) {
+      // Year-only fiscal tables have nothing to show for "Todos los años".
+      setCrossBrokerLots([]);
+      setFifoAdjustments([]);
+      setOptionAssignments([]);
+    }
+  }
+
+  function selectYear(year: number | null) {
+    if (year === selectedYear) return;
+    beginLoad(year);
+    setSelectedYear(year);
+  }
+
+  function reload() {
+    beginLoad(selectedYear);
+    loadData(selectedYear);
+  }
 
   useEffect(() => {
     loadData(selectedYear);
@@ -296,10 +312,12 @@ function DashboardContent() {
 
   // N2: navigate to ?view=importar from QuickNav or external link.
   // Search param (not hash): useSearchParams re-renders on router.push even when
-  // the page is already mounted; pushState never fires hashchange.
+  // the page is already mounted; pushState never fires hashchange. The view
+  // switch happens during render; the effect only strips the consumed param
+  // (Next patches replaceState, so useSearchParams re-syncs and releases it).
+  if (searchParams.get("view") === "importar" && view !== "importar") setView("importar");
   useEffect(() => {
     if (searchParams.get("view") === "importar") {
-      setView("importar");
       const params = new URLSearchParams(window.location.search);
       params.delete("view");
       const qs = params.toString();
@@ -309,18 +327,22 @@ function DashboardContent() {
 
   const showFiscal = selectedYear !== null;
 
-  // Reset to non-fiscal view when switching to "Todos los años"
-  useEffect(() => {
-    if (
-      !showFiscal &&
-      (view === "casillas" || view === "ganancias" || view === "declaracion")
-    ) {
-      setView("graficas");
-    }
-  }, [showFiscal, view]);
+  // Reset to non-fiscal view when switching to "Todos los años" — adjusted
+  // during render so the fiscal tab is never painted without a year.
+  if (
+    !showFiscal &&
+    (view === "casillas" || view === "ganancias" || view === "declaracion")
+  ) {
+    setView("graficas");
+  }
 
-  // Clear country filter when year changes
-  useEffect(() => { setFilterCountry(null); }, [selectedYear]);
+  // Clear the country filter when the year changes.
+  if (countryFilter.country !== null && countryFilter.year !== selectedYear) {
+    setCountryFilter({ year: selectedYear, country: null });
+  }
+  const filterCountry = countryFilter.country;
+  const setFilterCountry = (country: string | null) =>
+    setCountryFilter({ year: selectedYear, country });
 
   // !error: after a failed year-switch `stats` keeps the previous year's data;
   // without this guard the stale charts would render under the ErrorState.
@@ -348,18 +370,7 @@ function DashboardContent() {
               <select
                 aria-label="Seleccionar año fiscal"
                 value={selectedYear ?? ""}
-                onChange={(e) => {
-                  const year = e.target.value ? Number(e.target.value) : null;
-                  // Sync reset: fiscal tabs unmount with the year, so leave them
-                  // before paint instead of waiting for the effect below.
-                  if (
-                    year === null &&
-                    (view === "casillas" || view === "ganancias" || view === "declaracion")
-                  ) {
-                    setView("graficas");
-                  }
-                  setSelectedYear(year);
-                }}
+                onChange={(e) => selectYear(e.target.value ? Number(e.target.value) : null)}
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="">Años</option>
@@ -434,14 +445,14 @@ function DashboardContent() {
             <div className="max-w-3xl mx-auto space-y-6">
               <FileUpload
                 onImported={() => {
-                  loadData(selectedYear);
+                  reload();
                   setImportRefreshKey((k) => k + 1);
                 }}
               />
               <ImportedFilesList
                 key={importRefreshKey}
                 onDeleted={() => {
-                  loadData(selectedYear);
+                  reload();
                   setImportRefreshKey((k) => k + 1);
                 }}
               />
@@ -455,7 +466,7 @@ function DashboardContent() {
           {view !== "importar" && !loading && error && (
             <ErrorState
               message={error}
-              onRetry={() => loadData(selectedYear)}
+              onRetry={reload}
             />
           )}
 
@@ -635,7 +646,7 @@ function DashboardContent() {
             ) : yearlyComparison.length > 0 ? (
               <YearlyComparisonView
                 data={yearlyComparison}
-                onYearSelect={(year) => { setSelectedYear(year); setView("graficas"); }}
+                onYearSelect={(year) => { selectYear(year); setView("graficas"); }}
               />
             ) : (
               <EmptyState

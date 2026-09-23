@@ -92,60 +92,68 @@ export default function AltInvestmentsPage() {
   // Catalog search (CNMV)
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AltCatalogResult[]>([]);
-  const [searching, setSearching] = useState(false);
+  // Which catalog params `results` answer; `searching` derives from it below.
+  const [resultsFor, setResultsFor] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sort, setSort] = useState<AltCatalogSort>("name");
   const [minSize, setMinSize] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [list, sum] = await Promise.all([
-        api.altInvestments.list(),
-        api.altInvestments.summary(),
-      ]);
-      setItems(list);
-      setSummary(sum);
-    } catch (e) {
-      toast.error(`Error al cargar: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // `loading` starts true, so only the handlers that reload after a mutation
+  // need to raise it again before calling this.
+  const load = useCallback(
+    () =>
+      Promise.all([api.altInvestments.list(), api.altInvestments.summary()])
+        .then(([list, sum]) => {
+          setItems(list);
+          setSummary(sum);
+        })
+        .catch((e) => {
+          toast.error(`Error al cargar: ${e instanceof Error ? e.message : e}`);
+        })
+        .finally(() => setLoading(false)),
+    [],
+  );
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Debounced catalog search / browse. Fires when the query is long enough OR a
-  // filter/sort is active (so you can browse "largest funds" without a name).
+  // Catalog search / browse is active when the query is long enough OR a
+  // filter/sort is set (so you can browse "largest funds" without a name).
+  const catalogQuery = query.trim();
+  const catalogMinSize = minSize ? Number(minSize) * 1_000_000 : undefined; // input is €M
+  const catalogActive =
+    catalogQuery.length >= 2 || sort !== "name" || catalogMinSize !== undefined;
+  const catalogKey = `${catalogQuery}|${sort}|${catalogMinSize ?? ""}`;
+  // Searching until the results on screen answer the current params.
+  const searching = catalogActive && resultsFor !== catalogKey;
+  // Leaving the catalog drops the results at once — adjusting state during
+  // render, so nothing stale shows while the next debounce timer runs.
+  if (!catalogActive && (results.length > 0 || resultsFor !== null)) {
+    setResults([]);
+    setResultsFor(null);
+  }
+
+  // Debounced catalog fetch.
   useEffect(() => {
-    const q = query.trim();
-    const minNum = minSize ? Number(minSize) * 1_000_000 : undefined; // input is €M
-    const browsing = sort !== "name" || minNum !== undefined;
-    if (q.length < 2 && !browsing) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
+    if (!catalogActive) return;
     const t = setTimeout(async () => {
       try {
         const res = await api.altInvestments.search({
-          q,
+          q: catalogQuery,
           sort,
-          min_fund_size: minNum,
+          min_fund_size: catalogMinSize,
         });
         setResults(res);
         setSearchOpen(true);
       } catch {
         setResults([]);
       } finally {
-        setSearching(false);
+        setResultsFor(catalogKey);
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [query, sort, minSize]);
+  }, [catalogActive, catalogKey, catalogQuery, sort, catalogMinSize]);
 
   function openFromCatalog(r: AltCatalogResult) {
     setEditingId(null);
@@ -205,6 +213,7 @@ export default function AltInvestmentsPage() {
         toast.success("Inversión actualizada");
       }
       setFormOpen(false);
+      setLoading(true);
       await load();
     } catch (e) {
       toast.error(`Error al guardar: ${e instanceof Error ? e.message : e}`);
@@ -218,6 +227,7 @@ export default function AltInvestmentsPage() {
     try {
       await api.altInvestments.delete(inv.id);
       toast.success("Inversión eliminada");
+      setLoading(true);
       await load();
     } catch (e) {
       toast.error(`Error al eliminar: ${e instanceof Error ? e.message : e}`);
