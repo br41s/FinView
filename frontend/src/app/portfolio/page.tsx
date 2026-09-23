@@ -1,21 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Briefcase,
-  TrendingUp,
-  ChevronDown,
-  ChevronRight,
-  Target,
-  Loader2,
-  AlertTriangle,
-} from "lucide-react";
+import { Briefcase, TrendingUp } from "lucide-react";
 
 import { toast } from "sonner";
 import { api, type OhlcBar } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
-import { fmt } from "@/lib/format";
 import type { GeoSignal } from "@/lib/geo";
 import { ErrorState } from "@/components/ErrorState";
 import { SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers";
@@ -26,16 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingDots } from "@/components/loading-dots";
 import { QuickNav } from "@/components/QuickNav";
@@ -43,7 +25,8 @@ import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
 import { PortfolioSummaryCards } from "./PortfolioSummaryCards";
-import { PositionDetailPanel } from "./PositionDetailPanel";
+import { PositionsMobileList } from "./PositionsMobileList";
+import { PositionsTable } from "./PositionsTable";
 import type { Position, PositionDetail, Summary } from "./types";
 
 function PortfolioContent() {
@@ -155,6 +138,29 @@ function PortfolioContent() {
     [expandedIsin, details],
   );
 
+  async function handleAddToZonas(p: Position) {
+    const ticker = p.ticker ?? p.isin;
+    setZcAdding((prev) => new Set([...prev, ticker]));
+    try {
+      await api.zonasClav.addTicker(ticker, p.name);
+      setZcWatchlist((prev) => new Set([...prev, ticker.toUpperCase()]));
+      toast.success(`${p.name} añadido a Zonas Clave`, {
+        action: {
+          label: "Ir a Zonas Clave",
+          onClick: () => router.push("/zonas-clave"),
+        },
+      });
+    } catch {
+      toast.error(`No se pudo añadir ${ticker}`);
+    } finally {
+      setZcAdding((prev) => {
+        const next = new Set(prev);
+        next.delete(ticker);
+        return next;
+      });
+    }
+  }
+
   // Fetch OHLC for the expanded position + selected scope. Cached per
   // "isin:scope" so switching scope/re-expanding doesn't refetch. Best-effort
   // → empty hides the chart.
@@ -236,377 +242,38 @@ function PortfolioContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            <Table className="hidden sm:table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8" />
-                  <TableHead>Activo</TableHead>
-                  <TableHead className="text-right">Cantidad</TableHead>
-                  <TableHead className="text-right">Coste medio</TableHead>
-                  <TableHead className="text-right">Precio actual</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
-                  <TableHead className="text-right">P&L</TableHead>
-                  <TableHead className="text-right">Peso</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {positions.map((p) => {
-                  const key = `${p.isin}-${p.broker}`;
-                  const isExpanded = expandedIsin === p.isin;
-                  const detail = details.get(p.isin);
-                  const isLoadingThis = loadingDetail === p.isin;
-                  const plPositive =
-                    p.unrealized_pl_eur != null && p.unrealized_pl_eur >= 0;
-                  const plClass = plPositive
-                    ? "text-emerald-600"
-                    : "text-red-600";
-                  return (
-                    <Fragment key={key}>
-                      <TableRow
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleExpand(p.isin)}
-                      >
-                        <TableCell className="w-8 pr-0">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <div className="flex flex-col">
-                              <span className="font-medium">
-                                {p.ticker || p.isin}
-                              </span>
-                              <span className="text-xs text-muted-foreground truncate max-w-50">
-                                {p.name}
-                              </span>
-                            </div>
-                            {(() => {
-                              const signal = geoByTicker.get(
-                                (p.ticker ?? p.isin).toUpperCase(),
-                              );
-                              if (!signal) return null;
-                              return (
-                                <button
-                                  type="button"
-                                  title={`Señal geo activa: ${signal.headline} (importancia ${signal.importance})`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    router.push("/geo-intel");
-                                  }}
-                                  className="shrink-0 rounded-full p-1 text-amber-600 hover:bg-amber-50"
-                                >
-                                  <AlertTriangle className="h-3.5 w-3.5" />
-                                </button>
-                              );
-                            })()}
-                          </div>
-                          <Badge variant="outline" className="text-[10px] mt-1">
-                            {p.broker}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {fmt(p.quantity, 2)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums fv-sensitive">
-                          {p.avg_cost_eur != null ? `${fmt(p.avg_cost_eur, 2)} €` : "—"}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {!pricesLoaded ? (
-                            <span className="inline-flex gap-0.5 text-muted-foreground">
-                              <span className="animate-pulse">·</span>
-                              <span className="animate-pulse [animation-delay:150ms]">
-                                ·
-                              </span>
-                              <span className="animate-pulse [animation-delay:300ms]">
-                                ·
-                              </span>
-                            </span>
-                          ) : p.current_price_eur != null ? (
-                            `${fmt(p.current_price_eur, 2)} €`
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium fv-sensitive">
-                          {!pricesLoaded ? (
-                            <span className="inline-flex gap-0.5 text-muted-foreground">
-                              <span className="animate-pulse">·</span>
-                              <span className="animate-pulse [animation-delay:150ms]">
-                                ·
-                              </span>
-                              <span className="animate-pulse [animation-delay:300ms]">
-                                ·
-                              </span>
-                            </span>
-                          ) : p.market_value_eur != null ? (
-                            `${fmt(p.market_value_eur)} €`
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell
-                          className={`text-right tabular-nums ${pricesLoaded ? plClass : ""}`}
-                        >
-                          {!pricesLoaded ? (
-                            <span className="inline-flex gap-0.5 text-muted-foreground">
-                              <span className="animate-pulse">·</span>
-                              <span className="animate-pulse [animation-delay:150ms]">
-                                ·
-                              </span>
-                              <span className="animate-pulse [animation-delay:300ms]">
-                                ·
-                              </span>
-                            </span>
-                          ) : p.unrealized_pl_eur != null ? (
-                            <div>
-                              <div className="fv-sensitive">
-                                {plPositive ? "+" : ""}
-                                {fmt(p.unrealized_pl_eur)} €
-                              </div>
-                              <div className="text-xs">
-                                {plPositive ? "+" : ""}
-                                {fmt(p.unrealized_pl_pct)}%
-                              </div>
-                            </div>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {!pricesLoaded ? (
-                            <span className="inline-flex gap-0.5 text-muted-foreground">
-                              <span className="animate-pulse">·</span>
-                              <span className="animate-pulse [animation-delay:150ms]">
-                                ·
-                              </span>
-                              <span className="animate-pulse [animation-delay:300ms]">
-                                ·
-                              </span>
-                            </span>
-                          ) : p.weight_pct != null ? (
-                            `${fmt(p.weight_pct, 1)}%`
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {zcWatchlist.has((p.ticker ?? p.isin).toUpperCase()) ? (
-                            <Badge variant="secondary" className="px-1.5 text-[10px]">
-                              <Target className="h-3 w-3" />
-                            </Badge>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              title="Añadir a Zonas Clave"
-                              disabled={zcAdding.has(p.ticker ?? p.isin)}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const ticker = p.ticker ?? p.isin;
-                                setZcAdding((prev) => new Set([...prev, ticker]));
-                                try {
-                                  await api.zonasClav.addTicker(ticker, p.name);
-                                  setZcWatchlist((prev) => new Set([...prev, ticker.toUpperCase()]));
-                                  toast.success(`${p.name} añadido a Zonas Clave`, {
-                    action: {
-                      label: "Ir a Zonas Clave",
-                      onClick: () => router.push("/zonas-clave"),
-                    },
-                  });
-                                } catch {
-                                  toast.error(`No se pudo añadir ${p.ticker ?? p.isin}`);
-                                } finally {
-                                  setZcAdding((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete(ticker);
-                                    return next;
-                                  });
-                                }
-                              }}
-                            >
-                              {zcAdding.has(p.ticker ?? p.isin) ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Target className="h-4 w-4 text-muted-foreground" />
-                              )}
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-
-                      {/* Expanded detail */}
-                      {isExpanded && (
-                        <TableRow key={`${key}-detail`}>
-                          <TableCell colSpan={9} className="bg-muted/30 p-4">
-                            <PositionDetailPanel
-                              p={p}
-                              detail={detail}
-                              isLoadingThis={isLoadingThis}
-                              plClass={plClass}
-                              ohlcByIsin={ohlcByIsin}
-                              chartScope={chartScope}
-                              setChartScope={setChartScope}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <PositionsTable
+              positions={positions}
+              pricesLoaded={pricesLoaded}
+              expandedIsin={expandedIsin}
+              details={details}
+              loadingDetail={loadingDetail}
+              onExpand={handleExpand}
+              geoByTicker={geoByTicker}
+              zcWatchlist={zcWatchlist}
+              zcAdding={zcAdding}
+              onAddToZonas={handleAddToZonas}
+              ohlcByIsin={ohlcByIsin}
+              chartScope={chartScope}
+              setChartScope={setChartScope}
+            />
 
             {/* Mobile: stacked cards instead of a horizontally-scrolling table */}
-            <div className="divide-y sm:hidden">
-              {positions.map((p) => {
-                const key = `${p.isin}-${p.broker}`;
-                const isExpanded = expandedIsin === p.isin;
-                const detail = details.get(p.isin);
-                const isLoadingThis = loadingDetail === p.isin;
-                const plPositive =
-                  p.unrealized_pl_eur != null && p.unrealized_pl_eur >= 0;
-                const plClass = plPositive ? "text-emerald-600" : "text-red-600";
-                const signal = geoByTicker.get((p.ticker ?? p.isin).toUpperCase());
-                const zcTicker = p.ticker ?? p.isin;
-
-                return (
-                  <div key={key} className="p-3">
-                    <div
-                      className="flex cursor-pointer items-start justify-between gap-2"
-                      onClick={() => handleExpand(p.isin)}
-                    >
-                      <div className="flex min-w-0 items-start gap-1.5">
-                        {isExpanded ? (
-                          <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        )}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-medium">{p.ticker || p.isin}</span>
-                            {signal && (
-                              <button
-                                type="button"
-                                title={`Señal geo activa: ${signal.headline} (importancia ${signal.importance})`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push("/geo-intel");
-                                }}
-                                className="shrink-0 rounded-full p-1 text-amber-600 hover:bg-amber-50"
-                              >
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
-                          <p className="max-w-[180px] truncate text-xs text-muted-foreground">
-                            {p.name}
-                          </p>
-                          <Badge variant="outline" className="mt-1 text-[10px]">
-                            {p.broker}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="font-medium tabular-nums fv-sensitive">
-                          {!pricesLoaded ? (
-                            <span className="inline-flex gap-0.5 text-muted-foreground">
-                              <span className="animate-pulse">·</span>
-                              <span className="animate-pulse [animation-delay:150ms]">·</span>
-                              <span className="animate-pulse [animation-delay:300ms]">·</span>
-                            </span>
-                          ) : p.market_value_eur != null ? (
-                            `${fmt(p.market_value_eur)} €`
-                          ) : (
-                            "—"
-                          )}
-                        </p>
-                        <p
-                          className={`text-xs tabular-nums fv-sensitive ${pricesLoaded ? plClass : "text-muted-foreground"}`}
-                        >
-                          {pricesLoaded && p.unrealized_pl_eur != null
-                            ? `${plPositive ? "+" : ""}${fmt(p.unrealized_pl_eur)} € (${plPositive ? "+" : ""}${fmt(p.unrealized_pl_pct)}%)`
-                            : !pricesLoaded
-                              ? ""
-                              : "—"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {fmt(p.quantity, 2)} uds
-                        {p.avg_cost_eur != null && (
-                          <span className="fv-sensitive"> · coste {fmt(p.avg_cost_eur, 2)} €</span>
-                        )}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span>Peso {p.weight_pct != null ? `${fmt(p.weight_pct, 1)}%` : "—"}</span>
-                        {zcWatchlist.has(zcTicker.toUpperCase()) ? (
-                          <Badge variant="secondary" className="px-1.5 text-[10px]">
-                            <Target className="h-3 w-3" />
-                          </Badge>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            title="Añadir a Zonas Clave"
-                            disabled={zcAdding.has(zcTicker)}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setZcAdding((prev) => new Set([...prev, zcTicker]));
-                              try {
-                                await api.zonasClav.addTicker(zcTicker, p.name);
-                                setZcWatchlist((prev) => new Set([...prev, zcTicker.toUpperCase()]));
-                                toast.success(`${p.name} añadido a Zonas Clave`, {
-                                  action: {
-                                    label: "Ir a Zonas Clave",
-                                    onClick: () => router.push("/zonas-clave"),
-                                  },
-                                });
-                              } catch {
-                                toast.error(`No se pudo añadir ${zcTicker}`);
-                              } finally {
-                                setZcAdding((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(zcTicker);
-                                  return next;
-                                });
-                              }
-                            }}
-                          >
-                            {zcAdding.has(zcTicker) ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Target className="h-3.5 w-3.5 text-muted-foreground" />
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="mt-3 border-t pt-3">
-                        <PositionDetailPanel
-                          p={p}
-                          detail={detail}
-                          isLoadingThis={isLoadingThis}
-                          plClass={plClass}
-                          ohlcByIsin={ohlcByIsin}
-                          chartScope={chartScope}
-                          setChartScope={setChartScope}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <PositionsMobileList
+              positions={positions}
+              pricesLoaded={pricesLoaded}
+              expandedIsin={expandedIsin}
+              details={details}
+              loadingDetail={loadingDetail}
+              onExpand={handleExpand}
+              geoByTicker={geoByTicker}
+              zcWatchlist={zcWatchlist}
+              zcAdding={zcAdding}
+              onAddToZonas={handleAddToZonas}
+              ohlcByIsin={ohlcByIsin}
+              chartScope={chartScope}
+              setChartScope={setChartScope}
+            />
           </CardContent>
         </Card>
       )}

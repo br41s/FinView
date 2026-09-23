@@ -1,9 +1,14 @@
 /**
- * Portfolio page response types and transaction display constants.
+ * Portfolio page response types, transaction display constants and the
+ * props shared by the two positions-list renderings.
  *
  * They lived at the top of page.tsx; nothing outside the portfolio page has
  * ever referenced them (`src/lib/types.ts` has no equivalent shapes).
  */
+
+import type { OhlcBar } from "@/lib/api";
+import type { ChartScope } from "@/lib/chartMarkers";
+import type { GeoSignal } from "@/lib/geo";
 
 export interface Position {
   isin: string;
@@ -91,3 +96,27 @@ export const TX_COLORS: Record<string, string> = {
   SELL: "bg-red-100 text-red-700",
   DIVIDEND: "bg-blue-100 text-blue-700",
 };
+
+/**
+ * Every binding the desktop table and the mobile list read from the page.
+ * Both renderings take exactly this shape so the page passes one prop set.
+ */
+export interface PositionsListProps {
+  positions: Position[];
+  pricesLoaded: boolean;
+  expandedIsin: string | null;
+  details: Map<string, PositionDetail>;
+  loadingDetail: string | null;
+  onExpand: (isin: string) => void;
+  /** Highest-importance active geo signal per upper-cased ticker. */
+  geoByTicker: Map<string, GeoSignal>;
+  /** Upper-cased tickers already on the Zonas Clave watchlist. */
+  zcWatchlist: Set<string>;
+  /** Tickers whose "add to Zonas Clave" request is in flight. */
+  zcAdding: Set<string>;
+  onAddToZonas: (p: Position) => Promise<void>;
+  /** OHLC cache keyed by `${isin}:${scope}`; forwarded to PositionDetailPanel. */
+  ohlcByIsin: Map<string, OhlcBar[]>;
+  chartScope: ChartScope;
+  setChartScope: (scope: ChartScope) => void;
+}
