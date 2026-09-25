@@ -7,7 +7,9 @@
 - [x] 3. `options/page.tsx` (496 → 299): `optionsDataReducer` puro (16 acciones, cada una tras la llamada API que refleja) + `useOptionsData` con cargas, auto-sync y mutaciones como acciones; la página ya no recibe ningún setter. 8 tests de reducer. Sin smoke autenticado (login por contraseña).
 - [x] 4. `import_service.py`: `_TX_DEPENDENT_TABLES` (CrossBrokerLot, TaxLot) y `_IMPORT_DEPENDENT_TABLES` (OptionAssignmentRecord, PortfolioHolding) consumidas por los tres cascade-deletes vía `_delete_tx_dependents` / `_delete_import_dependents`; orden y `synchronize_session` de cada función intactos. TaxResult/FIFOAdjustment/DataIssue siguen con su alcance propio en cada función. `test_cascade_delete_tables.py` recorre las FK del esquema. `test_import_service.py` sin tocar.
 - [x] 5. Persistencia de holdings TR/DEGIRO/IBKR: memo de decisión en `tasks/holdings-persistence-decision.md` (no implementado). Medido con los ficheros 2025: DEGIRO 8/8 coincide, IBKR 2/9 discrepan, TR 25/47 discrepan y 3 posiciones se cerrarían. Hallazgo: `_load_snapshots` trata cualquier año con filas como completo aunque el marcador sea `false` (latente hoy).
-- [ ] Pendiente de decisión (Brais): prerrequisito del loader + qué brokers persistir.
+- [x] Decisión (Brais, 2026-09-25): fix del loader primero, luego persistir DEGIRO; IBKR y TR sin decidir.
+- [x] Loader: `_load_snapshots` ignora filas de imports `portfolio_snapshot_complete=false` (no cierran ni reescriben); legacy NULL intacto. Tests: parametrizado complete/legacy/partial + no reescribe + no desplaza un año completo anterior (3 fallan en el loader viejo).
+- [ ] DEGIRO: guardar holdings con `complete` = sección "Certificado de Beneficiario" presente y todos sus ISIN parseados.
 
 ## Zonas Clave: calibrar el umbral de ruptura — 2026-09-25 (rama `feat/zonas-calibration`)
 

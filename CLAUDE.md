@@ -30,7 +30,7 @@ need it before touching code.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1136 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
+| Tests | pytest · 1141 collected (all pass with files/; 126 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -71,8 +71,11 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   Always run pytest backend/tests/ after importer changes.
 - Portfolio snapshots are authoritative only when
   `ImportRecord.portfolio_snapshot_complete=true`. Empty complete snapshots close old
-  positions; partial ING/BBVA document sets must leave the marker false. Apply all
-  later transactions after reconciliation and propagate unknown cost instead of zero.
+  positions; partial ING/BBVA document sets must leave the marker false. Holding rows
+  from a `false` import are ignored by `_load_snapshots` (a partial list must never close
+  the positions it omits, and a year with rows closes every ISIN it does not list);
+  legacy `NULL` rows stay authoritative. Apply all later transactions after
+  reconciliation and propagate unknown cost instead of zero.
 - Portfolio totals are fail-closed: one unknown cost invalidates invested/P&L and one
   missing price invalidates total market value/P&L. Never publish a partial subtotal as
   the whole portfolio.
@@ -170,10 +173,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1136 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1136 pass in ~90s. Those files are not in the repo,
+Backend: `pytest` — 1141 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1141 pass in ~90s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 126 skip and the
-remaining 1010 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+remaining 1015 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser and the v2 checkpoint scorer — see `.claude/rules/geo.md`.
 

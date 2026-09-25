@@ -1,6 +1,15 @@
 # Holdings de fin de año para TR, DEGIRO e IBKR — memo de decisión (2026-09-25)
 
-**Estado:** pendiente de decisión. **No implementado.** Ítem 5 de los diferidos de Fase 5.
+**Estado:** decidido por Brais (2026-09-25).
+
+- **Primero, el fix del loader:** las filas de un import `complete=false` se ignoran
+  (rama `fix/partial-snapshot-authority`). Es la versión mínima: una lista parcial no
+  cierra ni reescribe nada. Que reconcilie los ISIN que lista queda para el PR de IBKR,
+  si se decide.
+- **Después, persistir DEGIRO.**
+- **IBKR y TR:** sin decidir.
+
+Ítem 5 de los diferidos de Fase 5.
 
 ## Hoy
 

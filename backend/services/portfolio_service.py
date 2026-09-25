@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.models import (
@@ -74,13 +75,24 @@ def _load_snapshots(
     (hence ``end_dates``) is still computed from the account's full snapshot
     history. The authoritative year depends on all holdings, not just the
     requested one.
+
+    Rows from an import marked ``portfolio_snapshot_complete=False`` are not a
+    snapshot at all: a partial holdings list must never close the positions it
+    omits, and a year that has rows closes every ISIN it does not list. They are
+    left out here, so they neither set the authoritative year nor reconcile.
+    Legacy rows (marker NULL) stay usable evidence.
     """
     rows = (
         db.query(PortfolioHolding)
+        .join(ImportRecord, PortfolioHolding.import_id == ImportRecord.id)
         .filter(
             PortfolioHolding.account_id.in_(account_ids),
             PortfolioHolding.isin.isnot(None),
             PortfolioHolding.isin != "",
+            or_(
+                ImportRecord.portfolio_snapshot_complete.is_(None),
+                ImportRecord.portfolio_snapshot_complete.is_(True),
+            ),
         )
         .all()
     )

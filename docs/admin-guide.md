@@ -359,8 +359,11 @@ La reconciliación de cartera usa el último `ImportRecord` con
 `portfolio_snapshot_complete=true` por cuenta. El marcador también representa un
 snapshot válido sin holdings; solo se activa para el informe fiscal ING y cuando el
 lote BBVA incluye el documento de patrimonio. Los certificados ING de operaciones y
-los lotes BBVA parciales no pueden cerrar posiciones. Las importaciones legacy sin
-marcador conservan el fallback al último año que tenga filas en `portfolio_holdings`.
+los lotes BBVA parciales no pueden cerrar posiciones. Las filas de `portfolio_holdings`
+de una importación con `portfolio_snapshot_complete=false` se ignoran: no fijan el año
+autoritativo ni reconcilian cantidades, porque una lista parcial cerraría todo ISIN que
+omite. Las importaciones legacy sin marcador conservan el fallback al último año que
+tenga filas en `portfolio_holdings`.
 
 Después del snapshot se aplican BUY/SELL/SPINOFF por fecha e ID. Las ventas consumen
 lotes FIFO; un lote de origen desconocido propaga `total_cost_eur=NULL` hasta que se

@@ -76,7 +76,9 @@ def _tx(
     return tx
 
 
-def _snapshot_import(db, account: Account, year: int) -> ImportRecord:
+def _snapshot_import(
+    db, account: Account, year: int, *, complete: bool | None = True
+) -> ImportRecord:
     record = ImportRecord(
         account_id=account.id,
         filename=f"snapshot-{year}.pdf",
@@ -84,7 +86,7 @@ def _snapshot_import(db, account: Account, year: int) -> ImportRecord:
         broker=Broker.ING.value,
         fiscal_year=year,
         record_count=0,
-        portfolio_snapshot_complete=True,
+        portfolio_snapshot_complete=complete,
     )
     db.add(record)
     db.flush()
@@ -207,6 +209,69 @@ def test_newer_legacy_holding_beats_older_explicit_snapshot(db):
 
     assert position.quantity == Decimal("7")
     assert position.total_cost_eur is None
+
+
+X_ISIN = "ES0000000001"
+Y_ISIN = "ES0000000002"
+
+
+@pytest.mark.parametrize(
+    ("complete", "open_isins"),
+    [
+        (True, {Y_ISIN}),  # a complete snapshot closes what it omits
+        (None, {Y_ISIN}),  # legacy rows stay authoritative, unchanged
+        (False, {X_ISIN, Y_ISIN}),  # a partial list closes nothing
+    ],
+    ids=["complete", "legacy", "partial"],
+)
+def test_only_a_complete_snapshot_closes_an_omitted_position(db, complete, open_isins):
+    """A holdings list that covers part of the account (IBKR keeps only
+    `Stocks`) used to close every ledger position it did not list: any year
+    with rows was authoritative, whatever the marker said."""
+    account = _account(db)
+    _tx(db, account, TransactionType.BUY, date(2023, 1, 1), "10", "100", isin=X_ISIN)
+    _tx(db, account, TransactionType.BUY, date(2023, 1, 1), "5", "50", isin=Y_ISIN)
+    record = _snapshot_import(db, account, 2024, complete=complete)
+    _holding(db, account, record, 2024, "5", isin=Y_ISIN)
+    db.commit()
+
+    positions = {p.isin: p for p in svc.get_open_positions(db, 1, skip_prices=True)}
+
+    assert set(positions) == open_isins
+    if complete is False:
+        assert positions[X_ISIN].total_cost_eur == Decimal("100")
+
+
+def test_partial_snapshot_does_not_rewrite_a_listed_quantity(db):
+    """No authority means none: the ledger's quantity and known cost stand."""
+    account = _account(db)
+    _tx(db, account, TransactionType.BUY, date(2023, 1, 1), "5", "50")
+    record = _snapshot_import(db, account, 2024, complete=False)
+    _holding(db, account, record, 2024, "7")
+    db.commit()
+
+    [position] = svc.get_open_positions(db, 1, skip_prices=True)
+
+    assert position.quantity == Decimal("5")
+    assert position.total_cost_eur == Decimal("50")
+
+
+def test_newer_partial_snapshot_does_not_displace_an_older_complete_one(db):
+    """The authoritative year stays the complete one: a newer partial list
+    must not move it forward and reopen what the complete year closed."""
+    account = _account(db)
+    _tx(db, account, TransactionType.BUY, date(2022, 1, 1), "10", "100", isin=X_ISIN)
+    _tx(db, account, TransactionType.BUY, date(2022, 1, 1), "5", "50", isin=Y_ISIN)
+    complete = _snapshot_import(db, account, 2023)
+    _holding(db, account, complete, 2023, "10", isin=X_ISIN)
+    partial = _snapshot_import(db, account, 2024, complete=False)
+    _holding(db, account, partial, 2024, "5", isin=Y_ISIN)
+    db.commit()
+
+    positions = {p.isin: p for p in svc.get_open_positions(db, 1, skip_prices=True)}
+
+    assert set(positions) == {X_ISIN}
+    assert positions[X_ISIN].total_cost_eur == Decimal("100")
 
 
 def test_purchase_after_empty_snapshot_reopens_with_known_cost(db):
