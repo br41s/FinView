@@ -41,9 +41,16 @@ zones (zonas_clave_analyzer)
   `alert_threshold` it was measured against — sub-threshold included, because
   ">70 vs <70" needs outcomes on both sides. `backtest_service.zone_calibration`
   reads the curve (`by_bucket`) and the hit rate a gate at each floor would have
-  had (`cumulative_from`); the gate (`alert_threshold_for`) drops to the lowest
-  floor with ≥30 measured 7d outcomes and ≥55% hits, else stays at 70. Never
-  loosens on thin data; a calibration failure falls back to 70.
+  had (`cumulative_from`, for reading only). The gate (`alert_threshold_for`) moves
+  from 70 **one band at a time on that band's own record**: down to 60 only if
+  60-69 has ≥20 measured 7d outcomes and ≥55% hits (then to 50 on 50-59's record),
+  up to 80 if 70-79 has ≥20 measured and fails the bar. Judging a floor by the
+  cumulative population let a strong 80+ tail carry a 10%-accurate 50-59 band
+  across the bar (auditor, PR #289). A thin band stops the walk; a calibration
+  failure falls back to 70. The gate is computed once per cycle and passed into
+  `emit_for_analysis`. The alert-accuracy views (`get_stats`, `get_calibration`,
+  `GET /options/backtest`) go through `alerting_only`: sub-threshold ZONE_BREAK rows
+  exist for calibration, not for the alert stats.
   `GET /zonas-clave/calibration` shows it; the page header prints the effective
   gate. `GET /zonas-clave/signals` returns everything by default; `alerted_only=true`
   is the Monitor's view.
