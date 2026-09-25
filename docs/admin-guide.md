@@ -512,7 +512,7 @@ Servicio de tipos de referencia oficiales del BCE como fallback IRPF cuando el a
 ## 13. Troubleshooting
 
 **Error 500 al borrar importación**  
-Causa más común: FK violation en `cross_broker_lots`. El orden de borrado en `_delete_import_data` debe eliminar CrossBrokerLots antes que Transactions.
+Causa más común: FK violation en `cross_broker_lots`. Los tres borrados en cascada (`_delete_import_data`, `delete_account_cascade`, `delete_all_imports`) eliminan las tablas dependientes de `_TX_DEPENDENT_TABLES` antes que las Transactions y las de `_IMPORT_DEPENDENT_TABLES` antes que el ImportRecord. Una tabla nueva con FK a `transactions` o `import_records` se añade ahí (una sola edición); `test_cascade_delete_tables.py` falla si falta.
 
 **"duplicate import"**  
 El archivo ya fue importado (mismo hash SHA-256). Eliminar la importación anterior primero.
