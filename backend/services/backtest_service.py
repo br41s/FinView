@@ -438,3 +438,101 @@ def get_calibration(db: Session, user_id: int, days: int = 30) -> dict:
         "by_type_alignment": by_type_alignment,
         "dedup_health": dedup_health,
     }
+
+
+# ── ZONE_BREAK calibration ────────────────────────────────────────────
+
+ZONE_BREAK = "ZONE_BREAK"
+# Probability buckets for the calibration table. Half-open [lo, hi).
+_ZONE_BUCKETS: list[tuple[int, int, str]] = [
+    (0, 50, "<50"), (50, 60, "50-59"), (60, 70, "60-69"),
+    (70, 80, "70-79"), (80, 90, "80-89"), (90, 101, "90+"),
+]
+# Candidate gates, lowest first. The lowest one that still clears the
+# accuracy bar wins: more alerts at the same evidence.
+_THRESHOLD_FLOORS = (50, 60, 70, 80, 90)
+# A gate moves only on evidence: at least this many measured outcomes at or
+# above the floor, and a 7d hit rate at least this high. Below either, the
+# default stands. 30 is the smallest sample where "55%" means anything.
+CALIBRATION_MIN_MEASURED = 30
+CALIBRATION_MIN_ACCURACY_PCT = 55.0
+_CALIBRATION_WINDOW_DAYS = 180
+
+
+def _hit_rate(rows: list[BacktestSignal]) -> dict:
+    """n / measured / correct / accuracy at 7d. NEUTRAL is excluded from the rate:
+    "nothing measurable moved" is not a failed break call."""
+    outcomes = [_outcome_value(s.outcome_7d) for s in rows]
+    correct = sum(1 for o in outcomes if o == BacktestOutcome.CORRECT.value)
+    incorrect = sum(1 for o in outcomes if o == BacktestOutcome.INCORRECT.value)
+    measured = correct + incorrect
+    return {
+        "n": len(rows),
+        "measured": measured,
+        "correct": correct,
+        "accuracy_pct": round(correct / measured * 100, 1) if measured else None,
+    }
+
+
+def zone_calibration(db: Session, user_id: int, days: int = _CALIBRATION_WINDOW_DAYS) -> dict:
+    """How the ZONE_BREAK probability maps to 7d outcomes, and the gate it supports.
+
+    `by_bucket` is the calibration curve; `cumulative_from[f]` is the hit rate of
+    everything scored at or above `f`, which is what a gate at `f` would have
+    alerted on. `suggested_threshold` is the lowest floor with enough measured
+    outcomes and a hit rate over the bar; None while the evidence is thin, in
+    which case `effective_threshold` is the default 70.
+    """
+    from backend.services.zone_scorer import ALERT_THRESHOLD
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows: list[BacktestSignal] = (
+        db.query(BacktestSignal)
+        .filter(
+            BacktestSignal.user_id == user_id,
+            BacktestSignal.signal_type == ZONE_BREAK,
+            BacktestSignal.recorded_at >= since,
+            BacktestSignal.break_probability.isnot(None),
+        )
+        .all()
+    )
+    evaluated = [s for s in rows if s.outcome_7d is not None]
+    by_bucket = {
+        label: _hit_rate([s for s in evaluated if lo <= int(s.break_probability) < hi])
+        for lo, hi, label in _ZONE_BUCKETS
+    }
+    cumulative = {
+        str(f): _hit_rate([s for s in evaluated if int(s.break_probability) >= f])
+        for f in _THRESHOLD_FLOORS
+    }
+    suggested: int | None = None
+    for f in _THRESHOLD_FLOORS:
+        c = cumulative[str(f)]
+        if c["measured"] >= CALIBRATION_MIN_MEASURED and (c["accuracy_pct"] or 0) >= CALIBRATION_MIN_ACCURACY_PCT:
+            suggested = f
+            break
+    return {
+        "window_days": days,
+        "since": since.date().isoformat(),
+        "default_threshold": ALERT_THRESHOLD,
+        "scored": len(rows),
+        "evaluated": len(evaluated),
+        "by_bucket": by_bucket,
+        "cumulative_from": cumulative,
+        "suggested_threshold": suggested,
+        "effective_threshold": suggested if suggested is not None else ALERT_THRESHOLD,
+        "calibrated": suggested is not None,
+    }
+
+
+def alert_threshold_for(db: Session, user_id: int) -> int:
+    """The ZONE_BREAK alert gate for this user right now: calibrated when the
+    evidence allows, the default otherwise. Never raises — a calibration failure
+    must not stop the cycle that emits the signals."""
+    from backend.services.zone_scorer import ALERT_THRESHOLD
+
+    try:
+        return int(zone_calibration(db, user_id)["effective_threshold"])
+    except Exception:
+        logger.warning("zone calibration unavailable; using the default gate", exc_info=True)
+        return ALERT_THRESHOLD

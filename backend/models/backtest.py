@@ -5,10 +5,12 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -67,6 +69,13 @@ class BacktestSignal(Base):
     # NULL on pre-2b rows and whenever FRED macro data is unavailable.
     regime: Mapped[str | None] = mapped_column(String(12))
     regime_alignment: Mapped[str | None] = mapped_column(String(10))
+    # ZONE_BREAK only: the scorer's probability, whether it cleared the alert
+    # gate, and the gate it was measured against. Every scored candidate is
+    # recorded (not just the alerting ones) so the gate can be calibrated:
+    # ">70 vs <70" needs outcomes on both sides of the cut.
+    break_probability: Mapped[int | None] = mapped_column(Integer)
+    alerted: Mapped[bool | None] = mapped_column(Boolean)
+    alert_threshold: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (
         Index("ix_bt_user_ticker", "user_id", "ticker"),

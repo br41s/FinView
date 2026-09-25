@@ -23,7 +23,8 @@ zones (zonas_clave_analyzer)
   → zone_proximity.detect_proximity_candidates   deterministic, free
   → zone_scorer.score_break_probability          LLM, candidates only
   → TechnicalSignal rows                          ALL scored candidates
-  → alerted=True + BacktestSignal                 only > ALERT_THRESHOLD (70)
+  → BacktestSignal (ZONE_BREAK, break_probability) ALL scored candidates
+  → alerted=True                                  only > alert_threshold_for()
 ```
 
 - **The gate is what bounds token spend.** `PROXIMITY_THRESHOLD = 0.02` (2%);
@@ -34,12 +35,23 @@ zones (zonas_clave_analyzer)
   A level built from pivot highs is labelled "resistance" forever; once price
   trades above it, it acts as support and the pending move is a breakdown.
   Trusting the label inverts the direction on every flipped level.
-- **The 70 cut is uncalibrated and should be described that way.** An LLM's
-  "73%" is an opinion with a number attached. That's why *every* scored
-  candidate is persisted, sub-threshold included — it's the only way to ever
-  check whether >70 breaks more often than <70 and move the cut on evidence.
-  Same reasoning as Phase 2b regime instrumentation. `GET /zonas-clave/signals`
-  returns everything by default; `alerted_only=true` is the Monitor's view.
+- **The gate is calibrated from outcomes, default 70.** An LLM's "73%" is an
+  opinion with a number attached, so *every* scored candidate gets a
+  `BacktestSignal` row with its `break_probability`, `alerted` and the
+  `alert_threshold` it was measured against — sub-threshold included, because
+  ">70 vs <70" needs outcomes on both sides. `backtest_service.zone_calibration`
+  reads the curve (`by_bucket`) and the hit rate a gate at each floor would have
+  had (`cumulative_from`); the gate (`alert_threshold_for`) drops to the lowest
+  floor with ≥30 measured 7d outcomes and ≥55% hits, else stays at 70. Never
+  loosens on thin data; a calibration failure falls back to 70.
+  `GET /zonas-clave/calibration` shows it; the page header prints the effective
+  gate. `GET /zonas-clave/signals` returns everything by default; `alerted_only=true`
+  is the Monitor's view.
+- **Outcomes are evaluated by the zonas cycle itself** (`run_analysis_for_user`
+  ends with `backtest_service.evaluate_pending`). The options agent also
+  evaluates, but returns early for a user with no options watchlist, so a
+  zonas-only user never got ZONE_BREAK outcomes — and without outcomes nothing
+  calibrates.
 - **`break_probability = NULL` means "no score"** (no API key, LLM failure,
   unparseable answer). Never coerce it to 0 — that reads as "certainly won't
   break" in any later calibration, and it must not alert either.

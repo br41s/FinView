@@ -19,6 +19,7 @@ import {
   type ZcWatchlistItem,
   type ZcTickerSearchResult,
   type OhlcBar,
+  type ZcCalibration,
 } from "@/lib/api";
 import { fmt } from "@/lib/format";
 import { bestEffort } from "@/lib/bestEffort";
@@ -108,6 +109,7 @@ export default function ZonasClavePage() {
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [schedulerRunning, setSchedulerRunning] = useState(false);
   const [externalScheduler, setExternalScheduler] = useState(false);
+  const [calibration, setCalibration] = useState<ZcCalibration | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [portfolioSuggestions, setPortfolioSuggestions] = useState<
@@ -140,6 +142,14 @@ export default function ZonasClavePage() {
     (api.options.watchlist() as Promise<{ id: number; ticker: string }[]>)
       .then((wl) => setOptionsMap(new Map(wl.map((w) => [w.ticker, w.id]))))
       .catch(bestEffort("options lens map for the row toggles"));
+  }, []);
+
+  // The alert gate's calibration: enrichment, the page works without it.
+  useEffect(() => {
+    api.zonasClav
+      .calibration()
+      .then(setCalibration)
+      .catch(bestEffort("zonas calibration"));
   }, []);
 
   // Initial load
@@ -452,9 +462,22 @@ export default function ZonasClavePage() {
           <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-muted-foreground">
-            Soportes, resistencias y tendencia algorítmica
-          </p>
+          <div>
+            <p className="text-muted-foreground">
+              Soportes, resistencias y tendencia algorítmica
+            </p>
+            {calibration && (
+              <p className="text-xs text-muted-foreground/80" title="Umbral de alerta de ruptura: por defecto 70; se calibra solo con ≥30 resultados medidos a 7 días y ≥55 % de acierto">
+                {`Umbral de alerta ${calibration.effective_threshold}% (${calibration.calibrated ? "calibrado" : "por defecto"}) · ${calibration.evaluated} de ${calibration.scored} candidatos con resultado`}
+                {(() => {
+                  const c = calibration.cumulative_from[String(calibration.effective_threshold)];
+                  return c && c.measured > 0 && c.accuracy_pct != null
+                    ? ` · ≥${calibration.effective_threshold}: ${Math.round(c.accuracy_pct)} % acierto (n=${c.measured})`
+                    : "";
+                })()}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <QuickNav current="/zonas-clave" />
             <Button

@@ -1,5 +1,14 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Zonas Clave: calibrar el umbral de ruptura — 2026-09-25 (rama `feat/zonas-calibration`)
+
+- [x] Cada candidato puntuado (no sólo >70) genera un `BacktestSignal ZONE_BREAK` con `break_probability`, `alerted` y `alert_threshold` (columnas aditivas).
+- [x] `backtest_service.zone_calibration`: curva por buckets, acierto acumulado ≥ cada floor, `suggested_threshold` = floor más bajo con ≥30 medidos y ≥55% a 7d; `alert_threshold_for` = ese o 70. Nunca afloja con pocos datos.
+- [x] `emit_for_analysis` usa `alert_threshold_for`; `run_analysis_for_user` evalúa outcomes al final (el agente de opciones salía antes si no había watchlist de opciones).
+- [x] `GET /zonas-clave/calibration` + línea en la cabecera de la página ("Umbral de alerta N% (calibrado|por defecto) · …").
+- [x] Docs: `.claude/rules/zonas.md`.
+- [ ] Verificar: pytest, tsc/vitest/lint/build, push, checks, merge, Cloud Run sano, `/zonas-clave/calibration` responde en prod.
+
 ## Geo: cerrar el bucle de aprendizaje — 2026-09-25 (rama `feat/geo-learning-loop`)
 
 - [x] `confidence_mod` derivado de la precisión: `clamp((acc − 0.5) × 0.6 × min(1, n/10), ±0.30)`; recompute idempotente al inicio de cada auditoría (las filas con el viejo contador ±0.02/−0.03 convergen solas).

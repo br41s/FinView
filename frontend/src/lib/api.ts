@@ -194,6 +194,27 @@ export interface ZcSchedulerStatus {
   total_items: number;
 }
 
+export interface ZcCalibrationBucket {
+  n: number;
+  measured: number; // correct + incorrect at 7d
+  correct: number;
+  accuracy_pct: number | null;
+}
+
+/** How the break-probability alert gate is doing against outcomes (GET /zonas-clave/calibration). */
+export interface ZcCalibration {
+  window_days: number;
+  since: string;
+  default_threshold: number;
+  scored: number;
+  evaluated: number;
+  by_bucket: Record<string, ZcCalibrationBucket>;
+  cumulative_from: Record<string, ZcCalibrationBucket>;
+  suggested_threshold: number | null;
+  effective_threshold: number;
+  calibrated: boolean;
+}
+
 // ── 5-minute client-side cache for read-heavy GET endpoints ──────────
 // Backed by sessionStorage (not a module-level Map) so it survives client-side
 // route navigation regardless of how the bundler chunks lib/api.ts, and even a
@@ -784,6 +805,7 @@ export const api = {
 
     schedulerStatus: () =>
       fetchJSON<ZcSchedulerStatus>("/zonas-clave/scheduler/status"),
+    calibration: () => fetchJSON<ZcCalibration>("/zonas-clave/calibration"),
 
     startScheduler: () => send("POST", "/zonas-clave/scheduler/start"),
 
