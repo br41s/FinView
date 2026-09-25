@@ -8,6 +8,7 @@ back into geo_rule_stats.
 """
 
 import json
+from dataclasses import dataclass
 import logging
 import math
 from bisect import bisect_right
@@ -70,6 +71,14 @@ _GIVE_UP_AFTER = timedelta(days=3)
 _INTRADAY = {"period": "10d", "interval": "5m"}
 _DAILY = {"period": "1mo", "interval": "1d"}
 _CONFIDENCE_MOD_CLAMP = 0.3
+# confidence_mod is a function of the rule's measured accuracy, not a step
+# counter. The old ±0.02/−0.03 steps only drifted upward for a rule right more
+# than 60% of the time and never converged on anything; a rule at 24% accuracy
+# (prod, 2026-09-20) kept most of its base confidence. Now a rule at 100% earns
+# +0.30 and one at 0% loses 0.30, scaled by how much of the evidence is in:
+# the first outcomes count for a tenth each, so one lucky hit is not a promotion.
+_ACCURACY_GAIN = 0.6
+_FULL_WEIGHT_SAMPLES = 10
 
 
 def _utc(moment: datetime) -> datetime:
@@ -123,9 +132,18 @@ def _threshold_pct(intraday: Series | None, daily: Series | None, horizon: str) 
 
 
 def create_checkpoints(db: Session, signal: GeoSignal) -> None:
-    """Create the 5 pending checkpoints for a freshly created signal. Caller commits."""
+    """Create the pending checkpoints a signal is missing. Caller commits.
+
+    Skips horizons the signal already has: `_reanchor` deletes only the unscored
+    checkpoints before calling this, and recreating a horizon that was already
+    scored violated the (signal_id, horizon) unique constraint — the whole page
+    rolled back as a persist failure, every cycle, until +7d.
+    """
     base = signal.created_at or datetime.now(timezone.utc)
+    existing = {getattr(c.horizon, "value", c.horizon) for c in signal.checkpoints}
     for horizon, delay in _HORIZON_DELAYS.items():
+        if horizon in existing:
+            continue
         target = (
             add_trading_time(base, delay) if horizon in _TRADING_TIME_HORIZONS else base + delay
         )
@@ -187,21 +205,62 @@ def _score_basket(
     return round(correct / total * 100, 2), ", ".join(parts), total
 
 
+def learned_confidence_mod(correct: int, total: int) -> float:
+    """The confidence adjustment a rule has earned from ``correct`` of ``total`` outcomes.
+
+    (accuracy − 0.5) × gain, shrunk toward 0 while the sample is small, clamped to
+    ±_CONFIDENCE_MOD_CLAMP. 0 outcomes → 0. Pure, so the rule stats can be
+    recomputed from their counters at any time.
+    """
+    if total <= 0:
+        return 0.0
+    weight = min(1.0, total / _FULL_WEIGHT_SAMPLES)
+    mod = (correct / total - 0.5) * _ACCURACY_GAIN * weight
+    return max(-_CONFIDENCE_MOD_CLAMP, min(_CONFIDENCE_MOD_CLAMP, mod))
+
+
+def _apply_learned_mod(stat: GeoRuleStat) -> bool:
+    """Set the stat's accuracy and confidence_mod from its counters. True if changed."""
+    total = stat.total_signals or 0
+    correct = stat.correct_signals or 0
+    accuracy = correct / total if total else None
+    mod = learned_confidence_mod(correct, total)
+    before = (
+        float(stat.accuracy) if stat.accuracy is not None else None,
+        float(stat.confidence_mod) if stat.confidence_mod is not None else None,
+    )
+    stat.accuracy = accuracy
+    stat.confidence_mod = mod
+    return before != (accuracy, mod)
+
+
+def recompute_confidence_mods(db: Session) -> int:
+    """Re-derive every rule's confidence_mod from its accuracy. Returns rows changed.
+
+    Idempotent. Runs at the start of every audit so a change to the formula, or
+    a row that still carries the old step-counter value, takes effect without
+    waiting for that rule's next +7d outcome.
+    """
+    changed = 0
+    for stat in db.query(GeoRuleStat).all():
+        if _apply_learned_mod(stat):
+            stat.updated_at = datetime.now(timezone.utc)
+            changed += 1
+    return changed
+
+
 def _update_rule_stats(db: Session, signal: GeoSignal, is_correct: bool) -> None:
     try:
         rule_ids = json.loads(signal.matched_rule_ids) if signal.matched_rule_ids else []
     except ValueError:
         rule_ids = []
-    delta = 0.02 if is_correct else -0.03
     for rid in rule_ids:
         stat = db.get(GeoRuleStat, rid)
         if stat is None:
             continue
         stat.total_signals = (stat.total_signals or 0) + 1
         stat.correct_signals = (stat.correct_signals or 0) + (1 if is_correct else 0)
-        stat.accuracy = stat.correct_signals / stat.total_signals if stat.total_signals else None
-        mod = float(stat.confidence_mod or 0) + delta
-        stat.confidence_mod = max(-_CONFIDENCE_MOD_CLAMP, min(_CONFIDENCE_MOD_CLAMP, mod))
+        _apply_learned_mod(stat)
         stat.updated_at = datetime.now(timezone.utc)
 
 
@@ -335,3 +394,116 @@ def evaluate_pending(
             logger.exception("Failed to commit geo checkpoint evaluations")
             return 0
     return evaluated
+
+
+def _elapsed_horizon(created_at: datetime, now: datetime) -> str:
+    """The checkpoint horizon a signal's age has reached (calendar time), floor 1h.
+
+    Only used to pick the sigma window for the live rating: a two-day-old thesis
+    is read against its 1d noise, not its 1h noise.
+    """
+    elapsed = now - _utc(created_at)
+    reached = _HORIZON_DELAYS[GeoHorizon.H1.value]
+    chosen = GeoHorizon.H1.value
+    for horizon, delay in _HORIZON_DELAYS.items():
+        if delay <= elapsed and delay >= reached:
+            reached, chosen = delay, horizon
+    return chosen
+
+
+def rate_active(
+    db: Session,
+    user_id: int,
+    budget: Budget | None = None,
+    series_cache: dict[str, dict[str, Series]] | None = None,
+) -> int:
+    """Re-rate every ACTIVE signal against the latest price. Returns signals rated.
+
+    The checkpoints score fixed moments and are never rewritten; this is the
+    running read between them, so the feed keeps moving on the audit cadence
+    (every four hours) instead of only when a horizon falls due. Same scorer,
+    same readability threshold (the sigma of the horizon the signal's age has
+    reached), stored on the signal and overwritten each run.
+    """
+    now = datetime.now(timezone.utc)
+    active = (
+        db.query(GeoSignal)
+        .filter(GeoSignal.user_id == user_id, GeoSignal.status == GeoSignalStatus.ACTIVE.value)
+        .all()
+    )
+    if not active:
+        return 0
+    symbols = sorted({t.symbol for s in active for t in s.tickers})
+    cache = series_cache if series_cache is not None else {}
+    intraday = _series_for(symbols, budget, cache.setdefault("5m", {}), **_INTRADAY)
+    need_daily = sorted(
+        sym for sym in symbols
+        if sym not in intraday or len(intraday[sym]) <= _SESSION_BARS + _MIN_SIGMA_SAMPLES
+    )
+    daily = _series_for(need_daily, budget, cache.setdefault("1d", {}), **_DAILY)
+
+    rated = 0
+    for signal in active:
+        horizon = _elapsed_horizon(signal.created_at or now, now)
+        prices: dict[str, float] = {}
+        thresholds: dict[str, float] = {}
+        for t in signal.tickers:
+            bars = intraday.get(t.symbol)
+            price = _as_of(bars if bars else daily.get(t.symbol), now)
+            threshold = _threshold_pct(bars, daily.get(t.symbol), horizon)
+            if price is not None and threshold is not None:
+                prices[t.symbol] = price
+                thresholds[t.symbol] = threshold
+        if not prices:
+            continue  # no price this run: keep the last rating rather than blank it
+        score, _detail, _n = _score_basket(signal, prices, thresholds)
+        signal.live_score = score
+        signal.live_outcome = _outcome(score)
+        signal.live_rated_at = now
+        rated += 1
+
+    if rated:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to commit geo live ratings")
+            return 0
+    return rated
+
+
+@dataclass
+class AuditResult:
+    checkpoints_evaluated: int
+    signals_rated: int
+    rules_recomputed: int
+
+
+def run_audit(
+    db: Session,
+    user_id: int,
+    budget: Budget | None = None,
+    series_cache: dict[str, dict[str, Series]] | None = None,
+) -> AuditResult:
+    """One learning pass for one user: recompute → score due checkpoints → re-rate.
+
+    The recompute goes first so a rule's confidence_mod already reflects its
+    accuracy before this run's outcomes add to it, and so a formula change
+    lands on the next audit rather than the rule's next resolution.
+    """
+    recomputed = recompute_confidence_mods(db)
+    if recomputed:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to commit geo confidence_mod recompute")
+            recomputed = 0
+    evaluated = evaluate_pending(db, user_id, budget, series_cache)
+    rated = rate_active(db, user_id, budget, series_cache)
+    logger.info(
+        "geo audit user=%s done: %d checkpoints scored, %d active signals re-rated, "
+        "%d rule mods recomputed",
+        user_id, evaluated, rated, recomputed,
+    )
+    return AuditResult(evaluated, rated, recomputed)
