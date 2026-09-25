@@ -389,6 +389,28 @@ class BacktestStatsOut(BaseModel):
 # ── Zonas Clave Schemas ──────────────────────────────────────────────
 
 
+class ZcCalibrationBucket(BaseModel):
+    n: int
+    measured: int  # correct + incorrect at 7d (NEUTRAL excluded)
+    correct: int
+    accuracy_pct: float | None
+
+
+class ZcCalibrationOut(BaseModel):
+    """How the ZONE_BREAK probability maps to outcomes, and the alert gate it supports."""
+
+    window_days: int
+    since: str
+    default_threshold: int
+    scored: int
+    evaluated: int
+    by_bucket: dict[str, ZcCalibrationBucket]
+    cumulative_from: dict[str, ZcCalibrationBucket]  # hit rate at or above each candidate gate
+    suggested_threshold: int | None
+    effective_threshold: int
+    calibrated: bool
+
+
 class ZonasClaveWatchlistItemIn(BaseModel):
     ticker: str
     name: str = ""

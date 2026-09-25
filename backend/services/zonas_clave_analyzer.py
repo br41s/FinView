@@ -502,15 +502,30 @@ def run_analysis_for_user(user_id: int) -> dict:
         # Avoid yfinance rate-limit between tickers
         time.sleep(1)
 
+    # Outcomes for the ZONE_BREAK rows this cycle (and earlier ones) recorded.
+    # The options agent also evaluates, but it returns early for a user with no
+    # options watchlist, so a zonas-only user never got outcomes — and without
+    # outcomes the alert gate can never calibrate.
+    evaluated = 0
+    try:
+        from backend.services.backtest_service import evaluate_pending
+
+        with SessionLocal() as db:
+            evaluated = evaluate_pending(db, user_id)
+    except Exception:
+        logger.exception("Zonas Clave backtest evaluation failed for user %d — non-fatal", user_id)
+
     logger.info(
-        "Zonas Clave analysis for user %d: %d analyzed, %d failed, %d signals (%d alerting)",
-        user_id, analyzed, failed, signals, alerts,
+        "Zonas Clave analysis for user %d: %d analyzed, %d failed, %d signals (%d alerting), "
+        "%d outcomes evaluated",
+        user_id, analyzed, failed, signals, alerts, evaluated,
     )
     return {
         "analyzed": analyzed,
         "failed": failed,
         "signals": signals,
         "alerts": alerts,
+        "evaluated": evaluated,
         "tickers": tickers,
     }
 

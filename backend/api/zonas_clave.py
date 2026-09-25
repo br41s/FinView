@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from backend.api.auth import CronKey, CurrentUser
 from backend.api.schemas import (
     TechnicalSignalOut,
+    ZcCalibrationOut,
     ZcZoneOut,
     ZonasClaveAnalysisOut,
     ZonasClaveSchedulerStatus,
@@ -274,6 +275,19 @@ def trigger_all(user: CurrentUser):
         target=run_analysis_for_user, args=[user.id], daemon=True
     ).start()
     return {"status": "started"}
+
+
+@router.get("/calibration", response_model=ZcCalibrationOut)
+def calibration(db: DbSession, user: CurrentUser, days: int = 180):
+    """How the break-probability gate is doing against 7d outcomes.
+
+    The gate the emitter uses is `effective_threshold`: the default 70 until at
+    least 30 measured outcomes at some floor show a hit rate over 55%, then the
+    lowest such floor. Seeing the curve is what makes "the 70" a decision.
+    """
+    from backend.services.backtest_service import zone_calibration
+
+    return zone_calibration(db, user.id, days=max(7, min(days, 730)))
 
 
 @router.post("/cron", include_in_schema=False, dependencies=[CronKey])
