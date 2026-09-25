@@ -105,11 +105,26 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 > Cloud Run) y `--max-retry-attempts=0`.
 
 ```bash
-for J in geo-intel-cycle options-agent-cycle zonas-clave-cycle; do
+for J in geo-intel-cycle geo-intel-audit options-agent-cycle zonas-clave-cycle; do
   gcloud scheduler jobs update http $J --location=europe-west1 \
     --attempt-deadline=1800s --max-retry-attempts=0
 done
 ```
+
+> **`geo-intel-audit` (2026-09-25).** El aprendizaje geo (checkpoints, re-puntuación en
+> vivo de cada señal activa y `confidence_mod` derivado de la precisión) corre cada 4 h en
+> su propio job contra `POST /api/geo/audit`, separado del ciclo de ingesta de 30 min.
+> Se creó con las mismas cabeceras y deadline que `geo-intel-cycle`:
+>
+> ```bash
+> gcloud scheduler jobs create http geo-intel-audit --location=europe-west1 \
+>   --schedule='0 */4 * * *' --time-zone=Etc/UTC --http-method=POST \
+>   --uri="$SERVICE_URL/api/geo/audit" --headers="X-Cron-Key=$FINVIEW_CRON_SECRET" \
+>   --attempt-deadline=1800s --max-retry-attempts=0
+> ```
+>
+> Está en la lista `SCHEDULER_JOBS` de `cloudbuild.yaml`: el rollout lo pausa y lo reanuda,
+> y el build falla si no vuelve a `ENABLED`.
 
 **La lección más cara del proyecto.** Los tres pipelines (geo, options, zonas-clave) tienen
 un `APScheduler` en proceso con botones de start/stop en la UI. **Eso es una comodidad de

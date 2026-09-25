@@ -190,7 +190,26 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   via `geo/notify.py` (Telegram text is Markdown-escaped — external headlines contain
   `*_[` and would 400 the Bot API otherwise; keep the escaping).
 - **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
-  checkpoint resolves the signal and feeds confidence_mod back into geo_rule_stats.
+  checkpoint resolves the signal and updates the matched rules' counters in
+  geo_rule_stats. **It runs on its own job**, `POST /api/geo/audit` every 4 hours
+  (`geo-intel-audit`), not inside the 30-minute cycle: `run_audit` = recompute
+  confidence_mods → score due checkpoints → re-rate every ACTIVE signal.
+  - **confidence_mod is derived from accuracy, never stepped**:
+    `clamp((correct/total − 0.5) × 0.6 × min(1, total/10), ±0.30)`
+    (`auditor.learned_confidence_mod`). A rule at 100% earns +0.30, at 0% loses 0.30,
+    at 24% (prod before the audit) −0.156; the first outcomes weigh a tenth each so one
+    lucky hit is not a promotion. `recompute_confidence_mods` re-derives every row from
+    its counters at the start of each audit, so a formula change or a row still carrying
+    the old ±0.02/−0.03 step value converges on the next run. The old steps only drifted
+    upward for a rule right more than 60% of the time and never converged.
+  - **Live rating** (`rate_active`): every ACTIVE signal is scored against the latest
+    price on each audit and the result is stored on the signal (`live_score`,
+    `live_outcome`, `live_rated_at`; shown as "Ahora: N% a favor" in the panel). The
+    readability threshold is the sigma of the horizon the signal's age has reached.
+    Checkpoints are never rewritten; a run with no price keeps the last rating.
+  - `create_checkpoints` skips horizons the signal already has. `_reanchor` deletes only
+    the pending ones, and recreating a scored horizon violated the (signal_id, horizon)
+    unique constraint — the page rolled back as a persist failure every cycle until +7d.
   **A ticker that didn't move is excluded from the basket, not counted against it**, and a
   checkpoint with nothing measurable is NEUTRAL and teaches the rules nothing. Since the
   2026-09-20 audit (prod had 23.9% accuracy ex-neutral and random baskets scored 61–68%
@@ -203,7 +222,8 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
     calendar); a Sunday-03:00 signal's +1h lands Monday 10:30 ET;
   - **a ticker is readable when it moved more than 0.75 of its own horizon sigma**, computed
     from the same series (floor 0.1%); ties are NEUTRAL;
-  - **no price → pending**, retried next cycle for up to 7 days, then NEUTRAL "sin datos".
+  - **no price → pending**, retried next audit for up to 3 days (`_GIVE_UP_AFTER`), then
+    NEUTRAL "sin datos".
     Never stamp `evaluated_at` on a missing price: a Yahoo stall used to burn every due
     window forever.
   The portfolio path (`fetch_and_cache_prices`) stays on daily closes — one row per ISIN
@@ -212,14 +232,15 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 ### Scheduling — prod runs on external cron, NOT APScheduler
 The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives
 while the instance is alive — with `--min-instances=0` it dies on scale-to-zero.
-**Prod periodicity = Cloud Scheduler → `POST /api/geo/cron` every 30 min**, authenticated
-by header `X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret
-disables the endpoint). The endpoint runs the owner's one cycle synchronously so Cloud Run
-keeps CPU until it finishes. Don't convert it to fire-and-forget threads — the instance
-can be reclaimed after the response.
+**Prod periodicity = two Cloud Scheduler jobs**: `geo-intel-cycle` → `POST /api/geo/cron`
+every 30 min (ingest, signals, notify) and `geo-intel-audit` → `POST /api/geo/audit` every
+4 hours (checkpoints, live re-rating, rule learning). Both authenticate with header
+`X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret disables the
+endpoint) and run synchronously so Cloud Run keeps CPU until they finish. Don't convert
+them to fire-and-forget threads — the instance can be reclaimed after the response.
 
-**The rollout pauses `geo-intel-cycle` and must resume it.** `cloudbuild.yaml` pauses the
-three Scheduler jobs before switching traffic; for a month nothing resumed them, so every
+**The rollout pauses the jobs and must resume them.** `cloudbuild.yaml` pauses the
+four Scheduler jobs before switching traffic; for a month nothing resumed them, so every
 deploy silently ended production periodicity on a green build. The resume is an EXIT trap
 (covers rollback and supersession) and the build fails if a job doesn't come back ENABLED
 — `test_cloudbuild_policy.py` asserts the pause/resume pair over the same job list. A new
