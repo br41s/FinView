@@ -184,6 +184,9 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
             for c in checkpoints
         ],
         timestamp=_as_utc(signal.created_at),
+        liveScore=float(signal.live_score) if signal.live_score is not None else None,
+        liveOutcome=signal.live_outcome,
+        liveRatedAt=_as_utc(signal.live_rated_at),
         notifiedAt=_as_utc(signal.notified_at),
         status=_ev(signal.status),
         source=signal.source or "",
@@ -483,6 +486,28 @@ def cron_run(db: DbSession):
     if result is None:
         raise HTTPException(status_code=500, detail="The geo cycle failed; see logs")
     return {"status": "done", "cycles_ok": 1, "cycles_failed": 0}
+
+
+@router.post("/audit", include_in_schema=False, dependencies=[CronKey])
+def cron_audit(db: DbSession):
+    """External-cron entry for the learning pass, every four hours.
+
+    Scores the checkpoints that fell due, re-rates every active signal against
+    the latest price, and re-derives each rule's confidence_mod from its
+    accuracy. Separate from /cron so ingestion keeps its 30-minute cadence
+    while the auditor runs at its own. A failed audit is a failed job.
+    """
+    from backend.services.geo.orchestrator import run_audits
+
+    (result,) = run_audits([geo_owner_id(db)])
+    if result is None:
+        raise HTTPException(status_code=500, detail="The geo audit failed; see logs")
+    return {
+        "status": "done",
+        "checkpoints": result.checkpoints_evaluated,
+        "rated": result.signals_rated,
+        "recomputed": result.rules_recomputed,
+    }
 
 
 @router.post("/scheduler/start")

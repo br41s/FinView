@@ -18,7 +18,7 @@ from backend.api.auth import require_cron_key
 from backend.app import app
 from backend.config import settings
 
-CRON_ROUTES = ["/api/geo/cron", "/api/options/agent/cron", "/api/zonas-clave/cron"]
+CRON_ROUTES = ["/api/geo/cron", "/api/geo/audit", "/api/options/agent/cron", "/api/zonas-clave/cron"]
 
 
 @pytest.fixture

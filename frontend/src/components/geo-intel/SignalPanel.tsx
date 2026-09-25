@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ExternalLink, Target } from "lucide-react";
 import { scopeLabel, thesisSegments, tradabilityHint, type GeoSignal } from "@/lib/geo";
 import { api } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
+import { fmtDateTime } from "@/lib/format";
 import { PrecioTab } from "@/components/instrument/PrecioTab";
 import { FundamentalsCard } from "./FundamentalsCard";
 import { ListSkeleton } from "./MapStates";
@@ -575,6 +576,11 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 );
               })}
             </div>
+            {signal.status === "active" && signal.liveRatedAt && signal.liveOutcome && (
+              <p className="mt-3 text-[11px]" style={{ color: OUTCOME_COLORS[signal.liveOutcome] }}>
+                {`Ahora: ${signal.liveOutcome === "NEUTRAL" || signal.liveScore == null ? "sin movimiento medible" : Math.round(signal.liveScore) + "% a favor"} · ${fmtDateTime(signal.liveRatedAt)}`}
+              </p>
+            )}
             {(() => {
               const lastEvaluated = [...signal.checkpoints]
                 .reverse()

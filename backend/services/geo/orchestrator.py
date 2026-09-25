@@ -34,7 +34,7 @@ from .analyst import (
     analyze_unmatched,
     has_fresh_generative,
 )
-from .auditor import create_checkpoints, evaluate_pending
+from .auditor import AuditResult, create_checkpoints, run_audit
 from .ingest import fetch_all_sources
 from .notify import notify_signal
 from .rules import RULES_BY_ID, compute_risk, effective_confidence, seed_rule_stats
@@ -515,10 +515,10 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
 
     notified, notify_failed = _dispatch_notifications(db, user_id, results)
 
-    # Phase F: evaluate any due outcome checkpoints. Runs even when the persist
-    # phase lost everything — the auditor is what resolves the signals already on
-    # the board, and it must never be blocked by a write that failed upstream.
-    checkpoints = evaluate_pending(db, user_id, yahoo, inputs.series_cache)
+    # The auditor (checkpoint scoring, live re-rating, rule learning) is no
+    # longer a phase of this cycle: it runs on its own four-hour job through
+    # `run_audits` / POST /geo/audit, so the ingest cadence and the learning
+    # cadence are independent and a failed persist here cannot block it.
 
     new_signals = sum(1 for r in results if r.is_new)
     suppressed = sum(
@@ -529,15 +529,15 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
     )
     logger.info(
         "geo cycle user=%s done: %d new signals, %d notified, %d undelivered, "
-        "%d checkpoints, %d persist failures, %d held by the novelty/confidence gates",
-        user_id, new_signals, notified, notify_failed, checkpoints, persist_failures, suppressed,
+        "%d persist failures, %d held by the novelty/confidence gates",
+        user_id, new_signals, notified, notify_failed, persist_failures, suppressed,
     )
     return CycleResult(
         events=len(events),
         new_signals=new_signals,
         notified=notified,
         notify_failed=notify_failed,
-        checkpoints_evaluated=checkpoints,
+        checkpoints_evaluated=0,  # scored by the audit job, not the cycle
         sources={key: len(getattr(bundle, key, []) or []) for key in _SOURCE_KEYS},
         persist_failures=persist_failures,
         novelty_suppressed=suppressed,
@@ -625,3 +625,30 @@ def run_cycles(user_ids: list[int]) -> list[CycleResult | None]:
                 _record_run(db, uid, started_at, None, f"{type(exc).__name__}: {exc}")
             return [None] * len(user_ids)
     return [run_cycle_for_user(uid, inputs) for uid in user_ids]
+
+
+def run_audits(user_ids: list[int]) -> list[AuditResult | None]:
+    """Cron entry for the learning pass (every four hours, POST /geo/audit).
+
+    One shared price-series cache and one Yahoo budget for all users, like the
+    cycle. A user's failure is logged and returned as None; the caller turns any
+    None into a failed job so Cloud Scheduler records it.
+    """
+    from backend.database import SessionLocal
+    from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, Budget
+
+    if not user_ids:
+        return []
+    budget = Budget(GEO_CYCLE_SECONDS, "geo audit")
+    series_cache: dict[str, dict] = {}
+    out: list[AuditResult | None] = []
+    for uid in user_ids:
+        with SessionLocal() as db:
+            try:
+                seed_rule_stats(db)
+                db.commit()
+                out.append(run_audit(db, uid, budget, series_cache))
+            except Exception:
+                logger.exception("geo audit failed for user %s", uid)
+                out.append(None)
+    return out
