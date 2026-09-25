@@ -4,7 +4,7 @@
 
 - [x] 1. `zonas-clave/page.tsx`: el poll de análisis casa por `selectedItemId` (derivado en render) y deja de leer `watchlist` → sin `eslint-disable`; mismas dependencias efectivas porque (user, ticker) es único y cada cambio de id llega en el mismo batch que `selectedTicker`. La carga inicial conserva el suyo, con el porqué en el sitio: un updater funcional cambiaría la carrera del "Reintentar" (el buscador está vivo durante el reintento).
 - [x] 2. `charts.py`: yield-on-cost con la base de coste de `portfolio_service` en vez de su FIFO propio. Divergían en cantidad (cambio de ISIN: la ISIN vieja nunca se cerraba → AENA 110 en vez de 100) y en coste (FIFO global entre cuentas). Coste desconocido → `null` (contrato + tipos frontend), también en la fila fusionada por ticker. Consecuencia: AENA pasa a "—" como en Cartera hasta vincular el coste.
-- [ ] 3. `options/page.tsx`: reevaluar `useOptionsData` como reducer.
+- [x] 3. `options/page.tsx` (496 → 299): `optionsDataReducer` puro (16 acciones, cada una tras la llamada API que refleja) + `useOptionsData` con cargas, auto-sync y mutaciones como acciones; la página ya no recibe ningún setter. 8 tests de reducer. Sin smoke autenticado (login por contraseña).
 - [ ] 4. `import_service.py`: una sola lista de tablas dependientes para los tres cascade-deletes.
 - [ ] 5. Persistencia de holdings TR/DEGIRO/IBKR: memo de decisión en `tasks/holdings-persistence-decision.md` (no implementar).
 
