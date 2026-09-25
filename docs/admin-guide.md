@@ -357,8 +357,10 @@ Usa `TooltipTrigger` de `@base-ui/react/tooltip` para mostrar el nombre al hover
 
 La reconciliación de cartera usa el último `ImportRecord` con
 `portfolio_snapshot_complete=true` por cuenta. El marcador también representa un
-snapshot válido sin holdings; solo se activa para el informe fiscal ING y cuando el
-lote BBVA incluye el documento de patrimonio. Los certificados ING de operaciones y
+snapshot válido sin holdings; solo se activa para el informe fiscal ING, cuando el
+lote BBVA incluye el documento de patrimonio y cuando el informe anual de DEGIRO trae
+el "Certificado de Beneficiario" con todos sus ISIN parseados (una fila ilegible lo
+deja en `false`). TR e IBKR parsean holdings pero no los guardan. Los certificados ING de operaciones y
 los lotes BBVA parciales no pueden cerrar posiciones. Las filas de `portfolio_holdings`
 de una importación con `portfolio_snapshot_complete=false` se ignoran: no fijan el año
 autoritativo ni reconcilian cantidades, porque una lista parcial cerraría todo ISIN que
