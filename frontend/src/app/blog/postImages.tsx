@@ -2140,7 +2140,34 @@ function ImgRsuStockOptions() {
   );
 }
 
+function ImgDividendosJaponeses() {
+  return (
+    <div className={styles.postImgDividendosJaponeses}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">JAPÓN · 20,42 % → 5 % → IRPF</text>
+        {/* baseline */}
+        <line x1="30" y1="98" x2="170" y2="98" stroke="var(--fv-ink-20)" strokeWidth="1.2" />
+        {/* domestic withholding bar */}
+        <rect x="44" y="34" width="34" height="64" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="61" y="62" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">20,42 %</text>
+        <text x="61" y="74" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retención</text>
+        <text x="61" y="112" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Japón retiene</text>
+        {/* treaty cap bar */}
+        <rect x="122" y="82" width="34" height="16" rx="4" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="139" y="94" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">5 %</text>
+        <text x="139" y="112" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">el convenio deja</text>
+        {/* reclaim bracket */}
+        <path d="M86 34 h12 M86 82 h12" stroke="var(--fv-ink-30)" strokeWidth="1.2" strokeDasharray="3 2" />
+        <path d="M98 34 v48" stroke="var(--fv-ink-30)" strokeWidth="1.2" strokeDasharray="3 2" />
+        <text x="102" y="56" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui">reclamable</text>
+        <text x="102" y="66" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui">15,42 %</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-japoneses-espana': ImgDividendosJaponeses,
   'rsu-stock-options-irpf-espana': ImgRsuStockOptions,
   'dividendos-austriacos-espana': ImgDividendosAustriacos,
   'dividendos-finlandeses-espana': ImgDividendosFinlandeses,
