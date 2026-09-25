@@ -32,6 +32,7 @@ OPERATOR_ONLY = frozenset({
     # no user's cycle completed, so a dead pipeline shows up as a failed job
     # instead of a green one. Listed as the raw source literal, f-string and all.
     "The geo cycle failed; see logs",
+    "The geo audit failed; see logs",
 })
 
 # Function words that appear in English copy and never in Spanish copy. Nouns

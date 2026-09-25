@@ -117,6 +117,12 @@ class GeoSignal(Base):
     # indistinguishable from delivered: notify_signal discarded every sender's
     # return value and GeoCycleRun.notified counted attempts.
     notified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Live rating: the basket scored against the latest price on every audit run,
+    # so an open thesis shows how it is doing between checkpoints. Overwritten
+    # each run; the checkpoints stay the immutable record.
+    live_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    live_outcome: Mapped[str | None] = mapped_column(String(20))
+    live_rated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Provenance
     matched_rule_ids: Mapped[str | None] = mapped_column(Text)  # JSON list of rule_id

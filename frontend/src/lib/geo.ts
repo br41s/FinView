@@ -67,6 +67,11 @@ export type GeoSignal = {
   timestamp: string;
   notifiedAt?: string | null; // when a channel actually delivered it; null = never
   status: "active" | "resolved";
+  // Live rating from the last audit run (every 4 h): the basket scored against
+  // the latest price. Only while active; the checkpoints stay the record.
+  liveScore?: number | null; // 0-100
+  liveOutcome?: "CORRECT" | "INCORRECT" | "NEUTRAL" | null;
+  liveRatedAt?: string | null;
   source?: string; // ingest feed key (usgs|EONET|gdelt|…)
   sourceUrl?: string | null; // link to the underlying source event, when captured
   generated?: boolean; // thesis proposed by the LLM for an event no rule covers

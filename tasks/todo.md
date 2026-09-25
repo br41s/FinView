@@ -1,5 +1,16 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Geo: cerrar el bucle de aprendizaje — 2026-09-25 (rama `feat/geo-learning-loop`)
+
+- [x] `confidence_mod` derivado de la precisión: `clamp((acc − 0.5) × 0.6 × min(1, n/10), ±0.30)`; recompute idempotente al inicio de cada auditoría (las filas con el viejo contador ±0.02/−0.03 convergen solas).
+- [x] Test de cierre: una regla al 20% en 10 resultados cae por debajo del gate de notificación.
+- [x] `_reanchor`: `create_checkpoints` no recrea horizontes ya puntuados (violaba el unique `(signal_id, horizon)` y tiraba la página como persist failure).
+- [x] Re-puntuación en vivo de cada señal ACTIVE en cada auditoría (`live_score/outcome/rated_at` en `geo_signals`, `_ADDITIVE_COLUMNS`); panel muestra "Ahora: N% a favor".
+- [x] Auditoría en su propio job: `POST /api/geo/audit` (CronKey), `run_audits`; el ciclo de 30 min ya no puntúa. Job `geo-intel-audit` `0 */4 * * *` creado en PAUSED; `cloudbuild.yaml` lo pausa/reanuda con los demás.
+- [x] Docs: `.claude/rules/geo.md` (auditor, scheduling, give-up 3d), `docs/deployment.md` (job + comando).
+- [ ] Verificar: pytest, tsc/vitest/lint/build, push, checks, merge, Cloud Run sano, `geo-intel-audit` ENABLED tras el rollout, primera auditoría con `recomputed > 0`.
+- [ ] No incluido (decisión): calibración del 70 de Zonas Clave (requiere guardar `break_probability` en cada candidato puntuado, no sólo >70).
+
 ## Fase 5 — splits de módulos — 2026-09-23 (ramas `refactor/phase5-*`)
 
 ### Backend (`refactor/phase5-backend-splits`)

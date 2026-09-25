@@ -165,9 +165,10 @@ def _by_event(analyses, event):
 def test_one_unwritable_signal_does_not_stop_the_cycle(db, monkeypatch):
     """A single failing write costs its own signal and nothing else.
 
-    Before, the failure escaped generate_signal, aborted the whole cycle and — the
-    part that made it permanent — skipped Phase F, so the auditor stopped
-    resolving anything too.
+    Before, the failure escaped generate_signal and aborted the whole cycle. (It
+    also used to skip the auditor, which was Phase F of this cycle; the auditor
+    now runs on its own job — see test_geo_audit — so a failed write here cannot
+    reach it by construction.)
     """
     good, bad = _analysis(_event("evt-ok")), _analysis(_event("evt-poison"))
     _stub_cycle_inputs(monkeypatch, [bad, good])
@@ -183,24 +184,18 @@ def test_one_unwritable_signal_does_not_stop_the_cycle(db, monkeypatch):
         return real_generate(db_, user_id=user_id, analysis=analysis, prices=prices)
 
     monkeypatch.setattr(orchestrator, "generate_signal", flaky)
-    evaluated: list[int] = []
-    monkeypatch.setattr(
-        orchestrator, "evaluate_pending", lambda db_, uid, budget=None, series_cache=None: evaluated.append(uid) or 0
-    )
 
     result = orchestrator.run_cycle(db, user_id=1)
 
     assert result.persist_failures == 1
     assert result.new_signals == 1
     assert [s.external_id for s in db.query(GeoSignal).all()] == ["evt-ok"]
-    assert evaluated == [1], "the auditor must run even when a write failed"
 
 
 def test_cycle_reports_per_source_counts(db, monkeypatch):
     """All-zero source counts are the signature of an ingest outage."""
     analysis = _analysis(_event("evt-1"))
     _stub_cycle_inputs(monkeypatch, [analysis])
-    monkeypatch.setattr(orchestrator, "evaluate_pending", lambda db_, uid, budget=None, series_cache=None: 0)
 
     result = orchestrator.run_cycle(db, user_id=1)
 
@@ -273,7 +268,6 @@ def test_unresolvable_symbols_are_not_refetched_per_user(db, monkeypatch):
         attempted={"TTF=F"},
     )
     monkeypatch.setattr(orchestrator, "_dispatch_notifications", lambda db, uid, results: (0, 0))
-    monkeypatch.setattr(orchestrator, "evaluate_pending", lambda *a, **k: 0)
     # no analyses → nothing enriched → the only candidate is what an LLM might add
     orchestrator.run_cycle(db, 1, inputs)
     orchestrator.run_cycle(db, 2, inputs)

@@ -122,7 +122,9 @@ def test_final_horizon_resolves_signal_and_updates_rule_stats(db, monkeypatch):
     stat = db.get(GeoRuleStat, "eq-chile-copper")
     assert stat.total_signals == 1
     assert stat.correct_signals == 1  # bull thesis + price up = correct
-    assert float(stat.confidence_mod) == pytest.approx(0.02)
+    assert float(stat.accuracy) == 1.0
+    # (1.0 − 0.5) × 0.6 × (1/10 of the evidence in) — one hit is not a promotion
+    assert float(stat.confidence_mod) == pytest.approx(0.03)
 
 
 def test_basket_scores_correct_on_db_read_direction(db, monkeypatch):

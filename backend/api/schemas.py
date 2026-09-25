@@ -509,6 +509,10 @@ class GeoSignalOut(BaseModel):
     timestamp: datetime
     notifiedAt: datetime | None = None  # when a channel actually delivered it
     status: str  # active|resolved
+    # Live rating from the last audit run (active signals only; checkpoints are the record)
+    liveScore: float | None = None  # 0-100
+    liveOutcome: str | None = None  # CORRECT|INCORRECT|NEUTRAL
+    liveRatedAt: datetime | None = None
     source: str = ""  # ingest feed key (usgs|EONET|gdelt|…)
     sourceUrl: str | None = None  # link to the underlying source event, when captured
     generated: bool = False  # thesis proposed by the LLM for an event no rule covers
