@@ -378,6 +378,8 @@ Esto evita que dividendos con fecha fiscal idéntica (p.ej. ING reporta todos lo
 `backend/api/charts._merge_same_ticker_rows()` post-procesa el endpoint `/charts/dividend-yield`:  
 Cuando dos ISINs distintos mapean al mismo ticker de Yahoo Finance (split con cambio de ISIN), sus filas se fusionan sumando dividendos, coste y valor, y recalculando los ratios de rentabilidad.
 
+La cantidad abierta y el coste de cada ISIN salen de `portfolio_service.get_open_positions` (la misma cola de lotes que la página de Cartera: FIFO por cuenta, reconciliada con snapshots), no de un FIFO propio. Si el coste es desconocido, `total_invested` y `yield_on_cost` son `null` y la fila fusionada también: nunca se publica un subtotal conocido como coste de toda la posición. Una posición cerrada tiene coste `0`. Tests: `test_charts_yield_on_cost.py`.
+
 ---
 
 ## 10. Tests

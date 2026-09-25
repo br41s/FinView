@@ -14,7 +14,9 @@ type SortKey =
   | "pl"
   | "pl_pct";
 
-function num(v: string | number): number {
+// null is an unknown cost basis: rendered "—" and left out of P&L, like zero.
+function num(v: string | number | null): number {
+  if (v == null) return 0;
   return typeof v === "string" ? Number.parseFloat(v) || 0 : v;
 }
 
@@ -172,7 +174,7 @@ export function DividendYieldTable({
                     </span>
                   </td>
                   <td className="py-2 text-right">
-                    {num(d.total_invested) > 0
+                    {d.total_invested != null && num(d.total_invested) > 0
                       ? formatEur(d.total_invested)
                       : "—"}
                   </td>

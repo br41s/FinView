@@ -25,6 +25,7 @@ from backend.api.schemas import (
 from backend.database import DbSession
 from backend.models import Account, PortfolioHolding, TaxLot, Transaction, TransactionType
 from backend.services import yahoo_budget
+from backend.services.portfolio_service import Position, get_open_positions
 from backend.services.sql_compat import year_month_str, year_range, year_str
 
 router = APIRouter(prefix="/charts", tags=["charts"])
@@ -208,64 +209,41 @@ def patrimonio_composition(db: DbSession, user: CurrentUser, fiscal_year: int | 
     ]
 
 
-def _fifo_cost_basis(
-    buys: list[tuple[Decimal, Decimal]], total_sold: Decimal,
-) -> tuple[Decimal, Decimal]:
-    """Compute FIFO cost basis and remaining qty after sells consume oldest buys.
-
-    Args:
-        buys: list of (quantity, cost) tuples ordered by date
-        total_sold: total quantity sold to consume
-
-    Returns:
-        (cost_basis, qty_remaining) of unsold shares
-    """
-    cost_basis = Decimal("0")
-    qty_remaining = Decimal("0")
-    remaining = total_sold
-    for buy_qty, buy_cost in buys:
-        if remaining >= buy_qty:
-            remaining -= buy_qty
-        elif remaining > 0:
-            kept = buy_qty - remaining
-            cost_per_share = buy_cost / buy_qty if buy_qty else Decimal("0")
-            cost_basis += kept * cost_per_share
-            qty_remaining += kept
-            remaining = Decimal("0")
-        else:
-            cost_basis += buy_cost
-            qty_remaining += buy_qty
-    return cost_basis, qty_remaining
-
-
 def _compute_isin_yield(
-    d, buys_by_isin: dict, sells_by_isin: dict,
+    d, positions: dict[str, Position],
     price_map: dict,
-    holdings_map: dict | None = None,
+    holdings_map: dict,
 ) -> dict:
-    """Compute yield metrics for a single ISIN."""
+    """Compute yield metrics for a single ISIN.
+
+    Quantity and cost basis are the portfolio page's: the open-lot queue of
+    ``portfolio_service`` (FIFO per account, reconciled against snapshots,
+    unknown basis propagated). A second FIFO here used to disagree with it
+    after splits, ISIN changes, spinoffs and cross-account sales.
+
+    A closed position has cost ``0`` and yield ``"0"``. An open one whose basis
+    is unknown has ``None`` for both, never a partial number.
+    """
     isin = d.isin or ""
     total_div = Decimal(str(d.total_dividends or 0))
 
-    buys = buys_by_isin.get(isin, [])
-    sells = sells_by_isin.get(isin, [])
-
-    total_sold = sum((abs(tx.quantity) for tx in sells), Decimal("0"))
-    buy_pairs = [(abs(tx.quantity), abs(tx.net_amount_eur)) for tx in buys]
-    cost_basis, qty_remaining = _fifo_cost_basis(buy_pairs, total_sold)
+    pos = positions.get(isin)
+    qty_remaining = pos.quantity if pos else Decimal("0")
+    cost_basis = pos.total_cost_eur if pos else Decimal("0")
 
     latest_price = price_map.get(isin, Decimal("0"))
-    current_value = abs(qty_remaining * latest_price) if qty_remaining else Decimal("0")
+    # Snapshot-only holdings may have no trade or cached price: value them at
+    # the snapshot's own EUR price. Only for a position that is still open, so
+    # an old snapshot never resurrects shares the ledger has closed.
+    holding = holdings_map.get(isin)
+    if qty_remaining > 0 and latest_price == 0 and holding and holding.quantity:
+        latest_price = abs(holding.value_eur / holding.quantity)
+    current_value = abs(qty_remaining * latest_price)
 
-    # Fall back to portfolio holdings when no buy/sell history exists
-    if holdings_map and current_value == 0:
-        holding = holdings_map.get(isin)
-        if holding:
-            current_value = abs(holding.value_eur)
-            qty_remaining = abs(holding.quantity)
-            latest_price = abs(holding.price)
-
-    yield_on_cost = (total_div / cost_basis * 100) if cost_basis > 0 else Decimal("0")
+    if cost_basis is None:
+        yield_on_cost = None
+    else:
+        yield_on_cost = (total_div / cost_basis * 100) if cost_basis > 0 else Decimal("0")
     yield_on_value = (total_div / current_value * 100) if current_value > 0 else Decimal("0")
 
     return {
@@ -274,25 +252,17 @@ def _compute_isin_yield(
         "country": d.country,
         "ticker": d.ticker,
         "total_dividends": str(total_div),
-        "total_invested": str(round(cost_basis, 2)),
+        "total_invested": None if cost_basis is None else str(round(cost_basis, 2)),
         "qty_remaining": str(qty_remaining),
         "latest_price": str(latest_price),
         "current_value": str(round(current_value, 2)),
-        "yield_on_cost": str(round(yield_on_cost, 2)),
+        "yield_on_cost": None if yield_on_cost is None else str(round(yield_on_cost, 2)),
         "yield_on_value": str(round(yield_on_value, 2)),
         "payment_count": d.payment_count,
         "currency": "EUR",
         "original_price": None,
         "fx_rate": None,
     }
-
-
-def _group_transactions(txs: list) -> dict[str, list]:
-    """Group a list of transactions by ISIN."""
-    by_isin: dict[str, list] = {}
-    for tx in txs:
-        by_isin.setdefault(tx.isin, []).append(tx)
-    return by_isin
 
 
 def _first_per_key(rows, key_attr: str, val_attr: str) -> dict:
@@ -310,7 +280,9 @@ def _merge_same_ticker_rows(rows: list[dict], db: Session) -> list[dict]:
 
     After a stock split with an ISIN change, old and new ISINs appear as
     separate rows. If both map to the same ticker, collapse them into one row
-    by summing additive fields and recalculating derived ratios.
+    by summing additive fields and recalculating derived ratios. An unknown
+    cost on any row makes the merged cost unknown: a known subtotal must not
+    be published as the cost of the whole position.
     """
     try:
         from backend.services import ticker_map
@@ -320,14 +292,15 @@ def _merge_same_ticker_rows(rows: list[dict], db: Session) -> list[dict]:
         return rows
 
     # Accumulators per canonical ticker key
-    totals: dict[str, tuple[Decimal, Decimal, Decimal, Decimal]] = {}  # div, cost, qty, value
+    # div, cost (None = unknown), qty, value
+    totals: dict[str, tuple[Decimal, Decimal | None, Decimal, Decimal]] = {}
     canonical: dict[str, dict] = {}  # representative row per key
 
     for row in rows:
         isin = row["isin"]
         key = known.get(isin, isin)
         div = Decimal(row["total_dividends"])
-        cost = Decimal(row["total_invested"])
+        cost = None if row["total_invested"] is None else Decimal(row["total_invested"])
         qty = Decimal(row["qty_remaining"])
         value = Decimal(row["current_value"])
         price = Decimal(row["latest_price"])
@@ -338,7 +311,8 @@ def _merge_same_ticker_rows(rows: list[dict], db: Session) -> list[dict]:
             totals[key] = (div, cost, qty, value)
         else:
             prev_div, prev_cost, prev_qty, prev_value = totals[key]
-            totals[key] = (prev_div + div, prev_cost + cost, prev_qty + qty, prev_value + value)
+            merged_cost = None if prev_cost is None or cost is None else prev_cost + cost
+            totals[key] = (prev_div + div, merged_cost, prev_qty + qty, prev_value + value)
             canonical[key]["payment_count"] += row["payment_count"]
             # Prefer the newer (post-split) ISIN — it carries the live price
             if price > canonical[key]["_price"]:
@@ -357,10 +331,14 @@ def _merge_same_ticker_rows(rows: list[dict], db: Session) -> list[dict]:
         total_div, cost, qty, value = totals[key]
         row.pop("_price")
         row["total_dividends"] = str(total_div)
-        row["total_invested"] = str(round(cost, 2))
+        row["total_invested"] = None if cost is None else str(round(cost, 2))
         row["qty_remaining"] = str(qty)
         row["current_value"] = str(round(value, 2))
-        row["yield_on_cost"] = str(round(total_div / cost * 100 if cost > 0 else Decimal("0"), 2))
+        row["yield_on_cost"] = (
+            None
+            if cost is None
+            else str(round(total_div / cost * 100 if cost > 0 else Decimal("0"), 2))
+        )
         row["yield_on_value"] = str(round(total_div / value * 100 if value > 0 else Decimal("0"), 2))
         out.append(row)
     return out
@@ -372,13 +350,14 @@ def dividend_yield(
     user: CurrentUser,
     fiscal_year: int | None = None,
 ):
-    """Dividend yield per ISIN: dividends vs avg invested at dividend dates.
+    """Dividend yield per ISIN: dividends vs the cost of what is still held.
 
     For each ISIN that paid dividends:
-    - total_invested: average FIFO cost basis at each dividend payment date
-    - qty_remaining: total bought - total sold (current position)
+    - total_invested: cost basis of the open position, as the portfolio page
+      computes it; None when that basis is unknown
+    - qty_remaining: open quantity, as the portfolio page computes it
     - current_value: qty_remaining * latest price
-    - yield_on_cost: dividends / avg_invested * 100
+    - yield_on_cost: dividends / total_invested * 100; None when unknown
     - yield_on_value: dividends / current_holding_value * 100
     """
     # Get dividend totals by ISIN (group only by ISIN to merge broker name variants)
@@ -402,59 +381,12 @@ def dividend_yield(
     if not div_isins:
         return []
 
-    # Fetch individual dividend dates per ISIN
-    div_dates_q = db.query(
-        Transaction.isin,
-        Transaction.trade_date,
-    ).join(Account).filter(
-        Account.user_id == user.id,
-        Transaction.type == TransactionType.DIVIDEND.value,
-        Transaction.isin.in_(div_isins),
-    )
-    if fiscal_year:
-        div_dates_q = div_dates_q.filter(
-            year_range(Transaction.trade_date, fiscal_year)
-        )
-    div_dates_rows = div_dates_q.all()
-
-    # Group dividend dates by ISIN
-    div_dates_by_isin: dict[str, list] = {}
-    for r in div_dates_rows:
-        div_dates_by_isin.setdefault(r.isin, []).append(r.trade_date)
-
-    # Exclude synthetic transactions created by DEGIRO tax-lot import
-    synthetic_buy_ids = db.query(TaxLot.buy_tx_id).scalar_subquery()
-    synthetic_sell_ids = db.query(TaxLot.sell_tx_id).filter(TaxLot.sell_tx_id.isnot(None)).scalar_subquery()
-
-    # Fetch all BUY transactions for these ISINs (ordered by date for FIFO)
-    all_buys = (
-        db.query(Transaction)
-        .join(Account)
-        .filter(
-            Account.user_id == user.id,
-            Transaction.type == TransactionType.BUY.value,
-            Transaction.isin.in_(div_isins),
-            Transaction.id.notin_(synthetic_buy_ids),
-        )
-        .order_by(Transaction.isin, Transaction.trade_date, Transaction.id)
-        .all()
-    )
-    buys_by_isin = _group_transactions(all_buys)
-
-    # Fetch all SELL transactions for these ISINs (ordered by date for FIFO)
-    all_sells = (
-        db.query(Transaction)
-        .join(Account)
-        .filter(
-            Account.user_id == user.id,
-            Transaction.type == TransactionType.SELL.value,
-            Transaction.isin.in_(div_isins),
-            Transaction.id.notin_(synthetic_sell_ids),
-        )
-        .order_by(Transaction.isin, Transaction.trade_date, Transaction.id)
-        .all()
-    )
-    sells_by_isin = _group_transactions(all_sells)
+    # Open quantity and cost basis come from the portfolio page's lot queue.
+    # skip_prices: no live yfinance fetch in this request path (see below).
+    positions = {
+        p.isin: p
+        for p in get_open_positions(db, user.id, skip_prices=True, isins=div_isins)
+    }
 
     # Latest price per ISIN (exclude synthetic transactions)
     all_synthetic_ids = db.query(TaxLot.buy_tx_id).union(
@@ -497,12 +429,12 @@ def dividend_yield(
     if fiscal_year:
         holdings_q = holdings_q.filter(PortfolioHolding.fiscal_year == fiscal_year)
     holdings_map: dict[str, PortfolioHolding] = {}
-    for h in holdings_q.all():
+    for h in holdings_q.order_by(PortfolioHolding.fiscal_year.desc()).all():
         holdings_map.setdefault(h.isin, h)
 
     results = []
     for d in div_rows:
-        row = _compute_isin_yield(d, buys_by_isin, sells_by_isin, price_map, holdings_map)
+        row = _compute_isin_yield(d, positions, price_map, holdings_map)
         isin = d.isin or ""
         ci = currency_info.get(isin, {})
         row["currency"] = ci.get("currency", "EUR")
@@ -511,7 +443,11 @@ def dividend_yield(
         results.append(row)
 
     results = _merge_same_ticker_rows(results, db)
-    results.sort(key=lambda x: float(x["yield_on_cost"]), reverse=True)
+    # Unknown yield-on-cost sorts last, not as if it were zero.
+    results.sort(
+        key=lambda x: float(x["yield_on_cost"]) if x["yield_on_cost"] is not None else float("-inf"),
+        reverse=True,
+    )
     return results
 
 

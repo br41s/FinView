@@ -755,11 +755,12 @@ class DividendYieldOut(BaseModel):
     ticker: str | None
     country: str | None
     total_dividends: str
-    total_invested: str
+    # None when the open position's cost basis is unknown (same as the portfolio page).
+    total_invested: str | None
     qty_remaining: str
     latest_price: str
     current_value: str
-    yield_on_cost: str
+    yield_on_cost: str | None
     yield_on_value: str
     payment_count: int
     currency: str
