@@ -469,6 +469,12 @@ def run_analysis_for_user(user_id: int) -> dict:
     # Frozen once per cycle so every signal in it is tagged against the same
     # regime, mirroring how the options agent does it (Phase 2b).
     regime = _cycle_regime()
+    # Likewise the alert gate: one 180-day calibration scan per cycle, not one
+    # per ticker.
+    from backend.services.backtest_service import alert_threshold_for
+
+    with SessionLocal() as db:
+        alert_threshold = alert_threshold_for(db, user_id)
 
     for item in items:
         tickers.append(item.ticker)
@@ -493,7 +499,9 @@ def run_analysis_for_user(user_id: int) -> dict:
             db.add(row)
             # Signal emission shares the analysis transaction: the zones and the
             # signals derived from them land together or not at all.
-            emitted = emit_for_analysis(db, user_id=user_id, analysis=result, regime=regime)
+            emitted = emit_for_analysis(
+                db, user_id=user_id, analysis=result, regime=regime, alert_threshold=alert_threshold
+            )
             signals += len(emitted)
             alerts += sum(1 for s in emitted if s.alerted)
             db.commit()

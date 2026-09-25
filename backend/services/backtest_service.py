@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import yfinance as yf
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.models import BacktestOutcome, BacktestSignal
@@ -308,6 +309,17 @@ def _outcome_value(outcome) -> str | None:
     return outcome.value if isinstance(outcome, BacktestOutcome) else outcome
 
 
+def alerting_only(query):
+    """Restrict a BacktestSignal query to rows that were user-facing alerts.
+
+    ZONE_BREAK records every scored candidate (alerted or not) so its gate can be
+    calibrated; the alert-accuracy views must not absorb the sub-threshold rows
+    or their numbers move silently. Legacy rows have alerted=NULL and were all
+    alerts, so NULL passes.
+    """
+    return query.filter(or_(BacktestSignal.alerted.is_(None), BacktestSignal.alerted.is_(True)))
+
+
 def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
     """Return accuracy statistics for completed signals.
 
@@ -323,7 +335,7 @@ def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
             by_signal_type: {<type>: {correct, total, accuracy_pct}},
         }
     """
-    q = db.query(BacktestSignal).filter(BacktestSignal.user_id == user_id)
+    q = alerting_only(db.query(BacktestSignal).filter(BacktestSignal.user_id == user_id))
     if ticker:
         q = q.filter(BacktestSignal.ticker == ticker.upper())
 
@@ -390,7 +402,7 @@ def get_calibration(db: Session, user_id: int, days: int = 30) -> dict:
     """
     since = datetime.now(timezone.utc) - timedelta(days=days)
     signals: list[BacktestSignal] = (
-        db.query(BacktestSignal)
+        alerting_only(db.query(BacktestSignal))
         .filter(BacktestSignal.user_id == user_id, BacktestSignal.recorded_at >= since)
         .all()
     )
@@ -448,13 +460,15 @@ _ZONE_BUCKETS: list[tuple[int, int, str]] = [
     (0, 50, "<50"), (50, 60, "50-59"), (60, 70, "60-69"),
     (70, 80, "70-79"), (80, 90, "80-89"), (90, 101, "90+"),
 ]
-# Candidate gates, lowest first. The lowest one that still clears the
-# accuracy bar wins: more alerts at the same evidence.
+# Candidate gates; the band a gate at f adds or removes is [f, f+10).
 _THRESHOLD_FLOORS = (50, 60, 70, 80, 90)
-# A gate moves only on evidence: at least this many measured outcomes at or
-# above the floor, and a 7d hit rate at least this high. Below either, the
-# default stands. 30 is the smallest sample where "55%" means anything.
-CALIBRATION_MIN_MEASURED = 30
+_FLOOR_BAND = {50: "50-59", 60: "60-69", 70: "70-79", 80: "80-89", 90: "90+"}
+# The gate moves one band at a time, and only on that band's own record: at
+# least this many measured 7d outcomes in the band and a hit rate over the bar.
+# Judging a floor by everything at or above it let a strong 80+ tail carry a
+# 10%-accurate 50-59 band across the bar (auditor, PR #289) — the blend cleared
+# 55% while the population actually being added did not.
+CALIBRATION_MIN_MEASURED = 20
 CALIBRATION_MIN_ACCURACY_PCT = 55.0
 _CALIBRATION_WINDOW_DAYS = 180
 
@@ -474,14 +488,48 @@ def _hit_rate(rows: list[BacktestSignal]) -> dict:
     }
 
 
+def _band_clears(band: dict) -> bool | None:
+    """True/False on the band's own record; None while it has too few outcomes."""
+    if band["measured"] < CALIBRATION_MIN_MEASURED:
+        return None
+    return (band["accuracy_pct"] or 0) >= CALIBRATION_MIN_ACCURACY_PCT
+
+
+def _suggest_threshold(by_bucket: dict[str, dict], default: int) -> int | None:
+    """Move the gate from `default` one band at a time on each band's own evidence.
+
+    Loosen: step down to f while the band [f, f+10) itself clears the bar.
+    Tighten: step up while the band just above the gate has enough outcomes and
+    fails the bar — alerting on a band that is usually wrong is the one thing
+    the gate exists to stop. A band with too few outcomes stops the walk in
+    either direction: thin data never moves the gate. None means "the default".
+    """
+    floors = list(_THRESHOLD_FLOORS)
+    gate = default
+    # Loosen.
+    while gate > floors[0]:
+        below = floors[floors.index(gate) - 1]
+        if _band_clears(by_bucket[_FLOOR_BAND[below]]) is not True:
+            break
+        gate = below
+    if gate < default:
+        return gate
+    # Tighten.
+    while gate < floors[-1]:
+        if _band_clears(by_bucket[_FLOOR_BAND[gate]]) is not False:
+            break
+        gate = floors[floors.index(gate) + 1]
+    return gate if gate != default else None
+
+
 def zone_calibration(db: Session, user_id: int, days: int = _CALIBRATION_WINDOW_DAYS) -> dict:
     """How the ZONE_BREAK probability maps to 7d outcomes, and the gate it supports.
 
-    `by_bucket` is the calibration curve; `cumulative_from[f]` is the hit rate of
-    everything scored at or above `f`, which is what a gate at `f` would have
-    alerted on. `suggested_threshold` is the lowest floor with enough measured
-    outcomes and a hit rate over the bar; None while the evidence is thin, in
-    which case `effective_threshold` is the default 70.
+    `by_bucket` is the calibration curve and what the gate is decided on (see
+    `_suggest_threshold`); `cumulative_from[f]` is the hit rate of everything at
+    or above `f` — what a gate at `f` would have alerted on — for reading, not
+    for deciding. `suggested_threshold` is None while the evidence does not move
+    the gate, in which case `effective_threshold` is the default 70.
     """
     from backend.services.zone_scorer import ALERT_THRESHOLD
 
@@ -505,12 +553,7 @@ def zone_calibration(db: Session, user_id: int, days: int = _CALIBRATION_WINDOW_
         str(f): _hit_rate([s for s in evaluated if int(s.break_probability) >= f])
         for f in _THRESHOLD_FLOORS
     }
-    suggested: int | None = None
-    for f in _THRESHOLD_FLOORS:
-        c = cumulative[str(f)]
-        if c["measured"] >= CALIBRATION_MIN_MEASURED and (c["accuracy_pct"] or 0) >= CALIBRATION_MIN_ACCURACY_PCT:
-            suggested = f
-            break
+    suggested = _suggest_threshold(by_bucket, ALERT_THRESHOLD)
     return {
         "window_days": days,
         "since": since.date().isoformat(),

@@ -65,6 +65,7 @@ def emit_for_analysis(
     user_id: int,
     analysis: dict,
     regime: str | None = None,
+    alert_threshold: int | None = None,
 ) -> list[TechnicalSignal]:
     """Emit technical signals for one analyzed ticker. Caller commits.
 
@@ -90,7 +91,8 @@ def emit_for_analysis(
         }
 
         emitted: list[TechnicalSignal] = []
-        threshold = alert_threshold_for(db, user_id)
+        # The cycle passes the gate it computed once; a direct caller gets it here.
+        threshold = alert_threshold if alert_threshold is not None else alert_threshold_for(db, user_id)
         for candidate in candidates:
             level = round(candidate["level"], 2)
             if _already_open(db, user_id, ticker, level):

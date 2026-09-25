@@ -607,10 +607,11 @@ def list_backtest_signals(
     days: int = 30,
     limit: int = 200,
 ):
-    """Return recorded backtest signals with their outcome data."""
-    q = (
-        db.query(BacktestSignal)
-        .filter(
+    """Return recorded backtest signals with their outcome data (alerts only)."""
+    from backend.services.backtest_service import alerting_only
+
+    q = alerting_only(
+        db.query(BacktestSignal).filter(
             BacktestSignal.user_id == user.id,
             BacktestSignal.recorded_at >= _now() - timedelta(days=days),
         )
