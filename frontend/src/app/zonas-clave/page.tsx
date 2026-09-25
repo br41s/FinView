@@ -181,29 +181,33 @@ export default function ZonasClavePage() {
         setError("No se pudieron cargar las zonas clave.");
       })
       .finally(() => setLoading(false));
+    // `selectedTicker` stays out of the deps on purpose: listing it would refetch all
+    // three endpoints on every selection. A functional updater (`prev ?? toSelect`)
+    // would drop the read but is not equivalent: "Reintentar" clears `error` without
+    // setting `loading`, so the search box is live during the retry, and a ticker the
+    // user adds meanwhile is overwritten by this load today but would survive it.
   }, [retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-poll every 3s when selected ticker has no analysis (e.g. just added)
+  // The poll matches on the selected item's id rather than reading `watchlist`, so a
+  // watchlist edit elsewhere does not restart the interval. (user, ticker) is unique
+  // and every setter that changes this id sets `selectedTicker` in the same batch.
   const hasAnalysis = selectedTicker != null && !!analyses[selectedTicker];
+  const selectedItemId = watchlist.find((w) => w.ticker === selectedTicker)?.id;
   useEffect(() => {
     if (!selectedTicker || hasAnalysis) return;
     const interval = setInterval(async () => {
       try {
         const arr = await api.zonasClav.allAnalyses();
-        for (const a of arr) {
-          const item = watchlist.find((w) => w.id === a.watchlist_item_id);
-          if (item?.ticker === selectedTicker) {
-            setAnalyses((prev) => ({ ...prev, [selectedTicker]: a }));
-            break;
-          }
-        }
+        const a = arr.find((x) => x.watchlist_item_id === selectedItemId);
+        if (a) setAnalyses((prev) => ({ ...prev, [selectedTicker]: a }));
       } catch (e) {
         // The backend may not have the result yet; the next tick retries.
         bestEffort("zonas-clave analysis poll")(e);
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [selectedTicker, hasAnalysis]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedTicker, selectedItemId, hasAnalysis]);
 
   // ── Options lens — cross-section toggle from the zonas list ────────
   async function toggleOptionsLens(item: ZcWatchlistItem) {

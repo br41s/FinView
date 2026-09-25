@@ -1,5 +1,13 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Diferidos de Fase 5 / auditoría — 2026-09-25 (un PR por ítem)
+
+- [x] 1. `zonas-clave/page.tsx`: el poll de análisis casa por `selectedItemId` (derivado en render) y deja de leer `watchlist` → sin `eslint-disable`; mismas dependencias efectivas porque (user, ticker) es único y cada cambio de id llega en el mismo batch que `selectedTicker`. La carga inicial conserva el suyo, con el porqué en el sitio: un updater funcional cambiaría la carrera del "Reintentar" (el buscador está vivo durante el reintento).
+- [ ] 2. `charts.py`: yield-on-cost con la base de coste de `portfolio_service` en vez de su FIFO propio.
+- [ ] 3. `options/page.tsx`: reevaluar `useOptionsData` como reducer.
+- [ ] 4. `import_service.py`: una sola lista de tablas dependientes para los tres cascade-deletes.
+- [ ] 5. Persistencia de holdings TR/DEGIRO/IBKR: memo de decisión en `tasks/holdings-persistence-decision.md` (no implementar).
+
 ## Zonas Clave: calibrar el umbral de ruptura — 2026-09-25 (rama `feat/zonas-calibration`)
 
 - [x] Cada candidato puntuado (no sólo >70) genera un `BacktestSignal ZONE_BREAK` con `break_probability`, `alerted` y `alert_threshold` (columnas aditivas).
