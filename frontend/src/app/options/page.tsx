@@ -13,7 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { api, type TechnicalSignal } from "@/lib/api";
+import { api } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
 
 import { AgentChat } from "./AgentChat";
@@ -22,10 +22,10 @@ import { BacktestTab } from "./BacktestTab";
 import { MonitorTab } from "./MonitorTab";
 import { OptionsStatsCards } from "./OptionsStatsCards";
 import { WatchlistTab } from "./WatchlistTab";
-import type { Alert, AgentStatus, Position, Snapshot, Unusual, WatchlistItem } from "./types";
+import type { Snapshot } from "./types";
 import { useBacktest } from "./useBacktest";
 import { useCrossLens } from "./useCrossLens";
-import { selectPositionsToSync } from "@/lib/optionsWatchlistSync";
+import { useOptionsData } from "./useOptionsData";
 import { buildWatchlistRows } from "@/lib/optionsWatchlistRows";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,39 +40,18 @@ import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 export default function OptionsPage() {
   const { privacy, togglePrivacy } = usePrivacyToggle();
   const backtest = useBacktest();
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [unusual, setUnusual] = useState<Unusual[]>([]);
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const { zonasMap, zonasBusy, toggleZonasLens } = useCrossLens();
   // Tickers with an active geo signal — gates the per-alert "Ideas" link.
   const [geoTickers, setGeoTickers] = useState<Set<string>>(new Set());
-  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
-  const [loadingOptions, setLoadingOptions] = useState(true);
   const [running, setRunning] = useState(false);
   const [newTicker, setNewTicker] = useState("");
-  const [hiddenTickers, setHiddenTickers] = useState<Set<string>>(new Set());
-  const [noOptionsTickers, setNoOptionsTickers] = useState<Set<string>>(new Set());
-  const [availabilityChecked, setAvailabilityChecked] = useState(false);
   const [analysisCycle, setAnalysisCycle] = useState(0);
   const [monitorFilter, setMonitorFilter] = useState<"alerts" | "unusual" | "technical">("alerts");
-  const [techSignals, setTechSignals] = useState<TechnicalSignal[]>([]);
   const [activeTab, setActiveTab] = useState("watchlist");
   // Mobile-only: tapping a Posiciones card expands inline (like Cartera)
   // instead of opening the drawer; the drawer stays one tap away via its own
   // button inside the expanded card.
   const [expandedOptionsTicker, setExpandedOptionsTicker] = useState<string | null>(null);
-  const [errorPositions, setErrorPositions] = useState<string | null>(null);
-  const [errorOptions, setErrorOptions] = useState<string | null>(null);
-  const [retryPositions] = useState(0);
-  const [retryOptions, setRetryOptions] = useState(0);
-  // The error banner clears when the user retries, not when the effect
-  // re-runs: the reset belongs to the event, the fetch to the effect.
-  function retryOptionsLoad() {
-    setErrorOptions(null);
-    setRetryOptions((k) => k + 1);
-  }
 
   // N6: auto-expand ticker from URL param (?ticker=X)
   const initialTickerRef = useRef<string | null>(null);
@@ -97,64 +76,23 @@ export default function OptionsPage() {
       .catch(bestEffort("geo signals for the Ideas links"));
   }, []);
 
-  // Technical (zone-break) signals. These come from Zonas Clave, the trigger
-  // layer — they belong in the Monitor because acting on a trigger is what this
-  // page is for. Best-effort: the options alerts stand on their own without them.
-  useEffect(() => {
-    api.zonasClav
-      .signals()
-      .then(setTechSignals)
-      .catch(bestEffort("technical signals panel"));
-  }, [retryOptions]);
-
-  // Load portfolio positions with skip_prices=true — no yfinance calls, instant response
-  useEffect(() => {
-    api.portfolio
-      .positions(true)
-      .then(async (pos) => {
-        const loaded = pos as Position[];
-        setPositions(loaded);
-        if (loaded.length === 0) return;
-        const tickers = [...new Set(loaded.map((p) => (p.ticker || p.isin).toUpperCase()))];
-        try {
-          const { no_options } = await api.options.checkAvailability(tickers);
-          setNoOptionsTickers(new Set(no_options));
-        } catch (e) {
-          // Positions remain visible if the check fails.
-          bestEffort("options availability check")(e);
-        }
-      })
-      .catch((e) => {
-        console.error("Failed to load positions:", e);
-        setErrorPositions("No se pudieron cargar las posiciones de cartera.");
-      })
-      .finally(() => setAvailabilityChecked(true));
-  }, [retryPositions]);
-
-  // Load options data in parallel (independent of positions)
-  useEffect(() => {
-    Promise.all([
-      api.options.snapshots() as Promise<Snapshot[]>,
-      api.options.alerts() as Promise<Alert[]>,
-      api.options.unusual() as Promise<Unusual[]>,
-      api.options.watchlist() as Promise<WatchlistItem[]>,
-      api.options.agentStatus() as Promise<AgentStatus>,
-      api.options.hiddenPortfolioTickers() as Promise<string[]>,
-    ])
-      .then(([snaps, alts, unu, wl, status, hidden]) => {
-        setSnapshots(snaps);
-        setAlerts(alts);
-        setUnusual(unu);
-        setWatchlist(wl);
-        setAgentStatus(status);
-        setHiddenTickers(new Set(hidden));
-      })
-      .catch((e) => {
-        console.error("Failed to load options data:", e);
-        setErrorOptions("No se pudieron cargar los datos de opciones.");
-      })
-      .finally(() => setLoadingOptions(false));
-  }, [retryOptions]);
+  // Server data, its loads, the watchlist auto-sync and every mutation. Called
+  // after the geo effect so the mount-time fetch order is unchanged.
+  const options = useOptionsData();
+  const {
+    positions,
+    snapshots,
+    alerts,
+    unusual,
+    watchlist,
+    agentStatus,
+    hiddenTickers,
+    noOptionsTickers,
+    techSignals,
+    loadingOptions,
+    errorPositions,
+    errorOptions,
+  } = options;
 
   // Auto-expand the ticker from ?ticker= (Geo-Intel and Zonas Clave deep-link
   // here). Keyed off the watchlist, not the portfolio: the list is watchlist-
@@ -167,155 +105,20 @@ export default function OptionsPage() {
     if (watchlist.some((w) => w.ticker === upper)) setExpandedOptionsTicker(upper);
   }, [watchlist]);
 
-  // Auto-sync: portfolio positions get added to the options watchlist so
-  // Sentimiento/P-C Ratio/IV vs HV populate without a manual click. Waits for
-  // the availability check (so we skip tickers with no options chain).
-  // `watchlist` is intentionally NOT a dependency: it changes every time this
-  // effect adds something (and whenever the user removes a ticker via the
-  // Trash2 button), which would otherwise immediately re-add anything the
-  // user just removed. Instead, `syncedTickersRef` remembers every ticker
-  // this effect has ever seen on the watchlist (added by it or already
-  // there), so a manual removal sticks — the effect only re-fires when the
-  // portfolio itself changes. The current list is read through
-  // `watchlistRef`, kept in sync by the effect above it, so the effect sees
-  // the latest value without depending on it.
-  const syncedTickersRef = useRef<Set<string>>(new Set());
-  const watchlistRef = useRef(watchlist);
-  useEffect(() => {
-    watchlistRef.current = watchlist;
-  }, [watchlist]);
-  useEffect(() => {
-    if (!availabilityChecked || loadingOptions || positions.length === 0) return;
-    const watchlistSet = new Set(watchlistRef.current.map((w) => w.ticker));
-    for (const ticker of watchlistSet) syncedTickersRef.current.add(ticker);
-    const toAdd = selectPositionsToSync(
-      positions,
-      watchlistSet,
-      hiddenTickers,
-      noOptionsTickers,
-      syncedTickersRef.current,
-    );
-    if (toAdd.size === 0) return;
-    let cancelled = false;
-    (async () => {
-      for (const { ticker, name } of toAdd.values()) {
-        if (cancelled) return;
-        try {
-          await api.options.addToWatchlist(ticker, name);
-          syncedTickersRef.current.add(ticker);
-        } catch (e) {
-          // E.g. already added by a concurrent sync; settles on the next pass.
-          bestEffort(`options watchlist sync ${ticker}`)(e);
-        }
-      }
-      if (cancelled) return;
-      const wl = (await api.options.watchlist()) as WatchlistItem[];
-      if (!cancelled) setWatchlist(wl);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [availabilityChecked, loadingOptions, positions, hiddenTickers, noOptionsTickers]);
-
-  async function reloadOptions() {
-    const [snaps, alts, unu, wl, status, hidden] = await Promise.all([
-      api.options.snapshots() as Promise<Snapshot[]>,
-      api.options.alerts() as Promise<Alert[]>,
-      api.options.unusual() as Promise<Unusual[]>,
-      api.options.watchlist() as Promise<WatchlistItem[]>,
-      api.options.agentStatus() as Promise<AgentStatus>,
-      api.options.hiddenPortfolioTickers() as Promise<string[]>,
-    ]);
-    setSnapshots(snaps);
-    setAlerts(alts);
-    setUnusual(unu);
-    setWatchlist(wl);
-    setAgentStatus(status);
-    setHiddenTickers(new Set(hidden));
-  }
-
   async function handleRunCycle() {
     setRunning(true);
     try {
-      const before = agentStatus?.total_cycles ?? 0;
-      const result = await api.options.runCycle();
-      // Local mode returns immediately and needs polling. Cloud Run returns
-      // only after the request-scoped cycle has completed.
-      if (result.status === "started") {
-        for (let attempt = 0; attempt < 100; attempt++) {
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-          const status = (await api.options.agentStatus()) as AgentStatus;
-          setAgentStatus(status);
-          if (status.total_cycles > before) break;
-        }
-      }
-      await reloadOptions();
+      await options.runCycle();
       setAnalysisCycle((c) => c + 1);
     } finally {
       setRunning(false);
     }
   }
 
-  async function handleToggleAgent() {
-    if (agentStatus?.running) {
-      await api.options.stopAgent();
-    } else {
-      await api.options.startAgent();
-    }
-    const status = (await api.options.agentStatus()) as AgentStatus;
-    setAgentStatus(status);
-  }
-
   async function handleAddTicker() {
     if (!newTicker.trim()) return;
-    await api.options.addToWatchlist(newTicker.trim().toUpperCase());
+    await options.addTicker(newTicker.trim().toUpperCase());
     setNewTicker("");
-    const wl = (await api.options.watchlist()) as WatchlistItem[];
-    setWatchlist(wl);
-  }
-
-  // MEFF quick-add chip: same call as handleAddTicker, with the curated name.
-  async function handleAddMeffTicker(ticker: string, name: string) {
-    await api.options.addToWatchlist(ticker, name);
-    const wl = (await api.options.watchlist()) as WatchlistItem[];
-    setWatchlist(wl);
-  }
-
-  async function handleRemoveTicker(id: number, ticker?: string) {
-    await api.options.removeFromWatchlist(id);
-    setWatchlist((prev) => prev.filter((w) => w.id !== id));
-    if (ticker) {
-      setAlerts((prev) => prev.filter((a) => a.ticker !== ticker));
-      setUnusual((prev) => prev.filter((u) => u.ticker !== ticker));
-    }
-  }
-
-  async function handleHidePosition(ticker: string) {
-    // Remove from watchlist if present
-    const item = watchlist.find((w) => w.ticker === ticker);
-    if (item) await handleRemoveTicker(item.id, ticker);
-    // Persist exclusion from options monitor
-    await api.options.hidePortfolioTicker(ticker);
-    setHiddenTickers((prev) => new Set([...prev, ticker]));
-  }
-
-  async function handleToggleWatchlistItem(id: number) {
-    await api.options.toggleWatchlistItem(id);
-    setWatchlist((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, enabled: !item.enabled } : item)),
-    );
-  }
-
-  async function handleAckAlert(id: number) {
-    await api.options.ackAlert(id);
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)),
-    );
-  }
-
-  async function handleAckAll() {
-    await api.options.ackAllAlerts();
-    setAlerts((prev) => prev.map((a) => ({ ...a, acknowledged: true })));
   }
 
   // Group latest snapshot per ticker
@@ -375,7 +178,7 @@ export default function OptionsPage() {
             <Button
               variant={agentStatus?.running ? "destructive" : "default"}
               size="sm"
-              onClick={handleToggleAgent}
+              onClick={options.toggleAgent}
               disabled={agentStatus?.external_scheduler}
               title={agentStatus?.external_scheduler ? "Gestionado por Cloud Scheduler" : agentStatus?.running ? "Stop Auto" : "Auto"}
             >
@@ -430,7 +233,7 @@ export default function OptionsPage() {
         <WatchlistTab
           loading={loadingOptions}
           error={errorOptions}
-          onRetry={retryOptionsLoad}
+          onRetry={options.retryOptionsLoad}
           rows={rows}
           watchlistTickers={watchlistTickers}
           errorPositions={errorPositions}
@@ -438,22 +241,22 @@ export default function OptionsPage() {
           newTicker={newTicker}
           onNewTickerChange={setNewTicker}
           onAddTicker={handleAddTicker}
-          onAddMeffTicker={handleAddMeffTicker}
+          onAddMeffTicker={options.addTicker}
           expandedTicker={expandedOptionsTicker}
           onExpandedTickerChange={setExpandedOptionsTicker}
           zonasMap={zonasMap}
           zonasBusy={zonasBusy}
           onToggleZonasLens={toggleZonasLens}
-          onToggleItem={handleToggleWatchlistItem}
-          onHidePosition={handleHidePosition}
-          onRemoveTicker={handleRemoveTicker}
+          onToggleItem={options.toggleItem}
+          onHidePosition={options.hidePosition}
+          onRemoveTicker={options.removeTicker}
         />
 
         {/* ── Monitor Tab (Alertas + Smart Money) ── */}
         <MonitorTab
           loading={loadingOptions}
           error={errorOptions}
-          onRetry={retryOptionsLoad}
+          onRetry={options.retryOptionsLoad}
           filter={monitorFilter}
           onFilterChange={setMonitorFilter}
           alerts={alerts}
@@ -463,8 +266,8 @@ export default function OptionsPage() {
           expandedTicker={expandedOptionsTicker}
           onExpandedTickerChange={setExpandedOptionsTicker}
           geoTickers={geoTickers}
-          onAckAlert={handleAckAlert}
-          onAckAll={handleAckAll}
+          onAckAlert={options.ackAlert}
+          onAckAll={options.ackAll}
         />
         {/* ── Backtesting Tab ── */}
 

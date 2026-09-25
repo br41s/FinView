@@ -33,8 +33,9 @@ error state instead.
 
 ## Options page layout
 
-`app/options/page.tsx` was 2,457 lines, then 1,628, now ~500: it owns the state, the
-effects and the handlers, and composes modules that sit beside it — `WatchlistTab.tsx`,
+`app/options/page.tsx` was 2,457 lines, then 1,628, then ~500, now ~300: it owns the UI
+state (tab, monitor filter, expanded row, new-ticker input, run-cycle spinner) and composes
+modules that sit beside it — `useOptionsData.ts` + `optionsData.ts`, `WatchlistTab.tsx`,
 `MonitorTab.tsx` (with `AlertsPanel`, `UnusualPanel`, `TechnicalSignalsPanel` and the
 `TickerLinks` chips as named components), `OptionsStatsCards.tsx`, `BacktestTab.tsx`,
 `AgentChat.tsx`, `AnalysisTab.tsx`, `badges.tsx`, `meffTickers.ts`, `useBacktest.ts`,
@@ -45,10 +46,19 @@ The watchlist and monitor tabs read 19 and 14 bindings from the page and receive
 as an **explicit prop** — no context, no store. State stays on the page because both tabs
 and the stats cards read the same alerts/watchlist, and Radix unmounts inactive
 `TabsContent`, so owning any of it in a tab would drop it (and refetch) on every tab switch;
-that is also why `useBacktest` is held by the page, not its tab. Two hooks were left inline
-on purpose: a `useOptionsData` would have to hand back six setters the page's handlers
-write to, and the watchlist auto-sync effect reads seven page bindings and depends on the
-`watchlistRef` dance documented above it.
+that is also why `useBacktest` is held by the page, not its tab.
+
+**Server data is a reducer, not a bag of setters.** `optionsData.ts` is a pure
+`optionsDataReducer`: every change the page makes to positions, snapshots, alerts, unusual,
+watchlist, agent status, hidden/no-options sets, technical signals and the load flags is an
+action dispatched *after* the API call it mirrors succeeds (removing a ticker also drops its
+alerts and unusual rows; a retry clears the banner without re-arming the spinner).
+`useOptionsData` owns the loads, the watchlist auto-sync effect (with its `watchlistRef` /
+`syncedTickersRef` dance, documented at the site) and the mutations, and returns read-only
+state plus commands — never a setter. It was deferred in Phase 5 because the only shape then
+on offer handed six setters back to the page; moving the handlers in as actions removed them.
+The page calls it right after the geo effect so the mount-time fetch order is unchanged.
+Transitions are pinned in `optionsData.test.ts`.
 
 ## Portfolio page layout
 
