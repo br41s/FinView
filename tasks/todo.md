@@ -9,7 +9,7 @@
 - [x] 5. Persistencia de holdings TR/DEGIRO/IBKR: memo de decisión en `tasks/holdings-persistence-decision.md` (no implementado). Medido con los ficheros 2025: DEGIRO 8/8 coincide, IBKR 2/9 discrepan, TR 25/47 discrepan y 3 posiciones se cerrarían. Hallazgo: `_load_snapshots` trata cualquier año con filas como completo aunque el marcador sea `false` (latente hoy).
 - [x] Decisión (Brais, 2026-09-25): fix del loader primero, luego persistir DEGIRO; IBKR y TR sin decidir.
 - [x] Loader: `_load_snapshots` ignora filas de imports `portfolio_snapshot_complete=false` (no cierran ni reescriben); legacy NULL intacto. Tests: parametrizado complete/legacy/partial + no reescribe + no desplaza un año completo anterior (3 fallan en el loader viejo).
-- [ ] DEGIRO: guardar holdings con `complete` = sección "Certificado de Beneficiario" presente y todos sus ISIN parseados.
+- [x] DEGIRO: guardar holdings con `complete` = sección "Certificado de Beneficiario" presente y todos sus ISIN parseados. `test_dg_holdings.py` (8, uno con los PDF reales 2024+2025: posiciones = certificado, coste conocido). Los imports DEGIRO ya existentes sólo ganan filas al re-subir el PDF.
 
 ## Zonas Clave: calibrar el umbral de ruptura — 2026-09-25 (rama `feat/zonas-calibration`)
 

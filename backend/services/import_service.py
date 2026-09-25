@@ -1036,12 +1036,15 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
             account.id, import_rec.id, report.fiscal_year,
         )
         casillas = _compute_broker_casillas(db, Broker.DEGIRO, report.fiscal_year, account.id, user_id=user_id, import_id=import_rec.id)
+        hold_count = _store_holdings(
+            db, report.holdings, account.id, import_rec.id, report.fiscal_year, Broker.DEGIRO
+        )
         return {
             "dividends": div_count,
             "transactions": tx_count,
             "capital_gains": len(lots),
             "casillas": len(casillas),
-            "holdings": len(report.holdings),
+            "holdings": hold_count,
             "gains_summary": len(report.gains_summary),
         }
 
@@ -1054,6 +1057,9 @@ def import_dg_report(db: Session, report: DGAnnualReport, file_hash: str, filena
         filename=filename,
         user_id=user_id,
         record_count=len(report.transactions) + len(report.dividends),
+        # The year-end certificate is a snapshot only when complete; a partial
+        # one is stored but has no authority (see portfolio_service).
+        portfolio_snapshot_complete=report.portfolio_snapshot_complete,
         store=store,
     )
 

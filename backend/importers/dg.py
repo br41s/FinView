@@ -15,6 +15,7 @@ from pathlib import Path
 import pdfplumber
 
 from backend.importers.base import (
+    ISIN_RE,
     DGAnnualReport,
     ParsedGainLoss,
     ParsedPortfolioHolding,
@@ -199,13 +200,26 @@ def _parse_gains_summary(text: str) -> list[ParsedGainLoss]:
     return results
 
 
+def _holdings_section(text: str) -> str:
+    return _get_section_text(text, SEC_HOLDINGS, [SEC_TRANSACTIONS, "Beneficios y pérdidas"])
+
+
+def _holdings_complete(text: str, holdings: list[ParsedPortfolioHolding]) -> bool:
+    """Whether the holdings are the whole year-end portfolio.
+
+    A complete snapshot closes every position it omits, so a missing
+    certificate or a row the regex could not read must make it partial: the
+    certificate has to be there and every ISIN printed in it parsed.
+    """
+    if SEC_HOLDINGS not in text:
+        return False
+    printed = {m.group(0) for m in ISIN_RE.finditer(_holdings_section(text))}
+    return printed <= {h.isin for h in holdings}
+
+
 def _parse_holdings(text: str, _fiscal_year: int) -> list[ParsedPortfolioHolding]:
     """Parse year-end holdings section."""
-    section = _get_section_text(
-        text,
-        SEC_HOLDINGS,
-        [SEC_TRANSACTIONS, "Beneficios y pérdidas"],
-    )
+    section = _holdings_section(text)
     holdings = []
     for line in section.splitlines():
         line = line.strip()
@@ -355,6 +369,7 @@ def parse_dg_annual_report(pdf_path: Path) -> DGAnnualReport:
         transactions=transactions,
         holdings=holdings,
         gains_summary=gains,
+        portfolio_snapshot_complete=_holdings_complete(data_text, holdings),
     )
 
 

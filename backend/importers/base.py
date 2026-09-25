@@ -241,6 +241,9 @@ class DGAnnualReport:
     transactions: list[ParsedTransaction] = field(default_factory=list)
     holdings: list[ParsedPortfolioHolding] = field(default_factory=list)
     gains_summary: list[ParsedGainLoss] = field(default_factory=list)
+    # True only when the year-end certificate is present and every ISIN in it
+    # was parsed: only then may the holdings close positions they omit.
+    portfolio_snapshot_complete: bool = False
 
 
 @dataclass

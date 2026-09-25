@@ -6,7 +6,9 @@
   (rama `fix/partial-snapshot-authority`). Es la versión mínima: una lista parcial no
   cierra ni reescribe nada. Que reconcilie los ISIN que lista queda para el PR de IBKR,
   si se decide.
-- **Después, persistir DEGIRO.**
+- **Después, persistir DEGIRO** (rama `feat/degiro-holdings`): `complete` sólo si el
+  certificado está y todos sus ISIN se parsean. Los dos informes reales (2024, 2025) lo
+  cumplen y cuadran con el ledger.
 - **IBKR y TR:** sin decidir.
 
 Ítem 5 de los diferidos de Fase 5.
