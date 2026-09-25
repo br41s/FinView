@@ -72,6 +72,19 @@ def test_low_score_is_still_stored_but_does_not_alert(db):
     row = db.query(TechnicalSignal).one()
     assert row.break_probability == 35
     assert row.alerted is False
+    # …and it gets an outcome row too, or the cut could never be calibrated.
+    bt = db.query(BacktestSignal).one()
+    assert (bt.break_probability, bt.alerted, bt.alert_threshold) == (35, False, 70)
+
+
+def test_the_gate_is_the_calibrated_threshold_not_the_constant(db):
+    """With enough evidence the emitter alerts at the calibrated floor."""
+    with patch.object(technical_signals, "alert_threshold_for", return_value=60), \
+         patch.object(technical_signals, "score_break_probability", return_value=_score(65)):
+        emit_for_analysis(db, user_id=1, analysis=analysis())
+        db.commit()
+    assert db.query(TechnicalSignal).one().alerted is True
+    assert db.query(BacktestSignal).one().alert_threshold == 60
 
 
 def test_threshold_is_exclusive_at_70(db):

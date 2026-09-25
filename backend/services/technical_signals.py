@@ -1,5 +1,11 @@
 """Technical signal emission: proximity gate → LLM scorer → persist → alert.
 
+Every scored candidate is also recorded as a ZONE_BREAK BacktestSignal with its
+probability, so the alert gate can be calibrated against outcomes on both sides
+of the cut (`backtest_service.zone_calibration`). The gate itself is
+`backtest_service.alert_threshold_for`: the default 70 until the evidence says
+otherwise.
+
 Wires the two halves together and decides what becomes user-facing:
 
     zones (already computed by zonas_clave_analyzer)
@@ -18,7 +24,8 @@ from sqlalchemy.orm import Session
 
 from backend.models import TechnicalSignal
 from backend.services.zone_proximity import detect_proximity_candidates
-from backend.services.zone_scorer import ALERT_THRESHOLD, score_break_probability
+from backend.services.backtest_service import alert_threshold_for
+from backend.services.zone_scorer import score_break_probability
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +90,7 @@ def emit_for_analysis(
         }
 
         emitted: list[TechnicalSignal] = []
+        threshold = alert_threshold_for(db, user_id)
         for candidate in candidates:
             level = round(candidate["level"], 2)
             if _already_open(db, user_id, ticker, level):
@@ -92,7 +100,7 @@ def emit_for_analysis(
             probability = score["break_probability"] if score else None
             # None (no API key / LLM failure) must not alert: absence of a score
             # is not a low score, and it isn't a high one either.
-            alerted = probability is not None and probability > ALERT_THRESHOLD
+            alerted = probability is not None and probability > threshold
 
             row = TechnicalSignal(
                 user_id=user_id,
@@ -112,7 +120,10 @@ def emit_for_analysis(
             db.add(row)
             emitted.append(row)
 
-            if alerted:
+            # Every scored candidate gets an outcome row, alerting or not: the gate
+            # can only be calibrated with outcomes on both sides of it. An unscored
+            # candidate has nothing to calibrate against and gets none.
+            if probability is not None:
                 _record_backtest(
                     db,
                     user_id=user_id,
@@ -121,6 +132,8 @@ def emit_for_analysis(
                     probability=probability,
                     current_price=current_price,
                     regime=regime,
+                    alerted=alerted,
+                    threshold=threshold,
                 )
 
         return emitted
@@ -138,8 +151,10 @@ def _record_backtest(
     probability: int,
     current_price: float,
     regime: str | None,
+    alerted: bool,
+    threshold: int,
 ) -> None:
-    """Record an alerting signal for outcome tracking.
+    """Record a scored candidate for outcome tracking, alerting or not.
 
     Bypasses backtest_service.record_signal() on purpose: that derives direction
     by keyword-matching the alert type/message, which has no case for ZONE_BREAK
@@ -166,6 +181,9 @@ def _record_backtest(
                 alert_message=message[:500],
                 regime=regime,
                 regime_alignment=alignment_for(direction, regime),
+                break_probability=probability,
+                alerted=alerted,
+                alert_threshold=threshold,
             )
         )
     except Exception:
