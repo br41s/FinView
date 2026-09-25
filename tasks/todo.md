@@ -7,7 +7,8 @@
 - [x] `emit_for_analysis` usa `alert_threshold_for`; `run_analysis_for_user` evalúa outcomes al final (el agente de opciones salía antes si no había watchlist de opciones).
 - [x] `GET /zonas-clave/calibration` + línea en la cabecera de la página ("Umbral de alerta N% (calibrado|por defecto) · …").
 - [x] Docs: `.claude/rules/zonas.md`.
-- [ ] Verificar: pytest, tsc/vitest/lint/build, push, checks, merge, Cloud Run sano, `/zonas-clave/calibration` responde en prod.
+- [x] Verificar: pytest, tsc/vitest/lint/build, push, checks, merge (#289), Cloud Run `finview-api-02531ec` sano, `/zonas-clave/calibration` responde (401 sin auth).
+- [x] Revisión del auditor (#289): el floor acumulado dejaba que una cola 80+ fuerte arrastrara una banda 50-59 al 10% por encima del listón → el gate se mueve **banda a banda sobre su propio registro** (≥20 medidos, ≥55%; baja si la banda inferior cumple, sube si la banda sobre el gate falla). `get_stats`/`get_calibration`/`GET /options/backtest` filtran `alerting_only`. Gate calculado una vez por ciclo.
 
 ## Geo: cerrar el bucle de aprendizaje — 2026-09-25 (rama `feat/geo-learning-loop`)
 
