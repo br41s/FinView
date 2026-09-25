@@ -179,11 +179,12 @@ export interface DividendYield {
   ticker: string | null;
   country: string | null;
   total_dividends: string;
-  total_invested: string;
+  /** null when the open position's cost basis is unknown (as on the portfolio page). */
+  total_invested: string | null;
   qty_remaining: string;
   latest_price: string;
   current_value: string;
-  yield_on_cost: string;
+  yield_on_cost: string | null;
   yield_on_value: string;
   payment_count: number;
   currency: string;
