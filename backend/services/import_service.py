@@ -189,14 +189,39 @@ def _check_year_duplicate(
     return q.first()
 
 
-def _delete_tx_dependents(db: Session, tx_ids: list[int]) -> None:
-    """Delete CrossBrokerLots and TaxLots that reference the given transaction IDs."""
-    db.query(CrossBrokerLot).filter(
-        (CrossBrokerLot.buy_tx_id.in_(tx_ids)) | (CrossBrokerLot.sell_tx_id.in_(tx_ids))
-    ).delete(synchronize_session="fetch")
-    db.query(TaxLot).filter(
-        (TaxLot.buy_tx_id.in_(tx_ids)) | (TaxLot.sell_tx_id.in_(tx_ids))
-    ).delete(synchronize_session="fetch")
+# The dependent-table lists shared by the three cascade deletes below
+# (_delete_import_data per import, delete_account_cascade per account,
+# delete_all_imports per user). They differ in *scope*, not in which tables hang
+# off a transaction or an import, so a new table of either kind is one edit here.
+# test_cascade_delete_tables.py fails when a model gains a foreign key to
+# transactions or import_records without being listed here or in the
+# per-scope set it documents (TaxResult, DataIssue: each caller scopes them).
+#
+# Rows that reference a transaction through buy_tx_id / sell_tx_id; deleted
+# before the transactions themselves, in this order.
+_TX_DEPENDENT_TABLES = (CrossBrokerLot, TaxLot)
+# Rows that reference an ImportRecord through import_id; deleted before it.
+_IMPORT_DEPENDENT_TABLES = (OptionAssignmentRecord, PortfolioHolding)
+
+
+def _delete_tx_dependents(
+    db: Session, tx_ids, *, synchronize_session: str | bool = "fetch",
+) -> None:
+    """Delete every row that references the given transactions (list or subquery)."""
+    for model in _TX_DEPENDENT_TABLES:
+        db.query(model).filter(
+            (model.buy_tx_id.in_(tx_ids)) | (model.sell_tx_id.in_(tx_ids))
+        ).delete(synchronize_session=synchronize_session)
+
+
+def _delete_import_dependents(
+    db: Session, import_ids, *, synchronize_session: str | bool = "fetch",
+) -> None:
+    """Delete every row that references the given imports (list or subquery)."""
+    for model in _IMPORT_DEPENDENT_TABLES:
+        db.query(model).filter(model.import_id.in_(import_ids)).delete(
+            synchronize_session=synchronize_session
+        )
 
 
 def _delete_import_data(
@@ -282,12 +307,7 @@ def _delete_import_data(
             FIFOAdjustment.user_id == user_id,
         ).delete(synchronize_session="fetch")
 
-    db.query(OptionAssignmentRecord).filter(
-        OptionAssignmentRecord.import_id == import_id,
-    ).delete(synchronize_session="fetch")
-    db.query(PortfolioHolding).filter(
-        PortfolioHolding.import_id == import_id,
-    ).delete(synchronize_session="fetch")
+    _delete_import_dependents(db, [import_id])
     db.query(DataIssue).filter(
         DataIssue.import_id == import_id,
         or_(DataIssue.user_id == user_id, DataIssue.user_id.is_(None)),
@@ -350,12 +370,7 @@ def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
         ImportRecord.account_id == account_id
     ).scalar_subquery()
 
-    db.query(CrossBrokerLot).filter(
-        CrossBrokerLot.buy_tx_id.in_(tx_subq) | CrossBrokerLot.sell_tx_id.in_(tx_subq)
-    ).delete(synchronize_session=False)
-    db.query(TaxLot).filter(
-        TaxLot.buy_tx_id.in_(tx_subq) | TaxLot.sell_tx_id.in_(tx_subq)
-    ).delete(synchronize_session=False)
+    _delete_tx_dependents(db, tx_subq, synchronize_session=False)
     db.query(Transaction).filter(Transaction.account_id == account_id).delete(synchronize_session=False)
 
     tax_result_scope = TaxResult.import_id.in_(
@@ -389,12 +404,7 @@ def delete_account_cascade(db: Session, account_id: int, user_id: int) -> None:
             FIFOAdjustment.fiscal_year >= earliest_tx_date.year,
         ).delete(synchronize_session=False)
 
-    db.query(OptionAssignmentRecord).filter(
-        OptionAssignmentRecord.import_id.in_(import_subq)
-    ).delete(synchronize_session=False)
-    db.query(PortfolioHolding).filter(PortfolioHolding.import_id.in_(import_subq)).delete(
-        synchronize_session=False
-    )
+    _delete_import_dependents(db, import_subq, synchronize_session=False)
     db.query(DataIssue).filter(
         DataIssue.import_id.in_(import_subq),
         or_(DataIssue.user_id == user_id, DataIssue.user_id.is_(None)),
@@ -429,12 +439,7 @@ def delete_all_imports(db: Session, user_id: int) -> dict:
         ImportRecord.account_id.in_(account_subq)
     ).count()
 
-    db.query(CrossBrokerLot).filter(
-        CrossBrokerLot.buy_tx_id.in_(tx_subq) | CrossBrokerLot.sell_tx_id.in_(tx_subq)
-    ).delete(synchronize_session=False)
-    db.query(TaxLot).filter(
-        TaxLot.buy_tx_id.in_(tx_subq) | TaxLot.sell_tx_id.in_(tx_subq)
-    ).delete(synchronize_session=False)
+    _delete_tx_dependents(db, tx_subq, synchronize_session=False)
     db.query(Transaction).filter(Transaction.account_id.in_(account_subq)).delete(
         synchronize_session=False
     )
@@ -444,12 +449,7 @@ def delete_all_imports(db: Session, user_id: int) -> dict:
     )
     db.query(TaxResult).filter(TaxResult.user_id == user_id).delete(synchronize_session=False)
 
-    db.query(OptionAssignmentRecord).filter(
-        OptionAssignmentRecord.import_id.in_(import_subq)
-    ).delete(synchronize_session=False)
-    db.query(PortfolioHolding).filter(
-        PortfolioHolding.import_id.in_(import_subq)
-    ).delete(synchronize_session=False)
+    _delete_import_dependents(db, import_subq, synchronize_session=False)
     db.query(DataIssue).filter(
         or_(
             DataIssue.user_id == user_id,
