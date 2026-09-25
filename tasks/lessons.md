@@ -192,3 +192,17 @@ que reagrupar con stash + reset --soft.
 `git rm`; reporta las eliminaciones". Y antes de cada commit propio:
 `git status --short | grep '^[ADMR] '` — si hay algo staged que no es tuyo,
 `git restore --staged` antes de commitear.
+
+## Un build de producción en Vercel puede caer por la descarga de fuentes de Google
+
+**Patrón:** El merge de #287 pasó CI, preview y build local, y el deploy de **producción**
+falló con `Module not found: Can't resolve '@vercel/turbopack-next/internal/font/google/font'`
+y `next/font/google queries have exactly one entry` en `layout.tsx` (JetBrains Mono).
+Es Turbopack fallando al descargar la fuente de fonts.googleapis durante el build: transitorio.
+Producción siguió sirviendo el deploy anterior, así que el síntoma es "main está verde y
+prod no cambia".
+
+**Regla:** tras cada merge que toque `frontend/**`, comprobar que el deployment de
+**Production** del sha del merge está en `success` (no basta el preview verde). Si falla
+sólo con errores de `next/font/google`, no hay nada que arreglar en el código: relanzar el
+deploy con un commit nuevo (el redeploy por API está bloqueado para el agente).
