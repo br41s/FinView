@@ -6,7 +6,8 @@
 - [x] 2. `charts.py`: yield-on-cost con la base de coste de `portfolio_service` en vez de su FIFO propio. Divergían en cantidad (cambio de ISIN: la ISIN vieja nunca se cerraba → AENA 110 en vez de 100) y en coste (FIFO global entre cuentas). Coste desconocido → `null` (contrato + tipos frontend), también en la fila fusionada por ticker. Consecuencia: AENA pasa a "—" como en Cartera hasta vincular el coste.
 - [x] 3. `options/page.tsx` (496 → 299): `optionsDataReducer` puro (16 acciones, cada una tras la llamada API que refleja) + `useOptionsData` con cargas, auto-sync y mutaciones como acciones; la página ya no recibe ningún setter. 8 tests de reducer. Sin smoke autenticado (login por contraseña).
 - [x] 4. `import_service.py`: `_TX_DEPENDENT_TABLES` (CrossBrokerLot, TaxLot) y `_IMPORT_DEPENDENT_TABLES` (OptionAssignmentRecord, PortfolioHolding) consumidas por los tres cascade-deletes vía `_delete_tx_dependents` / `_delete_import_dependents`; orden y `synchronize_session` de cada función intactos. TaxResult/FIFOAdjustment/DataIssue siguen con su alcance propio en cada función. `test_cascade_delete_tables.py` recorre las FK del esquema. `test_import_service.py` sin tocar.
-- [ ] 5. Persistencia de holdings TR/DEGIRO/IBKR: memo de decisión en `tasks/holdings-persistence-decision.md` (no implementar).
+- [x] 5. Persistencia de holdings TR/DEGIRO/IBKR: memo de decisión en `tasks/holdings-persistence-decision.md` (no implementado). Medido con los ficheros 2025: DEGIRO 8/8 coincide, IBKR 2/9 discrepan, TR 25/47 discrepan y 3 posiciones se cerrarían. Hallazgo: `_load_snapshots` trata cualquier año con filas como completo aunque el marcador sea `false` (latente hoy).
+- [ ] Pendiente de decisión (Brais): prerrequisito del loader + qué brokers persistir.
 
 ## Zonas Clave: calibrar el umbral de ruptura — 2026-09-25 (rama `feat/zonas-calibration`)
 
