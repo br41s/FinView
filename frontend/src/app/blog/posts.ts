@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-polacos-espana',
+    tag: 'Fiscalidad',
+    date: '25 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos polacos en España: cómo recuperar el 4 % retenido de más',
+    excerpt:
+      'Polonia retiene el 19 % de tus dividendos, pero el convenio de 1979 limita el impuesto al 15 %. Cómo declarar el bruto en el IRPF con la deducción del artículo 80 y cómo reclamar el exceso a la administración polaca.',
+  },
+  {
     slug: 'dividendos-japoneses-espana',
     tag: 'Fiscalidad',
     date: '24 sep 2026',
