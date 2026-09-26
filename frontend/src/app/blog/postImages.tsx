@@ -2193,7 +2193,35 @@ function ImgDividendosPolacos() {
   );
 }
 
+function ImgDividendosChilenos() {
+  return (
+    <div className={styles.postImgDividendosChilenos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">CHILE · 35 % → IRPF (art. 80)</text>
+        <rect x="12" y="30" width="52" height="58" rx="6" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="38" y="48" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1.000 €</text>
+        <text x="38" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">bruto</text>
+        <text x="38" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">−350 €</text>
+        <path d="M66 59h13" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="3 2" />
+        <path d="m74 53 8 6-8 6" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="86" y="30" width="18" height="58" rx="3" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <rect x="86" y="67" width="18" height="21" rx="3" fill="var(--fv-ochre)" opacity="0.35" />
+        <text x="95" y="52" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">35 %</text>
+        <text x="95" y="104" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">sin tope</text>
+        <path d="M110 59h13" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m118 53 8 6-8 6" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="131" y="30" width="57" height="58" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="159.5" y="48" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">AEAT</text>
+        <text x="159.5" y="62" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">art. 80</text>
+        <text x="159.5" y="76" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">190 €</text>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el convenio de 2003 no limita el impuesto adicional</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-chilenos-espana': ImgDividendosChilenos,
   'dividendos-polacos-espana': ImgDividendosPolacos,
   'dividendos-japoneses-espana': ImgDividendosJaponeses,
   'rsu-stock-options-irpf-espana': ImgRsuStockOptions,
