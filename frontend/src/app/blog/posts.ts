@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-israelies-espana',
+    tag: 'Fiscalidad',
+    date: '28 sep 2026',
+    readTime: '11 min',
+    title: 'Dividendos israelíes en España: recuperar 15 puntos de un tope del 10 %',
+    excerpt:
+      'Israel retiene el 25 % del dividendo a un residente español, pero el convenio de 1999 limita el impuesto al 10 %. Cómo pedir el tipo reducido en origen y cómo reclamar el exceso al fisco israelí antes de que pasen los seis años.',
+  },
+  {
     slug: 'dividendos-chilenos-espana',
     tag: 'Fiscalidad',
     date: '27 sep 2026',
