@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-chilenos-espana',
+    tag: 'Fiscalidad',
+    date: '27 sep 2026',
+    readTime: '11 min',
+    title: 'Dividendos chilenos en España: el 35 % que el convenio no te deja recuperar',
+    excerpt:
+      'Chile retiene el 35 % del dividendo a un residente español y el convenio de 2003 no lo limita: una excepción en su artículo 10 deja el impuesto adicional sin tope. Qué deduces en el IRPF con el artículo 80 y qué parte se pierde por el camino.',
+  },
+  {
     slug: 'dividendos-polacos-espana',
     tag: 'Fiscalidad',
     date: '25 sep 2026',
