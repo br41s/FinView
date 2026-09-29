@@ -2220,7 +2220,33 @@ function ImgDividendosChilenos() {
   );
 }
 
+function ImgDividendosIsraelies() {
+  return (
+    <div className={styles.postImgDividendosIsraelies}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ISRAEL · 25 % RETENIDO → TOPE 10 %</text>
+        <rect x="34" y="30" width="30" height="64" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <rect x="34" y="30" width="30" height="39" rx="4" fill="var(--fv-ochre)" opacity="0.28" />
+        <text x="49" y="46" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">25 %</text>
+        <path d="M20 69h76" stroke="var(--fv-ink-60)" strokeWidth="1" strokeDasharray="4 3" />
+        <text x="17" y="67" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="end">tope</text>
+        <text x="17" y="74" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="end">10 %</text>
+        <text x="49" y="104" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retenido en origen</text>
+        <path d="M66 60h40" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m100 55 6 5-6 5" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="110" y="34" width="76" height="56" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="148" y="52" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ITA</text>
+        <text x="148" y="65" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">art. 160</text>
+        <text x="148" y="78" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">6 años</text>
+        <text x="148" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">con intereses</text>
+        <text x="100" y="113" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">quince puntos reclamables por dividendo</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-israelies-espana': ImgDividendosIsraelies,
   'dividendos-chilenos-espana': ImgDividendosChilenos,
   'dividendos-polacos-espana': ImgDividendosPolacos,
   'dividendos-japoneses-espana': ImgDividendosJaponeses,
