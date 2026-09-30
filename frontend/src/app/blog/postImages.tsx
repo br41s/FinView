@@ -2245,7 +2245,38 @@ function ImgDividendosIsraelies() {
   );
 }
 
+function ImgDividendosIndios() {
+  return (
+    <div className={styles.postImgDividendosIndios}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">INDIA · 20,8 % RETENIDO → TOPE 15 %</text>
+        {/* Ring: the withheld share of the dividend */}
+        <circle cx="46" cy="62" r="26" stroke="var(--fv-ink-30)" strokeWidth="9" />
+        <circle cx="46" cy="62" r="26" stroke="var(--fv-ochre)" strokeWidth="9" strokeDasharray="34 129" strokeLinecap="butt" transform="rotate(-90 46 62)" />
+        <text x="46" y="60" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">20,8 %</text>
+        <text x="46" y="70" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retiene</text>
+        <text x="46" y="102" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">el fisco indio</text>
+        {/* Ceiling at 15 % */}
+        <path d="M78 62h20" stroke="var(--fv-ink-60)" strokeWidth="1" strokeDasharray="4 3" />
+        <text x="98" y="56" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tope</text>
+        <text x="98" y="65" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        {/* Reclaim target: Indian filing portal */}
+        <rect x="110" y="28" width="80" height="60" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="M120 40h60" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <path d="M120 48h40" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="150" y="64" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">PAN · ITR-2</text>
+        <text x="150" y="76" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">devolución</text>
+        <text x="150" y="84" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">Form 26AS · 3–6 meses</text>
+        <path d="M110 62h-8" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m108 58-6 4 6 4" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="100" y="113" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">en el bolsillo quedan menos de 2 puntos</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-indios-espana': ImgDividendosIndios,
   'dividendos-israelies-espana': ImgDividendosIsraelies,
   'dividendos-chilenos-espana': ImgDividendosChilenos,
   'dividendos-polacos-espana': ImgDividendosPolacos,

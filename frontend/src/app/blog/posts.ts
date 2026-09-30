@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-indios-espana',
+    tag: 'Fiscalidad',
+    date: '29 sep 2026',
+    readTime: '11 min',
+    title: 'Dividendos indios en España: el 20,8 % retenido y el techo del 15 %',
+    excerpt:
+      'La India pasó a gravar el dividendo en 2020 y hoy retiene un 20,8 % a un residente español, aunque el convenio de 1993 lo limita al 15 %. Cómo conseguir el tipo reducido y por qué la devolución exige un PAN y una declaración de la renta.',
+  },
+  {
     slug: 'dividendos-israelies-espana',
     tag: 'Fiscalidad',
     date: '28 sep 2026',
