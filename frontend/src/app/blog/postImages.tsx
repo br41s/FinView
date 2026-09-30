@@ -2275,7 +2275,38 @@ function ImgDividendosIndios() {
   );
 }
 
+function ImgDividendosSudafricanos() {
+  return (
+    <div className={styles.postImgDividendosSudafricanos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">SUDÁFRICA · 20 % RETENIDO → TOPE 15 %</text>
+        {/* Ring: withheld share */}
+        <circle cx="46" cy="62" r="26" stroke="var(--fv-ink-30)" strokeWidth="9" />
+        <circle cx="46" cy="62" r="26" stroke="var(--fv-ochre)" strokeWidth="9" strokeDasharray="33 130" strokeLinecap="butt" transform="rotate(-90 46 62)" />
+        <text x="46" y="60" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">20 %</text>
+        <text x="46" y="70" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retiene</text>
+        <text x="46" y="102" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">el Dividends Tax</text>
+        {/* Ceiling at 15 % */}
+        <path d="M78 62h18" stroke="var(--fv-ink-60)" strokeWidth="1" strokeDasharray="4 3" />
+        <text x="96" y="56" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tope</text>
+        <text x="96" y="65" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        {/* Reclaim target: the withholding agent, not SARS */}
+        <rect x="112" y="26" width="78" height="62" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="M122 38h58" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <path d="M122 46h38" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="151" y="62" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">agente retenedor</text>
+        <text x="151" y="74" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">devuelve el exceso</text>
+        <text x="151" y="83" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">SARS no paga al particular · 3 años</text>
+        <path d="M112 62h-8" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m110 58-6 4 6 4" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="100" y="113" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">en el bolsillo queda 1 punto</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-sudafricanos-espana': ImgDividendosSudafricanos,
   'dividendos-indios-espana': ImgDividendosIndios,
   'dividendos-israelies-espana': ImgDividendosIsraelies,
   'dividendos-chilenos-espana': ImgDividendosChilenos,
