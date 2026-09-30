@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1149 backend, 127 skipped sin ficheros reales) · vitest (102 frontend) · ESLint
+- **Tests:** pytest (1180 backend, 127 skipped sin ficheros reales) · vitest (102 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -276,9 +276,14 @@ Cada fondo se enriquece con su **NAV por participación** y **patrimonio (tamañ
 Base URL: `http://localhost:8000/api`
 
 ### Auth
-- `POST /auth/register` — Registro (límite: 3 req/min por IP)
+- `POST /auth/register` — Registro; exige `accept_terms: true` (límite: 3 req/min por IP)
 - `POST /auth/login` — Login (límite: 5 req/min por IP)
-- `GET /auth/me` — Usuario autenticado actual
+- `GET /auth/me` — Usuario autenticado actual (incluye `terms_accepted`)
+
+### Cuenta del usuario (derechos RGPD)
+- `POST /users/me/accept-terms` — Registra la aceptación de las condiciones vigentes
+- `GET /users/me/export` — Descarga todos los datos del usuario en JSON
+- `POST /users/me/delete` — Elimina la cuenta y todos sus datos (pide la contraseña; límite 5 req/min)
 
 ### Imports
 - `POST /imports/tr` — Trade Republic PDF o CSV (dispatch por extensión)

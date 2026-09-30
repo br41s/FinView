@@ -639,6 +639,9 @@ class GeoRuleStatsReset(BaseModel):
 class FiscalProfileIn(BaseModel):
     age: int | None = None
     disability: str | None = None  # None | "general" | "severe"
+    # Explicit consent to store the disability level (health data, GDPR art. 9).
+    # Required whenever `disability` is set; clearing the field withdraws it.
+    health_data_consent: bool = False
     descendants: int = 0
     general_base: Decimal = Decimal("0")
     prior_rcm_loss: Decimal = Decimal("0")  # pending prior-year RCM losses (art. 49)

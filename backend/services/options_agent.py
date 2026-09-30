@@ -251,6 +251,8 @@ REGLAS ESTRICTAS:
 - La sección ## 6. Contexto MEFF solo aparece si hay tickers terminados en .MC.
 - NUNCA des recomendaciones de compra/venta directas. Usa lenguaje analítico: \
   "sugiere", "apunta a", "podría indicar", "merece seguimiento".
+- El informe es información general, no asesoramiento personalizado: no conoces la situación \
+  del lector, así que no indiques cuánto invertir ni qué parte del capital arriesgar.
 - Termina SIEMPRE con ## 7. Gestión de Riesgo.
 """
 
@@ -297,7 +299,8 @@ del régimen macro — es informativo, NO cambia la severidad ni la señal.]
 [Solo si hay tickers .MC. Diferenciales bid/ask, liquidez, ciclos de vencimiento MEFF vs CBOE.]
 
 ## 7. Gestión de Riesgo
-[Stop-loss conceptual por tipo de estrategia. Tamaño de posición sugerido según volatilidad. \
+[Stop-loss conceptual por tipo de estrategia. Cómo afecta la volatilidad al riesgo por operación, \
+en términos generales y sin proponer tamaños de posición ni porcentajes de capital. \
 Horizonte temporal óptimo según los vencimientos detectados.]
 """
 

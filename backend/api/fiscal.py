@@ -2,6 +2,7 @@
 
 import csv
 import io
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
@@ -750,6 +751,7 @@ def get_fiscal_profile(db: DbSession, user: CurrentUser, fiscal_year: int):
         fiscal_year=p.fiscal_year,
         age=p.age,
         disability=p.disability,
+        health_data_consent=p.health_data_consent_at is not None,
         descendants=p.descendants,
         general_base=p.general_base,
         prior_rcm_loss=p.prior_rcm_loss,
@@ -765,6 +767,11 @@ def upsert_fiscal_profile(
     """Create or update the taxpayer profile for the year."""
     if body.disability not in (None, "general", "severe"):
         raise HTTPException(422, "disability must be null, 'general' or 'severe'")
+    if body.disability is not None and not body.health_data_consent:
+        raise HTTPException(
+            status_code=422,
+            detail="Para guardar el grado de discapacidad necesitamos tu consentimiento expreso",
+        )
     if body.prior_rcm_loss < 0 or body.prior_gp_loss < 0:
         raise HTTPException(422, "prior losses must be ≥ 0 (enter as positive magnitudes)")
     p = (
@@ -777,6 +784,10 @@ def upsert_fiscal_profile(
         db.add(p)
     p.age = body.age
     p.disability = body.disability
+    if body.disability is None:
+        p.health_data_consent_at = None  # clearing the field withdraws consent
+    elif p.health_data_consent_at is None:
+        p.health_data_consent_at = datetime.now(timezone.utc)
     p.descendants = max(body.descendants, 0)
     p.general_base = body.general_base
     p.prior_rcm_loss = body.prior_rcm_loss
@@ -787,6 +798,7 @@ def upsert_fiscal_profile(
         fiscal_year=p.fiscal_year,
         age=p.age,
         disability=p.disability,
+        health_data_consent=p.health_data_consent_at is not None,
         descendants=p.descendants,
         general_base=p.general_base,
         prior_rcm_loss=p.prior_rcm_loss,

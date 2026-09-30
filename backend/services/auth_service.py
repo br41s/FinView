@@ -11,6 +11,13 @@ from backend.config import settings
 from backend.models import User
 
 
+# Version of the terms + privacy policy published under /legal. Bump it when a
+# document changes in a way users must re-accept: everyone whose stored version
+# differs is asked again. The date matches "Última actualización" on the pages
+# (LEGAL_UPDATED in frontend/src/lib/legal.ts).
+TERMS_VERSION = "2026-09-30"
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -37,9 +44,31 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     return db.query(User).filter(User.email == email).first()
 
 
-def create_user(db: Session, email: str, name: str, password: str) -> User:
+def create_user(
+    db: Session, email: str, name: str, password: str, accepted_terms: bool = False
+) -> User:
     user = User(email=email, name=name, password_hash=hash_password(password))
+    if accepted_terms:
+        _stamp_terms(user)
     db.add(user)
     db.commit()
     db.refresh(user)
+    return user
+
+
+def _stamp_terms(user: User) -> None:
+    user.terms_version = TERMS_VERSION
+    user.terms_accepted_at = datetime.now(timezone.utc)
+
+
+def has_accepted_current_terms(user: User) -> bool:
+    return user.terms_version == TERMS_VERSION
+
+
+def accept_terms(db: Session, user: User) -> User:
+    """Record acceptance of the current terms. Idempotent: the first timestamp stands."""
+    if not has_accepted_current_terms(user):
+        _stamp_terms(user)
+        db.commit()
+        db.refresh(user)
     return user

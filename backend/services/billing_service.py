@@ -120,6 +120,25 @@ def create_portal_session(db: Session, user: User) -> str:
     return session.url
 
 
+def delete_stripe_customer(user: User) -> None:
+    """Delete the user's Stripe customer ahead of account deletion.
+
+    Deleting the customer cancels every active subscription in the same call, so
+    a deleted account can never keep being charged. Stripe retains the invoices
+    it is legally required to keep; FinView keeps nothing.
+
+    Raises on any Stripe failure other than "already gone": the caller must not
+    delete the account while a subscription may still be billing.
+    """
+    if not user.stripe_customer_id:
+        return
+    try:
+        stripe.Customer.delete(user.stripe_customer_id)
+    except stripe.InvalidRequestError as exc:
+        if exc.code != "resource_missing":
+            raise
+
+
 # ---------- webhook processing ----------
 
 

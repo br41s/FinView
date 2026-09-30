@@ -242,6 +242,8 @@ export interface FiscalProfile {
   fiscal_year: number;
   age: number | null;
   disability: "general" | "severe" | null;
+  /** Explicit consent to store `disability` (health data). Required when it is set. */
+  health_data_consent: boolean;
   descendants: number;
   general_base: string;
   prior_rcm_loss: string;

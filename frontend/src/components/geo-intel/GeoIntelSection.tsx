@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 export function GeoIntelSection() {
   const { privacy, togglePrivacy } = usePrivacyToggle();
@@ -207,10 +208,13 @@ export function GeoIntelSection() {
           <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-muted-foreground">
-            Oportunidades de inversión y especulación, disparadas por eventos
-            geopolíticos y naturales.
-          </p>
+          <div>
+            <p className="text-muted-foreground">
+              Oportunidades de inversión y especulación, disparadas por eventos
+              geopolíticos y naturales.
+            </p>
+            <AiDisclaimer />
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <QuickNav current="/geo-intel" />
             <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
