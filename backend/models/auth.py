@@ -53,6 +53,12 @@ class User(Base):
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     subscription_current_period_end: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # Proof of consent (GDPR art. 7.1): which version of the terms and privacy
+    # policy the user accepted, and when. NULL = registered before acceptance was
+    # recorded; the app asks those users to accept on their next visit.
+    terms_version: Mapped[str | None] = mapped_column(String(20))
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     accounts: Mapped[list["Account"]] = relationship(back_populates="user")
 
 

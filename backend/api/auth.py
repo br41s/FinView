@@ -15,6 +15,7 @@ from backend.services.auth_service import (
     create_user,
     decode_access_token,
     get_user_by_email,
+    has_accepted_current_terms,
     verify_password,
 )
 from backend.services.rate_limit import client_ip, limiter
@@ -31,6 +32,8 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str = ""
     password: str
+    # Must be sent as true: the box on the sign-up form is never pre-ticked.
+    accept_terms: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -50,6 +53,7 @@ class UserResponse(BaseModel):
     name: str
     is_active: bool
     subscription_tier: str = "FREE"
+    terms_accepted: bool = False
 
 
 # --------------- dependency ---------------
@@ -106,17 +110,25 @@ def _user_dict(user: User) -> dict:
         "name": user.name,
         "is_active": user.is_active,
         "subscription_tier": user.subscription_tier or "FREE",
+        "terms_accepted": has_accepted_current_terms(user),
     }
 
 
 @router.post("/register", response_model=AuthResponse, responses={400: {"description": "Email already registered or weak password"}, 429: {"description": "Too many requests"}})
 @limiter.limit(settings.rate_limit_register)
 def register(request: Request, body: RegisterRequest, db: DbSession):
+    if not body.accept_terms:
+        raise HTTPException(
+            status_code=400,
+            detail="Debes aceptar las condiciones de uso y la política de privacidad",
+        )
     if get_user_by_email(db, body.email):
         raise HTTPException(status_code=400, detail="Ese email ya está registrado")
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
-    user = create_user(db, email=body.email, name=body.name, password=body.password)
+    user = create_user(
+        db, email=body.email, name=body.name, password=body.password, accepted_terms=True
+    )
     token = create_access_token(user.id, user.email)
     return {"user": _user_dict(user), "token": token}
 

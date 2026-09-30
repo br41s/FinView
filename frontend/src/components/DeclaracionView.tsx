@@ -57,6 +57,7 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
       await api.saveFiscalProfile(fiscalYear, {
         age: profile.age,
         disability: profile.disability,
+        health_data_consent: profile.health_data_consent,
         descendants: profile.descendants,
         general_base: profile.general_base,
         prior_rcm_loss: profile.prior_rcm_loss,
@@ -113,6 +114,23 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
                 <option value="severe">65% o más</option>
               </select>
             </Field>
+            {profile.disability && (
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={!!profile.health_data_consent}
+                  onChange={(e) =>
+                    setProfile({ ...profile, health_data_consent: e.target.checked })
+                  }
+                />
+                <span>
+                  Consiento expresamente que FinView guarde este dato de salud, únicamente para
+                  calcular el mínimo por discapacidad. Puedes retirarlo en cualquier momento
+                  eligiendo «Ninguna».
+                </span>
+              </label>
+            )}
 
             <Field label="Hijos / descendientes a cargo">
               <Input
@@ -172,7 +190,11 @@ export function DeclaracionView({ fiscalYear }: { fiscalYear: number }) {
               Compensan las ganancias del mismo tipo de este año (art. 49).
             </p>
 
-            <Button onClick={saveProfile} disabled={saving} size="sm">
+            <Button
+              onClick={saveProfile}
+              disabled={saving || (!!profile.disability && !profile.health_data_consent)}
+              size="sm"
+            >
               {saving ? "Guardando…" : "Guardar y recalcular"}
             </Button>
           </CardContent>

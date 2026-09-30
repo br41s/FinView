@@ -566,6 +566,7 @@ export const api = {
     body: {
       age: number | null;
       disability: "general" | "severe" | null;
+      health_data_consent: boolean;
       descendants: number;
       general_base: string;
       prior_rcm_loss: string;
@@ -641,6 +642,14 @@ export const api = {
     checkout: (priceId: string) =>
       send<{ url: string }>("POST", "/billing/checkout", { price_id: priceId }),
     portal: () => send<{ url: string }>("POST", "/billing/portal"),
+  },
+
+  // The signed-in user's own account: consent, data export, deletion.
+  me: {
+    get: () => fetchJSON<{ terms_accepted: boolean }>("/auth/me"),
+    acceptTerms: () => send("POST", "/users/me/accept-terms"),
+    exportData: () => download("/users/me/export", "finview_mis_datos.json"),
+    deleteAccount: (password: string) => send("POST", "/users/me/delete", { password }),
   },
 
   // Charts — cached client-side (5 min); invalidated on import/delete.

@@ -31,6 +31,9 @@ class FiscalProfile(Base):
 
     age: Mapped[int | None] = mapped_column(Integer)
     disability: Mapped[str | None] = mapped_column(String(10))  # None | general | severe
+    # Disability is health data (GDPR art. 9): it is stored only with explicit
+    # consent, and this is the record of when that consent was given.
+    health_data_consent_at: Mapped[datetime | None] = mapped_column(DateTime)
     descendants: Mapped[int] = mapped_column(Integer, default=0)
     # Net general-base income (employment, etc.). Absorbs the personal minimum
     # first; only the remainder lands on the savings base. 0 → full minimum on savings.

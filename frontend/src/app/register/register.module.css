@@ -77,3 +77,16 @@
   text-decoration: none;
   font-weight: 500;
 }
+
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fv-ink-70);
+}
+
+.consent input {
+  margin-top: 3px;
+}

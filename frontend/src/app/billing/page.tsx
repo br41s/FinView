@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { LoadingDots } from "@/components/loading-dots";
+import { AccountDataRights } from "@/components/AccountDataRights";
 
 interface Subscription {
   tier: string;
@@ -201,6 +202,7 @@ function BillingContent() {
             <span className="text-muted-foreground">Nombre</span>
             <span>{session?.user?.name}</span>
           </div>
+          <AccountDataRights />
         </CardContent>
       </Card>
 

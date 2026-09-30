@@ -24,6 +24,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +36,7 @@ export default function RegisterPage() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, password }),
+      body: JSON.stringify({ email, name, password, accept_terms: acceptTerms }),
     });
 
     if (!res.ok) {
@@ -111,8 +112,27 @@ export default function RegisterPage() {
                 autoComplete="new-password"
               />
             </div>
+            <label className={styles.consent}>
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                required
+              />
+              <span>
+                Soy mayor de 18 años y acepto las{" "}
+                <Link href="/legal/condiciones" target="_blank" className={styles.footerLink}>
+                  Condiciones de uso
+                </Link>{" "}
+                y la{" "}
+                <Link href="/legal/privacidad" target="_blank" className={styles.footerLink}>
+                  Política de privacidad
+                </Link>
+                .
+              </span>
+            </label>
             {error && <p className={styles.error}>{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !acceptTerms}>
               {loading ? "Creando cuenta..." : "Crear cuenta"}
             </Button>
           </form>

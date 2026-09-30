@@ -44,6 +44,7 @@ import { GrossDividendsByCountryChart } from "@/components/charts/GrossDividends
 import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart";
 import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
+import { TermsBanner } from "@/components/TermsBanner";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import {
   Upload as UploadIcon,
@@ -440,6 +441,7 @@ function DashboardContent() {
 
       {/* Content */}
       <main data-privacy={privacy ? "true" : "false"}>
+          <TermsBanner />
           {/* Import view */}
           {view === "importar" && (
             <div className="max-w-3xl mx-auto space-y-6">
