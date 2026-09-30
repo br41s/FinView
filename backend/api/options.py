@@ -674,7 +674,6 @@ def test_telegram(user: CurrentUser):
 
     text = (
         "✅ *FinView — test de conexión Telegram*\n"
-        f"Usuario: `{user.email}`\n"
         f"Hora: `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`\n\n"
         "La integración funciona correctamente. "
         "Recibirás aquí las alertas HIGH y los premium spikes."
@@ -685,7 +684,7 @@ def test_telegram(user: CurrentUser):
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Telegram delivery failed — check bot token and chat ID.",
         )
-    return {"sent": True, "chat_id": settings.telegram_chat_id}
+    return {"sent": True}
 
 
 # ── Agent chat ───────────────────────────────────────────────────────
