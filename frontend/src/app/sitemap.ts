@@ -37,6 +37,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/blog`, priority: 0.8 },
     { url: `${SITE_URL}/features`, priority: 0.6 },
     { url: `${SITE_URL}/pricing`, priority: 0.6 },
+    { url: `${SITE_URL}/legal/aviso-legal`, priority: 0.2 },
+    { url: `${SITE_URL}/legal/privacidad`, priority: 0.2 },
+    { url: `${SITE_URL}/legal/cookies`, priority: 0.2 },
+    { url: `${SITE_URL}/legal/condiciones`, priority: 0.2 },
   ];
 
   const posts: MetadataRoute.Sitemap = blogSlugs().map((slug) => ({

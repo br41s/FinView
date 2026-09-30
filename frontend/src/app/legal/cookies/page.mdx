@@ -1,0 +1,49 @@
+import { LEGAL, LEGAL_UPDATED } from '@/lib/legal';
+
+export const metadata = {
+  title: "Política de cookies — FinView",
+  description: "FinView solo usa cookies y almacenamiento técnicos, necesarios para iniciar sesión y recordar tus preferencias. Sin analítica ni publicidad.",
+  alternates: { canonical: "/legal/cookies" },
+};
+
+# Política de cookies
+
+Última actualización: {LEGAL_UPDATED}
+
+## 1. Resumen
+
+{LEGAL.brand} **solo utiliza cookies y almacenamiento local técnicos**, imprescindibles para iniciar sesión y recordar tus preferencias de visualización. **No usamos cookies de analítica, de publicidad ni de seguimiento, ni propias ni de terceros.**
+
+Por eso no verás un banner de consentimiento: la normativa europea sobre cookies (en España, el artículo 22.2 de la Ley 34/2002, LSSI-CE) exime del consentimiento a las cookies estrictamente necesarias para prestar el servicio que tú solicitas. Sí debemos informarte, y eso hace esta página.
+
+## 2. Cookies que utilizamos
+
+| Nombre | Titular | Finalidad | Duración |
+|---|---|---|---|
+| `__Secure-authjs.session-token` | {LEGAL.brand} | Mantiene tu sesión iniciada | 90 días |
+| `__Host-authjs.csrf-token` | {LEGAL.brand} | Protege los formularios de acceso frente a peticiones falsificadas | Sesión |
+| `__Secure-authjs.callback-url` | {LEGAL.brand} | Recuerda a qué página volver tras iniciar sesión | Sesión |
+
+## 3. Almacenamiento local del navegador
+
+Además de cookies, guardamos en tu propio navegador algunos valores que nunca se envían a nuestros servidores:
+
+| Clave | Tipo | Finalidad | Duración |
+|---|---|---|---|
+| `theme` | localStorage | Recuerda si prefieres el tema claro u oscuro | Hasta que lo borres |
+| `fv-privacy` | localStorage | Recuerda si tienes activado el modo que difumina los importes | Hasta que lo borres |
+| `fv_cache:*` | sessionStorage | Guarda durante unos minutos las respuestas ya cargadas para que la aplicación vaya más rápida | Hasta que cierres la pestaña |
+
+## 4. Servicios de terceros
+
+**Cloudflare Turnstile.** En la página de inicio de sesión se carga un componente de Cloudflare que comprueba que no eres un robot. Es una medida de seguridad y puede usar almacenamiento técnico propio dentro de su marco para esa comprobación.
+
+## 5. Cómo borrar o bloquear las cookies
+
+Puedes borrar o bloquear las cookies desde la configuración de tu navegador. Si bloqueas las cookies de sesión no podrás iniciar sesión en {LEGAL.brand}. Al cerrar sesión, la cookie de sesión se elimina.
+
+## 6. Cambios
+
+Si incorporamos alguna cookie que no sea estrictamente necesaria, actualizaremos esta política y te pediremos tu consentimiento antes de instalarla.
+
+Para cualquier duda, escríbenos a <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>.

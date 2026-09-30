@@ -5,8 +5,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PublicNav } from '@/components/PublicNav';
 import { PublicFooter } from '@/components/PublicFooter';
 import { api } from '@/lib/api';
+import { LEGAL } from '@/lib/legal';
 import styles from './pricing.module.css';
 
+// Feature lists state only what the backend enforces (PLAN_LIMITS in
+// backend/services/billing_service.py): an advertised feature that does not
+// exist is misleading advertising, not marketing. The paid plans are not on
+// sale — there is no Stripe account — and the note under the hero says so; the
+// Free limits here must match the table in /legal/condiciones.
 const PLANS = [
   {
     tier: 'FREE',
@@ -15,11 +21,11 @@ const PLANS = [
     period: 'para siempre',
     desc: 'Para empezar a organizar tus dividendos sin compromiso.',
     features: [
-      'Hasta 10 posiciones en cartera',
-      '1 broker conectado',
-      'Importación manual de archivos',
-      'Dashboard de dividendos básico',
-      'Casillas IRPF (Modelo 100)',
+      'Hasta 2 cuentas de bróker',
+      'Hasta 5 importaciones al mes',
+      'Todas las funciones de la aplicación',
+      'FIFO cross-broker automático',
+      'Casillas IRPF y exportación CSV',
     ],
     cta: 'Crear cuenta gratis',
     href: '/register',
@@ -33,14 +39,11 @@ const PLANS = [
     period: '/mes',
     desc: 'Para el inversor serio que quiere control total sobre su cartera.',
     features: [
-      'Posiciones ilimitadas',
-      'Hasta 3 brokers conectados',
-      'Importaciones ilimitadas',
-      'Dashboard fiscal completo',
+      'Hasta 10 cuentas de bróker',
+      'Hasta 50 importaciones al mes',
+      'Todas las funciones de la aplicación',
       'FIFO cross-broker automático',
-      'Exportación CSV de datos',
-      'Comparativa anual de dividendos',
-      'Modelo 100 y Modelo 714',
+      'Casillas IRPF y exportación CSV',
     ],
     cta: 'Empezar con Pro',
     href: '/register?plan=PRO',
@@ -55,11 +58,8 @@ const PLANS = [
     desc: 'Para asesores y familias que gestionan múltiples carteras.',
     features: [
       'Todo lo de Pro',
-      'Brokers ilimitados',
-      'API de acceso a datos',
-      'Soporte prioritario por email',
-      'Acceso anticipado a nuevas funciones',
-      'Exportación PDF declaración IRPF',
+      'Cuentas de bróker sin límite',
+      'Importaciones sin límite',
     ],
     cta: 'Empezar con Unlimited',
     href: '/register?plan=UNLIMITED',
@@ -70,20 +70,20 @@ const PLANS = [
 
 const FAQ = [
   {
-    q: '¿Puedo cambiar de plan en cualquier momento?',
-    a: 'Sí. Puedes subir o bajar de plan desde el dashboard sin penalización. El ajuste se aplica desde el siguiente ciclo de facturación.',
+    q: '¿Cuánto cuesta FinView?',
+    a: 'Hoy es gratuito. Los planes Pro y Unlimited todavía no se pueden contratar; si se ponen a la venta, publicaremos antes sus condiciones y nada cambiará para ti hasta que decidas contratarlos.',
   },
   {
     q: '¿Mis datos fiscales están seguros?',
-    a: 'Todos los archivos que subes se procesan en nuestros servidores seguros y nunca se comparten con terceros. Puedes eliminar tu cuenta y todos tus datos en cualquier momento.',
+    a: 'Los archivos que subes se procesan en servidores ubicados en la Unión Europea y se eliminan al terminar la importación: solo se guardan los datos extraídos. No vendemos ni cedemos tus datos. Puedes descargarlos o eliminar tu cuenta y todos tus datos en cualquier momento desde Facturación.',
   },
   {
     q: '¿FinView es compatible con mi broker?',
-    a: 'Actualmente soportamos Trade Republic (Tax Report PDF), DEGIRO (CSV de transacciones y cuenta) e IBKR (Activity Statement CSV). Próximamente más brokers.',
+    a: 'Actualmente soportamos Trade Republic (Tax Report PDF o CSV), DEGIRO (Informe Anual PDF), Interactive Brokers (Activity Statement CSV), ING (Información Fiscal PDF), BBVA (PDF) y eToro (Account Statement XLSX).',
   },
   {
     q: '¿Los cálculos del IRPF son fiables?',
-    a: 'Nuestro motor FIFO cross-broker aplica la normativa española del IRPF a los datos de todos tus brokers, cruzando compras y ventas entre cuentas para calcular las casillas del Modelo 100 y 714.',
+    a: 'Nuestro motor FIFO cross-broker aplica la normativa española del IRPF a los datos de todos tus brokers, cruzando compras y ventas entre cuentas para estimar las casillas del Modelo 100 y 714. Son estimaciones orientativas, no asesoramiento fiscal: revísalas siempre antes de presentar tu declaración.',
   },
 ];
 
@@ -154,6 +154,11 @@ function PricingContent() {
         </h1>
         <p className={styles.lead}>
           Empieza gratis. Actualiza solo si necesitas más. Sin permanencia, sin sorpresas.
+        </p>
+        <p className={styles.lead} style={{ fontSize: 14 }}>
+          Hoy FinView es gratuito: los planes Pro y Unlimited todavía no están a la venta y no te
+          pediremos ningún medio de pago. El uso se rige por las{' '}
+          <a href="/legal/condiciones" className={styles.footerCtaLink}>Condiciones de uso</a>.
         </p>
       </section>
 
@@ -232,7 +237,7 @@ function PricingContent() {
       <section className={styles.footerCta}>
         <p className={styles.footerCtaText}>
           ¿Tienes dudas? Escríbenos a{' '}
-          <a href="mailto:hola@finview.app" className={styles.footerCtaLink}>hola@finview.app</a>
+          <a href={`mailto:${LEGAL.email}`} className={styles.footerCtaLink}>{LEGAL.email}</a>
         </p>
         <a href="/register" className={styles.ctaPrimary}>Empezar gratis →</a>
       </section>

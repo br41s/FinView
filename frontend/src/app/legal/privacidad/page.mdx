@@ -1,0 +1,108 @@
+import { LEGAL, LEGAL_UPDATED } from '@/lib/legal';
+import { ProcessorsTable } from '@/components/legal/ProcessorsTable';
+
+export const metadata = {
+  title: "Política de privacidad — FinView",
+  description: "Qué datos personales trata FinView, para qué, con qué base jurídica, durante cuánto tiempo, a quién se comunican y cómo ejercer tus derechos.",
+  alternates: { canonical: "/legal/privacidad" },
+};
+
+# Política de privacidad
+
+Última actualización: {LEGAL_UPDATED}
+
+Esta política explica qué datos personales trata {LEGAL.brand}, para qué los usa y qué derechos tienes.
+
+## 1. Quién es el responsable
+
+- **Responsable:** {LEGAL.owner}, {LEGAL.legalForm}
+- **Número de registro:** {LEGAL.registration}
+- **Domicilio:** {LEGAL.address}
+- **Contacto para privacidad:** <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>
+
+{LEGAL.brand} se ofrece en español a personas situadas en la Unión Europea. Por eso, y conforme al artículo 3.2 del Reglamento (UE) 2016/679 (RGPD), este tratamiento queda sujeto al RGPD aunque el responsable esté establecido fuera de la Unión. Cuando otra norma de protección de datos también resulte aplicable, se aplica el estándar más protector para ti.
+
+No hemos designado un delegado de protección de datos. Cualquier consulta sobre privacidad se atiende en la dirección de contacto anterior.
+
+## 2. Qué datos tratamos
+
+**Datos de registro.** Tu email, el nombre que indiques y tu contraseña. La contraseña se guarda únicamente como resumen cifrado irreversible; nadie puede leerla.
+
+**Datos financieros que tú importas.** Operaciones, dividendos, intereses, retenciones, posiciones y valoraciones extraídas de los informes de tu bróker, junto con el identificador de tu cuenta en el bróker, el nombre del archivo y una huella digital del mismo para detectar duplicados. **El archivo original no se conserva:** se procesa en memoria temporal del servidor y se elimina al terminar la importación.
+
+**Perfil fiscal.** Los datos que introduces para estimar tu declaración: edad, número de descendientes, base general, pérdidas pendientes de ejercicios anteriores y otros rendimientos del ahorro. Si lo indicas, también el **grado de discapacidad**, que es un dato de salud y solo se trata con tu consentimiento explícito (apartado 3).
+
+**Datos de uso del producto.** Inversiones alternativas que registras, listas de seguimiento, alertas, y las preguntas que escribes al asistente de opciones.
+
+**Datos de pago.** Ninguno. {LEGAL.brand} es gratuito y no te pide ningún medio de pago.
+
+**Datos técnicos.** Dirección IP, fecha y hora de las peticiones y registros técnicos del servidor, necesarios para la seguridad y para limitar abusos.
+
+**Aceptación de condiciones.** La versión de las condiciones y de esta política que aceptaste y el momento en que lo hiciste.
+
+No compramos datos a terceros, no usamos herramientas de analítica ni de publicidad y no elaboramos perfiles comerciales.
+
+## 3. Para qué los usamos y con qué base jurídica
+
+| Finalidad | Base jurídica |
+|---|---|
+| Crear y mantener tu cuenta, importar tus informes, calcular tu cartera, el FIFO y las casillas del IRPF | Ejecución del contrato (art. 6.1.b RGPD) |
+| Generar los análisis automáticos que solicitas (opciones, zonas clave) | Ejecución del contrato (art. 6.1.b RGPD) |
+| Aplicar mínimos personales por discapacidad en la estimación fiscal | Tu consentimiento explícito (arts. 6.1.a y 9.2.a RGPD), que puedes retirar en cualquier momento |
+| Proteger el servicio: verificación anti-robots, limitación de peticiones, detección de accesos indebidos | Interés legítimo en la seguridad del servicio (art. 6.1.f RGPD) |
+| Atender tus solicitudes y el ejercicio de tus derechos | Obligación legal (art. 6.1.c RGPD) |
+| Conservar la prueba de que aceptaste las condiciones | Interés legítimo en acreditar el contrato (art. 6.1.f RGPD) |
+
+No te enviamos comunicaciones comerciales. No tomamos decisiones basadas únicamente en tratamientos automatizados que produzcan efectos jurídicos sobre ti o te afecten significativamente de modo similar (art. 22 RGPD): los análisis automáticos son información que tú decides si usas.
+
+Facilitar los datos de registro es necesario para usar el servicio. El resto de datos los aportas voluntariamente; sin ellos, las funciones que dependen de esos datos no pueden calcularse.
+
+## 4. Inteligencia artificial
+
+Algunas pantallas (asistente y agente de opciones, zonas clave, ideas geopolíticas) muestran textos generados por un modelo de lenguaje. Para generarlos enviamos al proveedor del modelo los tickers que sigues, datos públicos de mercado y, en el asistente, el texto que tú escribes. **Nunca enviamos tu nombre, tu email, los importes de tu cartera ni tus datos fiscales.** Te recomendamos no escribir datos personales en las preguntas al asistente.
+
+Las alertas de mercado que genera el sistema pueden enviarse a canales de aviso del operador. Esas alertas solo contienen información de mercado y no incluyen ningún dato que te identifique.
+
+## 5. Durante cuánto tiempo los conservamos
+
+- **Datos de tu cuenta y datos financieros:** mientras tu cuenta exista. Cuando la eliminas, se borran de la base de datos de forma inmediata e irreversible.
+- **Copias de seguridad:** las copias técnicas de la base de datos se sobrescriben en un plazo máximo de 30 días.
+- **Registros técnicos del servidor:** un máximo de 30 días.
+
+Puedes borrar en cualquier momento importaciones, cuentas de bróker o registros concretos desde la propia aplicación, sin eliminar la cuenta.
+
+## 6. A quién se comunican
+
+No vendemos ni cedemos tus datos. Solo acceden a ellos los proveedores que necesitamos para prestar el servicio, que actúan por nuestra cuenta y con contrato de encargo de tratamiento:
+
+<ProcessorsTable />
+
+Para obtener cotizaciones consultamos fuentes públicas de mercado (por ejemplo, Yahoo Finance) enviando únicamente el ticker o el ISIN del valor, sin ningún dato que te identifique.
+
+También podremos comunicar datos a autoridades públicas, jueces y tribunales cuando una norma nos obligue.
+
+## 7. Transferencias internacionales
+
+La base de datos y el servidor de la aplicación están en la Unión Europea. El responsable está establecido en Estados Unidos y administra el servicio en remoto, por lo que puede acceder a los datos desde fuera del Espacio Económico Europeo cuando es necesario para mantenerlo o para atender tus solicitudes. Además, algunos proveedores tienen su sede o parte de su infraestructura en Estados Unidos. Las transferencias a proveedores se amparan en la decisión de adecuación del Marco de Privacidad de Datos UE-EE. UU. cuando el proveedor está certificado y, en los demás casos, en las cláusulas contractuales tipo aprobadas por la Comisión Europea. Puedes pedirnos más información sobre estas garantías en la dirección de contacto.
+
+## 8. Tus derechos
+
+Puedes ejercer en cualquier momento tus derechos de **acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad**, y **retirar tu consentimiento** sin que ello afecte a la licitud del tratamiento anterior.
+
+- **Acceso y portabilidad:** en *Facturación › Cuenta › Descargar mis datos* obtienes un archivo con todos tus datos en formato estructurado.
+- **Supresión:** en *Facturación › Cuenta › Eliminar cuenta* borras tu cuenta y todos tus datos.
+- **Cualquier otro derecho:** escríbenos a <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a> desde el email de tu cuenta indicando qué derecho quieres ejercer.
+
+Respondemos en el plazo máximo de un mes. Si consideras que no hemos atendido correctamente tu solicitud, puedes presentar una reclamación ante la autoridad de protección de datos de tu país de residencia; en España, la **Agencia Española de Protección de Datos** ([www.aepd.es](https://www.aepd.es)).
+
+## 9. Seguridad
+
+Aplicamos medidas técnicas y organizativas proporcionadas al riesgo: cifrado de las comunicaciones, contraseñas almacenadas mediante resumen irreversible, acceso a los datos restringido por usuario, verificación anti-robots, limitación de intentos de acceso y cabeceras de seguridad en todas las respuestas. Si se produjera una brecha de seguridad que suponga un riesgo para tus derechos, la notificaremos a la autoridad de control competente y, cuando proceda, a ti, en los plazos legales.
+
+## 10. Menores de edad
+
+{LEGAL.brand} está dirigido exclusivamente a mayores de 18 años. No tratamos conscientemente datos de menores; si detectamos una cuenta de un menor, la eliminaremos.
+
+## 11. Cambios en esta política
+
+Si cambiamos esta política de forma relevante te lo comunicaremos dentro de la aplicación y te pediremos que la aceptes de nuevo antes de seguir usando el servicio. La fecha de la última actualización figura al inicio del documento.

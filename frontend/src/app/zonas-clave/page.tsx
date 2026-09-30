@@ -45,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -470,6 +471,7 @@ export default function ZonasClavePage() {
             <p className="text-muted-foreground">
               Soportes, resistencias y tendencia algorítmica
             </p>
+            <AiDisclaimer />
             {calibration && (
               <p className="text-xs text-muted-foreground/80" title="Umbral de alerta de ruptura: por defecto 70; se calibra solo con ≥30 resultados medidos a 7 días y ≥55 % de acierto">
                 {`Umbral de alerta ${calibration.effective_threshold}% (${calibration.calibrated ? "calibrado" : "por defecto"}) · ${calibration.evaluated} de ${calibration.scored} candidatos con resultado`}

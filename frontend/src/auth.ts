@@ -82,6 +82,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (pathname.startsWith("/pricing")) return true;
       if (pathname.startsWith("/features")) return true;
       if (pathname.startsWith("/blog")) return true;
+      // Legal documents must be readable before an account exists.
+      if (pathname.startsWith("/legal")) return true;
 
       // Everything else (including /dashboard) requires auth
       return isLoggedIn;

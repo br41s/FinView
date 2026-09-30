@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 // ── Component ───────────────────────────────────────────────────────
 
@@ -167,9 +168,12 @@ export default function OptionsPage() {
           <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-muted-foreground">
-            Análisis de opciones en tiempo real sobre tu cartera
-          </p>
+          <div>
+            <p className="text-muted-foreground">
+              Análisis de opciones en tiempo real sobre tu cartera
+            </p>
+            <AiDisclaimer />
+          </div>
           <div className="flex items-center gap-3">
             <QuickNav current="/options" />
             <Button variant="outline" size="sm" onClick={handleRunCycle} disabled={running} title="Run Cycle">

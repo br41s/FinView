@@ -1,0 +1,26 @@
+/* Addition to the shared blog prose shell: plain markdown tables.
+   Everything else comes from blog-post.module.css. */
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 24px 0;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+
+.legal th {
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--fv-ochre-ghost);
+  color: var(--fv-ink);
+  font-weight: 600;
+  border-bottom: 2px solid var(--fv-ink-10);
+}
+
+.legal td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--fv-ink-10);
+  color: var(--fv-ink-70);
+  vertical-align: top;
+}
