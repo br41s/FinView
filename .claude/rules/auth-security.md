@@ -4,6 +4,8 @@ paths:
   - "backend/services/turnstile.py"
   - "backend/services/rate_limit.py"
   - "backend/api/auth.py"
+  - "backend/api/users.py"
+  - "backend/services/user_data.py"
   - "backend/services/billing_service.py"
   - "backend/config.py"
   - "frontend/src/auth.ts"
@@ -70,3 +72,25 @@ paths:
 - Eye toggle in the dashboard header sets `data-privacy` on `<main>`; CSS blurs any
   `.fv-sensitive` value (`globals.css`). Persisted in `localStorage` (`fv-privacy`).
   Currently tags StatsCards money only — add the class to extend to tables/charts.
+
+### Consent and data rights
+- **Terms acceptance** is proof, not decoration: `POST /auth/register` rejects a body without
+  `accept_terms: true` and stamps `users.terms_version` / `terms_accepted_at`. The backend
+  owns the version (`TERMS_VERSION` in `auth_service.py`); `/auth/me` reports
+  `terms_accepted`, and `TermsBanner` on the dashboard asks anyone on another version —
+  including accounts created before acceptance was recorded — to accept.
+- **The account endpoints live under `/users/me`, not `/auth`.** The Next rewrite forwards
+  only `/api/auth/(login|register|me)` to the backend; every other `/api/auth/*` path is
+  NextAuth's. Do not widen that regex for a new endpoint.
+- **Export and deletion share one definition of ownership** (`services/user_data.py`), derived
+  from the schema. The export streams row by row — `options_snapshots` is never pruned — and
+  never includes `password_hash`.
+- **Deletion asks for the password again** (the session lasts 90 days) and is rate-limited
+  like login. It deletes the Stripe customer first, which cancels any subscription, and
+  returns 502 without deleting anything if Stripe fails. Rows go children-first;
+  `test_user_data.py` runs with SQLite foreign keys enforced so a wrong order fails locally
+  the way it would on Postgres.
+- **Health data**: `PUT /fiscal/profile/{year}` returns 422 when `disability` is set without
+  `health_data_consent`. Clearing the field clears `health_data_consent_at`.
+- The system user that owns the shared Ideas is inactive and has no password, so it can
+  neither log in nor be deleted through these endpoints.

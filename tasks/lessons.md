@@ -206,3 +206,14 @@ prod no cambia".
 **Production** del sha del merge está en `success` (no basta el preview verde). Si falla
 sólo con errores de `next/font/google`, no hay nada que arreglar en el código: relanzar el
 deploy con un commit nuevo (el redeploy por API está bloqueado para el agente).
+
+## Trabajo amplio con huecos de información: avanzar con valores por defecto, no bloquear
+
+**Patrón:** En la tarea de cumplimiento legal preparé el plan y lancé tres preguntas
+(titular, notificaciones al operador, señales de IA) antes de construir nada. El CEO rechazó
+el cuestionario y respondió "continue".
+
+**Regla:** Si lo que falta son datos que solo el CEO tiene (identidad, NIF) o decisiones con
+una opción claramente recomendable, no se pregunta: se avanza con la opción recomendada, los
+datos ausentes se dejan como marcadores visibles en un único sitio, y las decisiones tomadas
+se listan al final con su alternativa. Preguntar queda para lo destructivo o lo irreversible.

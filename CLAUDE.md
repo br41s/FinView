@@ -7,6 +7,8 @@ Subsystem detail lives in `.claude/rules/` and loads automatically when you touc
 options, zonas-clave, geo-intel, importers/fiscal, alt-investments, frontend, auth. Read one directly if you
 need it before touching code.
 
+Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
+
 ---
 
 ## What this project is
@@ -30,7 +32,7 @@ need it before touching code.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1149 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
+| Tests | pytest · 1180 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -112,6 +114,22 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   Dropping an obsolete UNIQUE constraint in prod (Postgres only) goes in
   `database._DROP_UNIQUE_CONSTRAINTS` (applied by `ensure_constraints()`); SQLite tables
   are rebuilt from the model and never carry it.
+- A new table must be classified for data rights. `services/user_data.py` derives from the
+  schema which tables belong to a user (a `user_id` column, or a foreign key into a table
+  that has one) and uses that one definition for both the export (`GET /users/me/export`)
+  and the account deletion (`POST /users/me/delete`). Anything else goes in `GLOBAL_TABLES`.
+  `test_user_data.py` fails on an unclassified table: the pricing FAQ promised "elimina tu
+  cuenta y todos tus datos" for months while nothing implemented it.
+- Account deletion closes billing first and aborts if Stripe fails. An erased account that
+  keeps being charged is worse than a deletion the user has to retry.
+- The public legal documents (`frontend/src/app/legal/*`) state facts about the product.
+  Keep them true in the same change: a new third party receiving user data goes in
+  `PROCESSORS` (`src/lib/legal.ts`); analytics or any non-technical cookie needs a consent
+  banner first; `/pricing` and the plan table in `/legal/condiciones` say exactly what
+  `PLAN_LIMITS` enforces. A change users must re-accept bumps `TERMS_VERSION`
+  (`services/auth_service.py`) and `LEGAL_UPDATED`.
+- Consent is stored, never assumed: registration is rejected without `accept_terms`, and
+  `fiscal_profiles.disability` (health data) is only saved with `health_data_consent`.
 - No breaking changes to API contracts without updating frontend src/lib/ types.
 - API error `detail` a user can reach is written in Spanish; operator-only paths (cron
   rejection, Stripe webhook, `FINVIEW_*` config errors) stay English and are listed in
@@ -174,10 +192,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1149 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1149 pass in ~90s. Those files are not in the repo,
+Backend: `pytest` — 1180 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1180 pass in ~90s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 127 skip and the
-remaining 1022 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+remaining 1053 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser and the v2 checkpoint scorer — see `.claude/rules/geo.md`.
 

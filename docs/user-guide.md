@@ -7,7 +7,20 @@ FinView es un dashboard fiscal personal para inversores españoles. Agrega datos
 ## 1. Acceso
 
 Abre [https://fin-view-topaz.vercel.app](https://fin-view-topaz.vercel.app) en el navegador.  
-Si no tienes cuenta, pulsa **Regístrate** y crea una con tu email y contraseña.
+Si no tienes cuenta, pulsa **Regístrate** y crea una con tu email y contraseña. Para crearla
+debes aceptar las [Condiciones de uso](https://fin-view-topaz.vercel.app/legal/condiciones) y la
+[Política de privacidad](https://fin-view-topaz.vercel.app/legal/privacidad).
+
+### Tus datos
+
+En **Facturación › Cuenta** puedes:
+
+- **Descargar mis datos**: un archivo JSON con todo lo que FinView guarda sobre ti.
+- **Eliminar cuenta**: borra la cuenta y todos sus datos de forma inmediata e irreversible.
+  Pide tu contraseña.
+
+FinView es un producto de Biglobster LLC y hoy es gratuito. Es una herramienta informativa: no presta asesoramiento de inversión ni fiscal. Las
+señales de Opciones, Zonas Clave e Ideas se generan automáticamente, en parte con IA.
 
 ---
 

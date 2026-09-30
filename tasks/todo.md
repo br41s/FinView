@@ -1,5 +1,58 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Legal y cumplimiento (RGPD · LSSI-CE · consumo · MiFID/MAR · AI Act) — 2026-09-30 (rama `feat/legal-compliance`)
+
+Punto de partida: ningún documento legal, registro sin consentimiento, el FAQ de precios
+prometía borrar la cuenta y nada lo hacía, discapacidad (dato de salud) sin consentimiento,
+copy de planes distinto de `PLAN_LIMITS`, señales de IA sin aviso. Mapa completo en
+`docs/compliance/README.md`.
+
+Datos del CEO (2026-09-30): titular **Biglobster LLC** (Nuevo México), contacto
+hola@biglobster.top, y **no hay Stripe: FinView no se vende**. Los documentos describen un
+servicio gratuito bajo ley de Nuevo México con las protecciones imperativas del consumidor de
+la UE (misma cláusula que biglobster.top). Las cláusulas de contratación quedan en
+`docs/compliance/planes-de-pago.md`.
+
+Decisiones tomadas sin preguntar: sin banner de cookies (solo técnicas); email del usuario
+fuera de `test-telegram`, las alertas de mercado al operador se mantienen porque no llevan
+identidad; el prompt de opciones ya no pide tamaño de posición; `/pricing` conserva las
+tarjetas de pago con un aviso de que no están a la venta.
+
+### Documentos y avisos (frontend)
+- [x] `src/lib/legal.ts`: Biglobster LLC, `LEGAL_UPDATED`, `PROCESSORS` (sin Stripe).
+- [x] `/legal/aviso-legal`, `/legal/privacidad`, `/legal/cookies`, `/legal/condiciones` (MDX, shell del blog). Públicas en `auth.ts`, en `sitemap.ts`.
+- [x] `PublicFooter` con los cuatro enlaces + aviso de no asesoramiento (cubre blog, precios, funcionalidades); footer añadido a la landing.
+- [x] `AiDisclaimer` en Opciones, Zonas Clave e Ideas.
+- [x] `/pricing`: planes = `PLAN_LIMITS`, aviso de que Pro y Unlimited no están a la venta, brókers reales, contacto hola@biglobster.top.
+
+### Consentimiento
+- [x] `users.terms_version` / `terms_accepted_at`; registro rechazado sin `accept_terms`; casilla sin premarcar en `/register`.
+- [x] `POST /users/me/accept-terms` + `TermsBanner` en el dashboard para cuentas anteriores o versión nueva.
+- [x] `fiscal_profiles.health_data_consent_at`: discapacidad solo con casilla de consentimiento expreso; borrar el campo lo retira.
+- [x] Descartado: `consent_collection` en Stripe Checkout (falla si no hay URL de condiciones en el panel de Stripe, y el reembolso íntegro lo hace innecesario).
+
+### Derechos
+- [x] `services/user_data.py`: propiedad derivada del esquema, `GLOBAL_TABLES` explícito.
+- [x] `GET /users/me/export` (streaming, sin `password_hash`) y `POST /users/me/delete` (contraseña, límite de peticiones, borra cliente Stripe antes y aborta si falla).
+- [x] `AccountDataRights` en Facturación › Cuenta.
+- [x] `test-telegram` ya no envía el email del usuario ni devuelve el `chat_id`.
+
+### Documentación
+- [x] `docs/compliance/` (mapa normativo, registro de actividades, brechas, pendientes).
+- [x] `CLAUDE.md`, `README.md`, `.claude/rules/auth-security.md`, `docs/user-guide.md`.
+
+### Verificación
+- [x] Backend: ruff limpio, pytest 1180/1180 tras rebase sobre `origin/main` (27 nuevos: `test_user_data.py` con claves foráneas activas, `test_consent.py`).
+- [x] Frontend: tsc, ESLint, vitest 102/102, `pnpm build` (las 4 páginas legales estáticas), sin `<[0-9]` en MDX.
+- [x] Navegador contra backend local con BD temporal: páginas legales sin sesión; registro bloqueado sin casilla; alta → sin banner; export 28 tablas sin hash; contraseña errónea → "Contraseña incorrecta"; borrado → sesión cerrada, landing con footer, 0 filas del usuario.
+- [ ] Commit, push, Vercel preview verde, merge, Cloud Run sano (`ensure_columns` añade las 3 columnas). Ordenado por el CEO el 2026-09-30.
+- [ ] `docs/user-guide.pdf` no regenerado.
+
+### Pendiente del CEO / abogado
+Ver `docs/compliance/pendientes.md`: representante en la UE (art. 27 RGPD), revisión MAR/MiFID
+de "Ideas" y "Top Picks", tarjetas de pago en `/pricing`, DPA de Neon y Vercel, enrutado de
+OpenRouter.
+
 ## Diferidos de Fase 5 / auditoría — 2026-09-25 (un PR por ítem)
 
 - [x] 1. `zonas-clave/page.tsx`: el poll de análisis casa por `selectedItemId` (derivado en render) y deja de leer `watchlist` → sin `eslint-disable`; mismas dependencias efectivas porque (user, ticker) es único y cada cambio de id llega en el mismo batch que `selectedTicker`. La carga inicial conserva el suyo, con el porqué en el sitio: un updater funcional cambiaría la carrera del "Reintentar" (el buscador está vivo durante el reintento).
