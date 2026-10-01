@@ -40,9 +40,10 @@ export interface GeoHealth {
 
 /** Cycles missed before the silence stops being normal. */
 const MISSED_CYCLES = 3;
-/** Floor for the staleness window: prod cron runs every 30 min, the in-process
- *  interval reported here is 15, so three intervals alone would cry wolf. */
-const MIN_STALE_MINUTES = 90;
+/** Floor for the staleness window: three missed cycles of the hourly prod cron.
+ *  The in-process interval reported here is 15, so three of those alone would
+ *  warn after a single missed hourly cycle. */
+const MIN_STALE_MINUTES = 180;
 /** Beyond this, "late" is not a plausible reading any more. */
 const DOWN_AFTER_MINUTES = 24 * 60;
 
