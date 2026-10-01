@@ -90,8 +90,8 @@ def _build_sample_points() -> list[tuple[float, float]]:
 
 
 # Built once at import: ~10 points vs the old 36. With _CACHE_TTL at 30 min and
-# the geo cron every 10 min the source really fetches ~48×/day, so this is ~480
-# calls/day (was ~1728, ~1300 of them wasted).
+# the geo cron hourly, every cycle misses the cache: ~24 fetches a day, ~240
+# calls/day against Windy's ~500.
 SAMPLE_POINTS: list[tuple[float, float]] = _build_sample_points()
 
 

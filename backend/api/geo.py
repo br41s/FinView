@@ -494,7 +494,7 @@ def cron_audit(db: DbSession):
 
     Scores the checkpoints that fell due, re-rates every active signal against
     the latest price, and re-derives each rule's confidence_mod from its
-    accuracy. Separate from /cron so ingestion keeps its 30-minute cadence
+    accuracy. Separate from /cron so ingestion keeps its hourly cadence
     while the auditor runs at its own. A failed audit is a failed job.
     """
     from backend.services.geo.orchestrator import run_audits

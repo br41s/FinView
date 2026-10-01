@@ -213,7 +213,7 @@ Los tickers con sufijo `.MC` se consultan en MEFF (mercado español de derivados
 
 ### 7.3 Ciclos de análisis
 
-El agente ejecuta ciclos periódicos (cada 15 minutos por defecto) para cada ticker activo de tu watchlist:
+El agente ejecuta ciclos periódicos (cada 30 minutos en horario de mercado, de lunes a viernes entre las 7:00 y las 22:59 UTC) para cada ticker activo de tu watchlist:
 
 1. **Observar:** Descarga la cadena de opciones (calls y puts) del mercado.
 2. **Greeks:** Calcula delta, gamma, theta, vega y rho con Black-Scholes.

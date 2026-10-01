@@ -48,7 +48,7 @@ a geometry one — check which categories the boxes you overlap already carry.
   are severe (45°C / -30°C / 50mm per 3h), and a centroid on water or in a mild sub-climate
   keeps the rule just as dead. Override it in `meteo._REGION_POINTS` (as `us_northeast` does
   — its centroid, Albany, sees -30°C once a decade) and mind the ~500 calls/day Windy budget: the source
-  really fetches ~48×/day, so each point costs ~48 calls.
+  fetches once per hourly cycle, ~24×/day, so each point costs ~24 calls.
 - Sentinel gates decide what ever reaches the matcher: earthquakes need `magnitude>=5.5`
   **and** to land inside some region; natural events need a region **or** `severity=red`.
   A rule whose threshold sits below the sentinel's floor is unreachable.
@@ -69,8 +69,14 @@ The DOC API answers **429 to a single request from Google Cloud** (prod: up in 1
 cycles) and carries no Goldstein, no mention counts, no coordinates — so the old ingest
 fabricated a per-query Goldstein and a capital centroid, and the sentinel had to delete its
 floors and ban "red". `data.gdeltproject.org/gdeltv2/` is static, 200 in <0.5 s, and gives
-all three per event: `lastupdate.txt` + the 3 prior batches (**60 min**, bridges one missed
-30-min cron; dedup by GlobalEventID). Floors are real again, calibrated on live batches —
+all three per event: `lastupdate.txt` + the 7 prior batches (**2 h**, bridges one missed or
+late hourly cron — Scheduler has no retry and a deploy across :00 pauses the job; dedup by
+GlobalEventID). **Every count is over the newest hour only** (4 batches by `DATEADDED`,
+which is the batch stamp): the novelty sample, the cluster bar and `storiesThisHour`. The
+counts are per window read, not per newly seen event, so counting the bridge would double
+every sample against a baseline built on 60-minute windows and page the map as "novel" for
+days; a bridged row still reaches the matcher and can be tracked, it just is not counted.
+GDELT writes each batch ~9 min before its stamp, so an on-time :00 cycle reads :00 as newest. Floors are real again, calibrated on live batches —
 mentions 4–6 by category, **sources 1** (NumSources was 1 in 1758/1790 rows, so the original
 3–5 floor would drop the whole feed). Classification is CAMEO root code first, actor
 keywords only as fallback; root 17 (coerce, mostly 173 arrest) is deliberately **not** armed
@@ -184,7 +190,8 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   escalation region, zero or not, and for any other named region only on cycles it has
   stories — so a non-escalation region's baseline is its median *active* hour and stricter;
   hydrated/persisted once per cron request like the flight baseline) — and the advisor pages a GDELT signal only when `novel` is True (≥ 3 stories and
-  ≥ 2× the median). No baseline yet (first six hours after a cold table) is *not* novel.
+  ≥ 2× the median). No baseline yet (first 12 samples — twelve hours of the hourly cron
+  after a cold table) is *not* novel.
   Physical events (quakes, cyclones, AIS drops) are new ids by nature and are not gated.
 - **Notify gate**: importance = round(confidence × risk/10) ≥ 60 → ntfy + Telegram + email
   via `geo/notify.py` (Telegram text is Markdown-escaped — external headlines contain
@@ -192,7 +199,7 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
   checkpoint resolves the signal and updates the matched rules' counters in
   geo_rule_stats. **It runs on its own job**, `POST /api/geo/audit` every 4 hours
-  (`geo-intel-audit`), not inside the 30-minute cycle: `run_audit` = recompute
+  (`geo-intel-audit`), not inside the hourly cycle: `run_audit` = recompute
   confidence_mods → score due checkpoints → re-rate every ACTIVE signal.
   - **confidence_mod is derived from accuracy, never stepped**:
     `clamp((correct/total − 0.5) × 0.6 × min(1, total/10), ±0.30)`
@@ -215,8 +222,8 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   2026-09-20 audit (prod had 23.9% accuracy ex-neutral and random baskets scored 61–68%
   "correct" — the auditor measured nothing) the scorer is:
   - **the bar at the checkpoint's own target time** (`prices.fetch_price_series`: 5-minute
-    bars inside the 5-day window, the daily close otherwise), never "now" — the cron runs
-    every 30 min, so "now" was a random 60–90 min window for +1h and every horizon due in
+    bars inside the 5-day window, the daily close otherwise), never "now" — when this ran inside the
+    30-min cycle, "now" was a random 60–90 min window for +1h and every horizon due in
     one cycle received the same price;
   - **+1h/+6h in trading time** on the US session (`trading_time.py`, DST-aware, no holiday
     calendar); a Sunday-03:00 signal's +1h lands Monday 10:30 ET;
@@ -233,7 +240,8 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives
 while the instance is alive — with `--min-instances=0` it dies on scale-to-zero.
 **Prod periodicity = two Cloud Scheduler jobs**: `geo-intel-cycle` → `POST /api/geo/cron`
-every 30 min (ingest, signals, notify) and `geo-intel-audit` → `POST /api/geo/audit` every
+hourly, `0 * * * *` (ingest, signals, notify; was `*/30` until 2026-10-01 — see the cost
+note in `docs/deployment.md`) and `geo-intel-audit` → `POST /api/geo/audit` every
 4 hours (checkpoints, live re-rating, rule learning). Both authenticate with header
 `X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret disables the
 endpoint) and run synchronously so Cloud Run keeps CPU until they finish. Don't convert
