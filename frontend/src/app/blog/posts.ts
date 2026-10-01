@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-colombianos-espana',
+    tag: 'Fiscalidad',
+    date: '1 oct 2026',
+    readTime: '11 min',
+    title: 'Dividendos colombianos en España: el 5 % del convenio y la devolución a la DIAN',
+    excerpt:
+      'Colombia retiene el 20 % del dividendo —y hasta el 48 % si sale de beneficios gravados—, pero el convenio de 2005 lo limita al 5 %. La trampa: Colombia no lo aplica en origen, así que el exceso se reclama a la DIAN y solo durante cinco años.',
+  },
+  {
     slug: 'dividendos-sudafricanos-espana',
     tag: 'Fiscalidad',
     date: '30 sep 2026',
