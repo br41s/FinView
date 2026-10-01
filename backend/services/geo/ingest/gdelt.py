@@ -10,10 +10,12 @@ and a capital centroid; the export carries all three per event.
 
 Shape: ``lastupdate.txt`` is three lines (``<size> <md5> <url>`` for export /
 mentions / gkg) naming the newest 15-minute batch. Each export zip holds one
-headerless 61-column TSV, ~600–4000 rows. We read the newest batch plus the 3
-before it (filenames step back 15 min): the cron runs every 30 min, dedup is by
+headerless 61-column TSV, ~600–4000 rows. We read the newest batch plus the 7
+before it (filenames step back 15 min): the cron is hourly, dedup is by
 GlobalEventID, so the overlap is free and a skipped cycle is bridged. A missing
-older file is normal, not an error.
+older file is normal, not an error. The sentinel counts stories over the newest
+hour only (``DATEADDED`` is the batch stamp), so the bridge adds coverage without
+changing the unit the novelty baseline is measured in.
 """
 
 import asyncio
@@ -37,12 +39,14 @@ _REQUEST_TIMEOUT = 20.0
 # container: the download and the member are both capped.
 _MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024
 _MAX_MEMBER_BYTES = 64 * 1024 * 1024
-# 4 batches × 15 min. The cron is every 30 min, so this bridges exactly one
-# missed cycle without re-reading a day of history every run.
-_BATCH_COUNT = 4
+# 8 batches × 15 min. The cron is hourly with no Scheduler retry, and a deploy
+# that spans :00 pauses the job, so two hours bridges exactly one missed or late
+# cycle without re-reading a day of history every run.
+_BATCH_COUNT = 8
 _BATCH_MINUTES = 15
 # data.gdeltproject.org is a static host with no documented rate limit, but four
 # requests inside one second is the shape that got us blocked on the API.
+# Eight requests at this pause is ~2 s per cycle.
 _FETCH_PAUSE = 0.3
 
 # Pre-filter only. QuadClass 3/4 are verbal/material conflict; the root codes are
