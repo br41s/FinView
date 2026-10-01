@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-sudafricanos-espana',
+    tag: 'Fiscalidad',
+    date: '30 sep 2026',
+    readTime: '11 min',
+    title: 'Dividendos sudafricanos en España: el 20 % retenido y el 15 % del convenio',
+    excerpt:
+      'Sudáfrica retiene el 20 % del dividendo a un residente español y el convenio de 2006 lo limita al 15 %. Pero el exceso no se reclama al fisco sudafricano: lo devuelve quien te lo retuvo y solo durante tres años.',
+  },
+  {
     slug: 'dividendos-indios-espana',
     tag: 'Fiscalidad',
     date: '29 sep 2026',
