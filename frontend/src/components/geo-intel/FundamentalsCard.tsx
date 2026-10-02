@@ -54,7 +54,7 @@ export function FundamentalsCard({ symbol }: { symbol: string }) {
   const current = loaded?.symbol === symbol ? loaded : null;
   if (!current) {
     return (
-      <p className="text-[11px] text-[rgba(31,27,22,0.4)]">Cargando fundamentales…</p>
+      <p className="text-[11px] text-foreground/40">Cargando fundamentales…</p>
     );
   }
   const data = current.data;
@@ -75,12 +75,12 @@ export function FundamentalsCard({ symbol }: { symbol: string }) {
   if (rows.length === 0 && !data.sector) return null;
 
   return (
-    <div className="mt-3 border-t border-[rgba(31,27,22,0.12)] pt-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+    <div className="mt-3 border-t border-foreground/12 pt-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/50">
         Fundamentales
       </p>
       {(data.sector || data.industry) && (
-        <p className="mt-1.5 text-[11px] text-[rgba(31,27,22,0.6)]">
+        <p className="mt-1.5 text-[11px] text-foreground/60">
           {[data.sector, data.industry].filter(Boolean).join(" · ")}
         </p>
       )}
@@ -88,9 +88,9 @@ export function FundamentalsCard({ symbol }: { symbol: string }) {
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
           {rows.map(([label, value]) => (
             <div key={label} className="flex items-baseline justify-between gap-2">
-              <span className="text-[10px] text-[rgba(31,27,22,0.5)]">{label}</span>
+              <span className="text-[10px] text-foreground/50">{label}</span>
               <span
-                className="text-[11px] tabular-nums text-[#1F1B16]"
+                className="text-[11px] tabular-nums text-foreground"
                 style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
               >
                 {value}
@@ -99,7 +99,7 @@ export function FundamentalsCard({ symbol }: { symbol: string }) {
           ))}
         </div>
       )}
-      <p className="mt-2 text-[10px] italic text-[rgba(31,27,22,0.4)]">
+      <p className="mt-2 text-[10px] italic text-foreground/40">
         Contexto para la tesis. No alimenta ninguna señal ni puntuación.
       </p>
     </div>

@@ -18,7 +18,12 @@ Default is `system`; `ThemeToggle` in the header makes it an explicit choice.
 - A surface that inverts against the page uses the `--fv-invert-*` pair, which each theme
   defines for itself, rather than assuming which theme is active.
 - Canvas cannot read CSS variables, so `PriceChart` reads the resolved theme from
-  `useTheme()` and passes colours in explicitly.
+  `useTheme()` and passes colours in explicitly. SVG can: `fill`/`stroke` attributes
+  resolve `var()` and `color-mix()` (Ideas' map relies on it).
+- A translucent token is `color-mix(in srgb, var(--x) N%, transparent)` or Tailwind's
+  `text-foreground/N`, never a hex alpha suffix: `"var(--x)" + "1A"` is invalid CSS and
+  silently drops the colour. Ideas hardcoded its light palette until 2026-10-02 and
+  stayed light in dark mode.
 
 ## Page header and footer
 

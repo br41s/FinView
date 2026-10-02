@@ -11,10 +11,14 @@ import { ListSkeleton } from "./MapStates";
 import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 const DIR_COLORS = {
-  bullish: "#6B7A3A",
-  bearish: "#9B3D2C",
-  neutral: "#9A6B1F",
+  bullish: "var(--fv-success)",
+  bearish: "var(--fv-danger)",
+  neutral: "var(--fv-ochre)",
 } as const;
+
+// The colours are CSS variables, so a translucent version is a color-mix, not
+// a hex alpha suffix appended to the string.
+const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
 /**
  * Sends a ticker to the technical desk. Ideas surfaces the thesis; Zonas Clave
@@ -68,7 +72,7 @@ function AddToZonasButton({ symbol }: { symbol: string }) {
 
   if (state === "added") {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-[rgba(31,27,22,0.45)]">
+      <span className="inline-flex items-center gap-1 text-[11px] text-foreground/45">
         <Check className="h-3 w-3" />
         En Zonas Clave
       </span>
@@ -81,7 +85,7 @@ function AddToZonasButton({ symbol }: { symbol: string }) {
       onClick={add}
       disabled={state === "busy"}
       title="Añadir a Zonas Clave y lanzar el análisis de soportes/resistencias"
-      className="inline-flex items-center gap-1 text-[11px] text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16] disabled:opacity-50"
+      className="inline-flex items-center gap-1 text-[11px] text-foreground/60 transition-colors hover:text-foreground disabled:opacity-50"
     >
       <Target className="h-3 w-3" />
       {state === "busy" ? "Añadiendo…" : state === "error" ? "Error — reintentar" : "Añadir a Zonas Clave"}
@@ -146,7 +150,7 @@ type Props = {
 
 export function SignalPanel({ signals, selected, hoveredId, onHover, onSelect, loading }: Props) {
   return (
-    <aside className="flex max-h-[60vh] w-full shrink-0 flex-col border-t border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] lg:h-full lg:max-h-none lg:w-[380px] lg:border-l lg:border-t-0">
+    <aside className="flex max-h-[60vh] w-full shrink-0 flex-col border-t border-foreground/14 bg-card lg:h-full lg:max-h-none lg:w-[380px] lg:border-l lg:border-t-0">
       {selected ? (
         <DetailView signal={selected} onBack={() => onSelect(null)} />
       ) : (
@@ -178,12 +182,12 @@ function ListView({
   const sorted = [...signals].sort((a, b) => b.importance - a.importance);
   return (
     <>
-      <div className="border-b border-[rgba(31,27,22,0.14)] px-5 py-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+      <div className="border-b border-foreground/14 px-5 py-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/50">
           Signals
         </p>
         <h2
-          className="mt-0.5 text-lg text-[#1F1B16]"
+          className="mt-0.5 text-lg text-foreground"
           style={{ fontFamily: "var(--fv-font-fraunces), serif", fontWeight: 500 }}
         >
           Live feed
@@ -194,7 +198,7 @@ function ListView({
           <ListSkeleton />
         ) : sorted.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-            <p className="text-[12px] text-[rgba(31,27,22,0.6)]">
+            <p className="text-[12px] text-foreground/60">
               No signals match the current filters.
             </p>
           </div>
@@ -203,9 +207,9 @@ function ListView({
           const color = DIR_COLORS[s.direction];
           const accent =
             s.direction === "bearish"
-              ? "#9B3D2C"
+              ? "var(--fv-danger)"
               : s.direction === "bullish"
-                ? "#6B7A3A"
+                ? "var(--fv-success)"
                 : "transparent";
           const isHover = hoveredId === s.id;
           return (
@@ -215,10 +219,10 @@ function ListView({
               onMouseEnter={() => onHover(s.id)}
               onMouseLeave={() => onHover(null)}
               onClick={() => onSelect(s)}
-              className="block w-full border-b border-[rgba(31,27,22,0.08)] px-5 py-3 text-left transition-colors"
+              className="block w-full border-b border-foreground/8 px-5 py-3 text-left transition-colors"
               style={{
                 borderLeft: `2px solid ${accent === "transparent" ? "transparent" : accent + "55"}`,
-                backgroundColor: isHover ? "rgba(154,107,31,0.05)" : "transparent",
+                backgroundColor: isHover ? "color-mix(in srgb, var(--fv-ochre) 5%, transparent)" : "transparent",
               }}
             >
               <div className="flex items-start gap-3">
@@ -227,16 +231,16 @@ function ListView({
                   style={{ backgroundColor: color }}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium leading-snug text-[#1F1B16]">
+                  <p className="truncate text-[13px] font-medium leading-snug text-foreground">
                     {s.headline}
                   </p>
-                  <p className="mt-0.5 truncate text-[11px] text-[rgba(31,27,22,0.6)]">
+                  <p className="mt-0.5 truncate text-[11px] text-foreground/60">
                     {s.location} · {relTime(s.timestamp)}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span
-                    className="text-[12px] tabular-nums text-[#1F1B16]"
+                    className="text-[12px] tabular-nums text-foreground"
                     style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                   >
                     {s.importance}
@@ -262,7 +266,7 @@ function DirChip({ dir }: { dir: GeoSignal["direction"] }) {
       style={{
         fontFamily: "var(--fv-font-jetbrains), monospace",
         color,
-        backgroundColor: color + "1A",
+        backgroundColor: tint(color, 10),
       }}
     >
       {label}
@@ -271,9 +275,9 @@ function DirChip({ dir }: { dir: GeoSignal["direction"] }) {
 }
 
 const OUTCOME_COLORS = {
-  CORRECT: "#6B7A3A",
-  INCORRECT: "#9B3D2C",
-  NEUTRAL: "#9A6B1F",
+  CORRECT: "var(--fv-success)",
+  INCORRECT: "var(--fv-danger)",
+  NEUTRAL: "var(--fv-ochre)",
 } as const;
 
 function checkpointLabel(horizon: string) {
@@ -284,11 +288,11 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-[rgba(31,27,22,0.14)] px-5 py-3">
+      <div className="border-b border-foreground/14 px-5 py-3">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-[11px] text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
+          className="inline-flex items-center gap-1.5 text-[11px] text-foreground/60 transition-colors hover:text-foreground"
         >
           <ArrowLeft size={12} />
           Back to feed
@@ -296,16 +300,16 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
         <h2
-          className="text-[22px] leading-snug text-[#1F1B16]"
+          className="text-[22px] leading-snug text-foreground"
           style={{ fontFamily: "var(--fv-font-fraunces), serif", fontWeight: 500, letterSpacing: "-0.01em" }}
         >
           {signal.headline}
         </h2>
-        <p className="mt-2 text-[12px] text-[rgba(31,27,22,0.6)]">
+        <p className="mt-2 text-[12px] text-foreground/60">
           <span className="capitalize">{signal.category}</span> · {signal.location}
         </p>
 
-        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-[rgba(31,27,22,0.14)] bg-[rgba(31,27,22,0.08)]">
+        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-foreground/14 bg-foreground/8">
           <Stat label="Importance" value={String(signal.importance)} />
           <Stat label="Confidence" value={`${Math.round(signal.confidence * 100)}%`} />
           <Stat label="Risk" value={`${signal.riskScore.toFixed(1)} / 10`} />
@@ -317,20 +321,20 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
         </div>
 
         <div className="mt-6">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/50">
             Why this was triggered
           </p>
 
-          <div className="mt-2 rounded-md border border-[rgba(31,27,22,0.12)] bg-[rgba(154,107,31,0.05)] px-3 py-2.5">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[rgba(31,27,22,0.7)]">
+          <div className="mt-2 rounded-md border border-foreground/12 bg-primary/5 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-foreground/70">
               <span>
-                <span className="text-[rgba(31,27,22,0.5)]">Fuente:</span>{" "}
-                <span className="font-medium text-[#1F1B16]">{sourceLabel(signal.source)}</span>
+                <span className="text-foreground/50">Fuente:</span>{" "}
+                <span className="font-medium text-foreground">{sourceLabel(signal.source)}</span>
               </span>
               <span>
-                <span className="text-[rgba(31,27,22,0.5)]">Registrada:</span>{" "}
+                <span className="text-foreground/50">Registrada:</span>{" "}
                 <span
-                  className="tabular-nums text-[#1F1B16]"
+                  className="tabular-nums text-foreground"
                   style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                 >
                   {formatRegistered(signal.timestamp)}
@@ -342,13 +346,13 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 href={signal.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-[#9A6B1F] transition-opacity hover:opacity-70"
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-primary transition-opacity hover:opacity-70"
               >
                 <ExternalLink className="h-3 w-3" />
                 Ver fuente
               </a>
             ) : (
-              <p className="mt-1.5 text-[10px] text-[rgba(31,27,22,0.4)]">
+              <p className="mt-1.5 text-[10px] text-foreground/40">
                 Esta fuente no publica un enlace por evento.
               </p>
             )}
@@ -360,27 +364,27 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             <div className="mt-2.5 flex flex-col gap-1.5 text-[12px]">
               <span
                 className="w-fit rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
-                style={{ color: "#825416", borderColor: "rgba(130,84,22,0.35)", backgroundColor: "rgba(130,84,22,0.08)" }}
+                style={{ color: "var(--fv-ochre-dark)", borderColor: "color-mix(in srgb, var(--fv-ochre-dark) 35%, transparent)", backgroundColor: "color-mix(in srgb, var(--fv-ochre-dark) 8%, transparent)" }}
                 title="Ningún criterio escrito cubre este evento: la tesis la propuso el modelo y no alimenta el aprendizaje de reglas."
               >
                 Tesis generada por IA · sin regla
               </span>
               {signal.thesis && (
-                <p className="flex flex-wrap gap-x-2 text-[rgba(31,27,22,0.85)]">
+                <p className="flex flex-wrap gap-x-2 text-foreground/85">
                   {thesisSegments(signal.thesis).map((seg, i) => (
                     <span key={i} className="inline-flex items-center gap-x-2">
-                      {i > 0 && <span className="text-[rgba(31,27,22,0.35)]">→</span>}
+                      {i > 0 && <span className="text-foreground/35">→</span>}
                       {seg}
                     </span>
                   ))}
                 </p>
               )}
               {signal.narrative && (
-                <p className="text-[rgba(31,27,22,0.7)]">{signal.narrative}</p>
+                <p className="text-foreground/70">{signal.narrative}</p>
               )}
             </div>
           ) : signal.rules.length === 0 ? (
-            <p className="mt-2.5 text-[12px] text-[rgba(31,27,22,0.5)]">
+            <p className="mt-2.5 text-[12px] text-foreground/50">
               No specific rule matched — scored on base event severity.
             </p>
           ) : (
@@ -389,12 +393,12 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 const scope = scopeLabel(r.scope);
                 const chain = thesisSegments(r.thesis);
                 return (
-                  <div key={r.id} className="rounded-md border border-[rgba(31,27,22,0.12)] bg-[#FEFCF5] px-3 py-2.5">
+                  <div key={r.id} className="rounded-md border border-foreground/12 bg-card px-3 py-2.5">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-[12px] font-medium leading-snug text-[#1F1B16]">
+                      <p className="text-[12px] font-medium leading-snug text-foreground">
                         {scope && (
                           <span
-                            className="mr-1.5 rounded-sm bg-[rgba(31,27,22,0.06)] px-1 py-[1px] align-[1px] text-[9px] font-normal uppercase tracking-wider text-[rgba(31,27,22,0.55)]"
+                            className="mr-1.5 rounded-sm bg-foreground/6 px-1 py-[1px] align-[1px] text-[9px] font-normal uppercase tracking-wider text-foreground/55"
                             title="Alcance del evento que disparó la regla"
                           >
                             {scope}
@@ -403,7 +407,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                         {r.description}
                       </p>
                       <span
-                        className="shrink-0 text-[10px] tabular-nums text-[rgba(31,27,22,0.5)]"
+                        className="shrink-0 text-[10px] tabular-nums text-foreground/50"
                         style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                         title="Confianza de la regla (base + ajuste del auditor)"
                       >
@@ -414,11 +418,11 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                         instrument. Run together it reads as one sentence and the
                         three links stop being separable; spaced out you can see
                         which link you disagree with. */}
-                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug text-foreground/60">
                       {chain.map((segment, i) => (
                         <Fragment key={i}>
                           {i > 0 && (
-                            <span aria-hidden className="text-[rgba(31,27,22,0.35)]">
+                            <span aria-hidden className="text-foreground/35">
                               →
                             </span>
                           )}
@@ -429,13 +433,13 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                     {(r.category || r.trigger) && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {r.category && (
-                          <span className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[9px] uppercase tracking-wider text-[rgba(31,27,22,0.55)]">
+                          <span className="rounded-sm bg-foreground/6 px-1.5 py-[1px] text-[9px] uppercase tracking-wider text-foreground/55">
                             {r.category}
                           </span>
                         )}
                         {r.trigger && (
                           <span
-                            className="rounded-sm bg-[rgba(31,27,22,0.06)] px-1.5 py-[1px] text-[10px] text-[rgba(31,27,22,0.6)]"
+                            className="rounded-sm bg-foreground/6 px-1.5 py-[1px] text-[10px] text-foreground/60"
                             style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                             title="Condición que disparó esta regla"
                           >
@@ -452,12 +456,12 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
         </div>
 
         <div className="mt-6">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/50">
             Affected tickers
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {signal.tickers.length === 0 ? (
-              <span className="text-[12px] text-[rgba(31,27,22,0.5)]">None tagged</span>
+              <span className="text-[12px] text-foreground/50">None tagged</span>
             ) : (
               signal.tickers.map((t) => {
                 const color = DIR_COLORS[t.direction];
@@ -478,12 +482,12 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                     style={{
                       fontFamily: "var(--fv-font-jetbrains), monospace",
                       color,
-                      backgroundColor: color + "1A",
+                      backgroundColor: tint(color, 10),
                       // A chip with no retail route in the EU still belongs in the
                       // thesis — it just must not read as buyable. Dimmed + dashed,
                       // never hidden. `options_only` stays at full weight: the owner
                       // trades IBKR options, so it is a route, not a dead end.
-                      border: hint.muted ? `1px dashed ${color}80` : "1px solid transparent",
+                      border: hint.muted ? `1px dashed ${tint(color, 50)}` : "1px solid transparent",
                       opacity: hint.muted ? 0.55 : 1,
                     }}
                   >
@@ -493,7 +497,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                     {hint.badge && (
                       <span
                         className="rounded-sm px-1 py-[1px] text-[8px] uppercase tracking-wider"
-                        style={{ backgroundColor: color + "26" }}
+                        style={{ backgroundColor: tint(color, 15) }}
                       >
                         {hint.badge}
                       </span>
@@ -504,32 +508,32 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             )}
           </div>
           {expandedSymbol && (
-            <div className="mt-3 rounded-md border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] p-3">
+            <div className="mt-3 rounded-md border border-foreground/14 bg-card p-3">
               {(() => {
                 // The chip's tooltip names the EU-listed equivalent; the expansion
                 // repeats it as a line you can read without hovering. It is a
                 // reference to the same exposure, not a suggestion to buy it.
                 const alt = signal.tickers.find((t) => t.symbol === expandedSymbol)?.alternate;
                 return alt?.trim() ? (
-                  <p className="mb-2 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
-                    <span className="text-[rgba(31,27,22,0.45)]">Equivalente UCITS/UE (referencia):</span>{" "}
-                    <span className="text-[#1F1B16]">{alt.trim()}</span>
+                  <p className="mb-2 text-[11px] leading-snug text-foreground/60">
+                    <span className="text-foreground/45">Equivalente UCITS/UE (referencia):</span>{" "}
+                    <span className="text-foreground">{alt.trim()}</span>
                   </p>
                 ) : null;
               })()}
               <PrecioTab symbol={expandedSymbol} />
               <FundamentalsCard symbol={expandedSymbol} />
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[rgba(31,27,22,0.12)] pt-3 text-[11px]">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-foreground/12 pt-3 text-[11px]">
                 <AddToZonasButton symbol={expandedSymbol} />
                 <Link
                   href={`/zonas-clave?ticker=${encodeURIComponent(expandedSymbol)}`}
-                  className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
+                  className="text-foreground/60 transition-colors hover:text-foreground"
                 >
                   Ver en Zonas Clave →
                 </Link>
                 <Link
                   href={`/options?ticker=${encodeURIComponent(expandedSymbol)}`}
-                  className="text-[rgba(31,27,22,0.6)] transition-colors hover:text-[#1F1B16]"
+                  className="text-foreground/60 transition-colors hover:text-foreground"
                 >
                   Ver en Opciones →
                 </Link>
@@ -539,11 +543,11 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
         </div>
 
         <div className="mt-6">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/50">
             Checkpoints
           </p>
           <div className="mt-4 relative">
-            <div className="absolute left-0 right-0 top-[7px] h-px bg-[rgba(31,27,22,0.14)]" />
+            <div className="absolute left-0 right-0 top-[7px] h-px bg-foreground/14" />
             <div className="relative flex justify-between">
               {signal.checkpoints.map((c) => {
                 // An evaluated row with no verdict is pending too. `c.outcome ??
@@ -566,12 +570,12 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                     <span
                       className="h-3.5 w-3.5 rounded-full border-2"
                       style={{
-                        borderColor: pending ? "rgba(31,27,22,0.25)" : dotColor,
-                        backgroundColor: hollow ? "#FEFCF5" : dotColor,
+                        borderColor: pending ? "color-mix(in srgb, var(--fv-ink) 25%, transparent)" : dotColor,
+                        backgroundColor: hollow ? "var(--card)" : dotColor,
                       }}
                     />
                     <span
-                      className="text-[10px] text-[rgba(31,27,22,0.6)]"
+                      className="text-[10px] text-foreground/60"
                       style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                     >
                       {checkpointLabel(c.horizon)}
@@ -590,7 +594,7 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
                 .reverse()
                 .find((c) => c.evaluatedAt != null && c.outcome != null);
               return (
-                <p className="mt-3 text-[11px] text-[rgba(31,27,22,0.5)]">
+                <p className="mt-3 text-[11px] text-foreground/50">
                   {lastEvaluated
                     ? `${checkpointLabel(lastEvaluated.horizon)}: ${lastEvaluated.outcome === "NEUTRAL" || lastEvaluated.score == null ? "sin movimiento medible" : Math.round(lastEvaluated.score) + "% correct"}${lastEvaluated.detail ? ` — ${lastEvaluated.detail}` : ""}`
                     : "Outcome tracking pending — checkpoints fill in as the signal ages."}
@@ -600,9 +604,9 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           </div>
         </div>
       </div>
-      <div className="border-t border-[rgba(31,27,22,0.14)] px-5 py-3">
+      <div className="border-t border-foreground/14 px-5 py-3">
         <p
-          className="text-[10px] text-[rgba(31,27,22,0.5)]"
+          className="text-[10px] text-foreground/50"
           style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
         >
           {new Date(signal.timestamp).toUTCString()} · {signal.status.toUpperCase()}
@@ -615,15 +619,15 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
 function Stat({
   label,
   value,
-  valueColor = "#1F1B16",
+  valueColor = "var(--fv-ink)",
 }: {
   label: string;
   value: string;
   valueColor?: string;
 }) {
   return (
-    <div className="bg-[#FEFCF5] px-3 py-3">
-      <p className="text-[9px] uppercase tracking-[0.18em] text-[rgba(31,27,22,0.5)]">
+    <div className="bg-card px-3 py-3">
+      <p className="text-[9px] uppercase tracking-[0.18em] text-foreground/50">
         {label}
       </p>
       <p

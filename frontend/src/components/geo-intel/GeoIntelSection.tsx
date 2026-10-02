@@ -197,7 +197,7 @@ export function GeoIntelSection() {
   }, [loadMonitor]);
 
   return (
-    <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
+    <section className="flex h-full w-full flex-col bg-background text-foreground">
       <PageHeader
         icon={Globe}
         title="Ideas"
@@ -205,7 +205,7 @@ export function GeoIntelSection() {
         current="/geo-intel"
         privacy={privacy}
         onTogglePrivacy={togglePrivacy}
-        className="border-b border-border p-6"
+        className="p-6"
         actions={
           <>
             <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
@@ -243,12 +243,7 @@ export function GeoIntelSection() {
             {regimeBadge && (
               <span
                 className="rounded border px-1.5 py-0.5"
-                style={{
-                  // the warm palette HEALTH_TONE uses beside it, not Tailwind's generic reds
-                  color: regimeBadge.tone === "warn" ? "#9B3D2C" : regimeBadge.tone === "ok" ? "#6B7A3A" : "rgba(31,27,22,0.6)",
-                  borderColor: regimeBadge.tone === "warn" ? "rgba(155,61,44,0.3)" : regimeBadge.tone === "ok" ? "rgba(107,122,58,0.3)" : "rgba(31,27,22,0.15)",
-                  backgroundColor: regimeBadge.tone === "warn" ? "rgba(155,61,44,0.08)" : regimeBadge.tone === "ok" ? "rgba(107,122,58,0.08)" : "rgba(31,27,22,0.04)",
-                }}
+                style={regimeBadgeStyle(regimeBadge.tone)}
                 role="status"
                 title={regimeBadge.title}
               >
@@ -259,7 +254,7 @@ export function GeoIntelSection() {
         )}
         {accuracyLine && (
           <p
-            className="text-[11px] text-[rgba(31,27,22,0.5)]"
+            className="text-[11px] text-foreground/50"
             style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
           >
             {accuracyLine}
@@ -269,7 +264,7 @@ export function GeoIntelSection() {
 
       <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
         <div className="relative h-[55vh] p-4 lg:h-auto lg:min-h-0 lg:flex-1 lg:p-6">
-          <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] shadow-[0_4px_16px_rgba(31,27,22,0.08)] lg:block">
+          <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-foreground/14 bg-card shadow-[var(--fv-shadow-md)] lg:block">
             <FilterBar
               categories={categories}
               onCategoriesChange={setCategories}
@@ -315,14 +310,27 @@ export function GeoIntelSection() {
   );
 }
 
-// The section paints its own warm canvas rather than using theme tokens, so the
-// health line follows it: ochre for "look at this", the map's bearish red for
-// "it is broken".
+// Health line tones: ochre for "look at this", the map's bearish red for
+// "it is broken". All theme tokens, so they follow light and dark.
 const HEALTH_TONE = {
-  ok: "text-[rgba(31,27,22,0.6)]",
-  warn: "text-[#825416]",
-  down: "text-[#9B3D2C]",
+  ok: "text-foreground/60",
+  warn: "text-[var(--fv-ochre-dark)]",
+  down: "text-destructive",
 } as const;
+
+// The regime badge uses the same palette as the health line beside it, not
+// Tailwind's generic reds and greens.
+function regimeBadgeStyle(tone: string) {
+  const base =
+    tone === "warn" ? "var(--fv-danger)" : tone === "ok" ? "var(--fv-success)" : "var(--fv-ink)";
+  const mix = (pct: number) => `color-mix(in srgb, ${base} ${pct}%, transparent)`;
+  const neutral = base === "var(--fv-ink)";
+  return {
+    color: neutral ? mix(60) : base,
+    borderColor: mix(neutral ? 15 : 30),
+    backgroundColor: mix(neutral ? 4 : 8),
+  };
+}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
