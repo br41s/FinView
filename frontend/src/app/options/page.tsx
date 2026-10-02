@@ -170,7 +170,7 @@ export default function OptionsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-muted-foreground">
-              Análisis de opciones en tiempo real sobre tu cartera
+              Datos y análisis de opciones sobre tu cartera
             </p>
             <AiDisclaimer />
           </div>

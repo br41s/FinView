@@ -8,6 +8,7 @@ import { fmtDateTime } from "@/lib/format";
 import { PrecioTab } from "@/components/instrument/PrecioTab";
 import { FundamentalsCard } from "./FundamentalsCard";
 import { ListSkeleton } from "./MapStates";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 const DIR_COLORS = {
   bullish: "#6B7A3A",
@@ -353,6 +354,8 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
             )}
           </div>
 
+          <AiDisclaimer className="mt-2.5" />
+
           {signal.generated ? (
             <div className="mt-2.5 flex flex-col gap-1.5 text-[12px]">
               <span
@@ -503,12 +506,13 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           {expandedSymbol && (
             <div className="mt-3 rounded-md border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5] p-3">
               {(() => {
-                // The chip's tooltip names the alternative; the expansion is where
-                // you act on it, so it gets a line you can read without hovering.
+                // The chip's tooltip names the EU-listed equivalent; the expansion
+                // repeats it as a line you can read without hovering. It is a
+                // reference to the same exposure, not a suggestion to buy it.
                 const alt = signal.tickers.find((t) => t.symbol === expandedSymbol)?.alternate;
                 return alt?.trim() ? (
                   <p className="mb-2 text-[11px] leading-snug text-[rgba(31,27,22,0.6)]">
-                    <span className="text-[rgba(31,27,22,0.45)]">Alternativa UCITS/UE:</span>{" "}
+                    <span className="text-[rgba(31,27,22,0.45)]">Equivalente UCITS/UE (referencia):</span>{" "}
                     <span className="text-[#1F1B16]">{alt.trim()}</span>
                   </p>
                 ) : null;

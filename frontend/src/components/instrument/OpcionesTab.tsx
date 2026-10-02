@@ -11,6 +11,7 @@ import { CHART_SCOPES, SCOPE_PARAMS, type ChartScope } from "@/lib/chartMarkers"
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 interface ChainLeg {
   strike: number;
@@ -198,6 +199,7 @@ export function OpcionesTab({ symbol }: { symbol: string }) {
 
   return (
     <div className="space-y-4">
+      <AiDisclaimer />
       {/* AI report */}
       <div>
         {!analysis && !aiLoading && (

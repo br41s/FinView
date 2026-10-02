@@ -162,25 +162,28 @@ const NO_HINT: TradabilityHint = { badge: null, tooltip: null, muted: false };
 /**
  * What to draw on a ticker chip for a Spanish retail account.
  *
- * `options_only` is **actionable, not disabled** — the owner trades options at
- * IBKR, so a US ETF without a KID is a route, just not a cash one. Only
- * `not_tradable` is dimmed. An absent `tradability` (older signal rows) reads
+ * `options_only` is **not dimmed** — the instrument exists and is quoted, it
+ * just cannot be bought in cash by an EU retail account (no KID). Only
+ * `not_tradable` is dimmed. The text describes availability; it never says
+ * where or how to trade, because FinView shows data and does not advise. An absent `tradability` (older signal rows) reads
  * as cash: assuming "unknown = dead" would grey out most of the feed.
  */
 export function tradabilityHint(
   t: Pick<GeoSignalTicker, "tradability" | "alternate">,
 ): TradabilityHint {
-  const alt = t.alternate?.trim() ? `alternativa: ${t.alternate.trim()}` : "sin alternativa";
+  const alt = t.alternate?.trim()
+    ? `equivalente UCITS/UE: ${t.alternate.trim()}`
+    : "sin equivalente UCITS/UE";
   switch (t.tradability) {
     case "options_only":
       return {
         badge: "opc.",
-        tooltip: `ETF USA sin KID: solo opciones en IBKR — ${alt}`,
+        tooltip: `ETF de EE. UU. sin KID: no disponible al contado para minoristas en la UE — ${alt}`,
         muted: false,
       };
     case "not_tradable":
       // The more severe state needs a legible marker: `title=` does not exist on touch.
-      return { badge: "s/ruta", tooltip: `Sin ruta minorista en la UE — ${alt}`, muted: true };
+      return { badge: "s/ruta", tooltip: `No disponible para minoristas en la UE — ${alt}`, muted: true };
     default:
       return NO_HINT;
   }

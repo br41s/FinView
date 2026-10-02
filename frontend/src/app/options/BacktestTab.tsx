@@ -42,6 +42,7 @@ import { TabsContent } from "@/components/ui/tabs";
 import { fmt } from "@/lib/format";
 import type { AlignBucket, Calibration } from "./types";
 import type { Backtest } from "./useBacktest";
+import { PastPerformanceNote } from "@/components/AiDisclaimer";
 
 /**
  * The Backtest tab.
@@ -167,6 +168,7 @@ export function BacktestTab({ backtest }: { backtest: Backtest }) {
               <div>
                 <h3 className="text-lg font-semibold">Backtesting de señales</h3>
                 <p className="text-sm text-muted-foreground">Precisión histórica de las alertas a +1D / +3D / +7D</p>
+                <PastPerformanceNote />
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={load} disabled={loading}>

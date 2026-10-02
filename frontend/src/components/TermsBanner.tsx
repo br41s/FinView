@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
+import { NOT_ADVICE } from "@/lib/legal";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -44,7 +45,7 @@ export function TermsBanner() {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm">
       <p>
-        Hemos publicado las{" "}
+        Hemos actualizado las{" "}
         <Link href="/legal/condiciones" className="underline underline-offset-2">
           Condiciones de uso
         </Link>{" "}
@@ -52,7 +53,7 @@ export function TermsBanner() {
         <Link href="/legal/privacidad" className="underline underline-offset-2">
           Política de privacidad
         </Link>
-        . Para seguir usando FinView, revísalas y acéptalas.
+        . {NOT_ADVICE.short} Para seguir usando FinView, revísalas y acéptalas.
       </p>
       <Button size="sm" onClick={accept} disabled={saving}>
         {saving ? "Guardando..." : "Aceptar"}

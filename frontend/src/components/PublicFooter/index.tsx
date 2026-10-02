@@ -1,3 +1,4 @@
+import { NOT_ADVICE } from '@/lib/legal';
 import styles from './index.module.css';
 
 export function PublicFooter() {
@@ -16,7 +17,7 @@ export function PublicFooter() {
         {' · '}<a href="/legal/condiciones" className={styles.link}>Condiciones</a>
       </p>
       <p className={styles.disclaimer}>
-        FinView es una herramienta informativa. No presta asesoramiento de inversión ni fiscal.
+        {NOT_ADVICE.short} Tampoco es asesoramiento fiscal. El contenido del blog es divulgativo.
         Invertir conlleva riesgo de pérdida.
       </p>
     </footer>

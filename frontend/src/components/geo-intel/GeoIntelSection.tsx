@@ -13,6 +13,7 @@ import { QuickNav } from "@/components/QuickNav";
 import { HeaderActions } from "@/components/HeaderActions";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import { AiDisclaimer } from "@/components/AiDisclaimer";
+import { NOT_ADVICE } from "@/lib/legal";
 
 export function GeoIntelSection() {
   const { privacy, togglePrivacy } = usePrivacyToggle();
@@ -210,8 +211,8 @@ export function GeoIntelSection() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-muted-foreground">
-              Oportunidades de inversión y especulación, disparadas por eventos
-              geopolíticos y naturales.
+              Eventos geopolíticos y naturales, y los activos que históricamente
+              se han movido con ellos.
             </p>
             <AiDisclaimer />
           </div>
@@ -270,7 +271,7 @@ export function GeoIntelSection() {
             className="text-[11px] text-[rgba(31,27,22,0.5)]"
             style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
           >
-            {accuracyLine}
+            {accuracyLine} · {NOT_ADVICE.pastPerformance}
           </p>
         )}
       </header>

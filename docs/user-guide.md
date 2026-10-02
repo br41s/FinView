@@ -254,7 +254,7 @@ Para tickers `.MC`, la HV se calcula a partir de 60 días de histórico de Yahoo
 Muestra el último análisis generado por Claude durante un ciclo del agente. Incluye:
 
 - **Cabecera del ciclo:** timestamp, tickers analizados, total de alertas y sentimiento global.
-- **7 secciones:** Resumen Ejecutivo · Smart Money · Señales Greeks · Top Picks · Catalizadores · Contexto MEFF (solo si hay tickers `.MC`) · Gestión de Riesgo.
+- **7 secciones:** Resumen Ejecutivo · Smart Money · Señales Greeks · Tickers con más actividad · Catalizadores · Contexto MEFF (solo si hay tickers `.MC`) · Gestión de Riesgo.
 
 ### 7.7 Snapshots y cadena de opciones
 

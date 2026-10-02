@@ -50,7 +50,7 @@ can be reclaimed after the response.
 
 ### Claude analysis prompt
 Agent persona: *VolatilityEdge* (quant analyst, senior). Spanish only. Structured as exactly 7 sections:
-`## 1. Resumen Ejecutivo` / `## 2. Smart Money` / `## 3. Señales Greeks` / `## 4. Top Picks` / `## 5. Catalizadores` / `## 6. Contexto MEFF` (only if .MC tickers present) / `## 7. Gestión de Riesgo`
+`## 1. Resumen Ejecutivo` / `## 2. Smart Money` / `## 3. Señales Greeks` / `## 4. Tickers con más actividad` / `## 5. Catalizadores` / `## 6. Contexto MEFF` (only if .MC tickers present) / `## 7. Gestión de Riesgo`
 Model: `settings.openrouter_model` via OpenRouter · max_tokens: 1500 · max 750 words in output.
 Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
 
@@ -244,3 +244,16 @@ The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never to
   evaluated data. Read it from the Backtest-tab `CalibrationPanel` (dedup badge must be green
   first — a red badge means the window still includes pre-dedup firehose data). Higher stakes
   now that notifications are HIGH-only: prefer promoting aligned over muting counter.
+
+### Not advice
+- FinView shows data and does not advise. Every prompt whose output a user reads includes
+  `NOT_ADVICE_RULE_ES` / `NOT_ADVICE_RULE_EN` from `services/llm_rules.py` (cycle report,
+  per-ticker report, `/options/ask` chat, zone scorer, both geo analyst prompts);
+  `test_llm_rules.py` fails if one drops it or if a template asks for picks or sizing again.
+- A new prompt that produces user-visible text must import the rule. A new section heading
+  must keep the `## N. Title` format — `AnalysisTab` and `OpcionesTab` split on it — and must
+  not name a selection to invest in ("Top Picks" was renamed for that reason).
+- In the UI, `AiDisclaimer` sits in the page header **and** next to each LLM output read on
+  its own (chat, cycle report, per-ticker report, a geo signal's detail). Hit rates and
+  backtests carry `PastPerformanceNote`. Wording comes from `NOT_ADVICE` in
+  `frontend/src/lib/legal.ts`.

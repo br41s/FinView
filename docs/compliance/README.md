@@ -37,7 +37,7 @@ personas en la UE), aunque el responsable esté fuera de la Unión.
 | LSSI-CE art. 10 (en lo aplicable a un prestador no establecido en España) | Identificar al titular | `/legal/aviso-legal` |
 | LSSI-CE art. 22.2 | Informar de cookies; consentimiento si no son técnicas | `/legal/cookies`. Solo hay cookies técnicas: no hace falta banner |
 | TRLGDCU arts. 60, 97, 102-108 | Información precontractual, precio final, desistimiento | Hoy no aplica a una venta: el servicio es gratuito (`/legal/condiciones` §5). Cláusulas preparadas en `planes-de-pago.md` |
-| Ley 6/2023 (mercados de valores) · MiFID II · MAR | No prestar asesoramiento ni difundir recomendaciones sin autorización | Avisos en `/legal/condiciones` §3, pie público, `AiDisclaimer` en Opciones, Zonas Clave e Ideas |
+| Ley 6/2023 (mercados de valores) · MiFID II · MAR | No prestar asesoramiento ni difundir recomendaciones sin autorización | Postura: FinView muestra datos y no aconseja. `NOT_ADVICE` (`frontend/src/lib/legal.ts`) en pie público, registro, aviso de reaceptación, cabeceras y junto a cada texto de IA; `/legal/condiciones` §3 y `/legal/aviso-legal` §3; regla común en todos los prompts (`backend/services/llm_rules.py`, `test_llm_rules.py`) |
 | Reglamento (UE) 2024/1689 (IA), art. 50 | Identificar el contenido generado por IA | `AiDisclaimer`; `/legal/privacidad` §4 |
 
 ## Reglas que mantienen esto cierto
@@ -57,5 +57,9 @@ personas en la UE), aunque el responsable esté fuera de la Unión.
 - **Activar pagos no es solo poner claves de Stripe.** Antes hay que seguir la lista de
   `planes-de-pago.md`: condiciones de contratación, Stripe en `PROCESSORS` y en las
   políticas, y nueva versión de `TERMS_VERSION`.
+- **Nada de lo que se muestra puede leerse como consejo.** Un prompt nuevo que genere texto
+  visible importa la regla de `llm_rules.py`; una pantalla nueva con señales o texto de IA
+  lleva `AiDisclaimer`; una tasa de acierto lleva `PastPerformanceNote`. No se nombran
+  secciones como selección para invertir ni se indica dónde o cómo operar.
 - **Lo que se envía al modelo de IA no lleva identidad.** Ni email, ni nombre, ni importes.
   Si un prompt nuevo los necesita, antes se actualiza la política de privacidad.

@@ -120,7 +120,8 @@ export default function RegisterPage() {
                 required
               />
               <span>
-                Soy mayor de 18 años y acepto las{" "}
+                Soy mayor de 18 años, entiendo que FinView muestra datos y no presta
+                asesoramiento financiero, y acepto las{" "}
                 <Link href="/legal/condiciones" target="_blank" className={styles.footerLink}>
                   Condiciones de uso
                 </Link>{" "}

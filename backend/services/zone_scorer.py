@@ -18,6 +18,7 @@ import time
 
 from backend.config import settings
 from backend.services.llm_envelope import chat
+from backend.services.llm_rules import NOT_ADVICE_RULE_ES
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,8 @@ _SYSTEM = (
     "Eres un analista técnico cuantitativo. Evalúas la probabilidad de que un precio "
     "rompa una zona de soporte/resistencia en los próximos 5 días de mercado. "
     "Eres escéptico: la mayoría de los acercamientos a una zona NO acaban en ruptura. "
-    "Una zona con muchos toques y mucho volumen es más difícil de romper, no más fácil."
+    "Una zona con muchos toques y mucho volumen es más difícil de romper, no más fácil. "
+    + NOT_ADVICE_RULE_ES
 )
 
 

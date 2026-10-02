@@ -1,6 +1,6 @@
 # Pendientes que no resuelve el código
 
-Estado a 2026-09-30. Ordenado por importancia.
+Estado a 2026-10-02. Ordenado por importancia.
 
 ## Resuelto
 
@@ -16,14 +16,18 @@ Estado a 2026-09-30. Ordenado por importancia.
       improbable que entrañe riesgo. FinView trata de forma continuada datos financieros y
       fiscales y, si el usuario lo indica, un dato de salud. No se ha designado ninguno y la
       política de privacidad no lo menciona. Es la cuestión abierta más clara.
-- [ ] **Señales e "Ideas" frente a la normativa de mercados.** FinView muestra a todos los
-      usuarios ideas con instrumento, dirección y nivel de riesgo, y un informe de opciones
-      con "Top Picks". Hay avisos y el prompt prohíbe recomendar compra o venta y proponer
-      tamaños de posición, pero un aviso no cambia la naturaleza de lo que se difunde. Que
-      el servicio sea gratuito reduce el riesgo, no lo elimina. Preguntas: ¿es
-      "recomendación de inversión" del art. 3.1.35 del Reglamento de Abuso de Mercado?
-      ¿Usar la lista de seguimiento del usuario lo acerca a recomendación personalizada
-      (MiFID II)? ¿Conviene renombrar "Top Picks" e "Ideas"?
+- [ ] **Señales e "Ideas" frente a la normativa de mercados.** Postura del titular
+      (2026-10-02): FinView muestra datos, no presta asesoramiento, y la decisión de invertir
+      es del usuario. Hecho en producto: esa frase figura en el pie público, en el registro
+      (casilla), en el aviso de reaceptación, en la cabecera de Opciones, Zonas Clave e Ideas
+      y junto a cada texto generado por IA; "Top Picks" pasa a "Tickers con más actividad";
+      el subtítulo de Ideas ya no habla de "oportunidades de inversión y especulación"; todos
+      los prompts llevan una regla que prohíbe recomendar comprar, vender o dimensionar; las
+      tasas de acierto llevan "los aciertos pasados no garantizan resultados futuros".
+      Sigue abierto para un abogado: un aviso no cambia la naturaleza de lo que se difunde.
+      Ideas sigue mostrando instrumento y dirección (alcista/bajista) por evento, y eso puede
+      ser "recomendación de inversión" del art. 3.1.35 del Reglamento de Abuso de Mercado
+      aunque el servicio sea gratuito. La sección conserva el nombre "Ideas".
 - [ ] **Ley de Nuevo México frente a consumidores de la UE.** Las condiciones copian la
       cláusula de biglobster.top: ley de Nuevo México, sin privar al consumidor de las
       normas imperativas de su país. Confirmar que es la elección deseada para FinView.
