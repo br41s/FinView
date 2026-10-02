@@ -29,6 +29,7 @@ from backend.services.backtest_service import (
 from backend.services.fred_rates import risk_free_rate_for_ticker
 from backend.services.greeks_calculator import enrich_options_with_greeks
 from backend.services.macro_context import macro_context, macro_prompt_block
+from backend.services.llm_rules import NOT_ADVICE_RULE_ES
 from backend.services.notification_service import notify_alerts
 from backend.services.options_analyzer import analyze_ticker
 from backend.services.options_scraper import fetch_options
@@ -241,7 +242,7 @@ def run_cycle(user_id: int) -> dict:
 _CLAUDE_SYSTEM = """\
 Eres VolatilityEdge, un analista cuantitativo senior especializado en opciones financieras. \
 Combinas análisis de Greeks, detección de flujo institucional (Smart Money) y lectura de IV/HV \
-para identificar oportunidades accionables en el mercado de derivados.
+para describir qué está ocurriendo en el mercado de derivados.
 
 REGLAS ESTRICTAS:
 - Responde SIEMPRE en español.
@@ -253,6 +254,7 @@ REGLAS ESTRICTAS:
   "sugiere", "apunta a", "podría indicar", "merece seguimiento".
 - El informe es información general, no asesoramiento personalizado: no conoces la situación \
   del lector, así que no indiques cuánto invertir ni qué parte del capital arriesgar.
+- """ + NOT_ADVICE_RULE_ES + """
 - Termina SIEMPRE con ## 7. Gestión de Riesgo.
 """
 
@@ -287,8 +289,10 @@ como telón de fondo (no cambies las señales, solo contextualízalas).]
 [IV implícita vs HV histórica: ¿cara o barata? Skew put/call notable. \
 Delta y Gamma de posiciones con mayor actividad. Theta decay relevant si hay posiciones cortas.]
 
-## 4. Top Picks
-[Máximo 3 tickers. Para cada uno: nombre, tesis en 1-2 frases, nivel de riesgo (ALTO/MEDIO/BAJO).]
+## 4. Tickers con más actividad
+[Máximo 3 tickers, los de actividad más relevante en los datos. Para cada uno: nombre, qué \
+muestran los datos en 1-2 frases, nivel de riesgo (ALTO/MEDIO/BAJO). Es una descripción, no \
+una selección para invertir.]
 
 ## 5. Alertas Clave
 [Lista las alertas HIGH primero, luego MEDIUM. Para cada una: ticker — tipo — razonamiento breve. \
@@ -368,6 +372,7 @@ REGLAS ESTRICTAS:
 - Sé concreto: usa solo los datos proporcionados, no inventes cifras.
 - NUNCA des recomendaciones directas de compra/venta. Usa lenguaje analítico \
   ("sugiere", "apunta a", "podría indicar", "merece seguimiento").
+- """ + NOT_ADVICE_RULE_ES + """
 - Termina SIEMPRE con ## 5. Gestión de Riesgo."""
 
 _CLAUDE_TICKER_TEMPLATE = """\
@@ -412,7 +417,8 @@ Contextualiza con el régimen macro como telón de fondo, no cambies las señale
 [Strikes con mayor interés. Escenarios alcista/bajista según los vencimientos detectados.]
 
 ## 5. Gestión de Riesgo
-[Stop-loss conceptual por tipo de estrategia, tamaño según volatilidad, horizonte temporal.]"""
+[Cómo afecta la volatilidad actual al riesgo, en términos generales y sin proponer tamaños \
+de posición ni operaciones concretas. Horizonte temporal de los vencimientos detectados.]"""
 
 
 def _run_ticker_claude_analysis(

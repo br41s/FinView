@@ -5,6 +5,7 @@ import { MessageSquare, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 /** Ask-the-agent chat, moved out of page.tsx unchanged. Takes no props. */
 type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -53,6 +54,7 @@ export function AgentChat() {
           Pregunta sobre tus posiciones, alertas activas o señales de mercado.
           El contexto se construye con los datos más recientes del agente.
         </CardDescription>
+        <AiDisclaimer />
       </CardHeader>
 
       {/* Messages */}

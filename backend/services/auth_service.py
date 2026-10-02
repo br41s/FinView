@@ -15,7 +15,7 @@ from backend.models import User
 # document changes in a way users must re-accept: everyone whose stored version
 # differs is asked again. The date matches "Última actualización" on the pages
 # (LEGAL_UPDATED in frontend/src/lib/legal.ts).
-TERMS_VERSION = "2026-09-30"
+TERMS_VERSION = "2026-10-02"
 
 
 def hash_password(password: str) -> str:

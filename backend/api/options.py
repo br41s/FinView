@@ -43,6 +43,7 @@ from backend.models import (
     User,
 )
 from backend.services import watchlist_service
+from backend.services.llm_rules import NOT_ADVICE_RULE_ES
 from backend.services.notification_service import send_telegram
 from backend.services.options_agent import run_cycle
 from backend.services.options_scraper import fetch_expirations, fetch_options, fetch_options_for_expiry
@@ -769,7 +770,9 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
         "Respondes preguntas sobre la cartera de opciones del usuario basándote en los datos "
         "de mercado proporcionados. Eres conciso, preciso y usas terminología financiera correcta. "
         "Si no tienes datos suficientes para responder, dilo claramente. "
-        "Responde siempre en el mismo idioma que la pregunta del usuario.\n\n"
+        + NOT_ADVICE_RULE_ES
+        + " "
+        + "Responde siempre en el mismo idioma que la pregunta del usuario.\n\n"
         + "\n\n".join(ctx_parts)
     )
 

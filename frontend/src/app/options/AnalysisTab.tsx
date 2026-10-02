@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 
 /**
  * The last agent report, moved out of page.tsx unchanged along with the badge
@@ -149,6 +150,7 @@ export function AnalysisTab() {
 
   return (
     <div className="space-y-4">
+      <AiDisclaimer />
       {/* Meta header */}
       <Card>
         <CardHeader className="pb-2">

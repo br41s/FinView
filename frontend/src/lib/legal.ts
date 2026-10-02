@@ -25,7 +25,24 @@ export const LEGAL = {
  * a user's acceptance is recorded against: bump both together when a document
  * changes in a way users must re-accept.
  */
-export const LEGAL_UPDATED = "30 de septiembre de 2026";
+export const LEGAL_UPDATED = "2 de octubre de 2026";
+
+/**
+ * The product's position on advice, in one place so every surface says the same
+ * thing: FinView shows data, the user decides. Rendered by AiDisclaimer, the
+ * public footer, the sign-up form and the terms banner; /legal/condiciones §3
+ * is the long form.
+ */
+export const NOT_ADVICE = {
+  /** One line, for footers and tight spaces. */
+  short:
+    "FinView muestra datos, no consejos. No es asesoramiento financiero: invertir o no es decisión tuya.",
+  /** Next to machine-generated signals and text. */
+  signals:
+    "FinView muestra datos, no consejos. Las señales y los textos se generan automáticamente, en parte con IA: no son asesoramiento financiero ni una recomendación de compra o venta, y no tienen en cuenta tu situación. La decisión de invertir o no es solo tuya.",
+  /** Wherever a hit rate or backtest is shown. */
+  pastPerformance: "Los aciertos pasados no garantizan resultados futuros.",
+} as const;
 
 export interface Processor {
   name: string;

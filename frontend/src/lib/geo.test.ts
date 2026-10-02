@@ -122,7 +122,7 @@ describe("tradabilityHint", () => {
     expect(hint.badge).toBe("opc.");
     expect(hint.muted).toBe(false);
     expect(hint.tooltip).toBe(
-      "ETF USA sin KID: solo opciones en IBKR — alternativa: SGLN / 4GLD (physical gold ETC)",
+      "ETF de EE. UU. sin KID: no disponible al contado para minoristas en la UE — equivalente UCITS/UE: SGLN / 4GLD (physical gold ETC)",
     );
   });
 
@@ -133,16 +133,16 @@ describe("tradabilityHint", () => {
     });
     expect(hint.muted).toBe(true);
     expect(hint.badge).toBe("s/ruta");
-    expect(hint.tooltip).toBe("Sin ruta minorista en la UE — alternativa: WisdomTree Cocoa ETC");
+    expect(hint.tooltip).toBe("No disponible para minoristas en la UE — equivalente UCITS/UE: WisdomTree Cocoa ETC");
   });
 
   it("says 'sin alternativa' rather than trailing an empty one", () => {
     // The backend sends "" → null for LBR=F; a blank tail would read as a bug.
     expect(tradabilityHint({ tradability: "not_tradable", alternate: null }).tooltip).toBe(
-      "Sin ruta minorista en la UE — sin alternativa",
+      "No disponible para minoristas en la UE — sin equivalente UCITS/UE",
     );
     expect(tradabilityHint({ tradability: "options_only", alternate: "  " }).tooltip).toBe(
-      "ETF USA sin KID: solo opciones en IBKR — sin alternativa",
+      "ETF de EE. UU. sin KID: no disponible al contado para minoristas en la UE — sin equivalente UCITS/UE",
     );
   });
 });

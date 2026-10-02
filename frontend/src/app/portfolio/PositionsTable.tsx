@@ -95,7 +95,7 @@ export function PositionsTable({
                       return (
                         <button
                           type="button"
-                          title={`Señal geo activa: ${signal.headline} (importancia ${signal.importance})`}
+                          title={`Evento geo relacionado: ${signal.headline} (importancia ${signal.importance}). Dato informativo, no una recomendación.`}
                           onClick={(e) => {
                             e.stopPropagation();
                             router.push("/geo-intel");

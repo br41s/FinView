@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from backend.config import settings
 from backend.services.llm_envelope import chat
+from backend.services.llm_rules import NOT_ADVICE_RULE_EN
 
 from .rules import (
     _MAX_BREADTH_FOR_SCOPE,
@@ -89,7 +90,7 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
 
     prompt = (
         "You are VolatilityEdge, a senior geopolitical-macro analyst. Analyze this "
-        "real-world event and predict its market impact.\n\n"
+        "real-world event and predict its market impact. " + NOT_ADVICE_RULE_EN + "\n\n"
         f"EVENT:\n- Type: {event.type}\n- Title: {event.title}\n"
         f"- Location: {event.latitude:.2f}, {event.longitude:.2f}\n"
         f"- Region: {event.region or 'unknown'}\n"
@@ -218,7 +219,9 @@ def _llm_generate(event: GeoEvent) -> dict | None:
     prompt = (
         "You are VolatilityEdge, a senior geopolitical-macro analyst for a Spanish retail "
         "investor. No hand-written rule covers this event. Decide whether it is a tradable "
-        "thesis on a 1-5 day horizon, and if so, which instruments move and why.\n\n"
+        "thesis on a 1-5 day horizon, and if so, which instruments move and why. "
+        + NOT_ADVICE_RULE_EN
+        + "\n\n"
         f"EVENT:\n- Type: {event.type}\n- Title: {event.title}\n"
         f"- Location: {event.latitude:.2f}, {event.longitude:.2f}\n"
         f"- Region: {event.region or 'none'}\n"
