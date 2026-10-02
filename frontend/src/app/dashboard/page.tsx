@@ -42,8 +42,7 @@ import { PatrimonioChart } from "@/components/charts/PatrimonioChart";
 import { WithholdingsChart } from "@/components/charts/WithholdingsChart";
 import { GrossDividendsByCountryChart } from "@/components/charts/GrossDividendsByCountryChart";
 import { CompanyDividendsChart } from "@/components/charts/CompanyDividendsChart";
-import { QuickNav } from "@/components/QuickNav";
-import { HeaderActions } from "@/components/HeaderActions";
+import { PageHeader } from "@/components/PageHeader";
 import { TermsBanner } from "@/components/TermsBanner";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import {
@@ -353,39 +352,31 @@ function DashboardContent() {
 
   return (
     <div className="space-y-6 p-3 sm:p-6">
-      {/* Header */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <BarChart3 className="h-6 w-6" />
-            Dashboard
-          </h1>
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-muted-foreground">
-            Resumen fiscal y de dividendos de tu cartera
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {fiscalYears.length > 0 && (
-              <select
-                aria-label="Seleccionar año fiscal"
-                value={selectedYear ?? ""}
-                onChange={(e) => selectYear(e.target.value ? Number(e.target.value) : null)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="">Años</option>
-                {fiscalYears.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            )}
-            <QuickNav current="/dashboard" />
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={BarChart3}
+        title="Dashboard"
+        subtitle="Resumen fiscal y de dividendos de tu cartera"
+        current="/dashboard"
+        privacy={privacy}
+        onTogglePrivacy={togglePrivacy}
+        actions={
+          fiscalYears.length > 0 && (
+            <select
+              aria-label="Seleccionar año fiscal"
+              value={selectedYear ?? ""}
+              onChange={(e) => selectYear(e.target.value ? Number(e.target.value) : null)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">Años</option>
+              {fiscalYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          )
+        }
+      />
 
       {/* View tabs — same pattern as /options */}
       <Tabs value={view} onValueChange={(v) => setView(v as View)}>

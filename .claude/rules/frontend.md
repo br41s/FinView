@@ -20,6 +20,15 @@ Default is `system`; `ThemeToggle` in the header makes it an explicit choice.
 - Canvas cannot read CSS variables, so `PriceChart` reads the resolved theme from
   `useTheme()` and passes colours in explicitly.
 
+## Page header and footer
+
+Every signed-in top-level page renders `components/PageHeader.tsx`. Its first row is the
+same on every page (title · `QuickNav` · `HeaderActions`), so the nav and account buttons
+never move when you switch pages. Page-specific controls go in `actions` on the second row,
+next to the subtitle, and wrap downward; status lines go in `children`. Legal notices
+(`AiDisclaimer`, `PastPerformanceNote` for a page-level hit rate) go in a `<footer>` at the
+end of the page, not in the header.
+
 ## Failed enrichment fetches
 
 `bestEffort("label")` from `src/lib/bestEffort.ts`, never a bare `.catch(() => {})`.

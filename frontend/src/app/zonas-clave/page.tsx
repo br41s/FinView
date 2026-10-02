@@ -34,8 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { QuickNav } from "@/components/QuickNav";
-import { HeaderActions } from "@/components/HeaderActions";
+import { PageHeader } from "@/components/PageHeader";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import {
   Table,
@@ -45,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AiDisclaimer } from "@/components/AiDisclaimer";
+import { AiDisclaimer, PastPerformanceNote } from "@/components/AiDisclaimer";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -457,21 +456,15 @@ export default function ZonasClavePage() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Target className="h-6 w-6" />
-            Zonas Clave
-          </h1>
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-muted-foreground">
-              Soportes, resistencias y tendencia algorítmica
-            </p>
-            <AiDisclaimer />
+      <PageHeader
+        icon={Target}
+        title="Zonas Clave"
+        current="/zonas-clave"
+        privacy={privacy}
+        onTogglePrivacy={togglePrivacy}
+        subtitle={
+          <>
+            <p>Soportes, resistencias y tendencia algorítmica</p>
             {calibration && (
               <p className="text-xs text-muted-foreground/80" title="Umbral de alerta de ruptura: por defecto 70; se calibra solo con ≥30 resultados medidos a 7 días y ≥55 % de acierto">
                 {`Umbral de alerta ${calibration.effective_threshold}% (${calibration.calibrated ? "calibrado" : "por defecto"}) · ${calibration.evaluated} de ${calibration.scored} candidatos con resultado`}
@@ -483,9 +476,10 @@ export default function ZonasClavePage() {
                 })()}
               </p>
             )}
-          </div>
-          <div className="flex items-center gap-3">
-            <QuickNav current="/zonas-clave" />
+          </>
+        }
+        actions={
+          <>
             <Button
               variant="default"
               size="icon"
@@ -504,9 +498,9 @@ export default function ZonasClavePage() {
             >
               {externalScheduler ? <span className="text-[10px]">Cloud</span> : schedulerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {loading ? (
         <div className="flex min-h-[50vh] items-center justify-center">
@@ -978,6 +972,11 @@ export default function ZonasClavePage() {
           </div>
         </div>
       )}
+
+      <footer className="space-y-1 border-t border-border pt-4">
+        <AiDisclaimer />
+        {calibration && <PastPerformanceNote />}
+      </footer>
     </div>
   );
 }

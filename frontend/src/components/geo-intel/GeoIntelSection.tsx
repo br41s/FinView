@@ -9,11 +9,9 @@ import { geoHealth } from "@/lib/geoHealth";
 import { api, type GeoSchedulerStatus } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
 import { Button } from "@/components/ui/button";
-import { QuickNav } from "@/components/QuickNav";
-import { HeaderActions } from "@/components/HeaderActions";
+import { PageHeader } from "@/components/PageHeader";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
-import { AiDisclaimer } from "@/components/AiDisclaimer";
-import { NOT_ADVICE } from "@/lib/legal";
+import { AiDisclaimer, PastPerformanceNote } from "@/components/AiDisclaimer";
 
 export function GeoIntelSection() {
   const { privacy, togglePrivacy } = usePrivacyToggle();
@@ -200,24 +198,16 @@ export function GeoIntelSection() {
 
   return (
     <section className="flex h-full w-full flex-col bg-[#F5F1E8] text-[#1F1B16]">
-      <header className="space-y-3 border-b border-border px-4 py-4 lg:px-8 lg:py-5">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Globe className="h-6 w-6" />
-            Ideas
-          </h1>
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-muted-foreground">
-              Eventos geopolíticos y naturales, y los activos que históricamente
-              se han movido con ellos.
-            </p>
-            <AiDisclaimer />
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <QuickNav current="/geo-intel" />
+      <PageHeader
+        icon={Globe}
+        title="Ideas"
+        subtitle="Eventos geopolíticos y naturales, y los activos que históricamente se han movido con ellos."
+        current="/geo-intel"
+        privacy={privacy}
+        onTogglePrivacy={togglePrivacy}
+        className="border-b border-border p-6"
+        actions={
+          <>
             <Button variant="outline" size="sm" onClick={runCycle} disabled={running}>
               {running ? "Running…" : "Run cycle"}
             </Button>
@@ -239,8 +229,9 @@ export function GeoIntelSection() {
               <Stat label="Regions" value={String(regions)} />
               <Stat label="Last signal" value={lastSignal} />
             </div>
-          </div>
-        </div>
+          </>
+        }
+      >
         {(health || runOutcome || regimeBadge) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
             {health && (
@@ -271,10 +262,10 @@ export function GeoIntelSection() {
             className="text-[11px] text-[rgba(31,27,22,0.5)]"
             style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
           >
-            {accuracyLine} · {NOT_ADVICE.pastPerformance}
+            {accuracyLine}
           </p>
         )}
-      </header>
+      </PageHeader>
 
       <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
         <div className="relative h-[55vh] p-4 lg:h-auto lg:min-h-0 lg:flex-1 lg:p-6">
@@ -315,6 +306,11 @@ export function GeoIntelSection() {
           loading={phase === "loading"}
         />
       </div>
+
+      <footer className="space-y-1 border-t border-border px-6 py-3">
+        <AiDisclaimer />
+        {accuracyLine && <PastPerformanceNote />}
+      </footer>
     </section>
   );
 }
