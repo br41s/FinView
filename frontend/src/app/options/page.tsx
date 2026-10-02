@@ -31,8 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { QuickNav } from "@/components/QuickNav";
-import { HeaderActions } from "@/components/HeaderActions";
+import { PageHeader } from "@/components/PageHeader";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 import { AiDisclaimer } from "@/components/AiDisclaimer";
 
@@ -158,24 +157,15 @@ export default function OptionsPage() {
 
   return (
     <div className="space-y-6 p-6" data-privacy={privacy ? "true" : "false"}>
-      {/* Header */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Activity className="h-6 w-6" />
-            Options Monitor
-          </h1>
-          <HeaderActions privacy={privacy} onTogglePrivacy={togglePrivacy} />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-muted-foreground">
-              Datos y análisis de opciones sobre tu cartera
-            </p>
-            <AiDisclaimer />
-          </div>
-          <div className="flex items-center gap-3">
-            <QuickNav current="/options" />
+      <PageHeader
+        icon={Activity}
+        title="Options Monitor"
+        subtitle="Datos y análisis de opciones sobre tu cartera"
+        current="/options"
+        privacy={privacy}
+        onTogglePrivacy={togglePrivacy}
+        actions={
+          <>
             <Button variant="outline" size="sm" onClick={handleRunCycle} disabled={running} title="Run Cycle">
               <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
             </Button>
@@ -189,9 +179,9 @@ export default function OptionsPage() {
               {agentStatus?.running ? <Square className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
               {agentStatus?.external_scheduler && <span>Cloud Scheduler</span>}
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Stats cards */}
       <OptionsStatsCards
@@ -297,6 +287,10 @@ export default function OptionsPage() {
           </Tabs>
         </TabsContent>
       </Tabs>
+
+      <footer className="border-t border-border pt-4">
+        <AiDisclaimer />
+      </footer>
     </div>
   );
 }

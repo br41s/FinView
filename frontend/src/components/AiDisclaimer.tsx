@@ -3,9 +3,9 @@ import { NOT_ADVICE } from "@/lib/legal";
 
 /**
  * Notice shown wherever FinView renders machine-generated signals or text:
- * the Options, Zonas Clave and Ideas headers, and again next to each LLM output
- * a user reads on its own (chat, reports, a signal's detail), because the page
- * header is out of view by then.
+ * the Options, Zonas Clave and Ideas page footers, and again next to each LLM
+ * output a user reads on its own (chat, reports, a signal's detail), because the
+ * footer is out of view by then.
  *
  * Two obligations meet here: AI-generated text must be recognisable as such
  * (EU AI Act, art. 50), and FinView is a data tool, not an authorised adviser,

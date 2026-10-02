@@ -253,7 +253,7 @@ The key belongs on **Cloud Run (backend)**, not Vercel — the frontend never to
 - A new prompt that produces user-visible text must import the rule. A new section heading
   must keep the `## N. Title` format — `AnalysisTab` and `OpcionesTab` split on it — and must
   not name a selection to invest in ("Top Picks" was renamed for that reason).
-- In the UI, `AiDisclaimer` sits in the page header **and** next to each LLM output read on
+- In the UI, `AiDisclaimer` sits in the page footer **and** next to each LLM output read on
   its own (chat, cycle report, per-ticker report, a geo signal's detail). Hit rates and
   backtests carry `PastPerformanceNote`. Wording comes from `NOT_ADVICE` in
   `frontend/src/lib/legal.ts`.
