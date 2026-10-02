@@ -59,8 +59,8 @@ _SOURCE_KEYS = (
     "fedreg",
 )
 _RUN_RETENTION_DAYS = 7
-# Flight baseline: the sentinel keeps the last 12 samples per zone; one cycle per
-# 30 min makes that six hours. Samples closer than this are the same cycle seen
+# Flight baseline: the sentinel keeps the last 12 samples per zone; one cycle an
+# hour makes that twelve hours. Samples closer than this are the same cycle seen
 # by another user and are not stored twice.
 _FLIGHT_SAMPLE_MIN_GAP = timedelta(minutes=10)
 _FLIGHT_SAMPLE_RETENTION = timedelta(hours=24)

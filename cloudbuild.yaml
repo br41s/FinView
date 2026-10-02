@@ -178,9 +178,41 @@ steps:
           fi
         done
 
-        gcloud run services update-traffic finview-api \
+        # update-traffic writes spec.traffic before the revision proves it can
+        # start. When the startup probe then fails, the command exits non-zero
+        # with status.traffic still on $$PREVIOUS but spec.traffic on the failed
+        # revision and the service Ready=False -- and every later deploy refuses
+        # to run because the spec routes to a revision that cannot serve
+        # (b28450be, 2026-09-30). Undo the write only while spec still holds it:
+        # anything else means it is not this build's to undo. Callers resume
+        # only once the service is back on a serving revision.
+        if ! gcloud run services update-traffic finview-api \
           --project=$PROJECT_ID --region=europe-west1 \
-          --to-revisions="$$REVISION=100" --quiet
+          --to-revisions="$$REVISION=100" --quiet; then
+          TARGET="$$(gcloud run services describe finview-api \
+            --project=$PROJECT_ID --region=europe-west1 \
+            --format='json(spec.traffic)' | python3 -c \
+            'import json, sys; rows = json.load(sys.stdin).get("spec", {}).get("traffic", []); print(next((row["revisionName"] for row in rows if row.get("percent") == 100 and row.get("revisionName")), ""))')"
+          if [ "$$TARGET" != "$$REVISION" ]; then
+            echo "Promotion failed; spec.traffic targets $${TARGET:-none}, nothing of this build's to restore"
+            exit 1
+          fi
+          # The state check below, not this exit code, decides the outcome.
+          gcloud run services update-traffic finview-api \
+            --project=$PROJECT_ID --region=europe-west1 \
+            --to-revisions="$$PREVIOUS=100" --quiet || true
+          SERVING="$$(gcloud run services describe finview-api \
+            --project=$PROJECT_ID --region=europe-west1 \
+            --format='json(status.conditions,status.traffic)' | python3 -c \
+            'import json, sys; status = json.load(sys.stdin).get("status", {}); ready = any(row.get("type") == "Ready" and row.get("status") == "True" for row in status.get("conditions", [])); print(next((row["revisionName"] for row in status.get("traffic", []) if row.get("percent") == 100), "") if ready else "")')"
+          if [ "$$SERVING" != "$$PREVIOUS" ]; then
+            trap - EXIT
+            echo "Restore to $$PREVIOUS did not converge (serving: $${SERVING:-none}); periodic callers stay paused"
+            exit 1
+          fi
+          echo "Promotion of $$REVISION failed; traffic restored to $$PREVIOUS"
+          exit 1
+        fi
 
         LATEST="$$(gcloud run services describe finview-api \
           --project=$PROJECT_ID --region=europe-west1 \

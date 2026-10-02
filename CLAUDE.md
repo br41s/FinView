@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1180 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
+| Tests | pytest · 1188 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -192,10 +192,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1180 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1180 pass in ~90s. Those files are not in the repo,
+Backend: `pytest` — 1188 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1188 pass in ~90s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 127 skip and the
-remaining 1053 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+remaining 1061 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser and the v2 checkpoint scorer — see `.claude/rules/geo.md`.
 

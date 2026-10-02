@@ -87,7 +87,9 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 > en verde. El síntoma no es un error, es una sección que deja de actualizarse.
 > Ahora la reanudación es un `trap ... EXIT`, así que cubre también el camino de
 > rollback y el de build superseded, y el build **falla** si algún job no vuelve a
-> `ENABLED`. Tras cualquier despliegue, comprobar:
+> `ENABLED`. Única excepción: una promoción fallida cuya restauración no devuelve el
+> servicio a una revisión que sirve deja los jobs pausados a propósito (ver CI/CD →
+> "Promoción fallida"). Tras cualquier despliegue, comprobar:
 >
 > ```bash
 > gcloud scheduler jobs list --location=europe-west1 \
@@ -113,7 +115,7 @@ done
 
 > **`geo-intel-audit` (2026-09-25).** El aprendizaje geo (checkpoints, re-puntuación en
 > vivo de cada señal activa y `confidence_mod` derivado de la precisión) corre cada 4 h en
-> su propio job contra `POST /api/geo/audit`, separado del ciclo de ingesta de 30 min.
+> su propio job contra `POST /api/geo/audit`, separado del ciclo de ingesta horario.
 > Se creó con las mismas cabeceras y deadline que `geo-intel-cycle`:
 >
 > ```bash
@@ -140,9 +142,20 @@ instancia puede reclamarse tras la respuesta.
 
 | Job | Endpoint | Horario | Por qué ese horario |
 |---|---|---|---|
-| `geo-intel-cycle` | `/api/geo/cron` | `*/30 * * * *` | Los eventos geopolíticos no cierran de noche. A 10 minutos el ciclo consumía ~259k vCPU-s/mes y se salía de la capa gratuita (240k); a 30 cabe con margen incluso con opciones y zonas encima |
-| `options-agent-cycle` | `/api/options/agent/cron` | `*/15 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer |
-| `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de 10/15 min |
+| `geo-intel-cycle` | `/api/geo/cron` | `0 * * * *` | Los eventos geopolíticos no cierran de noche. Horario desde el 2026-10-01 (antes `*/30`, y antes `*/10`). GDELT lee las 2 últimas horas, así que un ciclo perdido no pierde noticias |
+| `options-agent-cycle` | `/api/options/agent/cron` | `*/30 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer. Cada 30 min desde el 2026-10-01 (antes `*/15`) |
+| `geo-intel-audit` | `/api/geo/audit` | `0 */4 * * *` | Checkpoints y aprendizaje de reglas; sus horizontes (+1h…+7d) no necesitan más frecuencia |
+| `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de geo y opciones |
+
+> **Por qué esa cadencia (2026-10-01).** `finview-api` factura **por petición**
+> (`--cpu-throttling`), y la capa gratuita de ese modo es **180.000 vCPU-s/mes**
+> (240.000 es la de facturación por instancia, que no aplica aquí; comprobado en
+> cloud.google.com/run/pricing el 2026-10-01). Medido: los crons de opciones y geo eran
+> el **97 %** del tiempo de petición de Cloud Run, ~268k vCPU-s/mes, muy por encima de
+> los 180k. Pasar geo de 48 a 24 ciclos/día y opciones de 64 a 32 ciclos por día
+> laborable divide ese 97 % entre dos: **~138k vCPU-s/mes estimados**, suponiendo que
+> cada ciclo dura lo mismo. Es una estimación, no una medida: confírmala en la
+> facturación del mes siguiente antes de volver a acortar un horario.
 
 Listar y comprobar el último intento (`status.code` vacío = OK):
 
@@ -201,8 +214,9 @@ Configuradas en Vercel → Project Settings → Environment Variables:
 ### Backend
 - **Cómo:** Cloud Build trigger `finview-api-deploy` escucha GitHub via Cloud Build GitHub App (1ª gen, región `global`).
 - **Disparadores:** push a `main` que toque `backend/**`, `scripts/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`.
-- **Build + despliegue seguro:** [cloudbuild.yaml](../cloudbuild.yaml) construye la imagen, demuestra localmente que escucha en `PORT=8080`, crea una revisión candidata privada con **0% de tráfico**, valida configuración y startup, cancela rollouts anteriores del mismo trigger, pausa los tres jobs antes de cambiar tráfico, promueve al 100% y comprueba `/api/health/ready` en la URL pública. Solo el build activo más nuevo puede mutar tráfico; un rollback automático exige que su revisión siga siendo simultáneamente la última creada y la que sirve el 100%, y deja los callers pausados.
-- **Flags de runtime (críticos):** `--cpu-throttling` (facturación por petición), `--min-instances=0`, `--max-instances=1`, `--memory=1Gi`, `FINVIEW_ENV=production` y `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Producción falla al arrancar si falta ese modo, si los secretos de auth son inseguros o si la base de datos cae al SQLite efímero por defecto. No sustituir `--cpu-throttling` por `--no-cpu-throttling`: con jobs cada 10 minutos y hasta 15 minutos de retención ociosa, la instancia puede quedar facturando continuamente aunque `min=0`.
+- **Build + despliegue seguro:** [cloudbuild.yaml](../cloudbuild.yaml) construye la imagen, demuestra localmente que escucha en `PORT=8080`, crea una revisión candidata privada con **0% de tráfico**, valida configuración y startup, cancela rollouts anteriores del mismo trigger, pausa los tres jobs antes de cambiar tráfico, promueve al 100% y comprueba `/api/health/ready` en la URL pública. Solo el build activo más nuevo puede mutar tráfico; un rollback automático tras fallar el check público exige que su revisión siga siendo simultáneamente la última creada y la que sirve el 100%. Los callers se reanudan al salir del paso (trap `EXIT`, ver "Cloud Scheduler").
+- **Promoción fallida (2026-09-30):** `update-traffic` escribe `spec.traffic` *antes* de que la revisión demuestre que arranca. Si falla el startup probe, el comando sale con error, `status.traffic` sigue en la revisión anterior pero `spec.traffic` queda apuntando a la fallida, con el servicio `Ready=False`, y todo `gcloud run deploy` posterior falla con *"Revision ... is not ready and cannot serve traffic"*. El rollback del check público no lo cubría: `bash -e` salía en esa línea y su condición mira `status.traffic`, que nunca se movió. Ahora el paso captura la revisión que sirve (`status.traffic`) antes de promover y, si la promoción falla **y `spec.traffic` sigue conteniendo la escritura de este build**, vuelve a `--to-revisions=<anterior>=100`. Si `spec` apunta a otra cosa no restaura nada: no es suyo. Los callers solo se reanudan si el servicio vuelve a `Ready=True` sirviendo el 100% en la anterior; si no converge, el build falla y los jobs **se quedan pausados** a propósito. Probado con un `gcloud` falso en `backend/tests/test_cloudbuild_rollout.py`.
+- **Flags de runtime (críticos):** `--cpu-throttling` (facturación por petición), `--min-instances=0`, `--max-instances=1`, `--memory=1Gi`, `FINVIEW_ENV=production` y `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Producción falla al arrancar si falta ese modo, si los secretos de auth son inseguros o si la base de datos cae al SQLite efímero por defecto. No sustituir `--cpu-throttling` por `--no-cpu-throttling`: con jobs cada 30–60 minutos y hasta 15 minutos de retención ociosa, cada ciclo dejaría además hasta un cuarto de hora de instancia facturando aunque `min=0`.
 - **Trabajo periódico:** Cloud Scheduler llama endpoints síncronos. Cloud Run no inicia AIS, ECB, FRED, CNMV ni preload Eurex como hilos de instancia. Eurex se carga bajo demanda; el job diario de zonas refresca ECB/FRED/CNMV una sola vez y AIS degrada a las fuentes HTTP disponibles.
 - **Guard fail-closed:** [scripts/verify_cloud_run_service.py](../scripts/verify_cloud_run_service.py) valida directamente la condición `Ready` de la revisión candidata (una candidata a 0% no actualiza todavía `latestReadyRevisionName`) y rechaza facturación por instancia, **escalado manual** (`run.googleapis.com/scalingMode: manual`, que anula silenciosamente `minScale`/`maxScale`), mínimos distintos de cero, el máximo de revisión ausente o mayor de uno, puerto distinto de 8080 y tráfico prematuro. El máximo **a nivel de servicio** solo se comprueba si existe: `gcloud run deploy --max-instances` escribe la anotación de la plantilla, no la del servicio, y exigirla hacía fallar todos los despliegues reales. El startup ya ejecuta la inicialización SQL; si Neon no responde, la revisión nunca llega a `Ready=True`. La ruta pública de readiness no consulta la DB en cada llamada para evitar amplificación.
 - **Service account del trigger:** `github-actions-deployer@finview-brais-2026.iam.gserviceaccount.com` con roles `run.admin`, `iam.serviceAccountUser`, `cloudbuild.builds.editor`, `cloudscheduler.admin`, `storage.admin`, `artifactregistry.writer`, `logging.viewer`, `logging.logWriter`. El permiso de Scheduler es necesario para que el rollout pause callers antes de mutar tráfico. Proyectos nuevos de GCP **no permiten** usar la SA por defecto (`<PROJECT_NUM>@cloudbuild.gserviceaccount.com`) — siempre user-managed.
@@ -216,8 +230,10 @@ Monitorizar builds: https://console.cloud.google.com/cloud-build/builds?project=
   GCP, con umbrales al 50%, 90% y 100%. Es la red de seguridad transversal; no crear
   presupuestos duplicados por proyecto sin revisar primero este alcance.
 - Cada deploy limita `finview-api` a una instancia a nivel de servicio y revisión.
-- Cada cambio de tráfico pausa los tres jobs. Reanudarlos es un paso manual posterior
-  al guard remoto y a confirmar que la revisión lista es la que sirve el 100%.
+- Cada cambio de tráfico pausa los cuatro jobs y el propio paso los reanuda al salir.
+  La única salida que los deja pausados es una promoción fallida cuya restauración no
+  vuelve a una revisión `Ready` sirviendo el 100%: el build queda en rojo y reanudarlos
+  es manual, después de arreglar el tráfico.
 - Si un despliegue no puede verificarse antes de terminar una sesión, pausar primero
   los jobs que lo invocan y dejar la revisión sin tráfico. Nunca abandonar un candidato
   fallido con llamadas periódicas activas.
@@ -312,6 +328,7 @@ Ver revisiones: `gcloud run revisions list --service finview-api --region europe
 | "No hay datos" tras desplegar | Cloud Run sin `FINVIEW_DATABASE_URL` → usa SQLite efímero | Setear env var con la URL de Neon, redeploy |
 | Opciones europeas (.DE/.PA/.AS…) tardan tras idle | Con facturación por petición, Eurex se carga bajo demanda en el primer acceso | Esperar esa primera carga; no activar CPU permanente para ocultar la latencia |
 | Build rojo en Cloud Build | SA sin permisos o Dockerfile roto | Logs: https://console.cloud.google.com/cloud-build/builds |
+| `gcloud run deploy` falla con *"Revision 'finview-api-X' is not ready and cannot serve traffic"* | Una promoción anterior falló y dejó `spec.traffic` en la revisión X (antes del 2026-09-30, o la restauración automática no convergió: el build lo dice con *"Restore to ... did not converge"*). El servicio queda `Ready=False` / `RoutesReady=False` aunque `status.traffic` siga en la buena | Ver qué sirve de verdad: `gcloud run services describe finview-api --region europe-west1 --format='json(status.traffic)'`. Devolver el spec a esa revisión: `gcloud run services update-traffic finview-api --region europe-west1 --to-revisions <revisión-que-sirve>=100`. Después reanudar los jobs que sigan `PAUSED` y relanzar el build |
 | Cloud Run dice que no escuchó en `PORT=8080` | Mensaje genérico: el proceso pudo fallar antes de abrir el puerto (por ejemplo, Neon sin cuota) | Leer el traceback de la revisión. La inicialización SQL ocurre antes de que el proceso quede listo |
 | `/api/health` da 200 pero `/api/health/ready` da 503 | Producción arrancó sin `FINVIEW_REQUEST_SCOPED_RUNTIME=true` | Corregir el flag; el pipeline no debe promover esa revisión |
 | `min=0` pero hay una instancia facturable constante | Facturación por instancia más peticiones más frecuentes que la ventana de retención ociosa | Pausar jobs, fijar `--cpu-throttling`, verificar `max=1` y reanudar solo tras el guard |

@@ -52,18 +52,21 @@ describe("geoHealth", () => {
   });
 
   it("tolerates a couple of missed cycles before crying wolf", () => {
-    // 15-minute interval, one hour of silence: the prod cron only runs every 30
-    // minutes, so three raw intervals would be a false alarm.
-    const health = geoHealth(
-      { interval_minutes: 15, last_run: run({ started_at: "2026-09-04T11:00:00Z" }) },
-      NOW,
-    );
-    expect(health?.tone).toBe("ok");
+    // 15-minute interval, two hours of silence: the prod cron is hourly, so one
+    // or two missed cycles is a deploy pause or a failed run, not a dead cron.
+    for (const startedAt of ["2026-09-04T10:50:00Z", "2026-09-04T10:00:00Z"]) {
+      const health = geoHealth(
+        { interval_minutes: 15, last_run: run({ started_at: startedAt }) },
+        NOW,
+      );
+      expect(health?.tone).toBe("ok");
+    }
   });
 
   it("warns once the silence is longer than the schedule explains", () => {
+    // Three missed hourly cycles is the floor; this is past it.
     const health = geoHealth(
-      { interval_minutes: 15, last_run: run({ started_at: "2026-09-04T09:00:00Z" }) },
+      { interval_minutes: 15, last_run: run({ started_at: "2026-09-04T08:30:00Z" }) },
       NOW,
     );
     expect(health?.tone).toBe("warn");
