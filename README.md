@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1188 backend, 127 skipped sin ficheros reales) · vitest (102 frontend) · ESLint
+- **Tests:** pytest (1201 backend, 127 skipped sin ficheros reales) · vitest (102 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -145,7 +145,7 @@ El prompt `_CLAUDE_SYSTEM` define al agente *VolatilityEdge*. Responde siempre e
 1. Resumen Ejecutivo — sentimiento global del ciclo
 2. Smart Money — flujos institucionales detectados
 3. Señales Greeks — IV vs HV, skew, Delta/Gamma relevantes
-4. Top Picks — máx. 3 tickers con tesis y nivel de riesgo
+4. Tickers con más actividad — máx. 3, descripción de los datos y nivel de riesgo (no es una selección para invertir)
 5. Catalizadores — eventos próximos que afectan al watchlist
 6. Contexto MEFF — solo si hay tickers `.MC`
 7. Gestión de Riesgo — cierre siempre con esta sección

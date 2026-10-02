@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1188 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
+| Tests | pytest · 1201 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -128,6 +128,11 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   banner first; `/pricing` and the plan table in `/legal/condiciones` say exactly what
   `PLAN_LIMITS` enforces. A change users must re-accept bumps `TERMS_VERSION`
   (`services/auth_service.py`) and `LEGAL_UPDATED`.
+- FinView shows data; it does not advise. Nothing a user reads may tell them to buy, sell,
+  hold or size a position, or name a selection to invest in. Prompts that produce
+  user-visible text import the rule from `services/llm_rules.py` (`test_llm_rules.py`
+  enforces it); screens with signals or LLM text render `AiDisclaimer`, and hit rates render
+  `PastPerformanceNote`. The wording is `NOT_ADVICE` in `frontend/src/lib/legal.ts`.
 - Consent is stored, never assumed: registration is rejected without `accept_terms`, and
   `fiscal_profiles.disability` (health data) is only saved with `health_data_consent`.
 - No breaking changes to API contracts without updating frontend src/lib/ types.
@@ -192,10 +197,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1188 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1188 pass in ~90s. Those files are not in the repo,
+Backend: `pytest` — 1201 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1201 pass in ~90s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 127 skip and the
-remaining 1061 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+remaining 1074 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser and the v2 checkpoint scorer — see `.claude/rules/geo.md`.
 
