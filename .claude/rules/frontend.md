@@ -130,3 +130,23 @@ intent, not a gap.
 `/options` expands that watchlist row, `/zonas-clave` selects the ticker, and
 `/geo-intel` selects the newest signal affecting it. An unmatched ticker is a
 silent no-op everywhere (URLs go stale, and a thrown error would be worse).
+
+### Landing page garden game
+- `components/GardenGame` sits under the hero on `/`. Idle, it is an animation (demo mode:
+  the garden reinvests its own coins and restarts when full); "Jugar" hands the same canvas
+  to the player. Same idea as FlyWell's airport on its sign-in page.
+- **Rules are a pure module** — `src/game/garden/sim.ts`, tested in `sim.test.ts` with a fixed
+  random. The canvas only draws (`scene.ts`), and the component owns the clock, the pointer
+  and the HUD. Change a rule in `sim.ts` and its test, never in the component.
+- **Difficulty is one function**: `bearsPerMinute` in `game/garden/difficulty.ts`.
+- The simulation lives in refs; React state holds only what the HUD shows. The best score is
+  read with `useSyncExternalStore` (localStorage key `fv-garden-best`, listed in
+  `/legal/cookies`) because `react-hooks/set-state-in-effect` rejects reading it in an effect.
+- The loop pauses when the section is off screen or the tab is hidden, and with
+  `prefers-reduced-motion` the idle garden is a still picture. Colours are read from the
+  site's CSS variables, so it follows the theme; nothing is downloaded.
+- **Watching it in the Browser pane**: the pane reports `document.hidden = true` and fires
+  `requestAnimationFrame` about once a second, so the garden looks frozen. For debugging
+  only, shim rAF with `setTimeout` and override `document.hidden` in the page.
+- The copy is a joke about a bear market eating a garden and says so ("Es solo un juego.
+  Aquí tampoco hay consejos de inversión"). Keep it that way: see the not-advice rule.
