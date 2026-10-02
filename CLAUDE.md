@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1201 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 102 frontend tests |
+| Tests | pytest · 1201 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 138 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -211,11 +211,11 @@ and ran nothing for months. Gate on a path built from `Path(__file__).resolve().
 `pytest.skip()`, not a module-level `pytestmark` that also takes the pure unit tests down
 with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 102 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 138 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis)
-plus `src/app/blog/posts.test.ts` and `src/app/options/optionsData.test.ts` (the options
-page's state reducer). **`vitest` must be installed**
+plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options
+page's state reducer) and `src/game/garden/` (the rules of the landing page's garden game). **`vitest` must be installed**
 or `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.
 
