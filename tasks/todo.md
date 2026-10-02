@@ -45,13 +45,20 @@ tarjetas de pago con un aviso de que no están a la venta.
 - [x] Backend: ruff limpio, pytest 1180/1180 tras rebase sobre `origin/main` (27 nuevos: `test_user_data.py` con claves foráneas activas, `test_consent.py`).
 - [x] Frontend: tsc, ESLint, vitest 102/102, `pnpm build` (las 4 páginas legales estáticas), sin `<[0-9]` en MDX.
 - [x] Navegador contra backend local con BD temporal: páginas legales sin sesión; registro bloqueado sin casilla; alta → sin banner; export 28 tablas sin hash; contraseña errónea → "Contraseña incorrecta"; borrado → sesión cerrada, landing con footer, 0 filas del usuario.
-- [ ] Commit, push, Vercel preview verde, merge, Cloud Run sano (`ensure_columns` añade las 3 columnas). Ordenado por el CEO el 2026-09-30.
+- [x] Commit, push, merge (#303) el 2026-09-30. El backend no se pudo desplegar hasta el 2026-10-02 (facturación de GCP desactivada por presupuestos con enforcement desde el 29-09); desplegado en `finview-api-5ebefff` y verificado.
 - [ ] `docs/user-guide.pdf` no regenerado.
 
+### Después del despliegue — 2026-10-01 / 02
+- [x] Cadencia de cron: opciones 15→30 min, geo 30→60 min (los dos cron eran el 97 % del tiempo de Cloud Run). Código y docs alineados en #307.
+- [x] #306 (el pipeline restaura `spec.traffic` si falla la promoción) y #307 en un solo build (#309).
+- [x] Blog #300 y #308 en un solo merge (#310), resolviendo el patrón de conflicto de los ficheros compartidos.
+- [x] "Datos, no consejos" en todo el producto (#311): `NOT_ADVICE`, `AiDisclaimer` junto a cada texto de IA, regla común en los prompts (`llm_rules.py`), "Top Picks" renombrado, `TERMS_VERSION` 2026-10-02.
+- [x] Decisiones del titular: Ideas es interpretación de datos; representante en la UE con la misma solución que biglobster.top (política de privacidad: art. 3.2, acceso desde Tailandia declarado, autoridades, registro de versiones).
+
 ### Pendiente del CEO / abogado
-Ver `docs/compliance/pendientes.md`: representante en la UE (art. 27 RGPD), revisión MAR/MiFID
-de "Ideas" y "Top Picks", tarjetas de pago en `/pricing`, DPA de Neon y Vercel, enrutado de
-OpenRouter.
+Ver `docs/compliance/pendientes.md`: ley de Nuevo México frente a consumidores de la UE,
+tarjetas de pago en `/pricing`, DPA de Neon y Vercel, enrutado de OpenRouter, detector de
+spikes de prima con la cadencia de 30 min.
 
 ## Diferidos de Fase 5 / auditoría — 2026-09-25 (un PR por ítem)
 

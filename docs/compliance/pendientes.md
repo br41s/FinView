@@ -8,26 +8,36 @@ Estado a 2026-10-02. Ordenado por importancia.
 - [x] Buzón de contacto: hola@biglobster.top (el anterior `hola@finview.app` no existía).
 - [x] Pagos: no hay. Los documentos describen un servicio gratuito.
 
+## Decidido por el titular
+
+Decisiones de Biglobster LLC, registradas con su fecha. No son pendientes: se anotan aquí
+con lo que implican para que quien revise el cumplimiento sepa que fueron elecciones.
+
+- [x] **Ideas es interpretación de datos, no asesoramiento financiero (2026-10-02).** La
+      sección relaciona eventos públicos con los activos que históricamente se han movido con
+      ellos, mediante reglas escritas y, cuando ninguna aplica, un modelo de lenguaje. El
+      instrumento y el sentido (alcista o bajista) describen esa relación; no son una
+      recomendación ni un pronóstico. Así lo dicen `/legal/condiciones` §3, el aviso de la
+      cabecera de Ideas y el de cada señal, y la regla común de los prompts
+      (`backend/services/llm_rules.py`). La sección conserva el nombre "Ideas".
+      Qué mantiene esta postura cierta: que ninguna pantalla, prompt o notificación diga qué
+      comprar o vender, cuánto, dónde ni cómo. Si el producto empezara a hacerlo, o a cobrar
+      por las señales, la calificación habría que revisarla con un abogado (Reglamento de
+      Abuso de Mercado, art. 3.1.35; MiFID II).
+- [x] **Representante en la Unión: misma solución que biglobster.top (2026-10-02).** No se
+      designa un representante del art. 27 RGPD. La política de privacidad hace lo mismo que
+      la de biglobster.top: declara que el RGPD se aplica por el art. 3.2 aunque el
+      responsable esté fuera de la Unión, da un contacto directo para protección de datos,
+      aplica el estándar más protector cuando concurren varias normas, remite a la autoridad
+      de control del país de residencia (en España la AEPD) y, en su caso, a la de Tailandia,
+      declara el acceso del personal del responsable desde Tailandia como transferencia
+      internacional con cláusulas contractuales tipo, y lleva un registro de versiones.
+      Lo que esta solución no hace: no nombra a nadie establecido en la UE como punto de
+      contacto. Si una autoridad lo exigiera, o el servicio creciera, designar uno es un
+      trámite con un proveedor de representación y un cambio de una línea en la política.
+
 ## Para revisar con un abogado
 
-- [ ] **Representante en la Unión (art. 27 RGPD).** Un responsable sin establecimiento en
-      la UE que ofrece servicios a personas en la UE debe designar un representante, salvo
-      que el tratamiento sea ocasional, no incluya a gran escala categorías especiales y sea
-      improbable que entrañe riesgo. FinView trata de forma continuada datos financieros y
-      fiscales y, si el usuario lo indica, un dato de salud. No se ha designado ninguno y la
-      política de privacidad no lo menciona. Es la cuestión abierta más clara.
-- [ ] **Señales e "Ideas" frente a la normativa de mercados.** Postura del titular
-      (2026-10-02): FinView muestra datos, no presta asesoramiento, y la decisión de invertir
-      es del usuario. Hecho en producto: esa frase figura en el pie público, en el registro
-      (casilla), en el aviso de reaceptación, en la cabecera de Opciones, Zonas Clave e Ideas
-      y junto a cada texto generado por IA; "Top Picks" pasa a "Tickers con más actividad";
-      el subtítulo de Ideas ya no habla de "oportunidades de inversión y especulación"; todos
-      los prompts llevan una regla que prohíbe recomendar comprar, vender o dimensionar; las
-      tasas de acierto llevan "los aciertos pasados no garantizan resultados futuros".
-      Sigue abierto para un abogado: un aviso no cambia la naturaleza de lo que se difunde.
-      Ideas sigue mostrando instrumento y dirección (alcista/bajista) por evento, y eso puede
-      ser "recomendación de inversión" del art. 3.1.35 del Reglamento de Abuso de Mercado
-      aunque el servicio sea gratuito. La sección conserva el nombre "Ideas".
 - [ ] **Ley de Nuevo México frente a consumidores de la UE.** Las condiciones copian la
       cláusula de biglobster.top: ley de Nuevo México, sin privar al consumidor de las
       normas imperativas de su país. Confirmar que es la elección deseada para FinView.

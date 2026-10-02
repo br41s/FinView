@@ -3,7 +3,7 @@
 Responsable: Biglobster LLC, 1209 Mountain Road Pl NE Ste N, Albuquerque, NM 87110, Estados
 Unidos (`LEGAL` en `frontend/src/lib/legal.ts`). Contacto: hola@biglobster.top.
 Sin establecimiento en la UE; el RGPD se aplica por el art. 3.2.
-Última revisión: 2026-09-30.
+Última revisión: 2026-10-02.
 
 ## Actividades
 
@@ -30,14 +30,15 @@ hace falta para gestionarlos.
 
 | Encargado | Servicio | Ubicación de los datos | Transferencia internacional | Contrato (DPA) |
 |---|---|---|---|---|
+| Biglobster LLC (personal autorizado) | Operación, mantenimiento y soporte | Acceso desde Tailandia a sistemas alojados en la UE | Sí — cláusulas contractuales tipo (art. 46.2.c); Tailandia no tiene decisión de adecuación | No aplica: es el propio responsable |
 | Google Cloud EMEA Ltd | Cloud Run, Cloud Build, Cloud Logging | europe-west1 (Bélgica) | No | Cloud Data Processing Addendum, aceptado con los términos de la cuenta |
 | Neon, Inc. | Postgres | eu-central-1 (Fráncfort) | Accesos de soporte desde EE. UU. | DPA de Neon — **comprobar que está aceptado** |
 | Vercel Inc. | Frontend y proxy de `/api` | UE y EE. UU. | Sí — DPF y cláusulas tipo | DPA de Vercel — **comprobar que está aceptado** |
 | Cloudflare, Inc. | Turnstile | UE y EE. UU. | Sí — DPF y cláusulas tipo | DPA de Cloudflare, incluido en sus condiciones |
 | OpenRouter, Inc. + proveedor del modelo | LLM (`settings.openrouter_model`) | EE. UU. y otros | Sí | **Revisar**: ver `pendientes.md` |
 
-El propio responsable accede a los datos desde fuera del EEE para administrar el servicio
-(la política de privacidad lo dice en §7).
+El acceso del propio responsable desde Tailandia figura en la tabla y en `/legal/privacidad`
+§6 y §7, con la misma redacción que usa biglobster.top.
 
 Sin datos personales: Yahoo Finance (solo tickers/ISIN), BCE, FRED, CNMV, MEFF, Eurex,
 GDELT, OFAC, Federal Register, NASA, USGS, GDACS, adsb.lol.
