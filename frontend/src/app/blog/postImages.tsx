@@ -2364,7 +2364,36 @@ function ImgDividendosColombianos() {
   );
 }
 
+function ImgSucesionesEeuu() {
+  return (
+    <div className={styles.postImgSucesionesEeuu}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">EEUU · SUCESIONES · ACCIONES Y ETFS</text>
+        {/* US-situs stock */}
+        <rect x="20" y="42" width="34" height="24" rx="3" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <path d="M20 49h34" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="37" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acción</text>
+        <text x="37" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">US-situs</text>
+        <text x="37" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">da igual el bróker</text>
+        {/* To the IRS */}
+        <path d="M56 54h14" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m68 50-4 4 4 4" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="83" y="46" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IRS</text>
+        <text x="83" y="55" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">706-NA</text>
+        {/* Small exemption vs the 40 % bite */}
+        <rect x="106" y="88" width="26" height="8" rx="2" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <text x="119" y="81" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">60.000 $ exentos</text>
+        <rect x="146" y="38" width="30" height="58" rx="3" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="161" y="70" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">40 %</text>
+        <text x="161" y="32" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">más de 1 M$</text>
+        <text x="100" y="113" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">sin convenio España-EEUU · se paga aparte</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'sucesiones-acciones-eeuu-espana': ImgSucesionesEeuu,
   'dividendos-colombianos-espana': ImgDividendosColombianos,
   'dividendos-sudafricanos-espana': ImgDividendosSudafricanos,
   'dividendos-indios-espana': ImgDividendosIndios,

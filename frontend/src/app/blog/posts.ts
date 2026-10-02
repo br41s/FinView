@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'sucesiones-acciones-eeuu-espana',
+    tag: 'Fiscalidad',
+    date: '2 oct 2026',
+    readTime: '11 min',
+    title: 'Impuesto de sucesiones de EEUU: la factura oculta de tus acciones americanas',
+    excerpt:
+      'Si tus acciones de empresas de EEUU superan los 60.000 $, tus herederos pueden pagar hasta el 40 % al IRS. Y no hay convenio con España, así que el impuesto de sucesiones español se suma. Cómo funciona el 706-NA y por qué los ETFs americanos no te libran.',
+  },
+  {
     slug: 'dividendos-colombianos-espana',
     tag: 'Fiscalidad',
     date: '1 oct 2026',
