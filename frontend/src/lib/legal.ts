@@ -55,6 +55,14 @@ export interface Processor {
 /** Recipients of personal data (GDPR art. 13.1.e-f and art. 28). */
 export const PROCESSORS: Processor[] = [
   {
+    name: "Biglobster LLC (personal autorizado)",
+    purpose: "Operación del servicio, mantenimiento y soporte. Acceso a los sistemas desde Tailandia",
+    data: "Los datos de la cuenta que sea necesario consultar para mantener el servicio o atender una solicitud",
+    location: "Tailandia",
+    safeguard:
+      "Cláusulas contractuales tipo (art. 46.2.c RGPD). Tailandia no cuenta con decisión de adecuación",
+  },
+  {
     name: "Google Cloud EMEA Limited (Cloud Run)",
     purpose: "Alojamiento del servidor de la aplicación",
     data: "Todos los datos de la cuenta, en tránsito y durante el cálculo",
