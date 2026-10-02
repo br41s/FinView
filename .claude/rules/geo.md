@@ -311,3 +311,10 @@ Cron: `FINVIEW_CRON_SECRET` (must match the Cloud Scheduler job header). One sec
 all three cron entries — `/api/geo/cron`, `/api/options/agent/cron` and
 `/api/zonas-clave/cron`. Rotating it means updating Cloud Run **first**, then every job:
 miss one and it 403s silently.
+
+### What Ideas is, legally
+Ideas is **data interpretation, not financial advice** (owner's decision, 2026-10-02). It
+relates public events to the assets that have historically moved with them; the instrument
+and direction describe that relation. Keep it that way: no copy, prompt or notification may
+say what to buy or sell, how much, where or how. `/legal/condiciones` §3 states it and
+`docs/compliance/pendientes.md` records the decision and what would reopen it.

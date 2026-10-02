@@ -1,4 +1,4 @@
-import { NOT_ADVICE } from '@/lib/legal';
+import { LEGAL, NOT_ADVICE } from '@/lib/legal';
 import styles from './index.module.css';
 
 export function PublicFooter() {
@@ -15,6 +15,13 @@ export function PublicFooter() {
         {' · '}<a href="/legal/privacidad" className={styles.link}>Privacidad</a>
         {' · '}<a href="/legal/cookies" className={styles.link}>Cookies</a>
         {' · '}<a href="/legal/condiciones" className={styles.link}>Condiciones</a>
+      </p>
+      <p className={styles.text}>
+        Un producto de{' '}
+        <a href={LEGAL.ownerUrl} className={styles.ownerLink} rel="noopener">
+          {LEGAL.ownerBrand}
+        </a>
+        {' '}· {LEGAL.ownerTagline}
       </p>
       <p className={styles.disclaimer}>
         {NOT_ADVICE.short} Tampoco es asesoramiento fiscal. El contenido del blog es divulgativo.

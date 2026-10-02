@@ -11,6 +11,15 @@
 export const LEGAL = {
   brand: "FinView",
   owner: "Biglobster LLC",
+  /**
+   * The owner's site. It is the legal reference for every Biglobster LLC app
+   * and page: FinView's documents follow the approach published there. Linked
+   * from the footer and the legal pages so a reader can check who is behind
+   * the product (and so the group's sites reference each other).
+   */
+  ownerUrl: "https://biglobster.top",
+  ownerBrand: "BigLobster",
+  ownerTagline: "IA práctica para autónomos, profesionales y pymes",
   legalForm:
     "sociedad de responsabilidad limitada (LLC) constituida en el estado de Nuevo México (Estados Unidos)",
   registration: "3279115 (Entity ID 0008120949, Secretaría de Estado de Nuevo México)",
@@ -54,6 +63,14 @@ export interface Processor {
 
 /** Recipients of personal data (GDPR art. 13.1.e-f and art. 28). */
 export const PROCESSORS: Processor[] = [
+  {
+    name: "Biglobster LLC (personal autorizado)",
+    purpose: "Operación del servicio, mantenimiento y soporte. Acceso a los sistemas desde Tailandia",
+    data: "Los datos de la cuenta que sea necesario consultar para mantener el servicio o atender una solicitud",
+    location: "Tailandia",
+    safeguard:
+      "Cláusulas contractuales tipo (art. 46.2.c RGPD). Tailandia no cuenta con decisión de adecuación",
+  },
   {
     name: "Google Cloud EMEA Limited (Cloud Run)",
     purpose: "Alojamiento del servidor de la aplicación",
