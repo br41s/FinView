@@ -21,3 +21,9 @@
   color: var(--fv-ink-40);
   text-decoration: none;
 }
+
+.ownerLink {
+  color: var(--fv-ink-60, var(--fv-ink-40));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

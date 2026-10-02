@@ -16,7 +16,10 @@ con el rigor suficiente para que un abogado lo revise sin tener que leer el cód
 ## Titular y modelo
 
 El titular es **Biglobster LLC** (Nuevo México, EE. UU.; registro 3279115, Entity ID
-0008120949), con los mismos datos que publica en biglobster.top. **FinView no se vende**: no
+0008120949), con los mismos datos que publica en biglobster.top. **biglobster.top es la
+referencia legal de todas las apps y páginas de Biglobster LLC**: ante una duda de enfoque
+(titular, ley aplicable, RGPD desde fuera de la UE, transferencias, registro de versiones), se
+sigue lo publicado allí. El pie público y las páginas legales enlazan a biglobster.top. **FinView no se vende**: no
 hay cuenta de Stripe, las condiciones dicen que el servicio es gratuito y `/pricing` avisa de
 que los planes Pro y Unlimited no están a la venta. El código de Stripe sigue en el backend,
 inactivo sin claves. El RGPD se aplica por el art. 3.2 (servicio ofrecido en español a
