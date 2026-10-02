@@ -16,7 +16,7 @@ import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
@@ -558,9 +558,32 @@ def _iter_region_ids():
     return GEO_REGIONS.keys()
 
 _GDELT_MAX_HISTORY = 48 * 7
-_NOVELTY_MIN_SAMPLES = 12  # six hours of cycles before "novel" means anything
+_NOVELTY_MIN_SAMPLES = 12  # twelve hourly cycles before "novel" means anything
 _NOVELTY_FACTOR = 2.0
 _NOVELTY_MIN_STORIES = 3
+# Every count here — the novelty sample, the cluster bar, storiesThisHour — is a
+# rate over the newest hour of batches, because that is the unit the 7-day
+# baseline and the cluster calibration were measured in. The ingest reads two
+# hours to bridge a missed cycle; counting the bridge would double every sample
+# and page the whole map as "novel" until the median caught up.
+_GDELT_COUNT_WINDOW = timedelta(minutes=45)  # newest batch + the 3 before it
+_GDELT_STAMP = "%Y%m%d%H%M%S"
+
+
+def _is_stamp(value: str) -> bool:
+    return len(value) == 14 and value.isdigit()
+
+
+def _newest_hour_floor(gdelt_events: list[GdeltEvent]) -> str:
+    """The oldest DATEADDED stamp still inside the newest hour, or "" (count all)."""
+    stamps = [e.date_added for e in gdelt_events if _is_stamp(e.date_added)]
+    if not stamps:
+        return ""
+    try:
+        newest = datetime.strptime(max(stamps), _GDELT_STAMP)
+    except ValueError:
+        return ""
+    return f"{newest - _GDELT_COUNT_WINDOW:{_GDELT_STAMP}}"
 
 
 def _novelty(region_key: str, stories: int) -> dict:
@@ -603,6 +626,7 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
     # rules.severity_headroom reads, and the source URL the reader is sent to.
     buckets: dict[str, dict] = {}
     tally: dict[str, dict] = {}
+    hour_floor = _newest_hour_floor(gdelt_events)
 
     for evt in gdelt_events:
         category = _classify_gdelt(evt)
@@ -624,9 +648,13 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
             {"best": evt, "rank": rank, "category": category, "ftype": ftype,
              "region": region, "region_key": region_key, "stories": 0},
         )
-        bucket["stories"] += 1
         if rank < bucket["rank"]:
             bucket["best"], bucket["rank"] = evt, rank
+        # A bridged row still reaches the matcher; it is not counted. A row with
+        # no usable stamp cannot be placed, so it counts as before.
+        if _is_stamp(evt.date_added) and evt.date_added < hour_floor:
+            continue
+        bucket["stories"] += 1
 
         tr = tally.setdefault(region_key, {"stories": 0, "categories": set(), "sum_g": 0.0,
                                            "best": evt})

@@ -201,7 +201,7 @@ def test_lastupdate_rejects_a_non_listing():
 
 
 def test_batch_urls_step_back_fifteen_minutes():
-    urls = gdelt._batch_urls(f"{gdelt._BASE_URL}/20260920083000.export.CSV.zip")
+    urls = gdelt._batch_urls(f"{gdelt._BASE_URL}/20260920083000.export.CSV.zip", count=4)
     assert [u.rsplit("/", 1)[-1].split(".", 1)[0] for u in urls] == [
         "20260920083000", "20260920081500", "20260920080000", "20260920074500",
     ]
@@ -209,21 +209,25 @@ def test_batch_urls_step_back_fifteen_minutes():
 
 def test_batch_urls_cross_the_hour_and_the_day():
     """Subtracting 15 from the minute field alone breaks 4× an hour."""
-    hour = gdelt._batch_urls(f"{gdelt._BASE_URL}/20260920090000.export.CSV.zip")
+    hour = gdelt._batch_urls(f"{gdelt._BASE_URL}/20260920090000.export.CSV.zip", count=4)
     assert [u.rsplit("/", 1)[-1].split(".", 1)[0] for u in hour] == [
         "20260920090000", "20260920084500", "20260920083000", "20260920081500",
     ]
-    day = gdelt._batch_urls(f"{gdelt._BASE_URL}/20260921001500.export.CSV.zip")
+    day = gdelt._batch_urls(f"{gdelt._BASE_URL}/20260921001500.export.CSV.zip", count=4)
     assert [u.rsplit("/", 1)[-1].split(".", 1)[0] for u in day] == [
         "20260921001500", "20260921000000", "20260920234500", "20260920233000",
     ]
 
 
-def test_fetch_reads_four_batches(monkeypatch):
+def test_fetch_reads_two_hours_to_bridge_one_missed_hourly_cycle(monkeypatch):
+    """The cron is hourly with no retry, and a deploy across :00 pauses it. One
+    hour of batches covers an on-time cycle exactly and bridges nothing."""
     fetched = _stub(monkeypatch)
     asyncio.run(gdelt.fetch_gdelt())
     exports = [u for u in fetched if u.endswith(".export.CSV.zip")]
-    assert len(exports) == gdelt._BATCH_COUNT == 4
+    assert len(exports) == gdelt._BATCH_COUNT == 8
+    stamps = [u.rsplit("/", 1)[-1].split(".", 1)[0] for u in exports]
+    assert stamps[0] == _LATEST and stamps[-1] == "20260920064500"  # 1h45 earlier
 
 
 def test_dedup_is_by_global_event_id(monkeypatch):

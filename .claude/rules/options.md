@@ -77,7 +77,7 @@ email). Two gates, both load-bearing:
 - **Only `severity == "HIGH"` notifies.** MEDIUM/LOW still persist and show in the
   Monitor tab — they're for browsing, not pushing. Without this, email carried ~100
   MEDIUM/LOW rows across 70 tickers every cycle.
-- **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 15-min
+- **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 30-min
   cycle is pushed once per 6h TTL, not every cycle. In-memory, keyed on
   ticker+type (+contract for spikes), never on the message (its numbers drift).
   Resets on deploy like the spike baseline — re-notifies once, accepted.

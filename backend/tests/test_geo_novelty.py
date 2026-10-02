@@ -29,12 +29,12 @@ def db():
     session.close()
 
 
-def _story(i, *, lat=50.4, lon=30.5):
+def _story(i, *, lat=50.4, lon=30.5, date="20260921120000"):
     return GdeltEvent(
         id=f"gdelt-{i}", title="t", event_code="190", event_root_code="19", quad_class=4,
         goldstein_scale=-10.0, num_mentions=20, num_sources=1, num_articles=20, avg_tone=-8.0,
         latitude=lat, longitude=lon + i * 0.01, location="Kyiv", actor1="A", actor2="B",
-        date_added="20260921120000", source_url=f"https://ex.test/{i}",
+        date_added=date, source_url=f"https://ex.test/{i}",
     )
 
 
@@ -110,6 +110,64 @@ def test_the_cluster_carries_the_region_novelty():
     ]
     cluster = [e for e in sentinel.analyze_gdelt_events(rows) if e.type == "geopolitical_escalation"]
     assert cluster and cluster[0].raw_data["novelty"]["novel"] is True
+
+
+# ── The ingest reads two hours; every count is over the newest one ────
+
+
+def test_the_bridge_reaches_the_matcher_but_is_not_counted():
+    """Newest batch 12:00, so the hour is 11:15–12:00 (four batches). A row from
+    11:00 was a missed cycle's news: it must still become an event, but counting
+    it would change the unit the 7-day baseline was measured in."""
+    rows = [
+        _story(1), _story(2, date="20260921111500"),  # in the hour, edge included
+        _story(3, date="20260921110000"), _story(4, date="20260921103000"),  # bridge
+        _story(5, lat=26.0, lon=56.0, date="20260921110000"),  # Hormuz, bridge only
+    ]
+    events = {e.region: e for e in sentinel.analyze_gdelt_events(rows)
+              if e.type == "armed_conflict"}
+    assert events["ukraine_black_sea"].raw_data["storiesThisHour"] == 2
+    assert sentinel._gdelt_history["ukraine_black_sea"][-1][0] == 2
+    hormuz = events["strait_of_hormuz"]  # tracked, not counted
+    assert hormuz.raw_data["storiesThisHour"] == 0
+    assert hormuz.raw_data["novelty"]["stories"] == 0
+
+
+def test_a_region_at_its_baseline_is_not_novel_when_the_bridge_doubles_the_read():
+    """THE hazard of widening the window: counted per read, an ongoing war at
+    its hourly baseline reads 2× its median and pages as novel for days."""
+    _history("ukraine_black_sea", [20] * 24)
+    rows = [_story(i) for i in range(20)] + [
+        _story(100 + i, date="20260921110000") for i in range(20)
+    ]
+    ukraine = [e for e in sentinel.analyze_gdelt_events(rows)
+               if e.type == "armed_conflict" and e.region == "ukraine_black_sea"][0]
+    assert ukraine.raw_data["novelty"] == {"stories": 20, "baseline": 20, "novel": False}
+
+
+def test_the_cluster_bar_counts_the_newest_hour_only():
+    """Ten stories was calibrated on one hour; two hours would halve the bar."""
+    def mixed(start, date):
+        return [
+            GdeltEvent(id=f"g-{start + i}", title="t", event_code=code, event_root_code=root,
+                       quad_class=4, goldstein_scale=gs, num_mentions=20, num_sources=1,
+                       num_articles=20, avg_tone=-8.0, latitude=50.4,
+                       longitude=30.5 + (start + i) * 0.01, location="Kyiv", actor1="A",
+                       actor2="B", date_added=date, source_url=f"https://ex.test/c{start + i}")
+            for i, (code, root, gs) in enumerate([("190", "19", -10.0), ("154", "15", -7.2)] * 3)
+        ]
+    rows = mixed(0, "20260921120000") + mixed(10, "20260921110000")  # 6 + 6 bridged
+    assert [e for e in sentinel.analyze_gdelt_events(rows)
+            if e.type == "geopolitical_escalation"] == []
+
+
+def test_a_row_without_a_usable_stamp_still_counts():
+    """It cannot be placed in or out of the hour; dropping it would silently
+    thin the feed if GDELT ever changed the column."""
+    rows = [_story(1), _story(2, date=""), _story(3, date="garbage")]
+    ukraine = [e for e in sentinel.analyze_gdelt_events(rows)
+               if e.type == "armed_conflict" and e.region == "ukraine_black_sea"][0]
+    assert ukraine.raw_data["storiesThisHour"] == 3
 
 
 def _gdelt_event(novel):
