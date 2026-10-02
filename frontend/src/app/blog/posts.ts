@@ -80,6 +80,15 @@ export const POST_META = [
       'Chile retiene el 35 % del dividendo a un residente español y el convenio de 2003 no lo limita: una excepción en su artículo 10 deja el impuesto adicional sin tope. Qué deduces en el IRPF con el artículo 80 y qué parte se pierde por el camino.',
   },
   {
+    slug: 'dividendos-surcoreanos-espana',
+    tag: 'Fiscalidad',
+    date: '27 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos surcoreanos en España: cómo recuperar el 7 % retenido de más',
+    excerpt:
+      'Corea del Sur retiene el 22 % de tus dividendos, pero el convenio de 1994 limita el impuesto al 15 %. Desde 2024 el alivio en origen está cerrado para la vía minorista, así que la única puerta es reclamar. Cómo declarar el bruto y pedir la devolución al National Tax Service.',
+  },
+  {
     slug: 'dividendos-polacos-espana',
     tag: 'Fiscalidad',
     date: '25 sep 2026',

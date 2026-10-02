@@ -2305,11 +2305,39 @@ function ImgDividendosSudafricanos() {
   );
 }
 
+function ImgDividendosSurcoreanos() {
+  return (
+    <div className={styles.postImgDividendosSurcoreanos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">COREA · 22 % → 15 % → IRPF</text>
+        {/* sealed origin gate */}
+        <rect x="16" y="30" width="60" height="56" rx="5" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="4 3" />
+        <text x="46" y="52" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">origen</text>
+        <text x="46" y="64" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">cerrado</text>
+        <text x="46" y="78" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">desde 2024</text>
+        {/* retained bar */}
+        <rect x="88" y="42" width="30" height="44" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="103" y="62" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">22 %</text>
+        <text x="103" y="73" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retenido</text>
+        <text x="103" y="100" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Seúl cobra</text>
+        {/* reclaim arrow to refund */}
+        <path d="M124 64h16" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m133 58 8 6-8 6" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="146" y="46" width="42" height="36" rx="4" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="167" y="62" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−7 pp</text>
+        <text x="167" y="74" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">reclamable</text>
+        <text x="167" y="100" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">NTS · 5 años</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
   'dividendos-sudafricanos-espana': ImgDividendosSudafricanos,
   'dividendos-indios-espana': ImgDividendosIndios,
   'dividendos-israelies-espana': ImgDividendosIsraelies,
   'dividendos-chilenos-espana': ImgDividendosChilenos,
+  'dividendos-surcoreanos-espana': ImgDividendosSurcoreanos,
   'dividendos-polacos-espana': ImgDividendosPolacos,
   'dividendos-japoneses-espana': ImgDividendosJaponeses,
   'rsu-stock-options-irpf-espana': ImgRsuStockOptions,
