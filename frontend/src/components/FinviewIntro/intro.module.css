@@ -1,4 +1,6 @@
 .page {
+  /* Anchors the replay button to the hero: the page scrolls on below it. */
+  position: relative;
   background: var(--fv-paper);
   color: var(--fv-ink);
   min-height: 100vh;
@@ -144,7 +146,7 @@
 }
 
 .replay {
-  position: fixed;
+  position: absolute;
   bottom: 24px;
   right: 24px;
   z-index: 50;
