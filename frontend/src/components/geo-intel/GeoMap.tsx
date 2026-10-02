@@ -22,9 +22,9 @@ const ADMIN1_TOPO =
   "https://cdn.jsdelivr.net/gh/martynafford/natural-earth-geojson@master/50m/cultural/ne_50m_admin_1_states_provinces.json";
 
 const COLORS = {
-  bullish: "#6B7A3A",
-  bearish: "#9B3D2C",
-  neutral: "#9A6B1F",
+  bullish: "var(--fv-success)",
+  bearish: "var(--fv-danger)",
+  neutral: "var(--fv-ochre)",
 };
 
 const DEFAULT_CENTER: [number, number] = [10, 15];
@@ -136,20 +136,20 @@ export function GeoMap({
                   geography={geo}
                   style={{
                     default: {
-                      fill: "#EDE8DE",
-                      stroke: "rgba(31,27,22,0.18)",
+                      fill: "var(--muted)",
+                      stroke: "color-mix(in srgb, var(--fv-ink) 18%, transparent)",
                       strokeWidth: 0.5,
                       outline: "none",
                     },
                     hover: {
-                      fill: "#E6E0D2",
-                      stroke: "rgba(31,27,22,0.25)",
+                      fill: "color-mix(in srgb, var(--muted), var(--fv-ink) 4%)",
+                      stroke: "color-mix(in srgb, var(--fv-ink) 25%, transparent)",
                       strokeWidth: 0.5,
                       outline: "none",
                     },
                     pressed: {
-                      fill: "#E6E0D2",
-                      stroke: "rgba(31,27,22,0.25)",
+                      fill: "color-mix(in srgb, var(--muted), var(--fv-ink) 4%)",
+                      stroke: "color-mix(in srgb, var(--fv-ink) 25%, transparent)",
                       strokeWidth: 0.5,
                       outline: "none",
                     },
@@ -174,21 +174,21 @@ export function GeoMap({
                     style={{
                       default: {
                         fill: "none",
-                        stroke: "rgba(31,27,22,0.22)",
+                        stroke: "color-mix(in srgb, var(--fv-ink) 22%, transparent)",
                         strokeWidth: 0.6 / zoom,
                         outline: "none",
                         pointerEvents: "none",
                       },
                       hover: {
                         fill: "none",
-                        stroke: "rgba(31,27,22,0.22)",
+                        stroke: "color-mix(in srgb, var(--fv-ink) 22%, transparent)",
                         strokeWidth: 0.6 / zoom,
                         outline: "none",
                         pointerEvents: "none",
                       },
                       pressed: {
                         fill: "none",
-                        stroke: "rgba(31,27,22,0.22)",
+                        stroke: "color-mix(in srgb, var(--fv-ink) 22%, transparent)",
                         strokeWidth: 0.6 / zoom,
                         outline: "none",
                         pointerEvents: "none",
@@ -205,7 +205,7 @@ export function GeoMap({
               key={`arc-${s.id}`}
               from={[s.lng, s.lat]}
               to={[anchor.lng, anchor.lat]}
-              stroke="#9A6B1F"
+              stroke="var(--fv-ochre)"
               strokeWidth={0.6}
               strokeOpacity={0.35}
               strokeLinecap="round"
@@ -223,7 +223,7 @@ export function GeoMap({
             ),
           ).map((a) => (
             <Marker key={`anchor-${a.label}`} coordinates={[a.lng, a.lat]}>
-              <circle r={2.5} fill="#1F1B16" opacity={0.55} />
+              <circle r={2.5} fill="var(--fv-ink)" opacity={0.55} />
             </Marker>
           ))}
 
@@ -255,7 +255,7 @@ export function GeoMap({
                   <circle
                     r={r + 4}
                     fill="none"
-                    stroke="#9A6B1F"
+                    stroke="var(--fv-ochre)"
                     strokeWidth={1.2}
                     strokeOpacity={0.9}
                   />
@@ -264,7 +264,7 @@ export function GeoMap({
                   r={emphasized ? r * 0.8 : r * 0.55}
                   fill={color}
                   fillOpacity={0.9}
-                  stroke="#FEFCF5"
+                  stroke="var(--card)"
                   strokeWidth={emphasized ? 1.4 : 1}
                 />
                 {hoverId === s.id && (
@@ -276,14 +276,14 @@ export function GeoMap({
                       ry={4}
                       width={Math.max(120, s.headline.length * 4.8)}
                       height={32}
-                      fill="#FEFCF5"
-                      stroke="rgba(31,27,22,0.14)"
+                      fill="var(--card)"
+                      stroke="color-mix(in srgb, var(--fv-ink) 14%, transparent)"
                     />
                     <text
                       x={8}
                       y={13}
                       fontSize={7}
-                      fill="#1F1B16"
+                      fill="var(--fv-ink)"
                       style={{ fontFamily: "var(--font-sans), system-ui, sans-serif", fontWeight: 600 }}
                     >
                       {s.headline}
@@ -292,7 +292,7 @@ export function GeoMap({
                       x={8}
                       y={25}
                       fontSize={6}
-                      fill="rgba(31,27,22,0.6)"
+                      fill="color-mix(in srgb, var(--fv-ink) 60%, transparent)"
                       style={{ fontFamily: "var(--fv-font-jetbrains), monospace" }}
                     >
                       {s.location} · risk {s.riskScore.toFixed(1)}
@@ -305,11 +305,11 @@ export function GeoMap({
         </ZoomableGroup>
       </ComposableMap>
 
-      <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-4 rounded-md border border-[rgba(31,27,22,0.14)] bg-[#FEFCF5]/85 px-3 py-2 text-[11px] text-[#1F1B16] shadow-[0_4px_16px_rgba(31,27,22,0.08)] backdrop-blur">
+      <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-4 rounded-md border border-foreground/14 bg-card/85 px-3 py-2 text-[11px] text-foreground shadow-[var(--fv-shadow-md)] backdrop-blur">
         <LegendDot color={COLORS.bearish} label="Bearish" />
         <LegendDot color={COLORS.bullish} label="Bullish" />
         <LegendDot color={COLORS.neutral} label="Neutral" />
-        <span className="ml-2 font-mono text-[10px] text-[rgba(31,27,22,0.6)]">
+        <span className="ml-2 font-mono text-[10px] text-foreground/60">
           size = importance
         </span>
       </div>
