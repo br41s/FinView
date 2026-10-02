@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'dividendos-colombianos-espana',
+    tag: 'Fiscalidad',
+    date: '1 oct 2026',
+    readTime: '11 min',
+    title: 'Dividendos colombianos en España: el 5 % del convenio y la devolución a la DIAN',
+    excerpt:
+      'Colombia retiene el 20 % del dividendo —y hasta el 48 % si sale de beneficios gravados—, pero el convenio de 2005 lo limita al 5 %. La trampa: Colombia no lo aplica en origen, así que el exceso se reclama a la DIAN y solo durante cinco años.',
+  },
+  {
     slug: 'dividendos-sudafricanos-espana',
     tag: 'Fiscalidad',
     date: '30 sep 2026',
@@ -78,6 +87,15 @@ export const POST_META = [
     title: 'Dividendos chilenos en España: el 35 % que el convenio no te deja recuperar',
     excerpt:
       'Chile retiene el 35 % del dividendo a un residente español y el convenio de 2003 no lo limita: una excepción en su artículo 10 deja el impuesto adicional sin tope. Qué deduces en el IRPF con el artículo 80 y qué parte se pierde por el camino.',
+  },
+  {
+    slug: 'dividendos-surcoreanos-espana',
+    tag: 'Fiscalidad',
+    date: '27 sep 2026',
+    readTime: '10 min',
+    title: 'Dividendos surcoreanos en España: cómo recuperar el 7 % retenido de más',
+    excerpt:
+      'Corea del Sur retiene el 22 % de tus dividendos, pero el convenio de 1994 limita el impuesto al 15 %. Desde 2024 el alivio en origen está cerrado para la vía minorista, así que la única puerta es reclamar. Cómo declarar el bruto y pedir la devolución al National Tax Service.',
   },
   {
     slug: 'dividendos-polacos-espana',

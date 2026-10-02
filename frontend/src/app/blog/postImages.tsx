@@ -2305,11 +2305,72 @@ function ImgDividendosSudafricanos() {
   );
 }
 
+function ImgDividendosSurcoreanos() {
+  return (
+    <div className={styles.postImgDividendosSurcoreanos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">COREA · 22 % → 15 % → IRPF</text>
+        {/* sealed origin gate */}
+        <rect x="16" y="30" width="60" height="56" rx="5" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5" strokeDasharray="4 3" />
+        <text x="46" y="52" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">origen</text>
+        <text x="46" y="64" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">cerrado</text>
+        <text x="46" y="78" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">desde 2024</text>
+        {/* retained bar */}
+        <rect x="88" y="42" width="30" height="44" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="103" y="62" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">22 %</text>
+        <text x="103" y="73" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retenido</text>
+        <text x="103" y="100" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">Seúl cobra</text>
+        {/* reclaim arrow to refund */}
+        <path d="M124 64h16" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m133 58 8 6-8 6" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="146" y="46" width="42" height="36" rx="4" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <text x="167" y="62" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">−7 pp</text>
+        <text x="167" y="74" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">reclamable</text>
+        <text x="167" y="100" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">NTS · 5 años</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgDividendosColombianos() {
+  return (
+    <div className={styles.postImgDividendosColombianos}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">COLOMBIA · 20 % RETENIDO → TOPE 5 %</text>
+        {/* Two-layer withholding bar */}
+        <rect x="34" y="26" width="30" height="72" rx="4" fill="var(--fv-ochre-ghost)" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <rect x="34" y="26" width="30" height="26" rx="4" fill="var(--fv-ochre)" opacity="0.28" />
+        <rect x="34" y="52" width="30" height="14" fill="var(--fv-ink-40)" opacity="0.30" />
+        <text x="49" y="42" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">20 %</text>
+        <text x="49" y="62" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">+35 %</text>
+        <text x="49" y="108" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">retiene la DIAN</text>
+        {/* Ceiling at 5 % */}
+        <path d="M20 90h72" stroke="var(--fv-ink-60)" strokeWidth="1" strokeDasharray="4 3" />
+        <text x="17" y="88" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="end">tope</text>
+        <text x="17" y="95" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="end">5 %</text>
+        {/* Arrow to refund claim */}
+        <path d="M66 62h40" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m100 57 6 5-6 5" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        {/* DIAN refund document */}
+        <rect x="110" y="30" width="78" height="60" rx="6" fill="none" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="M120 42h58" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <path d="M120 50h40" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="149" y="66" fontSize="7" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">DIAN</text>
+        <text x="149" y="78" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">devolución</text>
+        <text x="149" y="86" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">certificado retención · 5 años</text>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el convenio no se aplica solo: hay que pedirlo</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'dividendos-colombianos-espana': ImgDividendosColombianos,
   'dividendos-sudafricanos-espana': ImgDividendosSudafricanos,
   'dividendos-indios-espana': ImgDividendosIndios,
   'dividendos-israelies-espana': ImgDividendosIsraelies,
   'dividendos-chilenos-espana': ImgDividendosChilenos,
+  'dividendos-surcoreanos-espana': ImgDividendosSurcoreanos,
   'dividendos-polacos-espana': ImgDividendosPolacos,
   'dividendos-japoneses-espana': ImgDividendosJaponeses,
   'rsu-stock-options-irpf-espana': ImgRsuStockOptions,
