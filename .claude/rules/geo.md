@@ -9,7 +9,7 @@ paths:
 ## Geo-Intel — architecture
 
 WorldHawk port: geopolitical/natural events → market signals. 84 rules / 49 regions
-(`services/geo/rules.py`), 3 country templates over 33 country markets
+(`services/geo/rules.py`), 6 country templates over 33 country markets
 (`services/geo/countries.py`), 9 ingest sources (seismic, EONET + GDACS events, FIRMS
 fires, maritime AIS, meteo, flights, GDELT, OFAC, Federal Register) — every source key
 optional, a missing key degrades that source to empty.
@@ -40,16 +40,24 @@ dropped in the sentinel, and seven countries had an instrument of their own.
   would make GDELT sanctions stories match the OFAC rules. Slugs are OFAC's vocabulary,
   but `ofac.COUNTRY_SLUGS` is not extended — `_country_of` takes the earliest name, so a
   new entry re-attributes SDN designations.
-- **Template rules** (`rules.TEMPLATE_RULES`): one written chain per event category
-  (earthquake, cyclone, flood), rendered for the event's country by `resolve_rule`, with
-  one leg — the country ETF, bearish. The id is **shared by every country**
-  (`tpl-earthquake-national`), so `geo_rule_stats` pools its samples; a rule per country
-  would never reach the ten resolutions the learned mod needs. A template states only
-  what holds for any country. What a quake does to one country's copper is a
-  hand-written rule's claim.
-- **A template is a fallback, never an addition.** Beside a hand-written rule it would
-  enter the mean confidence and the max risk: an M7.2 under Tokyo is 52 and silent today
-  and would page at 60. `test_geo_templates.py` pins that a boxed signal is unchanged.
+- **Template rules** (`rules.TEMPLATE_RULES`): one written chain per (event category,
+  tier) — earthquake, cyclone, flood × national, local — rendered for the event's
+  country by `resolve_rule`. National is the country ETF; local is up to two companies
+  that earn only there (`countries.COUNTRY_LOCALS`), in the 13 countries that have one.
+  All legs bearish. The id is **shared by every country** (`tpl-earthquake-national`),
+  so `geo_rule_stats` pools its samples; a rule per country would never reach the ten
+  resolutions the learned mod needs. National and local are separate ids so each tier
+  keeps its own record. A template states only what holds for any country. What a quake
+  does to one country's copper is a hand-written rule's claim.
+- **Beside a hand-written rule a template adds legs and nothing else**
+  (`rules.scoring_rules`). In the mean confidence or the max risk it would change the
+  importance of events that have always been scored without it: an M7.2 under Tokyo is
+  52 and silent today and would page at 60. Written legs come first and win a symbol
+  collision. With no written rule the templates are all there is, and they score.
+- **Local companies are US-listed on purpose.** The +1h and +6h checkpoints are measured
+  on the US session; a Jakarta or Santiago listing would be read at a bar its exchange
+  never traded. A company with a large book abroad is not a local leg (Japan's
+  megabanks, Spain's banks, the global miners).
 - **The floor is `rules.template_floor_met`** — PAGER yellow or worse for a quake (USGS'
   own damage estimate, `raw_data.pagerAlert`), GDACS orange or red otherwise. Magnitude
   alone is not it: all seven M≥5.8 quakes of September 2026 were PAGER green, one of them
@@ -267,7 +275,13 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   `*_[` and would 400 the Bot API otherwise; keep the escaping).
 - **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
   checkpoint resolves the signal and updates the matched rules' counters in
-  geo_rule_stats. **It runs on its own job**, `POST /api/geo/audit` every 4 hours
+  geo_rule_stats. **Each rule learns from its own legs** (`_update_rule_stats`): the
+  symbols it names, each against its own direction. One outcome for the whole basket
+  used to teach every matched rule, so a mod followed whatever else was in the signal
+  (GLD and USO drift, mostly). A rule whose own legs were unreadable learns nothing; a
+  tied basket can still teach one rule right and another wrong; a leg the LLM added
+  teaches no rule. A signal carrying none of a rule's current legs — written before the
+  rule was last edited — is scored whole, as before. **It runs on its own job**, `POST /api/geo/audit` every 4 hours
   (`geo-intel-audit`), not inside the hourly cycle: `run_audit` = recompute
   confidence_mods → score due checkpoints → re-rate every ACTIVE signal.
   - **confidence_mod is derived from accuracy, never stepped**:

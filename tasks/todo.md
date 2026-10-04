@@ -25,9 +25,9 @@ porque las plantillas de ciclón e inundación dependen de esa severidad.
 - [x] Docs: `.claude/rules/geo.md`, `CLAUDE.md` (conteos), cabecera de `rules.py`, decisiones.
 
 ### Fase 2 — plantillas junto a reglas escritas y nivel local
-- [ ] Auditor: lectura por pata y cada regla aprende de sus propias patas.
-- [ ] Mezcla: la plantilla añade patas pero no entra en confianza ni riesgo.
-- [ ] Hasta 2 empresas por país, por domicilio, cotizadas en EE. UU.
+- [x] Auditor: lectura por pata y cada regla aprende de sus propias patas.
+- [x] Mezcla: la plantilla añade patas pero no entra en confianza ni riesgo.
+- [x] Hasta 2 empresas por país, por domicilio, cotizadas en EE. UU.
 
 ### Fase 3 — escalera
 - [ ] `ladder.py`: estado por nivel (pendiente / confirmado / contradicho / ilegible).
