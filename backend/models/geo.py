@@ -101,6 +101,9 @@ class GeoSignal(Base):
     # Event content
     headline: Mapped[str] = mapped_column(String(300), nullable=False)
     location: Mapped[str] = mapped_column(String(200), default="")
+    # services/geo/countries.py slug, as the source reported it; NULL when the
+    # source names no country. A template rule is rendered for this country.
+    country: Mapped[str | None] = mapped_column(String(40))
     lat: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
     lng: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
 

@@ -27,6 +27,7 @@ from backend.models import (
 from backend.services.prices import fetch_price_series
 from backend.services.yahoo_budget import Budget
 
+from .rules import fetch_order
 from .trading_time import add_trading_time
 
 logger = logging.getLogger(__name__)
@@ -323,7 +324,7 @@ def evaluate_pending(
         s.id: s
         for s in db.query(GeoSignal).filter(GeoSignal.id.in_(signal_ids)).all()
     }
-    symbols = sorted({t.symbol for s in signals.values() for t in s.tickers})
+    symbols = fetch_order(t.symbol for s in signals.values() for t in s.tickers)
     cache = series_cache if series_cache is not None else {}
     intraday = _series_for(symbols, budget, cache.setdefault("5m", {}), **_INTRADAY)
     # The daily series backs only what the intraday one cannot: symbols with no
@@ -433,7 +434,7 @@ def rate_active(
     )
     if not active:
         return 0
-    symbols = sorted({t.symbol for s in active for t in s.tickers})
+    symbols = fetch_order(t.symbol for s in active for t in s.tickers)
     cache = series_cache if series_cache is not None else {}
     intraday = _series_for(symbols, budget, cache.setdefault("5m", {}), **_INTRADAY)
     need_daily = sorted(

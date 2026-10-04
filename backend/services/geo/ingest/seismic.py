@@ -30,6 +30,7 @@ def _parse(geojson: dict) -> list[SeismicEvent]:
                 longitude=float(lon),
                 depth=float(coords[2]) if len(coords) > 2 and coords[2] is not None else 0.0,
                 url=props.get("url") or "",
+                alert=props.get("alert") or None,
             )
         )
     return out

@@ -488,6 +488,9 @@ class GeoSignalTickerOut(BaseModel):
     # not_tradable — with the nearest EU-listed alternative when one exists.
     tradability: str = "cash_eu"
     alternate: str | None = None
+    # Where the instrument sits between the event and the world: local (a company
+    # bound to one country) | national (that country's market) | international.
+    tier: str = "international"
 
 
 class GeoRuleOut(BaseModel):
@@ -521,6 +524,7 @@ class GeoSignalOut(BaseModel):
     lat: float
     lng: float
     location: str
+    country: str | None = None  # display name of the country the source reported
     importance: int  # 0-100
     confidence: float  # 0-1
     riskScore: float  # 0-10

@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .chokepoints import CHOKEPOINTS, is_cargo, is_tanker
+from .countries import COUNTRY_ETF, country_from_fips, country_from_iso3, country_from_place
 from .ingest.ofac import COUNTRY_SLUGS
 from .ingest.types import (
     FireHotspot,
@@ -52,6 +53,11 @@ class GeoEvent:
     severity: str | None = None
     region: str | None = None
     raw_data: dict = field(default_factory=dict)
+    # Where the event is, as a countries.py slug — the source's own word for it,
+    # never geometry. Not the same thing as raw_data["country"], which is the
+    # *target* of a policy action and what the `country=` rule atom reads: a wire
+    # story stamped there would start matching the OFAC rules.
+    country: str | None = None
 
 
 # ── Relevance thresholds ─────────────────────────────────────────────
@@ -81,7 +87,12 @@ def analyze_earthquakes(quakes: list[SeismicEvent]) -> list[GeoEvent]:
         if q.magnitude < _MIN_EARTHQUAKE_MAG:
             continue
         regions = match_regions(q.latitude, q.longitude)
-        if not regions:
+        country = country_from_place(q.place)
+        # A box, or a country with a market of its own. The boxes were drawn for
+        # commodity and chokepoint theses, so "inside a box" used to be the only
+        # way a quake existed at all — and one that flattened a city outside
+        # them was dropped here, before any rule saw it.
+        if not regions and country not in COUNTRY_ETF:
             continue
         out.append(
             GeoEvent(
@@ -91,10 +102,11 @@ def analyze_earthquakes(quakes: list[SeismicEvent]) -> list[GeoEvent]:
                 latitude=q.latitude,
                 longitude=q.longitude,
                 magnitude=q.magnitude,
-                region=regions[0],
+                region=regions[0] if regions else None,
                 source="usgs",
                 timestamp=q.time or _now_ms(),
-                raw_data={"depth": q.depth, "url": q.url},
+                raw_data={"depth": q.depth, "url": q.url, "pagerAlert": q.alert},
+                country=country,
             )
         )
     return out
@@ -105,7 +117,12 @@ def analyze_natural_events(events: list[NaturalEvent]) -> list[GeoEvent]:
     out: list[GeoEvent] = []
     for e in events:
         regions = match_regions(e.latitude, e.longitude)
-        if not regions and e.severity != "red":
+        country = country_from_iso3(e.countries)
+        # Outside every box an event needs to be red — or orange in a country
+        # with a market of its own. Only GDACS names a country and an alert
+        # level; EONET's open-for-months volcanoes still need a box.
+        national = e.severity == "orange" and country in COUNTRY_ETF
+        if not regions and e.severity != "red" and not national:
             continue
         etype = _NATURAL_TYPE.get(e.category)
         if not etype:
@@ -122,6 +139,7 @@ def analyze_natural_events(events: list[NaturalEvent]) -> list[GeoEvent]:
                 source=e.source,
                 timestamp=_now_ms(),
                 raw_data={"category": e.category, "url": e.url},
+                country=country,
             )
         )
     return out
@@ -717,6 +735,7 @@ def analyze_gdelt_events(gdelt_events: list[GdeltEvent]) -> list[GeoEvent]:
                         bucket["region_key"], {"stories": bucket["stories"], "baseline": None, "novel": None}
                     ),
                 },
+                country=country_from_fips(evt.country_code),
             )
         )
 
@@ -938,6 +957,7 @@ def analyze_ofac_actions(actions: list[OfacAction]) -> list[GeoEvent]:
                     "url": action.url,
                     "actionTitle": action.title,
                 },
+                country=country,
             ))
     return out
 
@@ -985,5 +1005,6 @@ def analyze_fedreg_documents(docs: list[FedRegDocument]) -> list[GeoEvent]:
                     "url": doc.url,
                     "abstract": doc.abstract[:400],
                 },
+                country=country,
             ))
     return out

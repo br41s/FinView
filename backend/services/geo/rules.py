@@ -16,6 +16,13 @@ instrument were deleted (``vol-japan``, ``wx-heat-mediterranean``, ``wx-precip-c
 ``iceberg-shipping``, ``wx-lowpres-atlantic``, ``eq-indonesia-nickel``,
 ``vol-indonesia-palm``, ``gdelt-protest-southeast-asia``).
 
+The 2026-10-04 country layer (``countries.py``) added what the hand-written table
+cannot scale to: an event now carries the country its source reports, three
+``TEMPLATE_RULES`` relate a damaging quake, cyclone or flood to that country's own
+market when no hand-written rule covers it, and ``allowed_symbols`` keeps every
+path — rules, templates and both LLM calls — from relating an event to another
+country's instrument. A template is a fallback, never an addition.
+
 Port decisions (flagged in the spec as un-enforced in the JS matcher):
 - ``fire.cluster>=N``: IMPLEMENTED here (the sentinel computes cluster size; gating
   on it makes the fire rules behave as written — only major clusters move markets).
@@ -33,6 +40,8 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from backend.models import GeoRuleStat
+
+from .countries import COUNTRIES, COUNTRY_ETF, INSTRUMENT_COUNTRY, country_phrase
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +187,27 @@ INSTRUMENT_TRADABILITY: dict[str, tuple[str, str]] = {
         "RTX", "SCCO", "SQM", "TM", "TRV", "TSM", "UAL", "WY", "ZIM",
     )},
 }
+
+# The country ETFs the country layer brought in (countries.py): national by
+# construction, with the route measured there. The seven that were already rule
+# legs keep the entries written above.
+for _c in COUNTRIES:
+    if _c.etf:
+        INSTRUMENT_BREADTH.setdefault(_c.etf, "national")
+        INSTRUMENT_TRADABILITY.setdefault(_c.etf, (_c.route, _c.alternate))
+_COUNTRY_ETFS = frozenset(COUNTRY_ETF.values())
+
+
+def instrument_tier(symbol: str) -> str:
+    """Where an instrument sits between the event and the world.
+
+    local — a company bound to one country · national — that country's market ·
+    international — a commodity, a sector, anything no single country owns.
+    Derived from the country table, so a symbol is never tagged by hand twice.
+    """
+    if symbol in _COUNTRY_ETFS:
+        return "national"
+    return "local" if symbol in INSTRUMENT_COUNTRY else "international"
 
 
 # Base market-impact risk per event category (1 = noise, 10 = systemic). This is
@@ -1390,6 +1420,189 @@ def match_rules(event) -> list[FastRule]:
     return out
 
 
+# ── Template rules: one written chain per event category, any covered country ──
+# A hand-written rule names its region and its basket; writing one per country
+# per event type would be some 300 rules, each firing too rarely to ever reach
+# the ten resolutions the learning loop wants. A template is written once and
+# applied to whichever country the event is in, and its id is shared by every
+# country, so `geo_rule_stats` learns "a damaging quake moves the country's
+# market" from all of them together.
+#
+# The chain is still written, not inferred — per event category rather than per
+# country, with the country's name filled in. A template states only what holds
+# for any country: the national market reprices. What a quake does to one
+# country's cement or copper is a hand-written rule's claim to make.
+@dataclass(frozen=True)
+class RuleTemplate:
+    id: str
+    category: str
+    description: str  # "{country}" is filled with the event's country
+    chain: tuple[str, str, str]
+    base_confidence: float
+
+
+# base_confidence 0.50 on purpose: importance = confidence × risk/10 and the
+# highest risk a template can reach is 8, so an unlearned template tops out at
+# 40 against a notify gate of 60. It sits on the board; it reaches a phone only
+# after its own record has lifted it (tested in test_geo_templates.py).
+TEMPLATE_RULES: tuple[RuleTemplate, ...] = (
+    RuleTemplate(
+        "tpl-earthquake-national", "earthquake",
+        "Damaging earthquake in {country}",
+        (
+            "a damaging quake stops plants, ports and transport across the struck part of {country}",
+            "lost output and uninsured losses are marked against the companies listed there",
+            "the country ETF holds those companies and nothing outside {country}",
+        ),
+        0.50,
+    ),
+    RuleTemplate(
+        "tpl-cyclone-national", "cyclone",
+        "Severe tropical cyclone hits {country}",
+        (
+            "a severe cyclone shuts ports, power and crops along the coast of {country}",
+            "a quarter's output and the repair bill are marked against the companies listed there",
+            "the country ETF holds those companies and nothing outside {country}",
+        ),
+        0.50,
+    ),
+    RuleTemplate(
+        "tpl-flood-national", "flood",
+        "Severe flooding in {country}",
+        (
+            "severe flooding cuts roads, power and harvests in {country}",
+            "lost output and the repair bill are marked against the companies listed there",
+            "the country ETF holds those companies and nothing outside {country}",
+        ),
+        0.50,
+    ),
+)
+TEMPLATES_BY_ID: dict[str, RuleTemplate] = {t.id: t for t in TEMPLATE_RULES}
+
+# A quake event carries no severity, so the generic red headroom never reaches
+# it: PAGER's estimate of the damage is what separates one that shook a city
+# from one that broke it.
+_PAGER_HEADROOM = {"orange": 1, "red": 2}
+
+
+def is_template(rule: FastRule) -> bool:
+    return rule.id in TEMPLATES_BY_ID
+
+
+def template_floor_met(event) -> bool:
+    """Whether an event is big enough to be read against its country's market.
+
+    This is the one judgement the templates rest on. Too low, and weekly events
+    that never move a market teach the shared template that it is wrong — for
+    every country at once. Too high, and it never gathers the ten resolutions
+    the learning loop needs to say anything.
+
+    What an event carries: ``event.type`` (earthquake | cyclone | flood),
+    ``event.magnitude``, ``event.raw_data["depth"]`` (km) and
+    ``event.raw_data["pagerAlert"]`` — USGS's own estimate of the damage, green |
+    yellow | orange | red, None until it is computed — for a quake; and
+    ``event.severity`` (GDACS: green | orange | red) for a cyclone or a flood.
+    """
+    # TODO(human): the floor below is a provisional default. Measured 2026-10-04:
+    # all seven M≥5.8 quakes of the previous month were PAGER green, including an
+    # M6.6 at 10 km depth, so "M≥6.0 and shallow" would have fired on quakes that
+    # damaged nothing. PAGER yellow or worse is rarer — a few dozen a year
+    # worldwide — which means a slower-learning template.
+    raw = getattr(event, "raw_data", None) or {}
+    if event.type == "earthquake":
+        return raw.get("pagerAlert") in {"yellow", "orange", "red"}
+    return getattr(event, "severity", None) in {"orange", "red"}
+
+
+def resolve_rule(rule_id: str, country: str | None = None, event=None) -> FastRule | None:
+    """The rule behind an id: a hand-written one as it stands, or a template
+    made concrete for ``country``. None for an unknown id or an uncovered country.
+
+    ``event`` only sets the risk of an earthquake template (PAGER headroom); a
+    caller that renders the rule — the API — does not need it.
+    """
+    rule = RULES_BY_ID.get(rule_id)
+    if rule is not None:
+        return rule
+    template = TEMPLATES_BY_ID.get(rule_id)
+    etf = COUNTRY_ETF.get(country or "")
+    if template is None or etf is None:
+        return None
+    name = country_phrase(country)
+    chain = tuple(clause.format(country=name) for clause in template.chain)
+    pager = (getattr(event, "raw_data", None) or {}).get("pagerAlert")
+    return FastRule(
+        id=template.id,
+        category=template.category,
+        condition=f"country={country}",
+        description=template.description.format(country=name),
+        tickers=(RuleTicker(etf, "bearish"),),
+        direction=" → ".join(chain),
+        base_confidence=template.base_confidence,
+        risk=CATEGORY_RISK.get(template.category, _DEFAULT_RISK) + _PAGER_HEADROOM.get(pager, 0),
+        scope="local",
+        chain=chain,
+    )
+
+
+def match_templates(event) -> list[FastRule]:
+    """The national reading of an event in a country with a market of its own.
+
+    The caller decides when it applies; today that is only when no hand-written
+    rule matched (see analyst.correlate_with_rules).
+    """
+    country = getattr(event, "country", None)
+    if country not in COUNTRY_ETF or not template_floor_met(event):
+        return []
+    return [
+        resolve_rule(t.id, country, event) for t in TEMPLATE_RULES if t.category == event.type
+    ]
+
+
+# ── The gate: which instruments an event may be related to ───────────
+# What a hand-written rule already attaches to a region box is that box's
+# neighbourhood: a Korean-peninsula event reaches EWY whichever side of the
+# border it is geocoded on.
+_REGION_SYMBOLS: dict[str, frozenset[str]] = {}
+for _rule in FAST_RULES:
+    _m = _RE_REGION.search(_rule.condition)
+    if _m:
+        _REGION_SYMBOLS[_m.group(1)] = _REGION_SYMBOLS.get(_m.group(1), frozenset()) | {
+            t.symbol for t in _rule.tickers
+        }
+_CORE_SYMBOLS = frozenset(t.symbol for r in FAST_RULES for t in r.tickers)
+
+
+def allowed_symbols(event) -> frozenset[str]:
+    """The slice of the universe an event may be related to.
+
+    An instrument bound to a country (countries.INSTRUMENT_COUNTRY) is admitted
+    for an event in that country, or in a region box a hand-written rule already
+    ties it to. Everything unbound — commodities, sectors, global — is admitted
+    everywhere. An event in Brazil never reaches an Indonesian instrument,
+    whoever proposes it: this is the check both LLM paths answer to.
+    """
+    country = getattr(event, "country", None)
+    nearby: set[str] = set()
+    for region in match_regions(event.latitude, event.longitude):
+        nearby |= _REGION_SYMBOLS.get(region, frozenset())
+    return frozenset(
+        s for s in INSTRUMENT_BREADTH
+        if s not in INSTRUMENT_COUNTRY or INSTRUMENT_COUNTRY[s] == country or s in nearby
+    )
+
+
+def fetch_order(symbols) -> list[str]:
+    """The order to ask Yahoo in: the hand-written rules' symbols first.
+
+    A stall spends the cycle's budget on whatever is asked first and leaves the
+    rest unpriced (prices._STALL_CHUNK). Alphabetical order would put ECH, EIDO
+    and the EW* country funds ahead of GLD, USO and XLE, so the baskets that
+    have always priced would be the ones to go without.
+    """
+    return sorted(set(symbols), key=lambda s: (s not in _CORE_SYMBOLS, s))
+
+
 _SCOPE_LOCAL_MAX_AREA = 200  # deg²; regions up to ~turkey / ukraine are "local"
 
 
@@ -1443,14 +1656,14 @@ def effective_confidence(rule: FastRule, stat: GeoRuleStat | None) -> float:
 
 
 def seed_rule_stats(db: Session) -> int:
-    """Idempotently seed geo_rule_stats from the static FAST_RULES table.
+    """Idempotently seed geo_rule_stats from the static rule and template tables.
 
     Inserts any missing rule_id with its base_confidence; never overwrites learned
     tuning on existing rows. Returns the number of new rows inserted.
     """
     existing = {row.rule_id for row in db.query(GeoRuleStat.rule_id).all()}
     inserted = 0
-    for rule in FAST_RULES:
+    for rule in (*FAST_RULES, *TEMPLATE_RULES):
         if rule.id in existing:
             continue
         db.add(

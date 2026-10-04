@@ -77,6 +77,7 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("geo_signals", "live_score", "NUMERIC(5, 2)"),
     ("geo_signals", "live_outcome", "VARCHAR(20)"),
     ("geo_signals", "live_rated_at", "TIMESTAMP"),
+    ("geo_signals", "country", "VARCHAR(40)"),
     ("geo_cycle_runs", "notify_failed", "INTEGER"),
     ("users", "terms_version", "VARCHAR(20)"),
     ("users", "terms_accepted_at", "TIMESTAMP"),

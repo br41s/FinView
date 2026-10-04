@@ -35,7 +35,14 @@ from backend.models import (
     GeoSignalStatus,
 )
 from backend.services.geo.owner import geo_owner_id
-from backend.services.geo.rules import RULES_BY_ID, effective_confidence, rule_scope, INSTRUMENT_TRADABILITY
+from backend.services.geo.countries import country_name
+from backend.services.geo.rules import (
+    INSTRUMENT_TRADABILITY,
+    effective_confidence,
+    instrument_tier,
+    resolve_rule,
+    rule_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +89,21 @@ def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[Geo
         rule_ids = json.loads(signal.matched_rule_ids)
     except ValueError:
         return []
-    valid_ids = [rid for rid in rule_ids if rid in RULES_BY_ID]
+    # A template id is one row for every country: it becomes a rule — its basket,
+    # its chain with the country's name in it — only for this signal's country.
+    rules = [resolve_rule(rid, signal.country) for rid in rule_ids]
     return [
         GeoRuleOut(
-            id=rid,
-            description=RULES_BY_ID[rid].description,
-            thesis=RULES_BY_ID[rid].thesis,
-            scope=rule_scope(RULES_BY_ID[rid]),
-            confidence=effective_confidence(RULES_BY_ID[rid], stats.get(rid)),
-            category=RULES_BY_ID[rid].category,
-            trigger=RULES_BY_ID[rid].condition,
+            id=rule.id,
+            description=rule.description,
+            thesis=rule.thesis,
+            scope=rule_scope(rule),
+            confidence=effective_confidence(rule, stats.get(rule.id)),
+            category=rule.category,
+            trigger=rule.condition,
         )
-        for rid in valid_ids
+        for rule in rules
+        if rule is not None
     ]
 
 
@@ -157,6 +167,7 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
         lat=float(signal.lat),
         lng=float(signal.lng),
         location=signal.location or "",
+        country=country_name(signal.country) or None,
         importance=signal.importance,
         confidence=float(signal.confidence),
         riskScore=float(signal.risk_score),
@@ -168,6 +179,7 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
                 priceAtSignal=float(t.price_at_signal) if t.price_at_signal is not None else None,
                 tradability=INSTRUMENT_TRADABILITY.get(t.symbol, ("cash_eu", ""))[0],
                 alternate=INSTRUMENT_TRADABILITY.get(t.symbol, ("cash_eu", ""))[1] or None,
+                tier=instrument_tier(t.symbol),
             )
             for t in signal.tickers
         ],

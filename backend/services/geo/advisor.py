@@ -20,6 +20,7 @@ from backend.models import (
 )
 
 from .analyst import AnalystResult
+from .countries import country_name
 from .rules import dumps_rule_ids
 
 logger = logging.getLogger(__name__)
@@ -222,7 +223,8 @@ def generate_signal(
         source=event.source,
         external_id=event.id,
         headline=event.title[:300],
-        location=(event.region or "").replace("_", " ")[:200],
+        location=((event.region or "").replace("_", " ") or country_name(event.country))[:200],
+        country=event.country,
         lat=event.latitude,
         lng=event.longitude,
         importance=importance,

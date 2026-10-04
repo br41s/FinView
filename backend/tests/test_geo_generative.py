@@ -81,6 +81,23 @@ def test_picks_wider_than_the_events_reach_are_dropped():
     assert _validate_generated({**GOOD, "tickers": [{"symbol": "GLD", "direction": "bullish"}]}, "local") is None
 
 
+def test_another_countrys_instrument_is_dropped_whatever_the_model_says():
+    """Breadth alone let an Indonesian event pick Brazil's market: both are "national"."""
+    from backend.services.geo.rules import allowed_symbols
+    from backend.services.geo.sentinel import GeoEvent
+
+    jakarta = GeoEvent(id="g", type="mass_protest", title="t", latitude=-6.2, longitude=106.8,
+                       source="gdelt", timestamp=0, country="indonesia")
+    picks = {**GOOD, "tickers": [
+        {"symbol": "EWZ", "direction": "bearish"},   # Brazil
+        {"symbol": "EIDO", "direction": "bearish"},  # Indonesia
+    ]}
+    allowed = allowed_symbols(jakarta)
+    assert [t["symbol"] for t in _validate_generated(picks, "local", allowed)["tickers"]] == ["EIDO"]
+    only_foreign = {**GOOD, "tickers": [{"symbol": "EWZ", "direction": "bearish"}]}
+    assert _validate_generated(only_foreign, "local", allowed) is None
+
+
 def test_analyze_unmatched_builds_a_rule_free_analysis(monkeypatch):
     monkeypatch.setattr(analyst, "_llm_generate", lambda event: _validate_generated(GOOD))
     ev = _event()
