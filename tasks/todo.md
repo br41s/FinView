@@ -30,9 +30,9 @@ porque las plantillas de ciclón e inundación dependen de esa severidad.
 - [x] Hasta 2 empresas por país, por domicilio, cotizadas en EE. UU.
 
 ### Fase 3 — escalera
-- [ ] `ladder.py`: estado por nivel (pendiente / confirmado / contradicho / ilegible).
-- [ ] Lectura por pata guardada; aciertos por nivel y condicionados en `/geo/accuracy`.
-- [ ] Franja Local → Nacional → Internacional en el panel.
+- [x] `ladder.py`: estado por nivel (pendiente / confirmado / contradicho / ilegible).
+- [x] Lectura por pata guardada; aciertos por nivel y condicionados en `/geo/accuracy`.
+- [x] Escalera en el panel: los grupos Local / Nacional / Internacional, cada uno con su lectura.
 - Aplazado hasta poder medirlo: que un nivel confirmado suba la confianza del siguiente.
 
 ## Legal y cumplimiento (RGPD · LSSI-CE · consumo · MiFID/MAR · AI Act) — 2026-09-30 (rama `feat/legal-compliance`)

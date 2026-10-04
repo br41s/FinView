@@ -88,6 +88,35 @@ dropped in the sentinel, and seven countries had an instrument of their own.
   and XLE. A template signal whose one leg has no price is not created that cycle — it
   would sit unmeasurable for seven days holding the event's dedup row.
 
+### The ladder — a basket read tier by tier (`services/geo/ladder.py`)
+An event that hurts a country shows first in the companies that earn only there, then in
+the country's market, and only sometimes in what the rest of the world prices. One score
+for the whole basket could not say how far an event had travelled.
+
+- **Each leg keeps its own reading** on `geo_signal_tickers`: `live_change_pct` and
+  `live_state` are overwritten by every audit while the signal is active, `final_state`
+  is written once at +7d. **NULL is "never read", not "flat"** — a leg with no price this
+  run keeps the reading it had, like the signal's live rating.
+- **`ladder.leg_state` is the only definition of "moved as predicted"** (confirms /
+  contradicts / flat against the leg's own sigma). The auditor's `_score` calls it, so
+  the basket score, the rules' learning and the ladder cannot disagree.
+- **`ladder.tier_states`**: pending (no leg read) · confirmed (more legs with the thesis
+  than against) · contradicted · unreadable (read, and decided nothing — no measurable
+  move, or an even split). A tie is not a confirmation, the same rule that makes a
+  1-for-2 basket NEUTRAL.
+- **On the wire**: each ticker carries `state` (the +7d one once it exists) and
+  `liveChangePct`; the signal carries `ladder`. `/geo/accuracy` adds `tiers` (hit rate
+  per tier at +7d) and `ladder` — for local→national and national→international, the
+  wider tier's hit rate when the narrower one confirmed (`rate`, over `n` signals)
+  against its hit rate overall (`baseline`).
+- **Nothing here moves a confidence, on purpose.** "A confirmed local tier makes the
+  national one more likely" is a hypothesis until `rate` beats `baseline` on real
+  resolutions. The lift ships once ~30 laddered signals have resolved, derived from that
+  gap the way `learned_confidence_mod` is derived from accuracy — never a hand-set step.
+  `test_geo_ladder.py` fails if a lift appears in the module before then.
+- **Copy**: a rung reads "a favor / en contra / sin lectura / pendiente" — where prices
+  went against the written thesis, in the live rating's own words. Never a reason to act.
+
 ### GDACS — SEARCH with an activity window, never MAP
 `geteventlist/MAP` answers **400 "Eventtype is required."** and nothing noticed: the
 source counts EONET and GDACS together, and EONET carries no alert level, so no natural
@@ -362,8 +391,9 @@ In the detail panel (`components/geo-intel/SignalPanel.tsx`): stats
 (importance/confidence/risk/direction), **"Why this was triggered"** (the matched
 rules with their thesis and confidence), affected tickers with per-ticker
 direction **grouped by tier** (Local / Nacional / Internacional, `lib/geo.ts`
-`groupByTier`; a basket with no tier renders as one unlabelled group), and the
-5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
+`groupByTier`; a basket with no tier renders as one unlabelled group) — read top
+to bottom the groups are the ladder, each headed by how its tier reads
+(`tierStateBadge`) — and the 5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
 expands `PrecioTab` + `FundamentalsCard` inline, with **"Añadir a Zonas Clave"**
 (one click to the technical desk — the panel re-renders on every poll, so the
 button owns its own state rather than taking props) and links out to
