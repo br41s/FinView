@@ -120,8 +120,11 @@ def _parse_gdacs(text: str) -> list[NaturalEvent]:
         if geom.get("type") == "Point" and isinstance(coords, list):
             lon, lat = coords[0], coords[1]
         elif isinstance(coords, list) and coords and isinstance(coords[0], list):
-            ring = coords[0][0] if isinstance(coords[0][0], list) else coords[0]
-            lon, lat = ring[0], ring[1]
+            try:
+                ring = coords[0][0] if isinstance(coords[0][0], list) else coords[0]
+                lon, lat = ring[0], ring[1]
+            except IndexError:
+                continue  # an empty ring: this feature, not the whole feed
         else:
             continue
         if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):

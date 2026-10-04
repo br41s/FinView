@@ -224,9 +224,31 @@ def test_once_resolved_the_final_reading_is_the_one_served(db):
     assert out.ladder[0].state == "confirmed"
 
 
-def test_a_signal_older_than_the_ladder_reads_as_pending_not_as_an_error(db):
+def test_an_open_signal_not_read_yet_is_pending(db):
     out = _serialize(db.get(GeoSignal, _signal(db, {WORLD: "bullish"})), {})
     assert [(s.tier, s.state) for s in out.ladder] == [("international", "pending")]
+
+
+def test_a_signal_resolved_before_legs_kept_a_reading_has_no_ladder(db):
+    """It would otherwise show three rungs waiting for a price that never comes."""
+    signal = db.get(GeoSignal, _signal(db, {LOCAL: "bearish", WORLD: "bullish"}))
+    signal.status = GeoSignalStatus.RESOLVED.value
+    db.commit()
+    db.expire_all()
+    assert _serialize(db.get(GeoSignal, signal.id), {}).ladder == []
+
+
+def test_once_resolved_a_tier_never_read_is_unreadable_not_pending(db):
+    signal_id = _signal(db, {LOCAL: "bearish", NATIONAL: "bearish"})
+    signal = db.get(GeoSignal, signal_id)
+    signal.status = GeoSignalStatus.RESOLVED.value
+    next(t for t in signal.tickers if t.symbol == LOCAL).final_state = "confirms"
+    db.commit()
+    db.expire_all()
+    out = _serialize(db.get(GeoSignal, signal_id), {})
+    assert [(s.tier, s.state) for s in out.ladder] == [
+        ("local", "confirmed"), ("national", "unreadable"),
+    ]
 
 
 # ── /geo/accuracy: what the ladder has measured ───────────────────────

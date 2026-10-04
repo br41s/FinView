@@ -55,6 +55,7 @@ def test_a_place_ends_in_its_country(place, slug):
         "South China Sea",
         "East China Sea",
         "Sea of Japan",
+        "Gulf of Thailand",
         "south of the Fiji Islands",  # a country with no market here
         "80 km ENE of Tadine, New Caledonia",
         "",

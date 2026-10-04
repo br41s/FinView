@@ -147,7 +147,8 @@ INSTRUMENT_COUNTRY: dict[str, str] = {
 
 # Names inside a USGS place that are not the country: a state, a sea, a ridge.
 _PLACE_TRAPS = re.compile(
-    r"New Mexico|Gulf of Mexico|Chile Rise|South China Sea|East China Sea|Sea of Japan",
+    r"New Mexico|Gulf of Mexico|Chile Rise|South China Sea|East China Sea|Sea of Japan"
+    r"|Gulf of Thailand",
     re.IGNORECASE,
 )
 # Longest name first, so the alternation prefers "South Africa" to a shorter name

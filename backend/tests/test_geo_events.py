@@ -88,6 +88,16 @@ def test_a_feature_without_usable_coordinates_is_skipped():
     assert events._parse_gdacs(_payload(broken, missing)) == []
 
 
+def test_an_empty_polygon_costs_its_own_feature_and_nothing_else():
+    """`coordinates: [[]]` used to raise IndexError out of the parser."""
+    empty = _feature(eventid=1)
+    empty["geometry"] = {"type": "Polygon", "coordinates": [[]]}
+    ring = _feature(eventid=2)
+    ring["geometry"] = {"type": "Polygon", "coordinates": [[[100.5, 13.7], [100.6, 13.8]]]}
+    got = events._parse_gdacs(_payload(empty, ring, _feature(eventid=3)))
+    assert [e.id for e in got] == ["gdacs-2", "gdacs-3"]
+
+
 def test_a_plain_string_url_still_reads():
     (e,) = events._parse_gdacs(_payload(_feature(url="https://www.gdacs.org/report.aspx?x=1")))
     assert e.url == "https://www.gdacs.org/report.aspx?x=1"

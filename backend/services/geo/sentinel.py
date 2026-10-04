@@ -33,7 +33,7 @@ from .ingest.types import (
     SeismicEvent,
     VesselSnapshot,
 )
-from .rules import match_regions
+from .rules import match_regions, template_floor_met
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,11 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _national(event: GeoEvent) -> bool:
+    """An event the templates can read against its country's market."""
+    return event.country in COUNTRY_ETF and template_floor_met(event)
+
+
 # ── Sentinel: USGS earthquakes ───────────────────────────────────────
 def analyze_earthquakes(quakes: list[SeismicEvent]) -> list[GeoEvent]:
     out: list[GeoEvent] = []
@@ -88,27 +93,28 @@ def analyze_earthquakes(quakes: list[SeismicEvent]) -> list[GeoEvent]:
             continue
         regions = match_regions(q.latitude, q.longitude)
         country = country_from_place(q.place)
-        # A box, or a country with a market of its own. The boxes were drawn for
-        # commodity and chokepoint theses, so "inside a box" used to be the only
-        # way a quake existed at all — and one that flattened a city outside
-        # them was dropped here, before any rule saw it.
-        if not regions and country not in COUNTRY_ETF:
-            continue
-        out.append(
-            GeoEvent(
-                id=f"eq-{q.id}",
-                type="earthquake",
-                title=f"M{q.magnitude:.1f} Earthquake — {q.place}",
-                latitude=q.latitude,
-                longitude=q.longitude,
-                magnitude=q.magnitude,
-                region=regions[0] if regions else None,
-                source="usgs",
-                timestamp=q.time or _now_ms(),
-                raw_data={"depth": q.depth, "url": q.url, "pagerAlert": q.alert},
-                country=country,
-            )
+        event = GeoEvent(
+            id=f"eq-{q.id}",
+            type="earthquake",
+            title=f"M{q.magnitude:.1f} Earthquake — {q.place}",
+            latitude=q.latitude,
+            longitude=q.longitude,
+            magnitude=q.magnitude,
+            region=regions[0] if regions else None,
+            source="usgs",
+            timestamp=q.time or _now_ms(),
+            raw_data={"depth": q.depth, "url": q.url, "pagerAlert": q.alert},
+            country=country,
         )
+        # A box — or a country with a market of its own, once the quake clears
+        # the template floor. The boxes were drawn for commodity and chokepoint
+        # theses, so "inside a box" used to be the only way a quake existed at
+        # all, and one that flattened a city outside them was dropped here. The
+        # floor is the same one the template uses: a big quake that damaged
+        # nothing must not get in through this door and reach the generative LLM.
+        if not regions and not _national(event):
+            continue
+        out.append(event)
     return out
 
 
@@ -118,30 +124,29 @@ def analyze_natural_events(events: list[NaturalEvent]) -> list[GeoEvent]:
     for e in events:
         regions = match_regions(e.latitude, e.longitude)
         country = country_from_iso3(e.countries)
-        # Outside every box an event needs to be red — or orange in a country
-        # with a market of its own. Only GDACS names a country and an alert
-        # level; EONET's open-for-months volcanoes still need a box.
-        national = e.severity == "orange" and country in COUNTRY_ETF
-        if not regions and e.severity != "red" and not national:
-            continue
         etype = _NATURAL_TYPE.get(e.category)
         if not etype:
             continue
-        out.append(
-            GeoEvent(
-                id=f"evt-{e.id}",
-                type=etype,
-                title=e.title,
-                latitude=e.latitude,
-                longitude=e.longitude,
-                severity=e.severity,
-                region=regions[0] if regions else None,
-                source=e.source,
-                timestamp=_now_ms(),
-                raw_data={"category": e.category, "url": e.url},
-                country=country,
-            )
+        event = GeoEvent(
+            id=f"evt-{e.id}",
+            type=etype,
+            title=e.title,
+            latitude=e.latitude,
+            longitude=e.longitude,
+            severity=e.severity,
+            region=regions[0] if regions else None,
+            source=e.source,
+            timestamp=_now_ms(),
+            raw_data={"category": e.category, "url": e.url},
+            country=country,
         )
+        # Outside every box an event needs to be red — or to clear the template
+        # floor in a country with a market of its own. Only GDACS names a
+        # country and an alert level; EONET's open-for-months volcanoes still
+        # need a box.
+        if not regions and e.severity != "red" and not _national(event):
+            continue
+        out.append(event)
     return out
 
 

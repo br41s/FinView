@@ -40,7 +40,14 @@ from backend.models import (
 )
 from backend.services.geo.owner import geo_owner_id
 from backend.services.geo.countries import country_name
-from backend.services.geo.ladder import CONFIRMED, CONTRADICTED, TIERS, tier_states
+from backend.services.geo.ladder import (
+    CONFIRMED,
+    CONTRADICTED,
+    PENDING,
+    TIERS,
+    UNREADABLE,
+    tier_states,
+)
 from backend.services.geo.rules import (
     INSTRUMENT_TRADABILITY,
     effective_confidence,
@@ -167,6 +174,25 @@ def _leg_state(ticker: GeoSignalTicker) -> str | None:
     return ticker.final_state or ticker.live_state
 
 
+def _ladder(signal: GeoSignal) -> list[GeoTierOut]:
+    """The basket read tier by tier. "Pending" only means something while the
+    signal is open: once resolved, a tier that was never read is unreadable, and
+    a signal resolved before legs kept a reading has no ladder to show at all —
+    not three rungs waiting for a price that will never come."""
+    states = [(t.symbol, _leg_state(t)) for t in signal.tickers]
+    resolved = _ev(signal.status) == GeoSignalStatus.RESOLVED.value
+    if resolved and all(state is None for _, state in states):
+        return []
+    return [
+        GeoTierOut(
+            tier=s.tier,
+            state=UNREADABLE if resolved and s.state == PENDING else s.state,
+            legs=s.legs, confirms=s.confirms, contradicts=s.contradicts,
+        )
+        for s in tier_states(states)
+    ]
+
+
 def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut:
     checkpoints = sorted(signal.checkpoints, key=lambda c: c.target_at)
     return GeoSignalOut(
@@ -195,11 +221,7 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
             )
             for t in signal.tickers
         ],
-        ladder=[
-            GeoTierOut(tier=s.tier, state=s.state, legs=s.legs, confirms=s.confirms,
-                       contradicts=s.contradicts)
-            for s in tier_states((t.symbol, _leg_state(t)) for t in signal.tickers)
-        ],
+        ladder=_ladder(signal),
         rules=_matched_rules(signal, stats),
         checkpoints=[
             GeoCheckpointOut(
