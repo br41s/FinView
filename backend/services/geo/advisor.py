@@ -21,7 +21,7 @@ from backend.models import (
 
 from .analyst import AnalystResult
 from .countries import country_name
-from .rules import dumps_rule_ids
+from .rules import dumps_rule_ids, is_template
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,10 @@ def compute_importance(confidence: float, risk_score: int) -> int:
 
 
 def _basket_direction(tickers) -> str:
-    bull = sum(1 for t in tickers if t.direction == "bullish")
-    bear = sum(1 for t in tickers if t.direction == "bearish")
+    # A leg read back from the DB carries a GeoDirection member, an analysis leg a
+    # plain string: without this a stored basket always reads neutral.
+    directions = [getattr(t.direction, "value", t.direction) for t in tickers]
+    bull, bear = directions.count("bullish"), directions.count("bearish")
     if bull > bear:
         return "bullish"
     if bear > bull:
@@ -123,6 +125,42 @@ def _raw_json(raw_data: dict | None) -> str | None:
     if len(text) > 4000 and "llmNarrative" in raw_data:
         text = json.dumps({k: v for k, v in raw_data.items() if k != "llmNarrative"})
     return text[:4000]
+
+
+def _adopt_template_legs(
+    signal: GeoSignal, analysis: AnalystResult, prices: dict[str, float]
+) -> None:
+    """Give an ACTIVE signal the template legs it was created without.
+
+    A quake is usually tracked before USGS has rated its damage: the first cycle
+    sees PAGER empty, the written rule matches alone and the signal is created
+    with that rule's legs. When the rating arrives the templates clear their
+    floor — and a basket only ever written at creation would never carry the
+    country's market or its local companies, in exactly the countries the
+    written rules cover best. Each adopted leg is priced now and measured from
+    now. Confidence, risk and paging are not touched.
+    """
+    try:
+        known = json.loads(signal.matched_rule_ids) if signal.matched_rule_ids else []
+    except ValueError:
+        known = []
+    fresh = [r for r in analysis.matched_rules if is_template(r) and r.id not in known]
+    if not fresh:
+        return
+    carried = {t.symbol for t in signal.tickers}
+    legs = {t.symbol: t.direction for r in fresh for t in r.tickers if t.symbol not in carried}
+    if legs and not any(symbol in prices for symbol in legs):
+        return  # no price yet: the next cycle retries, as at creation
+    for symbol, direction in legs.items():
+        price = prices.get(symbol)
+        signal.tickers.append(
+            GeoSignalTicker(
+                symbol=symbol, direction=direction, price_at_signal=price,
+                resolved=price is not None,
+            )
+        )
+    signal.matched_rule_ids = json.dumps([*known, *(r.id for r in fresh)])
+    signal.country = signal.country or analysis.event.country
 
 
 def _reanchor(db: Session, signal: GeoSignal, prices: dict[str, float]) -> None:
@@ -192,6 +230,10 @@ def generate_signal(
             direction = existing.direction
         else:
             risk = analysis.risk_score if analysis.llm_narrative else int(existing.risk_score)
+            # The direction is the stored basket's, not today's analysis': the
+            # two differ whenever the analysis names a leg the signal lacks.
+            _adopt_template_legs(existing, analysis, prices)
+            direction = _basket_direction(existing.tickers)
         importance = compute_importance(confidence, risk)
         shift = abs(confidence - round(float(existing.confidence) * 100))
         # notified_at is the retry ledger: a gated signal no channel delivered

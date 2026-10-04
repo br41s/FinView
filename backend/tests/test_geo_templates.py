@@ -347,6 +347,15 @@ def test_a_quake_outside_every_box_in_an_unlisted_country_is_still_dropped():
     ) == []  # the magnitude floor is unchanged
 
 
+def test_a_big_quake_that_damaged_nothing_does_not_get_in_through_the_country_door():
+    """No box used to mean no event. Admitting every M5.5+ in a covered country
+    would hand an M7 that PAGER rates green to the generative LLM (it is
+    "salient" on magnitude alone) — the case the floor exists to reject."""
+    for alert in ("green", None):
+        quake = _seismic("12 km S of Mexico City, Mexico", MEXICO_CITY, magnitude=7.2, alert=alert)
+        assert sentinel.analyze_earthquakes([quake]) == [], alert
+
+
 def test_a_boxed_quake_carries_its_country_too():
     (event,) = sentinel.analyze_earthquakes([_seismic("3 km E of Chiba, Japan", TOKYO, 6.8)])
     assert (event.country, event.region) == ("japan", "japan")
@@ -410,6 +419,100 @@ def test_a_template_signal_with_no_price_waits_for_the_next_cycle(db, monkeypatc
     assert _run(db, monkeypatch, {}).new_signals == 0
     assert db.query(GeoSignal).count() == 0
     assert _run(db, monkeypatch, {"EWW": 61.2}).new_signals == 1
+
+
+# ── A signal tracked before the damage was rated ──────────────────────
+
+
+def _cycle(db, monkeypatch, event, prices):
+    analysis = analyze_event(event, stats={})
+    inputs = orchestrator.CycleInputs(
+        bundle=_Bundle(), events=[event], analyses=[analysis], stats={}, prices=dict(prices),
+        yahoo=None,
+        # Every leg was "tried" by the shared fetch: an unpriced one must stay
+        # unpriced rather than send the cycle to Yahoo for it.
+        attempted={t.symbol for t in analysis.tickers},
+    )
+    monkeypatch.setattr(orchestrator, "_dispatch_notifications", lambda db, uid, results: (0, 0))
+    return orchestrator.run_cycle(db, 1, inputs)
+
+
+CHILE_PRICES = {"HG=F": 4.5, "ANTO.L": 3800.0, "ECH": 31.0, "BCH": 28.0, "ENIC": 3.6}
+
+
+def test_a_signal_gains_the_template_legs_when_the_rating_arrives(db, monkeypatch):
+    """USGS rates the damage some minutes after the quake. The cycle that tracked
+    it first saw no rating, so the written rule matched alone; a basket only ever
+    written at creation would never carry Chile's market or its companies."""
+    first = _quake(SANTIAGO, country="chile", pager=None, event_id="eq-late")
+    _cycle(db, monkeypatch, first, CHILE_PRICES)
+    (signal,) = db.query(GeoSignal).all()
+    before = (signal.importance, float(signal.confidence), float(signal.risk_score))
+    assert [t.symbol for t in signal.tickers] == ["HG=F", "ANTO.L"]
+
+    rated = _quake(SANTIAGO, country="chile", pager="orange", event_id="eq-late")
+    result = _cycle(db, monkeypatch, rated, {**CHILE_PRICES, "ECH": 30.2})
+    db.expire_all()
+    (signal,) = db.query(GeoSignal).all()
+    assert result.new_signals == 0, "the same signal, not a second one"
+    assert [t.symbol for t in signal.tickers] == ["HG=F", "ANTO.L", "ECH", "BCH", "ENIC"]
+    assert float(next(t for t in signal.tickers if t.symbol == "ECH").price_at_signal) == 30.2
+    assert signal.matched_rule_ids == (
+        '["eq-chile-copper", "tpl-earthquake-national", "tpl-earthquake-local"]'
+    )
+    assert (signal.importance, float(signal.confidence), float(signal.risk_score)) == before
+    assert signal.direction.value == "bearish"  # one leg up, four down: the stored basket's
+
+    _cycle(db, monkeypatch, rated, CHILE_PRICES)  # a third cycle adopts nothing twice
+    db.expire_all()
+    assert len(db.query(GeoSignal).one().tickers) == 5
+
+
+def test_the_direction_is_the_stored_baskets_when_nothing_can_be_adopted(db, monkeypatch):
+    """Before, the refresh took the analysis' direction — which now counts
+    template legs the signal may not carry yet."""
+    _cycle(db, monkeypatch, _quake(SANTIAGO, country="chile", pager=None, event_id="eq-np"),
+           CHILE_PRICES)
+    rated = _quake(SANTIAGO, country="chile", pager="orange", event_id="eq-np")
+    _cycle(db, monkeypatch, rated, {"HG=F": 4.5, "ANTO.L": 3800.0})  # no price for the new legs
+    db.expire_all()
+    (signal,) = db.query(GeoSignal).all()
+    assert [t.symbol for t in signal.tickers] == ["HG=F", "ANTO.L"]
+    assert signal.direction.value == "neutral"  # one up, one down, as stored
+    assert signal.matched_rule_ids == '["eq-chile-copper"]'
+
+
+def test_a_template_whose_leg_the_signal_already_carries_only_joins_the_record(db, monkeypatch):
+    """Japan's fund is a leg of the written rule: nothing to add, but the
+    template must still be taught by it at +7d."""
+    prices = {"EWJ": 70.0, "TM": 180.0}
+    _cycle(db, monkeypatch, _quake(TOKYO, country="japan", magnitude=7.2, pager=None,
+                                   event_id="eq-jp"), prices)
+    _cycle(db, monkeypatch, _quake(TOKYO, country="japan", magnitude=7.2, pager="red",
+                                   event_id="eq-jp"), prices)
+    db.expire_all()
+    (signal,) = db.query(GeoSignal).all()
+    assert [t.symbol for t in signal.tickers] == ["EWJ", "TM"]
+    assert signal.matched_rule_ids == '["eq-japan-industrial", "tpl-earthquake-national"]'
+
+
+# ── Two fallbacks, one event ──────────────────────────────────────────
+
+
+def test_an_event_a_template_reads_does_not_also_get_a_generated_thesis(monkeypatch):
+    """Both are for events no written rule covers. The template is deterministic
+    and measurable; the generative call is skipped for anything that already has
+    legs. An M7+ in a box with no quake rule used to get a generated thesis that
+    could page at 68 — it is now a template signal at 40 at most, until the
+    template has a record. Decided, not accidental."""
+    calls = []
+    monkeypatch.setattr(orchestrator, "analyze_unmatched",
+                        lambda event, regime=None: calls.append(event.id))
+    manila = _quake((14.6, 121.0), country="philippines", magnitude=7.4, pager="red")
+    assert match_regions(14.6, 121.0) and match_rules(manila) == []  # boxed, no quake rule
+    analyses = [analyze_event(manila, stats={})]
+    assert orchestrator._generative_pass(analyses, None) == 0 and calls == []
+    assert [t.symbol for t in analyses[0].tickers] == ["EPHE", "PHI"]
 
 
 # ── Price fetch order ─────────────────────────────────────────────────
