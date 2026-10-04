@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatAccuracyLine,
   groupByTier,
+  tierStateBadge,
   scopeLabel,
   thesisSegments,
   tradabilityHint,
@@ -9,6 +10,7 @@ import {
   type GeoCheckpointHorizon,
   type GeoHorizonAccuracy,
   type GeoSignalTicker,
+  type GeoTierStep,
   macroRegimeBadge,
 } from "./geo";
 
@@ -195,7 +197,7 @@ describe("groupByTier", () => {
   it("renders an untiered basket as one unlabelled group, exactly as before", () => {
     const legacy = [ticker("USO"), ticker("GLD")];
     expect(groupByTier(legacy)).toEqual([
-      { tier: null, label: null, title: null, tickers: legacy },
+      { tier: null, label: null, title: null, tickers: legacy, step: null },
     ]);
   });
 
@@ -217,6 +219,63 @@ describe("groupByTier", () => {
       .join(" ")
       .toLowerCase();
     for (const verb of ["compra", "vend", "invert", "especul", "entra"]) {
+      expect(text).not.toContain(verb);
+    }
+  });
+});
+
+describe("the ladder", () => {
+  const step = (over: Partial<GeoTierStep>): GeoTierStep => ({
+    tier: "local",
+    state: "pending",
+    legs: 2,
+    confirms: 0,
+    contradicts: 0,
+    ...over,
+  });
+  const ticker = (symbol: string, tier: GeoSignalTicker["tier"]): GeoSignalTicker => ({
+    symbol,
+    direction: "bearish",
+    priceAtSignal: null,
+    tier,
+  });
+
+  it("hangs each rung's reading on its group", () => {
+    const groups = groupByTier(
+      [ticker("BCH", "local"), ticker("ECH", "national"), ticker("HG=F", "international")],
+      [step({ tier: "local", state: "confirmed", confirms: 1, legs: 1 }), step({ tier: "national" })],
+    );
+    expect(groups.map((g) => g.step?.state ?? null)).toEqual(["confirmed", "pending", null]);
+  });
+
+  it("says where prices went, in the live rating's own words", () => {
+    expect(tierStateBadge(step({ state: "confirmed", confirms: 2 }))).toEqual({
+      text: "a favor",
+      tone: "ok",
+      title: "2 de 2 se movieron como describe la tesis.",
+    });
+    expect(tierStateBadge(step({ state: "contradicted", contradicts: 1 }))?.text).toBe("en contra");
+    expect(tierStateBadge(step({ state: "contradicted", contradicts: 1 }))?.title).toBe(
+      "1 de 2 se movieron en contra de la tesis.",
+    );
+    expect(tierStateBadge(step({ state: "unreadable" }))?.tone).toBe("warn");
+    expect(tierStateBadge(step({ state: "pending" }))?.text).toBe("pendiente");
+  });
+
+  it("draws nothing when the API sent no ladder", () => {
+    expect(tierStateBadge(null)).toBeNull();
+    expect(tierStateBadge(undefined)).toBeNull();
+    expect(tierStateBadge(step({ state: "later" as GeoTierStep["state"] }))).toBeNull();
+  });
+
+  it("never words a reading as something to do", () => {
+    const states: GeoTierStep["state"][] = ["pending", "confirmed", "contradicted", "unreadable"];
+    const text = states
+      .map((state) => tierStateBadge(step({ state, confirms: 1, contradicts: 1 })))
+      .map((b) => `${b?.text} ${b?.title}`)
+      .join(" ")
+      .toLowerCase();
+    for (const verb of ["compra", "vend", "invert", "especul", "entra", "oportunidad"]) {
       expect(text).not.toContain(verb);
     }
   });
