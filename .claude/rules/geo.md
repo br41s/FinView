@@ -9,8 +9,9 @@ paths:
 ## Geo-Intel — architecture
 
 WorldHawk port: geopolitical/natural events → market signals. 84 rules / 49 regions
-(`services/geo/rules.py`), 9 ingest sources (seismic, EONET events, FIRMS fires,
-maritime AIS, meteo, flights, GDELT, OFAC, Federal Register) — every source key
+(`services/geo/rules.py`), 3 country templates over 33 country markets
+(`services/geo/countries.py`), 9 ingest sources (seismic, EONET + GDACS events, FIRMS
+fires, maritime AIS, meteo, flights, GDELT, OFAC, Federal Register) — every source key
 optional, a missing key degrades that source to empty.
 
 ### Every rule states its reach and writes down its transmission
@@ -20,6 +21,73 @@ renders as the thesis, `scope` bounds the basket against `INSTRUMENT_BREADTH` an
 mismatch costs confidence. A leg whose third clause cannot be written is dropped and a rule
 with no surviving leg is deleted (eight were, 2026-09-21). `INSTRUMENT_TRADABILITY` tags
 each symbol cash_eu / options_only / not_tradable with its UCITS or EU-listed alternate.
+
+### Country layer — where an event is, and what it may reach
+The boxes were drawn for commodity and chokepoint theses, so until 2026-10-04 an event
+that hurt one country and nobody else had nowhere to go: a quake outside every box was
+dropped in the sentinel, and seven countries had an instrument of their own.
+
+- **The country is the source's own word, never geometry.** GDELT's export carries
+  `ActionGeo_CountryCode` in column 53 (**FIPS 10-4, not ISO**: `SP` is Spain, `CH` is
+  China, `AS` is Australia), a USGS `place` ends in the country — including the offshore
+  quakes a polygon misses — and GDACS lists the countries affected (ISO3). Only the last
+  comma-part of a place is read (towns are named after countries) and a short trap list
+  drops "New Mexico", "Gulf of Mexico", "Chile Rise" and the seas. A GDACS event is
+  attributed **only when it names exactly one listed country**: which of three a typhoon
+  hit hardest is not in the feed.
+- **`GeoEvent.country` is not `raw_data["country"]`.** The second is the *target* of a
+  policy action and is what the `country=` rule atom reads. Stamping a wire story there
+  would make GDELT sanctions stories match the OFAC rules. Slugs are OFAC's vocabulary,
+  but `ofac.COUNTRY_SLUGS` is not extended — `_country_of` takes the earliest name, so a
+  new entry re-attributes SDN designations.
+- **Template rules** (`rules.TEMPLATE_RULES`): one written chain per event category
+  (earthquake, cyclone, flood), rendered for the event's country by `resolve_rule`, with
+  one leg — the country ETF, bearish. The id is **shared by every country**
+  (`tpl-earthquake-national`), so `geo_rule_stats` pools its samples; a rule per country
+  would never reach the ten resolutions the learned mod needs. A template states only
+  what holds for any country. What a quake does to one country's copper is a
+  hand-written rule's claim.
+- **A template is a fallback, never an addition.** Beside a hand-written rule it would
+  enter the mean confidence and the max risk: an M7.2 under Tokyo is 52 and silent today
+  and would page at 60. `test_geo_templates.py` pins that a boxed signal is unchanged.
+- **The floor is `rules.template_floor_met`** — PAGER yellow or worse for a quake (USGS'
+  own damage estimate, `raw_data.pagerAlert`), GDACS orange or red otherwise. Magnitude
+  alone is not it: all seven M≥5.8 quakes of September 2026 were PAGER green, one of them
+  M6.6 at 10 km. Set it too low and the shared template learns it is wrong for every
+  country at once.
+- **A template cannot page until it has earned it.** Base confidence 0.50 × the highest
+  risk it can reach (8, a PAGER-red quake) is 40 against a gate of 60. Cyclone and flood
+  top out at risk 7 and 5 and never page.
+- **The gate is `rules.allowed_symbols(event)`**: an instrument bound to a country
+  (`countries.INSTRUMENT_COUNTRY`) is admitted for an event in that country, or in a
+  region box a hand-written rule already ties it to (a Korean-peninsula event reaches EWY
+  whichever side it is geocoded on). Unbound instruments are admitted everywhere. Both
+  LLM paths answer to it — the enrichment used to append whatever the model named, the
+  one way a symbol outside the universe entered a signal.
+- **Only quakes and GDACS orange widen the sentinel.** GDELT stories outside a box are
+  keyed by 1° cell (dozens of buckets an hour), EONET volcanoes stay open for months and
+  FIRMS is agricultural burning: those are stamped with a country and still need a box.
+- **Adding a country fund**: confirm 5-minute bars on Yahoo, set `route` from the open
+  interest of the two nearest expiries (~1000 contracts is the line; EPHE and EIS list no
+  options), add it to `EXPECTED_SYMBOLS`. ENZL was tried and left out — 69 bars in five
+  sessions. A bound company must be domiciled *and* operating in the one country;
+  Southern Copper (Peru and Mexico) is bound to nothing.
+- **Tier is a property of the instrument** (`rules.instrument_tier`): local = a company
+  bound to a country, national = a country fund, international = the rest. A Taiwan
+  signal can carry China's fund as "national".
+- **Prices are asked core-first** (`rules.fetch_order`): a stall spends the budget on
+  whatever comes first, and alphabetical order put the country funds ahead of GLD, USO
+  and XLE. A template signal whose one leg has no price is not created that cycle — it
+  would sit unmeasurable for seven days holding the event's dedup row.
+
+### GDACS — SEARCH with an activity window, never MAP
+`geteventlist/MAP` answers **400 "Eventtype is required."** and nothing noticed: the
+source counts EONET and GDACS together, and EONET carries no alert level, so no natural
+event had a severity. `ingest/events.py` asks `SEARCH` for `TC;FL;VO;DR`, all three
+levels (the default is orange and red only), over the last three days. The window is on
+activity, so an event that already ended comes back too: it is dropped only on an
+explicit `iscurrent=false`, never on a missing flag. `url` is an object there, not a
+string. `TS` in GDACS is tsunami, not storm.
 
 ### Adding regions / rules — overlap is the thing to reason about
 `match_regions` returns **every** box containing the point and `match_rules` gates on
@@ -50,7 +118,8 @@ a geometry one — check which categories the boxes you overlap already carry.
   — its centroid, Albany, sees -30°C once a decade) and mind the ~500 calls/day Windy budget: the source
   fetches once per hourly cycle, ~24×/day, so each point costs ~24 calls.
 - Sentinel gates decide what ever reaches the matcher: earthquakes need `magnitude>=5.5`
-  **and** to land inside some region; natural events need a region **or** `severity=red`.
+  **and** to land inside some region or a country with a market; natural events need a
+  region, `severity=red`, or orange in a single country with a market.
   A rule whose threshold sits below the sentinel's floor is unreachable.
 - Adding is fully additive — no schema change; `seed_rule_stats` picks up new `rule_id`s
   on next boot. `base_confidence` is **not cosmetic**: it feeds
@@ -278,7 +347,9 @@ source returned anything / signals dropped / healthy). Signals silently re-fetch
 In the detail panel (`components/geo-intel/SignalPanel.tsx`): stats
 (importance/confidence/risk/direction), **"Why this was triggered"** (the matched
 rules with their thesis and confidence), affected tickers with per-ticker
-direction, and the 5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
+direction **grouped by tier** (Local / Nacional / Internacional, `lib/geo.ts`
+`groupByTier`; a basket with no tier renders as one unlabelled group), and the
+5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
 expands `PrecioTab` + `FundamentalsCard` inline, with **"Añadir a Zonas Clave"**
 (one click to the technical desk — the panel re-renders on every poll, so the
 button owns its own state rather than taking props) and links out to

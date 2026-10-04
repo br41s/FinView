@@ -1,5 +1,40 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Ideas: país, más activos y escalera local → nacional → internacional — 2026-10-04 (rama `feat/geo-country-tier`)
+
+Punto de partida: 84 reglas escritas a mano sobre 54 símbolos (USO, GLD, LMT, ZIM, DAC y XLE
+llevan el 43 % de los enlaces), solo 7 países con instrumento nacional y ningún evento sabe
+en qué país está: un terremoto fuera de las 49 cajas se descarta antes de llegar a una regla.
+Plan aprobado en `~/.claude/plans/we-need-to-improve-merry-chipmunk.md`.
+
+Hallazgo al verificar las fuentes (2026-10-04): **GDACS llevaba devolviendo 400** — el
+endpoint `geteventlist/MAP` ahora exige `eventtype` — y como comparte contador con EONET
+nadie lo veía. Sin GDACS ningún evento natural tenía severidad. Se arregla en esta rama
+porque las plantillas de ciclón e inundación dependen de esa severidad.
+
+### Fase 1 — país, nivel nacional y filtro por país
+- [x] `fix(geo)`: GDACS por `SEARCH` con ventana de fechas; país(es) afectados en `NaturalEvent`.
+- [x] `services/geo/countries.py`: tabla de países (FIPS de GDELT, ISO3 de GDACS, nombres de USGS, ETF del país) e `INSTRUMENT_COUNTRY`.
+- [x] Ingesta: columna 53 de GDELT, alerta PAGER de USGS.
+- [x] `GeoEvent.country` en el sentinel; terremotos y GDACS naranja/rojo pasan sin caja si el país está cubierto.
+- [x] `rules.py`: plantillas (`tpl-<categoría>-national`), `resolve_rule`, `instrument_tier`, `allowed_symbols`, `fetch_order`.
+- [x] `analyst.py`: plantilla solo si no hay regla escrita; las dos rutas del LLM limitadas al universo permitido para el evento.
+- [x] Orden de descarga de precios (símbolos de siempre primero); señal de plantilla sin precio no se crea.
+- [x] `geo_signals.country` + API (`country`, `tier`) + tipos y panel del frontend (chips agrupados por nivel).
+- [x] Tests nuevos y ampliados; `pytest`, `ruff`, `vitest`, `tsc`, `build`.
+- [x] Docs: `.claude/rules/geo.md`, `CLAUDE.md` (conteos), cabecera de `rules.py`, decisiones.
+
+### Fase 2 — plantillas junto a reglas escritas y nivel local
+- [ ] Auditor: lectura por pata y cada regla aprende de sus propias patas.
+- [ ] Mezcla: la plantilla añade patas pero no entra en confianza ni riesgo.
+- [ ] Hasta 2 empresas por país, por domicilio, cotizadas en EE. UU.
+
+### Fase 3 — escalera
+- [ ] `ladder.py`: estado por nivel (pendiente / confirmado / contradicho / ilegible).
+- [ ] Lectura por pata guardada; aciertos por nivel y condicionados en `/geo/accuracy`.
+- [ ] Franja Local → Nacional → Internacional en el panel.
+- Aplazado hasta poder medirlo: que un nivel confirmado suba la confianza del siguiente.
+
 ## Legal y cumplimiento (RGPD · LSSI-CE · consumo · MiFID/MAR · AI Act) — 2026-09-30 (rama `feat/legal-compliance`)
 
 Punto de partida: ningún documento legal, registro sin consentimiento, el FAQ de precios
