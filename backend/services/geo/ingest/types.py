@@ -38,6 +38,8 @@ class NaturalEvent:
 
 
 @dataclass
+    # ISO3 codes of the countries GDACS lists as affected; EONET names none.
+    countries: tuple[str, ...] = ()
 class FireHotspot:
     """NASA FIRMS VIIRS hotspot."""
 

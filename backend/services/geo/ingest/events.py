@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import date, datetime, timedelta, timezone
 
 from .base import TTLCache, fetch_text
 from .types import NaturalEvent
@@ -9,7 +10,20 @@ from .types import NaturalEvent
 logger = logging.getLogger(__name__)
 
 _EONET_URL = "https://eonet.gsfc.nasa.gov/api/v3/events?status=open"
-_GDACS_URL = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP"
+# `geteventlist/MAP` used to answer with every current event. It now answers
+# 400 "Eventtype is required." and takes one type per request, so this half of
+# the source was silently empty: EONET shares its counter and carries no alert
+# level, which left the pipeline without a single natural-event severity.
+# SEARCH takes the types and a date window in one request and returns one
+# feature per event, with the alert level and the countries affected.
+_GDACS_URL = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"
+_GDACS_TYPES = "TC;FL;VO;DR"  # EQ is USGS's and WF is FIRMS's (see the skips below)
+# Without `alertlevel` SEARCH returns orange and red only; the rules gate on a
+# region box as well, so green events are still wanted.
+_GDACS_LEVELS = "green;orange;red"
+# The window is on activity, not on the start date: a drought that began in
+# December is returned while it lasts. Three days bridges a missed cycle.
+_GDACS_WINDOW = timedelta(days=3)
 _CACHE_TTL = 15 * 60
 _cache = TTLCache()
 
@@ -70,6 +84,15 @@ def _parse_eonet(text: str) -> list[NaturalEvent]:
     return out
 
 
+def _gdacs_params(today: date) -> dict[str, str]:
+    return {
+        "eventlist": _GDACS_TYPES,
+        "alertlevel": _GDACS_LEVELS,
+        "fromDate": (today - _GDACS_WINDOW).isoformat(),
+        "toDate": (today + timedelta(days=1)).isoformat(),
+    }
+
+
 def _parse_gdacs(text: str) -> list[NaturalEvent]:
     import json
 
@@ -78,9 +101,18 @@ def _parse_gdacs(text: str) -> list[NaturalEvent]:
         d = json.loads(text)
     except ValueError:
         return out
+    # A 200 is not a payload: the error body is an object with no features,
+    # and `null` or a bare list would raise on `.get`.
+    if not isinstance(d, dict):
+        return out
     for f in d.get("features", []) or []:
         p = f.get("properties") or {}
         if p.get("eventtype") in _GDACS_SKIP:
+            continue
+        # SEARCH also returns events that ended inside the window. Only an
+        # explicit "false" drops one: a missing or renamed flag must not empty
+        # the feed.
+        if str(p.get("iscurrent")).lower() == "false":
             continue
         geom = f.get("geometry") or {}
         coords = geom.get("coordinates")
@@ -108,10 +140,22 @@ def _parse_gdacs(text: str) -> list[NaturalEvent]:
                 date=p.get("fromdate") or "",
                 source="GDACS",
                 severity=_GDACS_SEVERITY.get(p.get("alertlevel")),
-                url=p.get("url") or "",
+                url=_gdacs_url(p.get("url")),
+                countries=tuple(
+                    str(c["iso3"]).upper()
+                    for c in p.get("affectedcountries") or []
+                    if isinstance(c, dict) and c.get("iso3")
+                ),
             )
         )
     return out
+
+
+def _gdacs_url(value: object) -> str:
+    """The event's report page. SEARCH nests the links in an object; MAP sent a string."""
+    if isinstance(value, dict):
+        value = value.get("report") or value.get("details")
+    return value if isinstance(value, str) else ""
 
 
 async def fetch_events() -> list[NaturalEvent]:
@@ -121,7 +165,7 @@ async def fetch_events() -> list[NaturalEvent]:
 
     eonet_text, gdacs_text = await asyncio.gather(
         fetch_text(_EONET_URL),
-        fetch_text(_GDACS_URL),
+        fetch_text(_GDACS_URL, params=_gdacs_params(datetime.now(timezone.utc).date())),
     )
 
     events: list[NaturalEvent] = []
