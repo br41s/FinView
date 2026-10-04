@@ -2364,7 +2364,35 @@ function ImgDividendosColombianos() {
   );
 }
 
+function ImgMetodoFifo() {
+  const lots = [
+    { label: '2022', sub: '10 €', y: 34, accent: true },
+    { label: '2024', sub: '20 €', y: 58, accent: false },
+    { label: '2026', sub: '23 €', y: 82, accent: false },
+  ];
+  return (
+    <div className={styles.postImgMetodoFifo}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="18" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">FIFO — PRIMERO ENTRAR, PRIMERO SALIR</text>
+        {lots.map((l) => (
+          <g key={l.label}>
+            <rect x="26" y={l.y} width="92" height="18" rx="4" fill={l.accent ? 'var(--fv-ochre-ghost)' : 'none'} stroke={l.accent ? 'var(--fv-ochre)' : 'var(--fv-ink-30)'} strokeWidth="1.5" />
+            <text x="38" y={l.y + 12} fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui">{l.label}</text>
+            <text x="104" y={l.y + 12} fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="end">{l.sub}</text>
+          </g>
+        ))}
+        <path d="M118 43h30" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m148 38 6 5-6 5" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="156" y="34" width="30" height="18" rx="4" fill="none" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="171" y="46" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">VENTA</text>
+        <text x="100" y="112" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el lote más antiguo es el que se vende</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'metodo-fifo-irpf-espana': ImgMetodoFifo,
   'dividendos-colombianos-espana': ImgDividendosColombianos,
   'dividendos-sudafricanos-espana': ImgDividendosSudafricanos,
   'dividendos-indios-espana': ImgDividendosIndios,

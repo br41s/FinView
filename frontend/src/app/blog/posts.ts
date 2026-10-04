@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'metodo-fifo-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '4 oct 2026',
+    readTime: '11 min',
+    title: 'El método FIFO en el IRPF: cómo empareja Hacienda tus compras y ventas',
+    excerpt:
+      'Tu broker te muestra un precio medio; Hacienda aplica FIFO y da por vendidas siempre tus acciones más antiguas. Cómo se calcula lote a lote, por qué cruza todos tus brokers y qué pasa con splits, herencias y acciones fraccionadas.',
+  },
+  {
     slug: 'dividendos-colombianos-espana',
     tag: 'Fiscalidad',
     date: '1 oct 2026',
