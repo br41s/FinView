@@ -59,10 +59,26 @@ dropped in the sentinel, and seven countries had an instrument of their own.
   never traded. A company with a large book abroad is not a local leg (Japan's
   megabanks, Spain's banks, the global miners).
 - **The floor is `rules.template_floor_met`** — PAGER yellow or worse for a quake (USGS'
-  own damage estimate, `raw_data.pagerAlert`), GDACS orange or red otherwise. Magnitude
-  alone is not it: all seven M≥5.8 quakes of September 2026 were PAGER green, one of them
-  M6.6 at 10 km. Set it too low and the shared template learns it is wrong for every
-  country at once.
+  own damage estimate, `raw_data.pagerAlert`), GDACS orange or red otherwise.
+  **Provisional: the owner has not confirmed it** (the function carries the TODO).
+  Magnitude alone is not it: all seven M≥5.8 quakes of September 2026 were PAGER green,
+  one of them M6.6 at 10 km. Set it too low and the shared template learns it is wrong
+  for every country at once. The sentinel admits a no-box event through the same
+  function, so there is one floor: a big quake that damaged nothing must not enter by
+  the country door and reach the generative LLM, which treats M≥7 as salient.
+- **PAGER arrives after the quake, so legs can arrive after the signal.** The cycle that
+  first tracks a quake usually sees no rating: the written rule matches alone. When the
+  rating comes, `advisor._adopt_template_legs` adds the template legs to the ACTIVE
+  signal — priced then, measured from then — and records the template ids. Confidence,
+  risk and paging are untouched, and the signal's `direction` is always the **stored**
+  basket's, never the analysis'. No price for any new leg means no adoption that cycle.
+- **A template displaces the generative path** for the event it reads: `_generative_pass`
+  skips anything that already has legs. An M7+ in a box with no quake rule (the
+  Philippines, Indonesia) used to get a generated thesis that could page at 68; it is
+  now a template signal, 40 at most, until the template has a record. Deliberate — the
+  template is deterministic and measurable, and that thesis was chosen from a universe
+  with no instrument for the country — but it is one fewer page. Pinned in
+  `test_geo_templates.py`.
 - **A template cannot page until it has earned it.** Base confidence 0.50 × the highest
   risk it can reach (8, a PAGER-red quake) is 40 against a gate of 60. Cyclone and flood
   top out at risk 7 and 5 and never page.
@@ -105,7 +121,9 @@ for the whole basket could not say how far an event had travelled.
   move, or an even split). A tie is not a confirmation, the same rule that makes a
   1-for-2 basket NEUTRAL.
 - **On the wire**: each ticker carries `state` (the +7d one once it exists) and
-  `liveChangePct`; the signal carries `ladder`. `/geo/accuracy` adds `tiers` (hit rate
+  `liveChangePct`; the signal carries `ladder`. "Pending" only exists while a signal is
+  open: resolved, a tier never read is unreadable, and a signal resolved before legs kept
+  a reading has no ladder at all. `/geo/accuracy` adds `tiers` (hit rate
   per tier at +7d) and `ladder` — for local→national and national→international, the
   wider tier's hit rate when the narrower one confirmed (`rate`, over `n` signals)
   against its hit rate overall (`baseline`).
