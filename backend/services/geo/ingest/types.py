@@ -20,6 +20,9 @@ class SeismicEvent:
     longitude: float
     depth: float = 0.0
     url: str = ""
+    # PAGER's estimate of the damage (green | yellow | orange | red), None until
+    # USGS has computed it — usually within the hour, and only for larger quakes.
+    alert: str | None = None
 
 
 @dataclass
@@ -35,6 +38,8 @@ class NaturalEvent:
     source: str  # EONET | GDACS
     severity: str | None = None  # red|orange|green|None
     url: str = ""
+    # ISO3 codes of the countries GDACS lists as affected; EONET names none.
+    countries: tuple[str, ...] = ()
 
 
 @dataclass
@@ -117,6 +122,8 @@ class GdeltEvent:
     actor2: str
     date_added: str
     source_url: str
+    # ActionGeo_CountryCode — FIPS 10-4, not ISO: "SP" is Spain, "CH" is China.
+    country_code: str = ""
 
 
 @dataclass

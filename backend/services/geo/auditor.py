@@ -27,6 +27,8 @@ from backend.models import (
 from backend.services.prices import fetch_price_series
 from backend.services.yahoo_budget import Budget
 
+from .ladder import CONFIRMS, FLAT, leg_state
+from .rules import fetch_order, resolve_rule
 from .trading_time import add_trading_time
 
 logger = logging.getLogger(__name__)
@@ -160,6 +162,91 @@ def create_checkpoints(db: Session, signal: GeoSignal) -> None:
         )
 
 
+@dataclass(frozen=True)
+class LegReading:
+    """One leg of a basket at one moment: how far it moved against its own noise."""
+
+    symbol: str
+    direction: str  # the signal's direction for the leg
+    change_pct: float
+    threshold_pct: float
+
+    @property
+    def state(self) -> str:
+        return leg_state(self.direction, self.change_pct, self.threshold_pct)
+
+
+def _leg_readings(
+    signal: GeoSignal,
+    prices: dict[str, float],
+    thresholds: dict[str, float] | None = None,
+) -> list[LegReading]:
+    """A reading for every leg that has both a price now and a price at the signal."""
+    out: list[LegReading] = []
+    for t in signal.tickers:
+        cur = prices.get(t.symbol)
+        at = float(t.price_at_signal) if t.price_at_signal is not None else 0.0
+        if cur is None or at <= 0:
+            continue
+        out.append(LegReading(
+            symbol=t.symbol,
+            # t.direction reads back as a GeoDirection member (Enum values_callable,
+            # no str mixin), so a raw `== "bullish"` is always False on a DB-read
+            # ticker — the same enum boundary as the horizon check above.
+            direction=getattr(t.direction, "value", t.direction),
+            change_pct=(cur - at) / at * 100,
+            threshold_pct=(thresholds or {}).get(t.symbol, _MIN_MOVE_PCT),
+        ))
+    return out
+
+
+def _score(
+    readings: list[LegReading], directions: dict[str, str] | None = None
+) -> tuple[float | None, int]:
+    """(% of readable legs that moved as predicted, how many were readable).
+
+    ``directions`` scores a *rule's* view of the basket: only the symbols it
+    names, each against the direction the rule gives it — which is not always
+    the one the signal stored, since a symbol two rules name keeps the first
+    writer's.
+    """
+    correct = total = 0
+    for r in readings:
+        direction = r.direction if directions is None else directions.get(r.symbol)
+        # An unreadable move stays out of the denominator: undetermined, not wrong.
+        state = leg_state(direction or "", r.change_pct, r.threshold_pct)
+        if state == FLAT:
+            continue
+        total += 1
+        correct += state == CONFIRMS
+    return (round(correct / total * 100, 2) if total else None), total
+
+
+def _stamp_legs(signal: GeoSignal, readings: list[LegReading], *, final: bool = False) -> None:
+    """Store each leg's own reading on its row, for the ladder.
+
+    A leg with no reading this run keeps what it had: a Yahoo stall must not
+    blank a leg any more than it blanks the signal's live rating.
+    """
+    by_symbol = {r.symbol: r for r in readings}
+    for t in signal.tickers:
+        reading = by_symbol.get(t.symbol)
+        if reading is None:
+            continue
+        if final:
+            t.final_state = reading.state
+        else:
+            t.live_change_pct = round(reading.change_pct, 3)
+            t.live_state = reading.state
+
+
+def _detail(readings: list[LegReading]) -> str:
+    return ", ".join(
+        f"{r.symbol}: {'+' if r.change_pct >= 0 else ''}{r.change_pct:.2f}% (σ {r.threshold_pct:.2f}%)"
+        for r in readings
+    )
+
+
 def _score_basket(
     signal: GeoSignal,
     prices: dict[str, float],
@@ -170,39 +257,9 @@ def _score_basket(
     ``thresholds`` is the per-ticker readable-move threshold in %; absent, the
     flat floor applies.
     """
-    correct = total = 0
-    parts: list[str] = []
-    for t in signal.tickers:
-        cur = prices.get(t.symbol)
-        at = float(t.price_at_signal) if t.price_at_signal is not None else 0.0
-        if cur is None or at <= 0:
-            continue
-        change = (cur - at) / at * 100
-        floor = (thresholds or {}).get(t.symbol, _MIN_MOVE_PCT)
-        parts.append(
-            f"{t.symbol}: {'+' if change >= 0 else ''}{change:.2f}% (σ {floor:.2f}%)"
-        )
-        # t.direction reads back as a GeoDirection member (Enum values_callable, no
-        # str mixin), so a raw `== "bullish"` is always False on a DB-read ticker —
-        # the same enum boundary as the horizon check above. Normalize before compare.
-        direction = getattr(t.direction, "value", t.direction)
-        if direction == "neutral":
-            continue
-        # A move too small to read is *undetermined*, not wrong, so it stays out of
-        # the denominator entirely. It used to count as a miss, which made the
-        # intraday checkpoints unwinnable: prices.py returns the last **daily
-        # close**, so at +1h and +6h `cur` is the very same close the signal was
-        # priced at, change is exactly 0.00%, and every basket scored 0 → INCORRECT.
-        # Two of the five checkpoints were red by construction, the accuracy read
-        # 0%, and the +7d resolution fed that back into the rules as failure.
-        if abs(change) <= floor:
-            continue
-        total += 1
-        if (direction == "bullish" and change > 0) or (direction == "bearish" and change < 0):
-            correct += 1
-    if total == 0:
-        return None, ", ".join(parts), 0
-    return round(correct / total * 100, 2), ", ".join(parts), total
+    readings = _leg_readings(signal, prices, thresholds)
+    score, total = _score(readings)
+    return score, _detail(readings), total
 
 
 def learned_confidence_mod(correct: int, total: int) -> float:
@@ -249,15 +306,36 @@ def recompute_confidence_mods(db: Session) -> int:
     return changed
 
 
-def _update_rule_stats(db: Session, signal: GeoSignal, is_correct: bool) -> None:
+def _update_rule_stats(
+    db: Session, signal: GeoSignal, readings: list[LegReading], basket_outcome: str
+) -> None:
+    """Teach each matched rule from **its own legs**, not from the basket.
+
+    One outcome for the whole basket used to be applied to every matched rule,
+    so a rule's learned confidence followed whatever else was in the signal: a
+    template would learn from a hand-written rule's copper leg, and the 2026-09-20
+    audit found the mods dominated by GLD and USO drift rather than the thesis.
+    A rule is now scored on the symbols it names, each against its own direction;
+    when none of them was readable the rule learns nothing from this signal.
+
+    A signal that carries none of a rule's current legs — a basket written
+    before the rule was last edited — is scored as a whole, as it always was.
+    """
     try:
         rule_ids = json.loads(signal.matched_rule_ids) if signal.matched_rule_ids else []
     except ValueError:
         rule_ids = []
+    carried = {t.symbol for t in signal.tickers}
     for rid in rule_ids:
         stat = db.get(GeoRuleStat, rid)
         if stat is None:
             continue
+        rule = resolve_rule(rid, signal.country)
+        own = {t.symbol: t.direction for t in rule.tickers} if rule else {}
+        outcome = _outcome(_score(readings, own)[0]) if own.keys() & carried else basket_outcome
+        if outcome == BacktestOutcome.NEUTRAL.value:
+            continue  # silence is not being wrong
+        is_correct = outcome == BacktestOutcome.CORRECT.value
         stat.total_signals = (stat.total_signals or 0) + 1
         stat.correct_signals = (stat.correct_signals or 0) + (1 if is_correct else 0)
         _apply_learned_mod(stat)
@@ -323,7 +401,7 @@ def evaluate_pending(
         s.id: s
         for s in db.query(GeoSignal).filter(GeoSignal.id.in_(signal_ids)).all()
     }
-    symbols = sorted({t.symbol for s in signals.values() for t in s.tickers})
+    symbols = fetch_order(t.symbol for s in signals.values() for t in s.tickers)
     cache = series_cache if series_cache is not None else {}
     intraday = _series_for(symbols, budget, cache.setdefault("5m", {}), **_INTRADAY)
     # The daily series backs only what the intraday one cannot: symbols with no
@@ -365,12 +443,14 @@ def evaluate_pending(
                 prices[t.symbol] = price
                 thresholds[t.symbol] = threshold
 
+        readings: list[LegReading] = []
         if not prices:
             if now - target < _GIVE_UP_AFTER:
                 continue  # retry next cycle: the bars may just not have arrived
             score, detail = None, "sin datos de precio para ningún ticker"
         else:
-            score, detail, _ = _score_basket(signal, prices, thresholds)
+            readings = _leg_readings(signal, prices, thresholds)
+            score, detail = _score(readings)[0], _detail(readings)
 
         chk.score = score
         chk.outcome = _outcome(score)
@@ -380,11 +460,13 @@ def evaluate_pending(
 
         if horizon == _FINAL_HORIZON:
             signal.status = GeoSignalStatus.RESOLVED.value
-            # Only a measurable outcome teaches the rules anything. An unscored
-            # basket used to arrive here as `is_correct=False` and cost every
-            # matched rule 0.03 — silence punished exactly like being wrong.
-            if chk.outcome != BacktestOutcome.NEUTRAL.value:
-                _update_rule_stats(db, signal, is_correct=chk.outcome == BacktestOutcome.CORRECT.value)
+            _stamp_legs(signal, readings, final=True)
+            # Only a measurable outcome teaches a rule anything, and each rule is
+            # measured on its own legs: a tied basket can still hold one rule that
+            # was right and one that was wrong. An unscored basket used to arrive
+            # here as `is_correct=False` and cost every matched rule 0.03 —
+            # silence punished exactly like being wrong.
+            _update_rule_stats(db, signal, readings, chk.outcome)
 
     if evaluated:
         try:
@@ -433,7 +515,7 @@ def rate_active(
     )
     if not active:
         return 0
-    symbols = sorted({t.symbol for s in active for t in s.tickers})
+    symbols = fetch_order(t.symbol for s in active for t in s.tickers)
     cache = series_cache if series_cache is not None else {}
     intraday = _series_for(symbols, budget, cache.setdefault("5m", {}), **_INTRADAY)
     need_daily = sorted(
@@ -456,7 +538,9 @@ def rate_active(
                 thresholds[t.symbol] = threshold
         if not prices:
             continue  # no price this run: keep the last rating rather than blank it
-        score, _detail, _n = _score_basket(signal, prices, thresholds)
+        readings = _leg_readings(signal, prices, thresholds)
+        score = _score(readings)[0]
+        _stamp_legs(signal, readings)
         signal.live_score = score
         signal.live_outcome = _outcome(score)
         signal.live_rated_at = now

@@ -69,6 +69,7 @@ _C_SOURCES = 32
 _C_ARTICLES = 33
 _C_AVG_TONE = 34
 _C_GEO_NAME = 52
+_C_GEO_COUNTRY = 53
 _C_GEO_LAT = 56
 _C_GEO_LON = 57
 _C_DATE_ADDED = 59
@@ -198,6 +199,7 @@ def _parse_row(row: list[str]) -> GdeltEvent | None:
         latitude=latitude,
         longitude=longitude,
         location=row[_C_GEO_NAME].strip(),
+        country_code=row[_C_GEO_COUNTRY].strip(),
         actor1=actor1,
         actor2=actor2,
         date_added=row[_C_DATE_ADDED].strip(),

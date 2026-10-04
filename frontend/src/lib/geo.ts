@@ -7,6 +7,11 @@
  *  so only reachable through IBKR options; `not_tradable` = no retail route. */
 export type GeoTradability = "cash_eu" | "options_only" | "not_tradable";
 
+/** How wide an instrument is: a company tied to one country, one country's
+ *  market, or something no single country owns. A property of the instrument,
+ *  not of the event — a Taiwan signal can carry China's market as "national". */
+export type GeoTier = "local" | "national" | "international";
+
 export type GeoSignalTicker = {
   symbol: string;
   direction: "bullish" | "bearish" | "neutral";
@@ -17,6 +22,26 @@ export type GeoSignalTicker = {
   tradability?: GeoTradability;
   /** Nearest EU-listed equivalent, e.g. "SGLN / 4GLD (physical gold ETC)". */
   alternate?: string | null;
+  /** Optional on the wire: an API older than the country layer sends none. */
+  tier?: GeoTier;
+  /** The leg read against its own noise; null until an audit has read it. */
+  state?: GeoLegState | null;
+  /** % move since the signal, at the last audit. */
+  liveChangePct?: number | null;
+};
+
+export type GeoLegState = "confirms" | "contradicts" | "flat";
+
+/** One tier of a basket, read as a whole. `pending` = no leg read yet;
+ *  `unreadable` = read, and decided nothing (no measurable move, or a tie). */
+export type GeoTierState = "pending" | "confirmed" | "contradicted" | "unreadable";
+
+export type GeoTierStep = {
+  tier: GeoTier;
+  state: GeoTierState;
+  legs: number;
+  confirms: number;
+  contradicts: number;
 };
 
 /** How wide the event that fired the rule is. Optional on the wire. */
@@ -57,11 +82,14 @@ export type GeoSignal = {
   lat: number;
   lng: number;
   location: string;
+  country?: string | null; // the country the source reported, when it named one
   importance: number; // 0-100
   confidence: number; // 0-1
   riskScore: number; // 0-10
   direction: "bullish" | "bearish" | "neutral";
   tickers: GeoSignalTicker[];
+  /** The basket read tier by tier, narrowest first; absent on an older API. */
+  ladder?: GeoTierStep[];
   rules: GeoRule[];
   checkpoints: GeoCheckpoint[];
   timestamp: string;
@@ -104,10 +132,31 @@ export type GeoRuleAccuracy = {
   accuracy: number | null;
 };
 
+export type GeoTierAccuracy = {
+  confirmed: number;
+  contradicted: number;
+  unreadable: number;
+  /** confirmed / (confirmed + contradicted); null = nothing decisive yet. */
+  accuracy: number | null;
+};
+
+/** Whether a confirmed narrow tier came with a confirmed wider one: `rate`
+ *  against `baseline`, over `n` signals. A measurement — nothing acts on it. */
+export type GeoLadderStep = {
+  narrow: GeoTier;
+  wide: GeoTier;
+  n: number;
+  confirmed: number;
+  rate: number | null;
+  baseline: number | null;
+};
+
 export type GeoAccuracy = {
   since: string;
   horizons: Partial<Record<GeoCheckpointHorizon, GeoHorizonAccuracy>>;
   rules: GeoRuleAccuracy[];
+  tiers?: Partial<Record<GeoTier, GeoTierAccuracy>>;
+  ladder?: GeoLadderStep[];
 };
 
 const HORIZON_ORDER: GeoCheckpointHorizon[] = ["1h", "6h", "1d", "3d", "7d"];
@@ -217,6 +266,90 @@ export function macroRegimeBadge(
     return { label: "Régimen: risk-on", tone: "ok", title: `VIX ${vix}${asOf}.` };
   }
   return { label: "Régimen: neutral", tone: "muted", title: `VIX ${vix}${asOf}.` };
+}
+
+const TIERS: { tier: GeoTier; label: string; title: string }[] = [
+  { tier: "local", label: "Local", title: "Empresas ligadas a un solo país." },
+  { tier: "national", label: "Nacional", title: "El mercado de un país, a través de su ETF." },
+  {
+    tier: "international",
+    label: "Internacional",
+    title: "Materias primas, sectores y activos que no dependen de un solo país.",
+  },
+];
+
+export type TickerTierGroup = {
+  tier: GeoTier | null;
+  label: string | null;
+  title: string | null;
+  tickers: GeoSignalTicker[];
+  /** How the tier reads as a whole; null when the API sent no ladder. */
+  step: GeoTierStep | null;
+};
+
+/**
+ * The basket split by how wide each instrument is, narrowest first.
+ * A tier with no instrument is left out. When no ticker carries a tier — an API
+ * older than the country layer — the basket comes back as one unlabelled group,
+ * so the panel renders exactly as it did rather than filing everything under
+ * "Internacional".
+ */
+export function groupByTier(
+  tickers: GeoSignalTicker[],
+  ladder: GeoTierStep[] = [],
+): TickerTierGroup[] {
+  if (!tickers.some((t) => t.tier)) {
+    return tickers.length
+      ? [{ tier: null, label: null, title: null, tickers, step: null }]
+      : [];
+  }
+  return TIERS.map(({ tier, label, title }) => ({
+    tier,
+    label,
+    title,
+    tickers: tickers.filter((t) => (t.tier ?? "international") === tier),
+    step: ladder.find((s) => s.tier === tier) ?? null,
+  })).filter((group) => group.tickers.length > 0);
+}
+
+export type TierStateBadge = {
+  text: string;
+  tone: "ok" | "bad" | "warn" | "muted";
+  title: string;
+};
+
+/**
+ * How a tier reads, in the words the live rating already uses ("a favor").
+ * It reports where prices went against the written thesis and nothing more:
+ * a confirmed tier is not a reason to act, and the copy must not read as one.
+ */
+export function tierStateBadge(step?: GeoTierStep | null): TierStateBadge | null {
+  if (!step) return null;
+  const of = (n: number) => `${n} de ${step.legs}`;
+  switch (step.state) {
+    case "confirmed":
+      return {
+        text: "a favor",
+        tone: "ok",
+        title: `${of(step.confirms)} se movieron como describe la tesis.`,
+      };
+    case "contradicted":
+      return {
+        text: "en contra",
+        tone: "bad",
+        title: `${of(step.contradicts)} se movieron en contra de la tesis.`,
+      };
+    case "unreadable":
+      return {
+        text: "sin lectura",
+        tone: "warn",
+        title: "Sin movimiento medible, o lecturas repartidas a partes iguales.",
+      };
+    case "pending":
+      return { text: "pendiente", tone: "muted", title: "Aún sin lectura de precios." };
+    default:
+      return null;
+  }
 }
 
 /** Spanish tag for a rule's scope; null when the row predates scoping. */

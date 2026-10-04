@@ -37,7 +37,14 @@ from .analyst import (
 from .auditor import AuditResult, create_checkpoints, run_audit
 from .ingest import fetch_all_sources
 from .notify import notify_signal
-from .rules import RULES_BY_ID, compute_risk, effective_confidence, seed_rule_stats
+from .rules import (
+    RULES_BY_ID,
+    compute_risk,
+    effective_confidence,
+    fetch_order,
+    is_template,
+    seed_rule_stats,
+)
 from .sentinel import GeoEvent
 
 logger = logging.getLogger(__name__)
@@ -434,7 +441,7 @@ def prepare_cycle(db: Session) -> CycleInputs:
     # Yahoo cannot be bounded per call (see yahoo_budget); a spent budget leaves
     # checkpoints pending for the next cycle, never scored on nothing.
     yahoo = Budget(GEO_CYCLE_SECONDS, "geo cycle")
-    symbols = sorted({t.symbol for a in analyses for t in a.tickers})
+    symbols = fetch_order(t.symbol for a in analyses for t in a.tickers)
     prices = fetch_ticker_prices(symbols, yahoo) if symbols else {}
     return CycleInputs(
         bundle, events, analyses, stats, prices, yahoo,
@@ -471,7 +478,7 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
 
     # The LLM may have added tickers the shared fetch did not cover.
     prices = inputs.prices
-    extra = sorted(
+    extra = fetch_order(
         {t.symbol for a in enriched for t in a.tickers} - set(prices) - inputs.attempted
     )
     if extra:
@@ -491,6 +498,15 @@ def run_cycle(db: Session, user_id: int, inputs: CycleInputs | None = None) -> C
     for a in enriched:
         if not a.tickers:
             continue  # nothing actionable
+        # A template signal is one leg. Created without a price it would sit
+        # ACTIVE and unmeasurable for seven days, and its dedup row would keep
+        # the event from being tracked again; left out, the next cycle retries.
+        if (
+            a.matched_rules
+            and all(is_template(r) for r in a.matched_rules)
+            and not any(t.symbol in prices for t in a.tickers)
+        ):
+            continue
         try:
             with db.begin_nested():
                 res = generate_signal(db, user_id=user_id, analysis=a, prices=prices)
