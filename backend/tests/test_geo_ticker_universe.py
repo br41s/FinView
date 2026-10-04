@@ -11,12 +11,13 @@ symbol a conscious decision: adding one to a rule fails here until the author al
 it below, which is the moment to check that it actually prices.
 """
 
-from backend.services.geo.countries import COUNTRY_ETF
+from backend.services.geo.countries import COUNTRY_ETF, COUNTRY_LOCALS
 from backend.services.geo.rules import FAST_RULES
 
-# Every distinct symbol a signal can carry: the legs of FAST_RULES and the country
-# funds the template rules resolve to (countries.COUNTRY_ETF). Verified to price on
-# Yahoo when added. Update deliberately — see the failure message below.
+# Every distinct symbol a signal can carry: the legs of FAST_RULES, and the country
+# funds and local companies the template rules resolve to (countries.COUNTRY_ETF,
+# COUNTRY_LOCALS). Verified to price on Yahoo when added. Update deliberately — see
+# the failure message below.
 EXPECTED_SYMBOLS: frozenset[str] = frozenset(
     {
         "005930.KS", "AAL", "ALB", "ALL", "ALV.DE", "ANTO.L", "CC=F", "CCJ", "CCL", "DAC",
@@ -29,6 +30,9 @@ EXPECTED_SYMBOLS: frozenset[str] = frozenset(
         "ARGT", "ECH", "EIDO", "EIS", "EPHE", "EPOL", "EPU", "EWA", "EWC", "EWD", "EWH",
         "EWI", "EWL", "EWM", "EWN", "EWP", "EWQ", "EWS", "EWT", "EWU", "EWW", "EZA", "GREK",
         "KSA", "THD", "VNM",
+        # Local companies, 2026-10-04: US-listed, 5-minute bars over five sessions.
+        "BAP", "BBD", "BCE", "BCH", "BVN", "CHT", "CM", "ENIC", "GGAL", "HDB", "IBN", "KB",
+        "KT", "LYG", "NWG", "OMAB", "PAC", "PHI", "TKC", "TLK", "UMC", "VIV", "YPF",
     }
 )
 
@@ -37,8 +41,10 @@ DEAD_SYMBOLS: frozenset[str] = frozenset({"NI=F", "LBS=F", "X", "SSNLF"})
 
 
 def _universe() -> frozenset[str]:
-    return frozenset(t.symbol for rule in FAST_RULES for t in rule.tickers) | frozenset(
-        COUNTRY_ETF.values()
+    return (
+        frozenset(t.symbol for rule in FAST_RULES for t in rule.tickers)
+        | frozenset(COUNTRY_ETF.values())
+        | frozenset(symbol for symbols in COUNTRY_LOCALS.values() for symbol in symbols)
     )
 
 
@@ -48,7 +54,7 @@ def test_ticker_universe_is_frozen():
     removed = sorted(EXPECTED_SYMBOLS - actual)
     assert not added and not removed, (
         "The geo ticker universe changed.\n"
-        f"  new symbols in FAST_RULES or COUNTRY_ETF: {added}\n"
+        f"  new symbols in FAST_RULES, COUNTRY_ETF or COUNTRY_LOCALS: {added}\n"
         f"  symbols no longer used:    {removed}\n"
         "This is not a failure to route around: before editing EXPECTED_SYMBOLS in "
         "backend/tests/test_geo_ticker_universe.py, confirm each new symbol actually "

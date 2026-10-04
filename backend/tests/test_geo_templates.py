@@ -4,8 +4,9 @@ An event outside every region box used to be dropped in the sentinel, and seven
 countries had an instrument of their own. A template is one written chain per
 event category, applied to whichever country the event is in. What must hold:
 
-- it is a **fallback**: next to a hand-written rule it would change that
-  signal's confidence and risk, and re-page live signals on deploy day;
+- beside a hand-written rule it **adds legs and nothing else**: in the mean
+  confidence or the max risk it would change that signal's importance and
+  re-page live signals on deploy day;
 - an event only ever reaches **its own country's** market;
 - it cannot reach a phone until its own record has earned it.
 """
@@ -18,7 +19,7 @@ from backend.models import Base, GeoRuleStat, GeoSignal
 from backend.services.geo import analyst, orchestrator, sentinel
 from backend.services.geo.advisor import IMPORTANCE_THRESHOLD, compute_importance
 from backend.services.geo.analyst import analyze_event
-from backend.services.geo.countries import COUNTRY_ETF, INSTRUMENT_COUNTRY
+from backend.services.geo.countries import COUNTRY_ETF, COUNTRY_LOCALS, INSTRUMENT_COUNTRY
 from backend.services.geo.ingest.types import NaturalEvent, SeismicEvent
 from backend.services.geo.rules import (
     FAST_RULES,
@@ -30,13 +31,13 @@ from backend.services.geo.rules import (
     effective_confidence,
     fetch_order,
     instrument_tier,
-    is_template,
     match_regions,
     match_rules,
     match_templates,
     resolve_rule,
     rule_scope,
     scope_violations,
+    scoring_rules,
     seed_rule_stats,
     template_floor_met,
 )
@@ -44,6 +45,7 @@ from backend.services.geo.sentinel import GeoEvent
 
 MEXICO_CITY = (19.4, -99.1)  # inside no region box
 TOKYO = (35.7, 139.7)  # inside `japan`, where eq-japan-industrial lives
+SANTIAGO = (-33.4, -70.6)  # inside `chile_mining`, where eq-chile-copper lives
 
 
 @pytest.fixture
@@ -76,18 +78,30 @@ def _natural(etype="flood", severity="orange", country="mexico", point=MEXICO_CI
 def test_a_quake_outside_every_box_reaches_its_own_countrys_market():
     assert match_regions(*MEXICO_CITY) == [] and match_rules(_quake()) == []
     result = analyze_event(_quake(), stats={})
-    assert [r.id for r in result.matched_rules] == ["tpl-earthquake-national"]
-    assert [(t.symbol, t.direction) for t in result.tickers] == [("EWW", "bearish")]
+    assert [r.id for r in result.matched_rules] == [
+        "tpl-earthquake-national", "tpl-earthquake-local",
+    ]
+    assert [(t.symbol, t.direction) for t in result.tickers] == [
+        ("EWW", "bearish"), ("PAC", "bearish"), ("OMAB", "bearish"),
+    ]
     rule = result.matched_rules[0]
     assert rule.description == "Damaging earthquake in Mexico"
     assert "Mexico" in rule.thesis and "{" not in rule.thesis
+    assert (result.confidence, result.risk_score) == (50.0, 7)  # PAGER orange: 6 + 1
+
+
+def test_a_country_with_no_local_company_gets_the_national_reading_only():
+    japan = _quake(MEXICO_CITY, country="japan")  # the point is irrelevant here
+    assert [r.id for r in match_templates(japan)] == ["tpl-earthquake-national"]
+    assert resolve_rule("tpl-earthquake-local", "japan") is None
 
 
 def test_a_flood_and_a_cyclone_have_their_own_chain():
-    (flood,) = match_templates(_natural("flood"))
-    (cyclone,) = match_templates(_natural("cyclone", severity="red"))
-    assert (flood.id, cyclone.id) == ("tpl-flood-national", "tpl-cyclone-national")
-    assert flood.chain != cyclone.chain
+    flood = match_templates(_natural("flood"))
+    cyclone = match_templates(_natural("cyclone", severity="red"))
+    assert [r.id for r in flood] == ["tpl-flood-national", "tpl-flood-local"]
+    assert [r.id for r in cyclone] == ["tpl-cyclone-national", "tpl-cyclone-local"]
+    assert len({r.chain for r in (*flood, *cyclone)}) == 4
 
 
 def test_a_category_with_no_template_gets_nothing():
@@ -120,31 +134,54 @@ def test_an_event_below_the_floor_is_not_read_against_a_market():
     assert match_templates(_quake(magnitude=5.6, pager="green")) == []
 
 
-# ── A fallback, never an addition ─────────────────────────────────────
+# ── Beside a hand-written rule: legs, and nothing else ────────────────
 
 
-def test_a_hand_written_rule_keeps_its_signal_exactly_as_it_was():
+def test_a_template_never_moves_a_written_rules_confidence_or_risk():
     """An M7.2 under Tokyo is eq-japan-industrial at 52 and silent. With a
-    template beside it the max headroom would rise and the same quake page."""
+    template in the max risk the same quake would page at 60."""
     before = analyze_event(_quake(TOKYO, country=None, magnitude=7.2, pager=None), stats={})
     after = analyze_event(_quake(TOKYO, country="japan", magnitude=7.2, pager="red"), stats={})
-    assert [r.id for r in after.matched_rules] == [r.id for r in before.matched_rules]
-    assert not any(is_template(r) for r in after.matched_rules)
     assert (after.confidence, after.risk_score) == (before.confidence, before.risk_score)
+    assert compute_importance(after.confidence, after.risk_score) < IMPORTANCE_THRESHOLD
+    # Japan's fund is already a leg of the written rule: the template adds nothing.
     assert [(t.symbol, t.direction) for t in after.tickers] == [
         (t.symbol, t.direction) for t in before.tickers
     ]
+    assert [r.id for r in after.matched_rules] == ["eq-japan-industrial", "tpl-earthquake-national"]
+
+
+def test_a_template_adds_the_national_and_local_legs_after_the_written_ones():
+    before = analyze_event(_quake(SANTIAGO, country=None, pager=None), stats={})
+    after = analyze_event(_quake(SANTIAGO, country="chile", pager="red"), stats={})
+    assert [r.id for r in before.matched_rules] == ["eq-chile-copper"]
+    assert (after.confidence, after.risk_score) == (before.confidence, before.risk_score)
+    assert [(t.symbol, t.direction) for t in after.tickers] == [
+        ("HG=F", "bullish"), ("ANTO.L", "bearish"),  # the written rule, untouched
+        ("ECH", "bearish"), ("BCH", "bearish"), ("ENIC", "bearish"),
+    ]
+
+
+def test_scoring_rules_are_the_written_ones_when_there_are_any():
+    written = match_rules(_quake(SANTIAGO, country="chile"))
+    templates = match_templates(_quake(SANTIAGO, country="chile", pager="red"))
+    assert scoring_rules(written + templates) == written
+    assert scoring_rules(templates) == templates  # nothing else to score with
+    assert scoring_rules([]) == []
 
 
 # ── Invariants for every country a template can be rendered for ───────
 
 
 def test_every_rendering_obeys_what_the_hand_written_rules_obey():
-    symbols = {t.symbol for r in FAST_RULES for t in r.tickers} | set(COUNTRY_ETF.values())
+    symbols = {t.symbol for r in FAST_RULES for t in r.tickers} | set(INSTRUMENT_COUNTRY)
     for template in TEMPLATE_RULES:
         for slug in COUNTRY_ETF:
             rule = resolve_rule(template.id, slug)
             where = f"{template.id} / {slug}"
+            if rule is None:  # a local template in a country with no local company
+                assert template.tier == "local" and slug not in COUNTRY_LOCALS, where
+                continue
             assert rule_scope(rule) == "local" and rule.scope in SCOPE_RANK, where
             assert len(rule.chain) == 3 and all(c.strip() for c in rule.chain), where
             assert "{" not in " ".join((*rule.chain, rule.description)), where
@@ -155,12 +192,29 @@ def test_every_rendering_obeys_what_the_hand_written_rules_obey():
 
 def test_a_template_leg_is_always_the_events_own_country():
     """The gate, by construction: a Brazilian event cannot load Indonesia's market."""
+    rendered = 0
     for template in TEMPLATE_RULES:
         for slug in COUNTRY_ETF:
-            (leg,) = resolve_rule(template.id, slug).tickers
-            assert INSTRUMENT_COUNTRY[leg.symbol] == slug
-            assert instrument_tier(leg.symbol) == "national"
-            assert leg.direction == "bearish"
+            rule = resolve_rule(template.id, slug)
+            for leg in rule.tickers if rule else ():
+                rendered += 1
+                assert INSTRUMENT_COUNTRY[leg.symbol] == slug
+                assert instrument_tier(leg.symbol) == template.tier
+                assert leg.direction == "bearish"
+    locals_ = sum(len(v) for v in COUNTRY_LOCALS.values())
+    assert rendered == 3 * (len(COUNTRY_ETF) + locals_)
+
+
+def test_local_companies_are_few_listed_in_the_us_and_bound_to_a_covered_country():
+    assert set(COUNTRY_LOCALS) <= set(COUNTRY_ETF)
+    for slug, symbols in COUNTRY_LOCALS.items():
+        assert 1 <= len(symbols) <= 2, slug
+        for symbol in symbols:
+            # A US listing has no exchange suffix: the +1h/+6h checkpoints are
+            # measured on the US session.
+            assert "." not in symbol and "=" not in symbol, symbol
+            assert INSTRUMENT_BREADTH[symbol] == "national"
+            assert instrument_tier(symbol) == "local"
 
 
 def test_template_ids_do_not_collide_with_rule_ids():
@@ -172,7 +226,7 @@ def test_template_ids_do_not_collide_with_rule_ids():
 
 
 def _worst_case(template_id: str) -> GeoEvent:
-    if template_id == "tpl-earthquake-national":
+    if "earthquake" in template_id:
         return _quake(magnitude=8.4, pager="red")
     category = template_id.split("-")[1]
     return _natural(category, severity="red")
@@ -181,7 +235,7 @@ def _worst_case(template_id: str) -> GeoEvent:
 def test_an_unlearned_template_cannot_page_at_its_worst():
     for template in TEMPLATE_RULES:
         event = _worst_case(template.id)
-        (rule,) = match_templates(event)
+        rule = next(r for r in match_templates(event) if r.id == template.id)
         risk = compute_risk([rule], event, None, "risk_off")
         importance = compute_importance(effective_confidence(rule, None) * 100, risk)
         assert importance < IMPORTANCE_THRESHOLD, (template.id, importance)
@@ -198,7 +252,7 @@ def test_pager_separates_a_quake_that_shook_from_one_that_broke():
 def test_a_template_with_a_record_can_earn_the_page():
     """The gate must be reachable, or the template is decoration (cf. test_geo_risk)."""
     event = _quake(pager="red")
-    (rule,) = match_templates(event)
+    rule = match_templates(event)[0]
     proven = GeoRuleStat(rule_id=rule.id, category="earthquake", base_confidence=0.5,
                          confidence_mod=0.30)
     importance = compute_importance(
@@ -252,7 +306,7 @@ def test_the_enrichment_drops_what_the_event_may_not_reach(monkeypatch):
         "narrative": "n", "riskScore": 6,
     })
     result = analyze_event(_quake(), stats={}, use_llm=True)
-    assert [t.symbol for t in result.tickers] == ["EWW", "GLD"]
+    assert [t.symbol for t in result.tickers] == ["EWW", "PAC", "OMAB", "GLD"]
 
 
 def test_the_prompt_lists_only_what_the_event_may_reach():
@@ -332,25 +386,27 @@ def _run(db, monkeypatch, prices):
     event = _quake()
     inputs = orchestrator.CycleInputs(
         bundle=_Bundle(), events=[event], analyses=[analyze_event(event, stats={})],
-        stats={}, prices=prices, yahoo=None, attempted={"EWW"},
+        stats={}, prices=prices, yahoo=None, attempted={"EWW", "PAC", "OMAB"},
     )
     monkeypatch.setattr(orchestrator, "_dispatch_notifications", lambda db, uid, results: (0, 0))
     return orchestrator.run_cycle(db, 1, inputs)
 
 
 def test_a_template_signal_is_stored_with_its_country(db, monkeypatch):
-    result = _run(db, monkeypatch, {"EWW": 61.2})
+    result = _run(db, monkeypatch, {"EWW": 61.2, "PAC": 190.0, "OMAB": 88.0})
     assert result.new_signals == 1
     (signal,) = db.query(GeoSignal).all()
     assert (signal.country, signal.location) == ("mexico", "Mexico")
-    assert signal.matched_rule_ids == '["tpl-earthquake-national"]'
+    assert signal.matched_rule_ids == '["tpl-earthquake-national", "tpl-earthquake-local"]'
     assert signal.importance < IMPORTANCE_THRESHOLD
-    assert [(t.symbol, float(t.price_at_signal)) for t in signal.tickers] == [("EWW", 61.2)]
+    assert [(t.symbol, float(t.price_at_signal)) for t in signal.tickers] == [
+        ("EWW", 61.2), ("PAC", 190.0), ("OMAB", 88.0),
+    ]
 
 
 def test_a_template_signal_with_no_price_waits_for_the_next_cycle(db, monkeypatch):
-    """One leg and no price is a signal that can never be measured, holding the
-    event's dedup row for seven days."""
+    """No leg priced is a signal that can never be measured, holding the event's
+    dedup row for seven days."""
     assert _run(db, monkeypatch, {}).new_signals == 0
     assert db.query(GeoSignal).count() == 0
     assert _run(db, monkeypatch, {"EWW": 61.2}).new_signals == 1

@@ -17,11 +17,12 @@ instrument were deleted (``vol-japan``, ``wx-heat-mediterranean``, ``wx-precip-c
 ``vol-indonesia-palm``, ``gdelt-protest-southeast-asia``).
 
 The 2026-10-04 country layer (``countries.py``) added what the hand-written table
-cannot scale to: an event now carries the country its source reports, three
+cannot scale to: an event now carries the country its source reports, six
 ``TEMPLATE_RULES`` relate a damaging quake, cyclone or flood to that country's own
-market when no hand-written rule covers it, and ``allowed_symbols`` keeps every
-path — rules, templates and both LLM calls — from relating an event to another
-country's instrument. A template is a fallback, never an addition.
+market and to the companies that earn only there, and ``allowed_symbols`` keeps
+every path — rules, templates and both LLM calls — from relating an event to
+another country's instrument. Beside a hand-written rule a template adds legs and
+nothing else: it never enters the signal's confidence or risk (``scoring_rules``).
 
 Port decisions (flagged in the spec as un-enforced in the JS matcher):
 - ``fire.cluster>=N``: IMPLEMENTED here (the sentinel computes cluster size; gating
@@ -41,7 +42,13 @@ from sqlalchemy.orm import Session
 
 from backend.models import GeoRuleStat
 
-from .countries import COUNTRIES, COUNTRY_ETF, INSTRUMENT_COUNTRY, country_phrase
+from .countries import (
+    COUNTRIES,
+    COUNTRY_ETF,
+    COUNTRY_LOCALS,
+    INSTRUMENT_COUNTRY,
+    country_phrase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +202,12 @@ for _c in COUNTRIES:
     if _c.etf:
         INSTRUMENT_BREADTH.setdefault(_c.etf, "national")
         INSTRUMENT_TRADABILITY.setdefault(_c.etf, (_c.route, _c.alternate))
+# The local companies: one country's economy moves the whole price (the TSM
+# precedent), and a US-listed single stock is cash at every broker.
+for _symbols in COUNTRY_LOCALS.values():
+    for _symbol in _symbols:
+        INSTRUMENT_BREADTH.setdefault(_symbol, "national")
+        INSTRUMENT_TRADABILITY.setdefault(_symbol, ("cash_eu", ""))
 _COUNTRY_ETFS = frozenset(COUNTRY_ETF.values())
 
 
@@ -1420,7 +1433,7 @@ def match_rules(event) -> list[FastRule]:
     return out
 
 
-# ── Template rules: one written chain per event category, any covered country ──
+# ── Template rules: one written chain per (event category, tier), any covered country ──
 # A hand-written rule names its region and its basket; writing one per country
 # per event type would be some 300 rules, each firing too rarely to ever reach
 # the ten resolutions the learning loop wants. A template is written once and
@@ -1430,12 +1443,18 @@ def match_rules(event) -> list[FastRule]:
 #
 # The chain is still written, not inferred — per event category rather than per
 # country, with the country's name filled in. A template states only what holds
-# for any country: the national market reprices. What a quake does to one
-# country's cement or copper is a hand-written rule's claim to make.
+# for any country: the national market reprices, and the companies that earn
+# only there take the loss first. What a quake does to one country's cement or
+# copper is a hand-written rule's claim to make.
+#
+# National and local are separate templates, not two legs of one, so each tier
+# keeps its own record: whether the local companies read an event better than
+# the country's market is exactly what the ladder needs measured.
 @dataclass(frozen=True)
 class RuleTemplate:
     id: str
     category: str
+    tier: str  # national — the country ETF · local — countries.COUNTRY_LOCALS
     description: str  # "{country}" is filled with the event's country
     chain: tuple[str, str, str]
     base_confidence: float
@@ -1447,7 +1466,7 @@ class RuleTemplate:
 # after its own record has lifted it (tested in test_geo_templates.py).
 TEMPLATE_RULES: tuple[RuleTemplate, ...] = (
     RuleTemplate(
-        "tpl-earthquake-national", "earthquake",
+        "tpl-earthquake-national", "earthquake", "national",
         "Damaging earthquake in {country}",
         (
             "a damaging quake stops plants, ports and transport across the struck part of {country}",
@@ -1457,7 +1476,7 @@ TEMPLATE_RULES: tuple[RuleTemplate, ...] = (
         0.50,
     ),
     RuleTemplate(
-        "tpl-cyclone-national", "cyclone",
+        "tpl-cyclone-national", "cyclone", "national",
         "Severe tropical cyclone hits {country}",
         (
             "a severe cyclone shuts ports, power and crops along the coast of {country}",
@@ -1467,12 +1486,42 @@ TEMPLATE_RULES: tuple[RuleTemplate, ...] = (
         0.50,
     ),
     RuleTemplate(
-        "tpl-flood-national", "flood",
+        "tpl-flood-national", "flood", "national",
         "Severe flooding in {country}",
         (
             "severe flooding cuts roads, power and harvests in {country}",
             "lost output and the repair bill are marked against the companies listed there",
             "the country ETF holds those companies and nothing outside {country}",
+        ),
+        0.50,
+    ),
+    RuleTemplate(
+        "tpl-earthquake-local", "earthquake", "local",
+        "Damaging earthquake in {country}: the companies that earn only there",
+        (
+            "a damaging quake closes branches, cuts networks and grounds traffic in {country}",
+            "the days lost and the repairs fall on whoever sells only inside the country",
+            "a domestic bank, telecom, utility or airport operator has no revenue abroad to lean on",
+        ),
+        0.50,
+    ),
+    RuleTemplate(
+        "tpl-cyclone-local", "cyclone", "local",
+        "Severe tropical cyclone hits {country}: the companies that earn only there",
+        (
+            "a severe cyclone cuts power, networks and transport along the coast of {country}",
+            "the days lost and the repairs fall on whoever sells only inside the country",
+            "a domestic bank, telecom, utility or airport operator has no revenue abroad to lean on",
+        ),
+        0.50,
+    ),
+    RuleTemplate(
+        "tpl-flood-local", "flood", "local",
+        "Severe flooding in {country}: the companies that earn only there",
+        (
+            "severe flooding cuts roads, power and networks in {country}",
+            "the days lost and the repairs fall on whoever sells only inside the country",
+            "a domestic bank, telecom, utility or airport operator has no revenue abroad to lean on",
         ),
         0.50,
     ),
@@ -1487,6 +1536,26 @@ _PAGER_HEADROOM = {"orange": 1, "red": 2}
 
 def is_template(rule: FastRule) -> bool:
     return rule.id in TEMPLATES_BY_ID
+
+
+def scoring_rules(rules: list[FastRule]) -> list[FastRule]:
+    """The rules that set a signal's confidence and risk.
+
+    Beside a hand-written rule a template adds its legs and nothing else. In the
+    mean confidence and the max risk it would change the importance of events
+    that have always been scored without it — an M7.2 under Tokyo is 52 and
+    silent, and would page at 60. With no hand-written rule the templates are
+    all there is, and they score.
+    """
+    return [r for r in rules if not is_template(r)] or rules
+
+
+def template_legs(template: RuleTemplate, country: str | None) -> tuple[str, ...]:
+    """The instruments a template resolves to in ``country``; empty when it has none."""
+    if template.tier == "local":
+        return COUNTRY_LOCALS.get(country or "", ())
+    etf = COUNTRY_ETF.get(country or "")
+    return (etf,) if etf else ()
 
 
 def template_floor_met(event) -> bool:
@@ -1516,7 +1585,8 @@ def template_floor_met(event) -> bool:
 
 def resolve_rule(rule_id: str, country: str | None = None, event=None) -> FastRule | None:
     """The rule behind an id: a hand-written one as it stands, or a template
-    made concrete for ``country``. None for an unknown id or an uncovered country.
+    made concrete for ``country``. None for an unknown id, an uncovered country,
+    or a local template in a country with no local company listed.
 
     ``event`` only sets the risk of an earthquake template (PAGER headroom); a
     caller that renders the rule — the API — does not need it.
@@ -1525,8 +1595,8 @@ def resolve_rule(rule_id: str, country: str | None = None, event=None) -> FastRu
     if rule is not None:
         return rule
     template = TEMPLATES_BY_ID.get(rule_id)
-    etf = COUNTRY_ETF.get(country or "")
-    if template is None or etf is None:
+    legs = template_legs(template, country) if template else ()
+    if not legs:
         return None
     name = country_phrase(country)
     chain = tuple(clause.format(country=name) for clause in template.chain)
@@ -1536,7 +1606,7 @@ def resolve_rule(rule_id: str, country: str | None = None, event=None) -> FastRu
         category=template.category,
         condition=f"country={country}",
         description=template.description.format(country=name),
-        tickers=(RuleTicker(etf, "bearish"),),
+        tickers=tuple(RuleTicker(symbol, "bearish") for symbol in legs),
         direction=" → ".join(chain),
         base_confidence=template.base_confidence,
         risk=CATEGORY_RISK.get(template.category, _DEFAULT_RISK) + _PAGER_HEADROOM.get(pager, 0),
@@ -1546,17 +1616,18 @@ def resolve_rule(rule_id: str, country: str | None = None, event=None) -> FastRu
 
 
 def match_templates(event) -> list[FastRule]:
-    """The national reading of an event in a country with a market of its own.
+    """The national and local readings of an event in a country with a market.
 
-    The caller decides when it applies; today that is only when no hand-written
-    rule matched (see analyst.correlate_with_rules).
+    They are legs for any event that clears the floor; whether they also score
+    the signal is `scoring_rules`' call.
     """
     country = getattr(event, "country", None)
     if country not in COUNTRY_ETF or not template_floor_met(event):
         return []
-    return [
+    rendered = (
         resolve_rule(t.id, country, event) for t in TEMPLATE_RULES if t.category == event.type
-    ]
+    )
+    return [rule for rule in rendered if rule is not None]
 
 
 # ── The gate: which instruments an event may be related to ───────────

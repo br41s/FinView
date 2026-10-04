@@ -104,6 +104,30 @@ _BY_ISO3 = {c.iso3: c.slug for c in COUNTRIES}
 # A country's market: the one instrument a national event is read against.
 COUNTRY_ETF: dict[str, str] = {c.slug: c.etf for c in COUNTRIES if c.etf}
 
+# The local tier: companies whose revenue or assets sit inside one country — a
+# domestic bank, a telecom, a utility, an airport operator, a miner with every
+# mine there. Up to two per country, and US-listed on purpose: the +1h and +6h
+# checkpoints are measured on the US session, and a Jakarta or Santiago listing
+# would be read at a bar its own exchange never traded. Each returned 5-minute
+# bars on 2026-10-04. A company with a large book abroad is not here (Japan's
+# megabanks, Spain's banks, the global miners): bound to a country it does not
+# depend on, it would teach the local template the wrong thing.
+COUNTRY_LOCALS: dict[str, tuple[str, ...]] = {
+    "mexico": ("PAC", "OMAB"),          # airport operators
+    "brazil": ("BBD", "VIV"),           # Bradesco, Telefônica Brasil
+    "chile": ("BCH", "ENIC"),           # Banco de Chile, Enel Chile
+    "peru": ("BAP", "BVN"),             # Credicorp, Buenaventura
+    "argentina": ("GGAL", "YPF"),       # Grupo Galicia, YPF
+    "canada": ("BCE", "CM"),            # BCE, CIBC
+    "united_kingdom": ("LYG", "NWG"),   # Lloyds, NatWest
+    "turkey": ("TKC",),                 # Turkcell
+    "india": ("HDB", "IBN"),            # HDFC Bank, ICICI Bank
+    "indonesia": ("TLK",),              # Telkom Indonesia
+    "philippines": ("PHI",),            # PLDT
+    "south_korea": ("KB", "KT"),        # KB Financial, KT Corp
+    "taiwan": ("CHT", "UMC"),           # Chunghwa Telecom, UMC
+}
+
 # Which country an instrument belongs to. An ETF belongs to its market; a company
 # belongs to the country it is domiciled *and* operates in (the TSM precedent in
 # rules.INSTRUMENT_BREADTH) — so Southern Copper (Peru and Mexico), Albemarle and
@@ -112,6 +136,7 @@ COUNTRY_ETF: dict[str, str] = {c.slug: c.etf for c in COUNTRIES if c.etf}
 # another's (see rules.allowed_symbols).
 INSTRUMENT_COUNTRY: dict[str, str] = {
     **{etf: slug for slug, etf in COUNTRY_ETF.items()},
+    **{symbol: slug for slug, symbols in COUNTRY_LOCALS.items() for symbol in symbols},
     "TSM": "taiwan", "TM": "japan", "005930.KS": "south_korea",
     "ANTO.L": "chile", "SQM": "chile", "FMG.AX": "australia",
     "MUV2.DE": "germany", "ALV.DE": "germany", "RWE.DE": "germany",

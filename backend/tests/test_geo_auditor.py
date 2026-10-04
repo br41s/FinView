@@ -401,3 +401,132 @@ def test_a_thin_intraday_series_falls_back_to_the_daily_sigma(db, monkeypatch):
     auditor.evaluate_pending(db, user_id=1)
     assert calls == ["5m", "1d"]
     assert db.query(GeoCheckpoint).one().outcome is not None
+
+
+# ── Each matched rule learns from its own legs ────────────────────────
+# One outcome for the whole basket used to be applied to every matched rule, so
+# a rule's learned confidence followed whatever else was in the signal.
+
+
+def _resolving_signal(db, monkeypatch, *, rules, legs, country=None):
+    """An active signal whose +7d is due. ``legs`` is {symbol: (direction, move %)}:
+    every leg was priced at 100 and now sits at 100 + move."""
+    past = datetime.now(timezone.utc) - timedelta(days=8)
+    signal = GeoSignal(
+        user_id=1, event_type="earthquake", display_category="earthquake", source="usgs",
+        external_id="ev-own-legs", headline="quake", location="chile", country=country,
+        lat=-33.4, lng=-70.6, importance=50, confidence=0.8, risk_score=6, direction="bearish",
+        status=GeoSignalStatus.ACTIVE.value, created_at=past,
+        matched_rule_ids=json.dumps(rules),
+    )
+    db.add(signal)
+    db.flush()
+    for symbol, (direction, _move) in legs.items():
+        signal.tickers.append(
+            GeoSignalTicker(symbol=symbol, direction=direction, price_at_signal=100.0)
+        )
+    db.add(GeoCheckpoint(
+        user_id=1, signal_id=signal.id, horizon=GeoHorizon.D7.value,
+        target_at=past + auditor._HORIZON_DELAYS[GeoHorizon.D7.value],
+    ))
+    for rule_id in rules:
+        db.add(GeoRuleStat(rule_id=rule_id, category="earthquake", base_confidence=0.5))
+    db.commit()
+    db.expire_all()
+
+    start = datetime.now(timezone.utc) - timedelta(days=9)
+
+    def series(move):
+        level = 100.0 + move
+        return [
+            (start + timedelta(hours=i), level * (1 + (0.0001 if i % 2 else -0.0001)))
+            for i in range(9 * 24)
+        ]
+
+    monkeypatch.setattr(
+        auditor, "fetch_price_series",
+        lambda symbols, budget=None, **kw: {s: series(m) for s, (_d, m) in legs.items()},
+    )
+    return signal.id
+
+
+def _record(db, rule_id):
+    stat = db.get(GeoRuleStat, rule_id)
+    return (stat.total_signals or 0, stat.correct_signals or 0)
+
+
+def test_each_rule_is_taught_by_its_own_legs_and_not_by_the_basket(db, monkeypatch):
+    """Copper rose and the Chilean miner fell, as the written rule says. Chile's
+    market rose anyway. The banks fell. Three rules, three different lessons —
+    the basket as a whole (4 of 5) used to teach all three "correct"."""
+    _resolving_signal(
+        db, monkeypatch, country="chile",
+        rules=["eq-chile-copper", "tpl-earthquake-national", "tpl-earthquake-local"],
+        legs={
+            "HG=F": ("bullish", +6.0), "ANTO.L": ("bearish", -5.0),   # the written rule
+            "ECH": ("bearish", +4.0),                                  # national: wrong
+            "BCH": ("bearish", -3.0), "ENIC": ("bearish", -4.0),       # local: right
+        },
+    )
+    assert auditor.evaluate_pending(db, user_id=1) == 1
+    assert _record(db, "eq-chile-copper") == (1, 1)
+    assert _record(db, "tpl-earthquake-national") == (1, 0)
+    assert _record(db, "tpl-earthquake-local") == (1, 1)
+
+
+def test_a_tied_basket_still_teaches_the_rule_that_was_right_and_the_one_that_was_wrong(
+    db, monkeypatch
+):
+    """1-for-2 is NEUTRAL for the basket and used to teach nobody."""
+    _resolving_signal(
+        db, monkeypatch, country="mexico",
+        rules=["tpl-earthquake-national", "tpl-earthquake-local"],
+        legs={"EWW": ("bearish", -5.0), "PAC": ("bearish", +5.0)},
+    )
+    auditor.evaluate_pending(db, user_id=1)
+    assert db.query(GeoCheckpoint).one().outcome.value == "NEUTRAL"
+    assert _record(db, "tpl-earthquake-national") == (1, 1)
+    assert _record(db, "tpl-earthquake-local") == (1, 0)
+
+
+def test_a_rule_whose_own_legs_did_not_move_learns_nothing(db, monkeypatch):
+    """Silence is not being wrong — and it is not being right by association."""
+    _resolving_signal(
+        db, monkeypatch, country="mexico",
+        rules=["tpl-earthquake-national", "tpl-earthquake-local"],
+        legs={"EWW": ("bearish", -5.0), "PAC": ("bearish", 0.0), "OMAB": ("bearish", 0.0)},
+    )
+    auditor.evaluate_pending(db, user_id=1)
+    assert _record(db, "tpl-earthquake-national") == (1, 1)
+    assert _record(db, "tpl-earthquake-local") == (0, 0)
+
+
+def test_a_rule_is_judged_on_its_own_direction_for_a_shared_symbol(db, monkeypatch):
+    """A symbol two rules name keeps the first writer's direction on the signal;
+    the second rule is still measured against what *it* claimed."""
+    readings = [auditor.LegReading("USO", "bullish", +5.0, 0.5)]
+    assert auditor._score(readings) == (100.0, 1)
+    assert auditor._score(readings, {"USO": "bearish"}) == (0.0, 1)
+    assert auditor._score(readings, {"GLD": "bullish"}) == (None, 0)  # not its leg
+
+
+def test_an_llm_added_leg_teaches_no_rule(db, monkeypatch):
+    """GLD belongs to neither template: its move must not reach their record."""
+    _resolving_signal(
+        db, monkeypatch, country="mexico",
+        rules=["tpl-earthquake-national"],
+        legs={"EWW": ("bearish", 0.0), "GLD": ("bullish", +8.0)},
+    )
+    auditor.evaluate_pending(db, user_id=1)
+    assert db.query(GeoCheckpoint).one().outcome.value == "CORRECT"  # the basket: GLD
+    assert _record(db, "tpl-earthquake-national") == (0, 0)
+
+
+def test_a_basket_that_predates_the_rules_legs_is_scored_whole_as_before(db, monkeypatch):
+    """COPX left eq-chile-copper on 2026-09-21. A signal still carrying it has
+    none of the rule's legs, so the basket's own outcome is what it teaches."""
+    _resolving_signal(
+        db, monkeypatch, rules=["eq-chile-copper"], legs={"COPX": ("bullish", +6.0)},
+    )
+    auditor.evaluate_pending(db, user_id=1)
+    assert _record(db, "eq-chile-copper") == (1, 1)

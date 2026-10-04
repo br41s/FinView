@@ -29,6 +29,7 @@ from .rules import (
     match_rules,
     match_templates,
     region_reach,
+    scoring_rules,
 )
 from .sentinel import GeoEvent
 
@@ -60,10 +61,9 @@ class AnalystResult:
 def correlate_with_rules(
     event: GeoEvent, stats: dict[str, GeoRuleStat]
 ) -> tuple[list[FastRule], list[AnalystTicker], float, str]:
-    # A template is the fallback, never an addition: next to a hand-written rule
-    # it would enter the mean confidence and the max risk, and an event that has
-    # always scored 52 would page at 60 on the day this shipped.
-    rules = match_rules(event) or match_templates(event)
+    # Hand-written rules first: a symbol two rules name keeps the first writer's
+    # direction, so a template leg that collides with a written one is dropped.
+    rules = match_rules(event) + match_templates(event)
     if not rules:
         return [], [], 0.0, ""
 
@@ -73,7 +73,9 @@ def correlate_with_rules(
             if t.symbol not in ticker_map:
                 ticker_map[t.symbol] = AnalystTicker(t.symbol, t.direction, rule.description)
 
-    avg_conf = sum(effective_confidence(r, stats.get(r.id)) for r in rules) / len(rules)
+    # Beside a written rule a template adds legs and nothing else (scoring_rules).
+    scoring = scoring_rules(rules)
+    avg_conf = sum(effective_confidence(r, stats.get(r.id)) for r in scoring) / len(scoring)
     confidence = max(0.0, min(avg_conf * 100, 100.0))
     return rules, list(ticker_map.values()), confidence, rules[0].direction
 
@@ -324,7 +326,7 @@ def analyze_event(
                 )
 
     final_conf = confidence if rules else float(llm.get("confidence", 50)) if llm else 50.0
-    risk_score = compute_risk(rules, event, (llm or {}).get("riskScore"), regime)
+    risk_score = compute_risk(scoring_rules(rules), event, (llm or {}).get("riskScore"), regime)
     impact = (llm or {}).get("estimatedImpact", {})
     return AnalystResult(
         event=event,
