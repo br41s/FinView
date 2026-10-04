@@ -491,6 +491,21 @@ class GeoSignalTickerOut(BaseModel):
     # Where the instrument sits between the event and the world: local (a company
     # bound to one country) | national (that country's market) | international.
     tier: str = "international"
+    # The leg read on its own, against its own noise: confirms | contradicts |
+    # flat, None until it has been read. The +7d reading once the signal has
+    # resolved, the last audit's otherwise.
+    state: str | None = None
+    liveChangePct: float | None = None  # % move since the signal, at the last audit
+
+
+class GeoTierOut(BaseModel):
+    """One rung of the ladder: how a tier of the basket reads as a whole."""
+
+    tier: str  # local | national | international
+    state: str  # pending | confirmed | contradicted | unreadable
+    legs: int
+    confirms: int
+    contradicts: int
 
 
 class GeoRuleOut(BaseModel):
@@ -530,6 +545,8 @@ class GeoSignalOut(BaseModel):
     riskScore: float  # 0-10
     direction: str  # bullish|bearish|neutral
     tickers: list[GeoSignalTickerOut]
+    # The basket read tier by tier, narrowest first; only the tiers it carries.
+    ladder: list[GeoTierOut] = []
     rules: list[GeoRuleOut] = []
     checkpoints: list[GeoCheckpointOut] = []
     timestamp: datetime
@@ -627,12 +644,41 @@ class GeoRuleAccuracy(BaseModel):
     accuracy: float | None = None  # as stored by the auditor; None = never scored
 
 
+class GeoTierAccuracy(BaseModel):
+    """How one tier read, over the resolved signals that carried it."""
+
+    confirmed: int = 0
+    contradicted: int = 0
+    unreadable: int = 0
+    # confirmed / (confirmed + contradicted); None when nothing was decisive.
+    accuracy: float | None = None
+
+
+class GeoLadderStep(BaseModel):
+    """Does a confirmed narrow tier come with a confirmed wider one?
+
+    ``rate`` is the wider tier's hit rate among signals whose narrower tier
+    confirmed; ``baseline`` is its hit rate over every signal that carried both.
+    The gap between them is the evidence a confidence lift would have to be
+    derived from — with ``n`` saying how little of it there is yet.
+    """
+
+    narrow: str
+    wide: str
+    n: int = 0  # signals where the narrow tier confirmed and the wide one was decisive
+    confirmed: int = 0  # of those, the wide tier confirmed too
+    rate: float | None = None
+    baseline: float | None = None
+
+
 class GeoAccuracyOut(BaseModel):
     """Per-horizon hit rate plus the per-rule learning table."""
 
     since: datetime
     horizons: dict[str, GeoHorizonAccuracy]  # keyed 1h|6h|1d|3d|7d
     rules: list[GeoRuleAccuracy]  # sorted by totalSignals desc
+    tiers: dict[str, GeoTierAccuracy] = {}  # keyed local|national|international
+    ladder: list[GeoLadderStep] = []  # local→national, national→international
 
 
 class GeoRuleStatsReset(BaseModel):

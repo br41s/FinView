@@ -183,6 +183,13 @@ class GeoSignalTicker(Base):
     price_at_signal: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     # False when prices.py cannot resolve the symbol (futures / foreign listings).
     resolved: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The leg read on its own (services/geo/ladder.py: confirms | contradicts |
+    # flat). `live_*` is overwritten by every audit while the signal is active;
+    # `final_state` is written once, at the +7d resolution. NULL = never read,
+    # which is not the same as read and flat.
+    live_change_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 3))
+    live_state: Mapped[str | None] = mapped_column(String(12))
+    final_state: Mapped[str | None] = mapped_column(String(12))
 
     signal: Mapped["GeoSignal"] = relationship(back_populates="tickers")
 

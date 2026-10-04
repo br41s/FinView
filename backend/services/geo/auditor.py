@@ -27,6 +27,7 @@ from backend.models import (
 from backend.services.prices import fetch_price_series
 from backend.services.yahoo_budget import Budget
 
+from .ladder import CONFIRMS, FLAT, leg_state
 from .rules import fetch_order, resolve_rule
 from .trading_time import add_trading_time
 
@@ -171,15 +172,8 @@ class LegReading:
     threshold_pct: float
 
     @property
-    def readable(self) -> bool:
-        # A move too small to read is *undetermined*, not wrong, so it stays out of
-        # the denominator entirely. It used to count as a miss, which made the
-        # intraday checkpoints unwinnable: prices.py returns the last **daily
-        # close**, so at +1h and +6h `cur` is the very same close the signal was
-        # priced at, change is exactly 0.00%, and every basket scored 0 → INCORRECT.
-        # Two of the five checkpoints were red by construction, the accuracy read
-        # 0%, and the +7d resolution fed that back into the rules as failure.
-        return abs(self.change_pct) > self.threshold_pct
+    def state(self) -> str:
+        return leg_state(self.direction, self.change_pct, self.threshold_pct)
 
 
 def _leg_readings(
@@ -219,12 +213,31 @@ def _score(
     correct = total = 0
     for r in readings:
         direction = r.direction if directions is None else directions.get(r.symbol)
-        if direction not in ("bullish", "bearish") or not r.readable:
+        # An unreadable move stays out of the denominator: undetermined, not wrong.
+        state = leg_state(direction or "", r.change_pct, r.threshold_pct)
+        if state == FLAT:
             continue
         total += 1
-        if (direction == "bullish") == (r.change_pct > 0):
-            correct += 1
+        correct += state == CONFIRMS
     return (round(correct / total * 100, 2) if total else None), total
+
+
+def _stamp_legs(signal: GeoSignal, readings: list[LegReading], *, final: bool = False) -> None:
+    """Store each leg's own reading on its row, for the ladder.
+
+    A leg with no reading this run keeps what it had: a Yahoo stall must not
+    blank a leg any more than it blanks the signal's live rating.
+    """
+    by_symbol = {r.symbol: r for r in readings}
+    for t in signal.tickers:
+        reading = by_symbol.get(t.symbol)
+        if reading is None:
+            continue
+        if final:
+            t.final_state = reading.state
+        else:
+            t.live_change_pct = round(reading.change_pct, 3)
+            t.live_state = reading.state
 
 
 def _detail(readings: list[LegReading]) -> str:
@@ -447,6 +460,7 @@ def evaluate_pending(
 
         if horizon == _FINAL_HORIZON:
             signal.status = GeoSignalStatus.RESOLVED.value
+            _stamp_legs(signal, readings, final=True)
             # Only a measurable outcome teaches a rule anything, and each rule is
             # measured on its own legs: a tied basket can still hold one rule that
             # was right and one that was wrong. An unscored basket used to arrive
@@ -524,7 +538,9 @@ def rate_active(
                 thresholds[t.symbol] = threshold
         if not prices:
             continue  # no price this run: keep the last rating rather than blank it
-        score, _detail, _n = _score_basket(signal, prices, thresholds)
+        readings = _leg_readings(signal, prices, thresholds)
+        score = _score(readings)[0]
+        _stamp_legs(signal, readings)
         signal.live_score = score
         signal.live_outcome = _outcome(score)
         signal.live_rated_at = now
