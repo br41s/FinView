@@ -1,7 +1,13 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, ExternalLink, Target } from "lucide-react";
-import { scopeLabel, thesisSegments, tradabilityHint, type GeoSignal } from "@/lib/geo";
+import {
+  groupByTier,
+  scopeLabel,
+  thesisSegments,
+  tradabilityHint,
+  type GeoSignal,
+} from "@/lib/geo";
 import { api } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
 import { fmtDateTime } from "@/lib/format";
@@ -459,52 +465,69 @@ function DetailView({ signal, onBack }: { signal: GeoSignal; onBack: () => void 
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/50">
             Affected tickers
           </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          {/* Grouped by how wide each instrument is: a company tied to one
+              country, one country's market, then what no single country owns.
+              The labels describe that width and nothing else. */}
+          <div className="mt-2 space-y-2.5">
             {signal.tickers.length === 0 ? (
               <span className="text-[12px] text-foreground/50">None tagged</span>
             ) : (
-              signal.tickers.map((t) => {
-                const color = DIR_COLORS[t.direction];
-                const arrow = t.direction === "bullish" ? "↑" : t.direction === "bearish" ? "↓" : "•";
-                const isExpanded = expandedSymbol === t.symbol;
-                const hint = tradabilityHint(t);
-                const base =
-                  t.priceAtSignal != null
-                    ? `Precio al disparo: ${t.priceAtSignal.toFixed(2)} · Ver instrumento`
-                    : "Ver instrumento";
-                return (
-                  <button
-                    key={t.symbol}
-                    type="button"
-                    title={hint.tooltip ? `${base} · ${hint.tooltip}` : base}
-                    onClick={() => setExpandedSymbol(isExpanded ? null : t.symbol)}
-                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-opacity hover:opacity-70"
-                    style={{
-                      fontFamily: "var(--fv-font-jetbrains), monospace",
-                      color,
-                      backgroundColor: tint(color, 10),
-                      // A chip with no retail route in the EU still belongs in the
-                      // thesis — it just must not read as buyable. Dimmed + dashed,
-                      // never hidden. `options_only` stays at full weight: the owner
-                      // trades IBKR options, so it is a route, not a dead end.
-                      border: hint.muted ? `1px dashed ${tint(color, 50)}` : "1px solid transparent",
-                      opacity: hint.muted ? 0.55 : 1,
-                    }}
-                  >
-                    <span>
-                      {arrow} {t.symbol}
-                    </span>
-                    {hint.badge && (
-                      <span
-                        className="rounded-sm px-1 py-[1px] text-[8px] uppercase tracking-wider"
-                        style={{ backgroundColor: tint(color, 15) }}
-                      >
-                        {hint.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })
+              groupByTier(signal.tickers).map((group) => (
+                <div key={group.tier ?? "all"}>
+                  {group.label && (
+                    <p
+                      className="mb-1 text-[10px] text-foreground/45"
+                      title={group.title ?? undefined}
+                    >
+                      {group.label}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.tickers.map((t) => {
+                      const color = DIR_COLORS[t.direction];
+                      const arrow = t.direction === "bullish" ? "↑" : t.direction === "bearish" ? "↓" : "•";
+                      const isExpanded = expandedSymbol === t.symbol;
+                      const hint = tradabilityHint(t);
+                      const base =
+                        t.priceAtSignal != null
+                          ? `Precio al disparo: ${t.priceAtSignal.toFixed(2)} · Ver instrumento`
+                          : "Ver instrumento";
+                      return (
+                        <button
+                          key={t.symbol}
+                          type="button"
+                          title={hint.tooltip ? `${base} · ${hint.tooltip}` : base}
+                          onClick={() => setExpandedSymbol(isExpanded ? null : t.symbol)}
+                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-opacity hover:opacity-70"
+                          style={{
+                            fontFamily: "var(--fv-font-jetbrains), monospace",
+                            color,
+                            backgroundColor: tint(color, 10),
+                            // A chip with no retail route in the EU still belongs in the
+                            // thesis — it just must not read as buyable. Dimmed + dashed,
+                            // never hidden. `options_only` stays at full weight: the owner
+                            // trades IBKR options, so it is a route, not a dead end.
+                            border: hint.muted ? `1px dashed ${tint(color, 50)}` : "1px solid transparent",
+                            opacity: hint.muted ? 0.55 : 1,
+                          }}
+                        >
+                          <span>
+                            {arrow} {t.symbol}
+                          </span>
+                          {hint.badge && (
+                            <span
+                              className="rounded-sm px-1 py-[1px] text-[8px] uppercase tracking-wider"
+                              style={{ backgroundColor: tint(color, 15) }}
+                            >
+                              {hint.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
             )}
           </div>
           {expandedSymbol && (

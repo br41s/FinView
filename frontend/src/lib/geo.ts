@@ -7,6 +7,11 @@
  *  so only reachable through IBKR options; `not_tradable` = no retail route. */
 export type GeoTradability = "cash_eu" | "options_only" | "not_tradable";
 
+/** How wide an instrument is: a company tied to one country, one country's
+ *  market, or something no single country owns. A property of the instrument,
+ *  not of the event — a Taiwan signal can carry China's market as "national". */
+export type GeoTier = "local" | "national" | "international";
+
 export type GeoSignalTicker = {
   symbol: string;
   direction: "bullish" | "bearish" | "neutral";
@@ -17,6 +22,8 @@ export type GeoSignalTicker = {
   tradability?: GeoTradability;
   /** Nearest EU-listed equivalent, e.g. "SGLN / 4GLD (physical gold ETC)". */
   alternate?: string | null;
+  /** Optional on the wire: an API older than the country layer sends none. */
+  tier?: GeoTier;
 };
 
 /** How wide the event that fired the rule is. Optional on the wire. */
@@ -57,6 +64,7 @@ export type GeoSignal = {
   lat: number;
   lng: number;
   location: string;
+  country?: string | null; // the country the source reported, when it named one
   importance: number; // 0-100
   confidence: number; // 0-1
   riskScore: number; // 0-10
@@ -217,6 +225,42 @@ export function macroRegimeBadge(
     return { label: "Régimen: risk-on", tone: "ok", title: `VIX ${vix}${asOf}.` };
   }
   return { label: "Régimen: neutral", tone: "muted", title: `VIX ${vix}${asOf}.` };
+}
+
+const TIERS: { tier: GeoTier; label: string; title: string }[] = [
+  { tier: "local", label: "Local", title: "Empresas ligadas a un solo país." },
+  { tier: "national", label: "Nacional", title: "El mercado de un país, a través de su ETF." },
+  {
+    tier: "international",
+    label: "Internacional",
+    title: "Materias primas, sectores y activos que no dependen de un solo país.",
+  },
+];
+
+export type TickerTierGroup = {
+  tier: GeoTier | null;
+  label: string | null;
+  title: string | null;
+  tickers: GeoSignalTicker[];
+};
+
+/**
+ * The basket split by how wide each instrument is, narrowest first.
+ * A tier with no instrument is left out. When no ticker carries a tier — an API
+ * older than the country layer — the basket comes back as one unlabelled group,
+ * so the panel renders exactly as it did rather than filing everything under
+ * "Internacional".
+ */
+export function groupByTier(tickers: GeoSignalTicker[]): TickerTierGroup[] {
+  if (!tickers.some((t) => t.tier)) {
+    return tickers.length ? [{ tier: null, label: null, title: null, tickers }] : [];
+  }
+  return TIERS.map(({ tier, label, title }) => ({
+    tier,
+    label,
+    title,
+    tickers: tickers.filter((t) => (t.tier ?? "international") === tier),
+  })).filter((group) => group.tickers.length > 0);
 }
 
 /** Spanish tag for a rule's scope; null when the row predates scoping. */
