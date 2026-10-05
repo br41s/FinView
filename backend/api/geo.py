@@ -16,6 +16,7 @@ from backend.api.schemas import (
     GeoMacroOut,
     GeoCycleRunOut,
     GeoHorizonAccuracy,
+    GeoLadderStep,
     GeoRuleAccuracy,
     GeoRuleOut,
     GeoRuleStatsReset,
@@ -23,6 +24,8 @@ from backend.api.schemas import (
     GeoSchedulerStatus,
     GeoSignalOut,
     GeoSignalTickerOut,
+    GeoTierAccuracy,
+    GeoTierOut,
 )
 from backend.config import settings
 from backend.database import DbSession
@@ -33,9 +36,25 @@ from backend.models import (
     GeoRuleStat,
     GeoSignal,
     GeoSignalStatus,
+    GeoSignalTicker,
 )
 from backend.services.geo.owner import geo_owner_id
-from backend.services.geo.rules import RULES_BY_ID, effective_confidence, rule_scope, INSTRUMENT_TRADABILITY
+from backend.services.geo.countries import country_name
+from backend.services.geo.ladder import (
+    CONFIRMED,
+    CONTRADICTED,
+    PENDING,
+    TIERS,
+    UNREADABLE,
+    tier_states,
+)
+from backend.services.geo.rules import (
+    INSTRUMENT_TRADABILITY,
+    effective_confidence,
+    instrument_tier,
+    resolve_rule,
+    rule_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +101,21 @@ def _matched_rules(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> list[Geo
         rule_ids = json.loads(signal.matched_rule_ids)
     except ValueError:
         return []
-    valid_ids = [rid for rid in rule_ids if rid in RULES_BY_ID]
+    # A template id is one row for every country: it becomes a rule — its basket,
+    # its chain with the country's name in it — only for this signal's country.
+    rules = [resolve_rule(rid, signal.country) for rid in rule_ids]
     return [
         GeoRuleOut(
-            id=rid,
-            description=RULES_BY_ID[rid].description,
-            thesis=RULES_BY_ID[rid].thesis,
-            scope=rule_scope(RULES_BY_ID[rid]),
-            confidence=effective_confidence(RULES_BY_ID[rid], stats.get(rid)),
-            category=RULES_BY_ID[rid].category,
-            trigger=RULES_BY_ID[rid].condition,
+            id=rule.id,
+            description=rule.description,
+            thesis=rule.thesis,
+            scope=rule_scope(rule),
+            confidence=effective_confidence(rule, stats.get(rule.id)),
+            category=rule.category,
+            trigger=rule.condition,
         )
-        for rid in valid_ids
+        for rule in rules
+        if rule is not None
     ]
 
 
@@ -147,6 +169,30 @@ def _load_rule_stats(db: Session, signals: list[GeoSignal]) -> dict[str, GeoRule
     }
 
 
+def _leg_state(ticker: GeoSignalTicker) -> str | None:
+    """A leg's reading: the +7d one once it exists, the last audit's until then."""
+    return ticker.final_state or ticker.live_state
+
+
+def _ladder(signal: GeoSignal) -> list[GeoTierOut]:
+    """The basket read tier by tier. "Pending" only means something while the
+    signal is open: once resolved, a tier that was never read is unreadable, and
+    a signal resolved before legs kept a reading has no ladder to show at all —
+    not three rungs waiting for a price that will never come."""
+    states = [(t.symbol, _leg_state(t)) for t in signal.tickers]
+    resolved = _ev(signal.status) == GeoSignalStatus.RESOLVED.value
+    if resolved and all(state is None for _, state in states):
+        return []
+    return [
+        GeoTierOut(
+            tier=s.tier,
+            state=UNREADABLE if resolved and s.state == PENDING else s.state,
+            legs=s.legs, confirms=s.confirms, contradicts=s.contradicts,
+        )
+        for s in tier_states(states)
+    ]
+
+
 def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut:
     checkpoints = sorted(signal.checkpoints, key=lambda c: c.target_at)
     return GeoSignalOut(
@@ -157,6 +203,7 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
         lat=float(signal.lat),
         lng=float(signal.lng),
         location=signal.location or "",
+        country=country_name(signal.country) or None,
         importance=signal.importance,
         confidence=float(signal.confidence),
         riskScore=float(signal.risk_score),
@@ -168,9 +215,13 @@ def _serialize(signal: GeoSignal, stats: dict[str, GeoRuleStat]) -> GeoSignalOut
                 priceAtSignal=float(t.price_at_signal) if t.price_at_signal is not None else None,
                 tradability=INSTRUMENT_TRADABILITY.get(t.symbol, ("cash_eu", ""))[0],
                 alternate=INSTRUMENT_TRADABILITY.get(t.symbol, ("cash_eu", ""))[1] or None,
+                tier=instrument_tier(t.symbol),
+                state=_leg_state(t),
+                liveChangePct=float(t.live_change_pct) if t.live_change_pct is not None else None,
             )
             for t in signal.tickers
         ],
+        ladder=_ladder(signal),
         rules=_matched_rules(signal, stats),
         checkpoints=[
             GeoCheckpointOut(
@@ -392,9 +443,12 @@ def accuracy(
         bucket.accuracy = bucket.correct / measured if measured else None
 
     stats = db.query(GeoRuleStat).order_by(GeoRuleStat.total_signals.desc()).all()
+    tiers, ladder = _ladder_accuracy(db, cutoff)
     return GeoAccuracyOut(
         since=_as_utc(since_dt),
         horizons=buckets,
+        tiers=tiers,
+        ladder=ladder,
         rules=[
             GeoRuleAccuracy(
                 ruleId=row.rule_id,
@@ -408,6 +462,61 @@ def accuracy(
             for row in stats
         ],
     )
+
+
+def _ladder_accuracy(
+    db: Session, cutoff: datetime
+) -> tuple[dict[str, GeoTierAccuracy], list[GeoLadderStep]]:
+    """How each tier read at +7d, and whether a confirmed narrow tier came with a
+    confirmed wider one, over the signals created since ``cutoff``.
+
+    Read off `final_state`, which only a +7d resolution writes: a signal still
+    open has no say here. This is a measurement and nothing acts on it yet —
+    the lift it would justify is derived from these numbers once there are
+    enough of them, not assumed.
+    """
+    rows = (
+        db.query(GeoSignalTicker.signal_id, GeoSignalTicker.symbol, GeoSignalTicker.final_state)
+        .join(GeoSignal, GeoSignal.id == GeoSignalTicker.signal_id)
+        .filter(
+            GeoSignal.user_id == geo_owner_id(db),
+            GeoSignal.created_at >= cutoff,
+            GeoSignalTicker.final_state.isnot(None),
+        )
+        .all()
+    )
+    by_signal: dict[int, list[tuple[str, str]]] = {}
+    for signal_id, symbol, state in rows:
+        by_signal.setdefault(signal_id, []).append((symbol, state))
+
+    tiers = {tier: GeoTierAccuracy() for tier in TIERS}
+    steps = [GeoLadderStep(narrow=TIERS[i], wide=TIERS[i + 1]) for i in range(len(TIERS) - 1)]
+    decisive_both = {step.narrow: [0, 0] for step in steps}  # [wide decisive, wide confirmed]
+    for legs in by_signal.values():
+        states = {s.tier: s.state for s in tier_states(legs)}
+        for tier, state in states.items():
+            if state in (CONFIRMED, CONTRADICTED):
+                setattr(tiers[tier], state, getattr(tiers[tier], state) + 1)
+            else:
+                tiers[tier].unreadable += 1
+        for step in steps:
+            wide = states.get(step.wide)
+            if step.narrow not in states or wide not in (CONFIRMED, CONTRADICTED):
+                continue
+            decisive_both[step.narrow][0] += 1
+            decisive_both[step.narrow][1] += wide == CONFIRMED
+            if states[step.narrow] == CONFIRMED:
+                step.n += 1
+                step.confirmed += wide == CONFIRMED
+
+    for bucket in tiers.values():
+        decisive = bucket.confirmed + bucket.contradicted
+        bucket.accuracy = bucket.confirmed / decisive if decisive else None
+    for step in steps:
+        total, confirmed = decisive_both[step.narrow]
+        step.rate = step.confirmed / step.n if step.n else None
+        step.baseline = confirmed / total if total else None
+    return tiers, steps
 
 
 @router.post("/rule-stats/reset", response_model=GeoRuleStatsReset)

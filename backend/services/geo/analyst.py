@@ -23,10 +23,13 @@ from .rules import (
     INSTRUMENT_TRADABILITY,
     FastRule,
     GeoRuleStat,
+    allowed_symbols,
     compute_risk,
     effective_confidence,
     match_rules,
+    match_templates,
     region_reach,
+    scoring_rules,
 )
 from .sentinel import GeoEvent
 
@@ -58,7 +61,9 @@ class AnalystResult:
 def correlate_with_rules(
     event: GeoEvent, stats: dict[str, GeoRuleStat]
 ) -> tuple[list[FastRule], list[AnalystTicker], float, str]:
-    rules = match_rules(event)
+    # Hand-written rules first: a symbol two rules name keeps the first writer's
+    # direction, so a template leg that collides with a written one is dropped.
+    rules = match_rules(event) + match_templates(event)
     if not rules:
         return [], [], 0.0, ""
 
@@ -68,7 +73,9 @@ def correlate_with_rules(
             if t.symbol not in ticker_map:
                 ticker_map[t.symbol] = AnalystTicker(t.symbol, t.direction, rule.description)
 
-    avg_conf = sum(effective_confidence(r, stats.get(r.id)) for r in rules) / len(rules)
+    # Beside a written rule a template adds legs and nothing else (scoring_rules).
+    scoring = scoring_rules(rules)
+    avg_conf = sum(effective_confidence(r, stats.get(r.id)) for r in scoring) / len(scoring)
     confidence = max(0.0, min(avg_conf * 100, 100.0))
     return rules, list(ticker_map.values()), confidence, rules[0].direction
 
@@ -97,6 +104,8 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
         f"- Magnitude: {event.magnitude if event.magnitude is not None else 'N/A'}\n"
         f"- Severity: {event.severity or 'N/A'}\n- Source: {event.source}\n\n"
         f"{'Already identified tickers: ' + ', '.join(existing) if existing else ''}\n\n"
+        "Add instruments ONLY from this universe (symbol (breadth, tradability)):\n"
+        f"{_universe_block(allowed_symbols(event))}\n\n"
         "Respond ONLY in this exact JSON format:\n"
         '{"affectedTickers": [{"symbol": "XX", "direction": "bullish|bearish|neutral", '
         '"rationale": "brief reason"}], "narrative": "2-3 sentence analysis", '
@@ -151,33 +160,39 @@ def has_fresh_generative(event_id: str) -> bool:
     return bool(cached and time.time() - cached[0] < _LLM_CACHE_TTL)
 
 
-def _universe_block() -> str:
+def _universe_block(allowed: frozenset[str]) -> str:
+    """The instruments one event may be related to, as the prompt lists them."""
     lines = []
-    for sym in sorted(INSTRUMENT_BREADTH):
+    for sym in sorted(allowed):
         trad = INSTRUMENT_TRADABILITY.get(sym, ("cash_eu", ""))[0]
         lines.append(f"{sym} ({INSTRUMENT_BREADTH[sym]}, {trad})")
     return ", ".join(lines)
 
 
-def _validate_generated(body: object, reach: str = "regional") -> dict | None:
+def _validate_generated(
+    body: object, reach: str = "regional", allowed: frozenset[str] | None = None
+) -> dict | None:
     """The model's answer is data, not a decision: every field is checked.
 
     ``reach`` is the event's own scope (`rules.region_reach`): a pick wider than
     it — a worldwide ETF for a one-district event — is dropped, the same
-    invariant every hand-written rule is tested against.
+    invariant every hand-written rule is tested against. ``allowed`` is the
+    event's slice of the universe (`rules.allowed_symbols`): another country's
+    instrument is dropped whatever the prompt was told.
     """
     if not isinstance(body, dict) or body.get("actionable") is not True:
         return None
-    allowed = _MAX_BREADTH_FOR_SCOPE.get(reach, 1)
+    universe = INSTRUMENT_BREADTH if allowed is None else allowed
+    max_breadth = _MAX_BREADTH_FOR_SCOPE.get(reach, 1)
     tickers = []
     for t in body.get("tickers") or []:
         if not isinstance(t, dict):
             continue
         sym = str(t.get("symbol") or "").strip()
         direction = str(t.get("direction") or "").strip().lower()
-        if sym not in INSTRUMENT_BREADTH or direction not in {"bullish", "bearish"}:
+        if sym not in universe or direction not in {"bullish", "bearish"}:
             continue
-        if BREADTH_RANK[INSTRUMENT_BREADTH[sym]] > allowed:
+        if BREADTH_RANK[INSTRUMENT_BREADTH[sym]] > max_breadth:
             logger.info("geo generative: %s is wider than a %s event — dropped", sym, reach)
             continue
         tickers.append({"symbol": sym, "direction": direction,
@@ -216,6 +231,7 @@ def _llm_generate(event: GeoEvent) -> dict | None:
     if cached and time.time() - cached[0] < _LLM_CACHE_TTL:
         return cached[1] or None
     raw = event.raw_data or {}
+    allowed = allowed_symbols(event)
     prompt = (
         "You are VolatilityEdge, a senior geopolitical-macro analyst for a Spanish retail "
         "investor. No hand-written rule covers this event. Decide whether it is a tradable "
@@ -230,7 +246,7 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         f"- Source URL: {raw.get('sourceUrl') or raw.get('url') or 'N/A'}\n"
         f"- Mentions: {raw.get('numMentions', 'N/A')}\n\n"
         "Choose instruments ONLY from this universe (symbol (breadth, tradability)):\n"
-        f"{_universe_block()}\n\n"
+        f"{_universe_block(allowed)}\n\n"
         "Be strict: most events are not tradable. A local event may only target instruments "
         "whose price it plausibly moves; a worldwide ETF needs a worldwide transmission. "
         "If in doubt, answer actionable=false.\n"
@@ -251,7 +267,7 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         )
         if content is None:
             return None
-        proposal = _validate_generated(json.loads(content), region_reach(event.region))
+        proposal = _validate_generated(json.loads(content), region_reach(event.region), allowed)
     except Exception:
         logger.warning("geo generative LLM analysis failed", exc_info=True)
         return None
@@ -298,15 +314,19 @@ def analyze_event(
 
     ticker_map = {t.symbol: t for t in tickers}
     if llm:
+        # The enrichment used to append whatever the model named — the one path
+        # by which a symbol outside the universe, or another country's company,
+        # entered a signal with no breadth, no tradability and often no price.
+        allowed = allowed_symbols(event)
         for t in llm.get("affectedTickers", []) or []:
-            sym = t.get("symbol")
-            if sym and sym not in ticker_map:
+            sym = t.get("symbol") if isinstance(t, dict) else None
+            if sym and sym in allowed and sym not in ticker_map:
                 ticker_map[sym] = AnalystTicker(
                     sym, t.get("direction", "neutral"), t.get("rationale", "")
                 )
 
     final_conf = confidence if rules else float(llm.get("confidence", 50)) if llm else 50.0
-    risk_score = compute_risk(rules, event, (llm or {}).get("riskScore"), regime)
+    risk_score = compute_risk(scoring_rules(rules), event, (llm or {}).get("riskScore"), regime)
     impact = (llm or {}).get("estimatedImpact", {})
     return AnalystResult(
         event=event,

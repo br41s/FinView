@@ -52,6 +52,7 @@ def _row(
     actor1: str = "",
     actor2: str = "",
     url: str = "https://ex.test/a",
+    country: str = "",
 ) -> str:
     """One 61-column export record. Only the columns the parser reads are set."""
     cols = [""] * 61
@@ -69,6 +70,7 @@ def _row(
     cols[33] = mentions
     cols[34] = "-6.5"
     cols[52] = geo_name
+    cols[53] = country
     cols[56] = lat
     cols[57] = lon
     cols[59] = f"{_LATEST}"
@@ -268,6 +270,29 @@ def test_columns_are_read_off_the_right_indexes(monkeypatch):
     assert gaza.actor1 == "ISRAEL" and gaza.actor2 == "PALESTINIAN"
     assert gaza.date_added == _LATEST
     assert gaza.source_url == "https://ex.test/a"
+
+
+def test_the_country_code_is_read_off_column_53_and_becomes_the_events_country():
+    """FIPS 10-4, as the export writes it — "SP" is Spain, not ISO's "ES"."""
+    row = _row("900", event_code="190", root_code="19", quad="4", goldstein="-10.0",
+               mentions="40", lat="40.4", lon="-3.7", geo_name="Madrid, Madrid, Spain",
+               country=" SP ").split("\t")
+    parsed = gdelt._parse_row(row)
+    assert parsed.country_code == "SP"
+    (event,) = sentinel.analyze_gdelt_events([parsed])
+    assert event.country == "spain"
+    # Not raw_data["country"]: that key is a policy action's target and is what
+    # the `country=` rule atom reads — a wire story there would match OFAC rules.
+    assert "country" not in event.raw_data
+
+
+def test_a_row_without_a_country_code_has_no_country():
+    row = _row("901", event_code="190", root_code="19", quad="4", goldstein="-10.0",
+               mentions="40", lat="31.5", lon="34.5", geo_name="Gaza").split("\t")
+    parsed = gdelt._parse_row(row)
+    assert parsed.country_code == ""
+    (event,) = sentinel.analyze_gdelt_events([parsed])
+    assert event.country is None
 
 
 def test_title_is_synthesized_from_actors_and_cameo(monkeypatch):

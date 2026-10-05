@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'inversiones-exteriores-d6-espana',
+    tag: 'Fiscalidad',
+    date: '4 oct 2026',
+    readTime: '9 min',
+    title: 'Inversiones exteriores: el D-6 ya no existe y esto es lo que sí te obliga',
+    excerpt:
+      'El D-6 desapareció con el Real Decreto 571/2023 y con él la obligación de declarar las carteras de valores. Lo que de verdad sigue vivo es el Modelo 720: dos trámites distintos que la gente confunde sin parar.',
+  },
+  {
     slug: 'metodo-fifo-irpf-espana',
     tag: 'Fiscalidad',
     date: '4 oct 2026',
@@ -51,6 +60,15 @@ export const POST_META = [
     title: 'El método FIFO en el IRPF: cómo empareja Hacienda tus compras y ventas',
     excerpt:
       'Tu broker te muestra un precio medio; Hacienda aplica FIFO y da por vendidas siempre tus acciones más antiguas. Cómo se calcula lote a lote, por qué cruza todos tus brokers y qué pasa con splits, herencias y acciones fraccionadas.',
+  },
+  {
+    slug: 'sucesiones-acciones-eeuu-espana',
+    tag: 'Fiscalidad',
+    date: '2 oct 2026',
+    readTime: '11 min',
+    title: 'Impuesto de sucesiones de EEUU: la factura oculta de tus acciones americanas',
+    excerpt:
+      'Si tus acciones de empresas de EEUU superan los 60.000 $, tus herederos pueden pagar hasta el 40 % al IRS. Y no hay convenio con España, así que el impuesto de sucesiones español se suma. Cómo funciona el 706-NA y por qué los ETFs americanos no te libran.',
   },
   {
     slug: 'dividendos-colombianos-espana',

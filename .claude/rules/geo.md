@@ -9,8 +9,9 @@ paths:
 ## Geo-Intel — architecture
 
 WorldHawk port: geopolitical/natural events → market signals. 84 rules / 49 regions
-(`services/geo/rules.py`), 9 ingest sources (seismic, EONET events, FIRMS fires,
-maritime AIS, meteo, flights, GDELT, OFAC, Federal Register) — every source key
+(`services/geo/rules.py`), 6 country templates over 33 country markets
+(`services/geo/countries.py`), 9 ingest sources (seismic, EONET + GDACS events, FIRMS
+fires, maritime AIS, meteo, flights, GDELT, OFAC, Federal Register) — every source key
 optional, a missing key degrades that source to empty.
 
 ### Every rule states its reach and writes down its transmission
@@ -20,6 +21,128 @@ renders as the thesis, `scope` bounds the basket against `INSTRUMENT_BREADTH` an
 mismatch costs confidence. A leg whose third clause cannot be written is dropped and a rule
 with no surviving leg is deleted (eight were, 2026-09-21). `INSTRUMENT_TRADABILITY` tags
 each symbol cash_eu / options_only / not_tradable with its UCITS or EU-listed alternate.
+
+### Country layer — where an event is, and what it may reach
+The boxes were drawn for commodity and chokepoint theses, so until 2026-10-04 an event
+that hurt one country and nobody else had nowhere to go: a quake outside every box was
+dropped in the sentinel, and seven countries had an instrument of their own.
+
+- **The country is the source's own word, never geometry.** GDELT's export carries
+  `ActionGeo_CountryCode` in column 53 (**FIPS 10-4, not ISO**: `SP` is Spain, `CH` is
+  China, `AS` is Australia), a USGS `place` ends in the country — including the offshore
+  quakes a polygon misses — and GDACS lists the countries affected (ISO3). Only the last
+  comma-part of a place is read (towns are named after countries) and a short trap list
+  drops "New Mexico", "Gulf of Mexico", "Chile Rise" and the seas. A GDACS event is
+  attributed **only when it names exactly one listed country**: which of three a typhoon
+  hit hardest is not in the feed.
+- **`GeoEvent.country` is not `raw_data["country"]`.** The second is the *target* of a
+  policy action and is what the `country=` rule atom reads. Stamping a wire story there
+  would make GDELT sanctions stories match the OFAC rules. Slugs are OFAC's vocabulary,
+  but `ofac.COUNTRY_SLUGS` is not extended — `_country_of` takes the earliest name, so a
+  new entry re-attributes SDN designations.
+- **Template rules** (`rules.TEMPLATE_RULES`): one written chain per (event category,
+  tier) — earthquake, cyclone, flood × national, local — rendered for the event's
+  country by `resolve_rule`. National is the country ETF; local is up to two companies
+  that earn only there (`countries.COUNTRY_LOCALS`), in the 13 countries that have one.
+  All legs bearish. The id is **shared by every country** (`tpl-earthquake-national`),
+  so `geo_rule_stats` pools its samples; a rule per country would never reach the ten
+  resolutions the learned mod needs. National and local are separate ids so each tier
+  keeps its own record. A template states only what holds for any country. What a quake
+  does to one country's copper is a hand-written rule's claim.
+- **Beside a hand-written rule a template adds legs and nothing else**
+  (`rules.scoring_rules`). In the mean confidence or the max risk it would change the
+  importance of events that have always been scored without it: an M7.2 under Tokyo is
+  52 and silent today and would page at 60. Written legs come first and win a symbol
+  collision. With no written rule the templates are all there is, and they score.
+- **Local companies are US-listed on purpose.** The +1h and +6h checkpoints are measured
+  on the US session; a Jakarta or Santiago listing would be read at a bar its exchange
+  never traded. A company with a large book abroad is not a local leg (Japan's
+  megabanks, Spain's banks, the global miners).
+- **The floor is `rules.template_floor_met`** — PAGER yellow or worse for a quake (USGS'
+  own damage estimate, `raw_data.pagerAlert`), GDACS orange or red otherwise.
+  **Provisional: the owner has not confirmed it** (the function carries the TODO).
+  Magnitude alone is not it: all seven M≥5.8 quakes of September 2026 were PAGER green,
+  one of them M6.6 at 10 km. Set it too low and the shared template learns it is wrong
+  for every country at once. The sentinel admits a no-box event through the same
+  function, so there is one floor: a big quake that damaged nothing must not enter by
+  the country door and reach the generative LLM, which treats M≥7 as salient.
+- **PAGER arrives after the quake, so legs can arrive after the signal.** The cycle that
+  first tracks a quake usually sees no rating: the written rule matches alone. When the
+  rating comes, `advisor._adopt_template_legs` adds the template legs to the ACTIVE
+  signal — priced then, measured from then — and records the template ids. Confidence,
+  risk and paging are untouched, and the signal's `direction` is always the **stored**
+  basket's, never the analysis'. No price for any new leg means no adoption that cycle.
+- **A template displaces the generative path** for the event it reads: `_generative_pass`
+  skips anything that already has legs. An M7+ in a box with no quake rule (the
+  Philippines, Indonesia) used to get a generated thesis that could page at 68; it is
+  now a template signal, 40 at most, until the template has a record. Deliberate — the
+  template is deterministic and measurable, and that thesis was chosen from a universe
+  with no instrument for the country — but it is one fewer page. Pinned in
+  `test_geo_templates.py`.
+- **A template cannot page until it has earned it.** Base confidence 0.50 × the highest
+  risk it can reach (8, a PAGER-red quake) is 40 against a gate of 60. Cyclone and flood
+  top out at risk 7 and 5 and never page.
+- **The gate is `rules.allowed_symbols(event)`**: an instrument bound to a country
+  (`countries.INSTRUMENT_COUNTRY`) is admitted for an event in that country, or in a
+  region box a hand-written rule already ties it to (a Korean-peninsula event reaches EWY
+  whichever side it is geocoded on). Unbound instruments are admitted everywhere. Both
+  LLM paths answer to it — the enrichment used to append whatever the model named, the
+  one way a symbol outside the universe entered a signal.
+- **Only quakes and GDACS orange widen the sentinel.** GDELT stories outside a box are
+  keyed by 1° cell (dozens of buckets an hour), EONET volcanoes stay open for months and
+  FIRMS is agricultural burning: those are stamped with a country and still need a box.
+- **Adding a country fund**: confirm 5-minute bars on Yahoo, set `route` from the open
+  interest of the two nearest expiries (~1000 contracts is the line; EPHE and EIS list no
+  options), add it to `EXPECTED_SYMBOLS`. ENZL was tried and left out — 69 bars in five
+  sessions. A bound company must be domiciled *and* operating in the one country;
+  Southern Copper (Peru and Mexico) is bound to nothing.
+- **Tier is a property of the instrument** (`rules.instrument_tier`): local = a company
+  bound to a country, national = a country fund, international = the rest. A Taiwan
+  signal can carry China's fund as "national".
+- **Prices are asked core-first** (`rules.fetch_order`): a stall spends the budget on
+  whatever comes first, and alphabetical order put the country funds ahead of GLD, USO
+  and XLE. A template signal whose one leg has no price is not created that cycle — it
+  would sit unmeasurable for seven days holding the event's dedup row.
+
+### The ladder — a basket read tier by tier (`services/geo/ladder.py`)
+An event that hurts a country shows first in the companies that earn only there, then in
+the country's market, and only sometimes in what the rest of the world prices. One score
+for the whole basket could not say how far an event had travelled.
+
+- **Each leg keeps its own reading** on `geo_signal_tickers`: `live_change_pct` and
+  `live_state` are overwritten by every audit while the signal is active, `final_state`
+  is written once at +7d. **NULL is "never read", not "flat"** — a leg with no price this
+  run keeps the reading it had, like the signal's live rating.
+- **`ladder.leg_state` is the only definition of "moved as predicted"** (confirms /
+  contradicts / flat against the leg's own sigma). The auditor's `_score` calls it, so
+  the basket score, the rules' learning and the ladder cannot disagree.
+- **`ladder.tier_states`**: pending (no leg read) · confirmed (more legs with the thesis
+  than against) · contradicted · unreadable (read, and decided nothing — no measurable
+  move, or an even split). A tie is not a confirmation, the same rule that makes a
+  1-for-2 basket NEUTRAL.
+- **On the wire**: each ticker carries `state` (the +7d one once it exists) and
+  `liveChangePct`; the signal carries `ladder`. "Pending" only exists while a signal is
+  open: resolved, a tier never read is unreadable, and a signal resolved before legs kept
+  a reading has no ladder at all. `/geo/accuracy` adds `tiers` (hit rate
+  per tier at +7d) and `ladder` — for local→national and national→international, the
+  wider tier's hit rate when the narrower one confirmed (`rate`, over `n` signals)
+  against its hit rate overall (`baseline`).
+- **Nothing here moves a confidence, on purpose.** "A confirmed local tier makes the
+  national one more likely" is a hypothesis until `rate` beats `baseline` on real
+  resolutions. The lift ships once ~30 laddered signals have resolved, derived from that
+  gap the way `learned_confidence_mod` is derived from accuracy — never a hand-set step.
+  `test_geo_ladder.py` fails if a lift appears in the module before then.
+- **Copy**: a rung reads "a favor / en contra / sin lectura / pendiente" — where prices
+  went against the written thesis, in the live rating's own words. Never a reason to act.
+
+### GDACS — SEARCH with an activity window, never MAP
+`geteventlist/MAP` answers **400 "Eventtype is required."** and nothing noticed: the
+source counts EONET and GDACS together, and EONET carries no alert level, so no natural
+event had a severity. `ingest/events.py` asks `SEARCH` for `TC;FL;VO;DR`, all three
+levels (the default is orange and red only), over the last three days. The window is on
+activity, so an event that already ended comes back too: it is dropped only on an
+explicit `iscurrent=false`, never on a missing flag. `url` is an object there, not a
+string. `TS` in GDACS is tsunami, not storm.
 
 ### Adding regions / rules — overlap is the thing to reason about
 `match_regions` returns **every** box containing the point and `match_rules` gates on
@@ -50,7 +173,8 @@ a geometry one — check which categories the boxes you overlap already carry.
   — its centroid, Albany, sees -30°C once a decade) and mind the ~500 calls/day Windy budget: the source
   fetches once per hourly cycle, ~24×/day, so each point costs ~24 calls.
 - Sentinel gates decide what ever reaches the matcher: earthquakes need `magnitude>=5.5`
-  **and** to land inside some region; natural events need a region **or** `severity=red`.
+  **and** to land inside some region or a country with a market; natural events need a
+  region, `severity=red`, or orange in a single country with a market.
   A rule whose threshold sits below the sentinel's floor is unreachable.
 - Adding is fully additive — no schema change; `seed_rule_stats` picks up new `rule_id`s
   on next boot. `base_confidence` is **not cosmetic**: it feeds
@@ -198,7 +322,13 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   `*_[` and would 400 the Bot API otherwise; keep the escaping).
 - **Auditor**: 5 checkpoints per signal (1h/6h/1d/3d/7d), basket scoring; the +7d
   checkpoint resolves the signal and updates the matched rules' counters in
-  geo_rule_stats. **It runs on its own job**, `POST /api/geo/audit` every 4 hours
+  geo_rule_stats. **Each rule learns from its own legs** (`_update_rule_stats`): the
+  symbols it names, each against its own direction. One outcome for the whole basket
+  used to teach every matched rule, so a mod followed whatever else was in the signal
+  (GLD and USO drift, mostly). A rule whose own legs were unreadable learns nothing; a
+  tied basket can still teach one rule right and another wrong; a leg the LLM added
+  teaches no rule. A signal carrying none of a rule's current legs — written before the
+  rule was last edited — is scored whole, as before. **It runs on its own job**, `POST /api/geo/audit` every 4 hours
   (`geo-intel-audit`), not inside the hourly cycle: `run_audit` = recompute
   confidence_mods → score due checkpoints → re-rate every ACTIVE signal.
   - **confidence_mod is derived from accuracy, never stepped**:
@@ -278,7 +408,10 @@ source returned anything / signals dropped / healthy). Signals silently re-fetch
 In the detail panel (`components/geo-intel/SignalPanel.tsx`): stats
 (importance/confidence/risk/direction), **"Why this was triggered"** (the matched
 rules with their thesis and confidence), affected tickers with per-ticker
-direction, and the 5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
+direction **grouped by tier** (Local / Nacional / Internacional, `lib/geo.ts`
+`groupByTier`; a basket with no tier renders as one unlabelled group) — read top
+to bottom the groups are the ladder, each headed by how its tier reads
+(`tierStateBadge`) — and the 5 backtest checkpoints (1h/6h/1d/3d/7d). Tapping a ticker chip
 expands `PrecioTab` + `FundamentalsCard` inline, with **"Añadir a Zonas Clave"**
 (one click to the technical desk — the panel re-renders on every poll, so the
 button owns its own state rather than taking props) and links out to

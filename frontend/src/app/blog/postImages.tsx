@@ -2364,6 +2364,62 @@ function ImgDividendosColombianos() {
   );
 }
 
+function ImgSucesionesEeuu() {
+  return (
+    <div className={styles.postImgSucesionesEeuu}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">EEUU · SUCESIONES · ACCIONES Y ETFS</text>
+        {/* US-situs stock */}
+        <rect x="20" y="42" width="34" height="24" rx="3" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <path d="M20 49h34" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="37" y="64" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acción</text>
+        <text x="37" y="78" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">US-situs</text>
+        <text x="37" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">da igual el bróker</text>
+        {/* To the IRS */}
+        <path d="M56 54h14" stroke="var(--fv-ochre)" strokeWidth="1.5" />
+        <path d="m68 50-4 4 4 4" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="83" y="46" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">IRS</text>
+        <text x="83" y="55" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">706-NA</text>
+        {/* Small exemption vs the 40 % bite */}
+        <rect x="106" y="88" width="26" height="8" rx="2" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <text x="119" y="81" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">60.000 $ exentos</text>
+        <rect x="146" y="38" width="30" height="58" rx="3" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="161" y="70" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">40 %</text>
+        <text x="161" y="32" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">más de 1 M$</text>
+        <text x="100" y="113" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">sin convenio España-EEUU · se paga aparte</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgInversionesExterioresD6() {
+  return (
+    <div className={styles.postImgInversionesExterioresD6}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">REGISTRO DE INVERSIONES · AEAT</text>
+        {/* D-6 document, abolished */}
+        <rect x="20" y="30" width="56" height="66" rx="5" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="48" y="50" fontSize="9" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">D-6</text>
+        <line x1="30" y1="60" x2="66" y2="60" stroke="var(--fv-ink-20)" strokeWidth="1" />
+        <line x1="30" y1="70" x2="66" y2="70" stroke="var(--fv-ink-20)" strokeWidth="1" />
+        <line x1="30" y1="80" x2="56" y2="80" stroke="var(--fv-ink-20)" strokeWidth="1" />
+        <line x1="22" y1="28" x2="74" y2="98" stroke="var(--fv-ochre)" strokeWidth="2" />
+        <text x="48" y="110" fontSize="6" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">derogado 2023</text>
+        {/* transition arrow */}
+        <path d="M84 63 L104 63" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <polygon points="104,58 114,63 104,68" fill="var(--fv-ink-30)" />
+        {/* 720 document, still in force */}
+        <rect x="124" y="30" width="56" height="66" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="152" y="50" fontSize="9" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">720</text>
+        <line x1="134" y1="60" x2="170" y2="60" stroke="var(--fv-ochre)" strokeWidth="1" opacity="0.55" />
+        <line x1="134" y1="70" x2="170" y2="70" stroke="var(--fv-ochre)" strokeWidth="1" opacity="0.55" />
+        <line x1="134" y1="80" x2="160" y2="80" stroke="var(--fv-ochre)" strokeWidth="1" opacity="0.55" />
+        <text x="152" y="110" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">sí te obliga</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgMetodoFifo() {
   const lots = [
     { label: '2022', sub: '10 €', y: 34, accent: true },
@@ -2392,7 +2448,9 @@ function ImgMetodoFifo() {
 }
 
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'inversiones-exteriores-d6-espana': ImgInversionesExterioresD6,
   'metodo-fifo-irpf-espana': ImgMetodoFifo,
+  'sucesiones-acciones-eeuu-espana': ImgSucesionesEeuu,
   'dividendos-colombianos-espana': ImgDividendosColombianos,
   'dividendos-sudafricanos-espana': ImgDividendosSudafricanos,
   'dividendos-indios-espana': ImgDividendosIndios,

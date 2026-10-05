@@ -197,6 +197,40 @@ def test_balance_preserves_priority_order_within_category():
 # ── _serialize: null-field handling ──────────────────────────────────
 
 
+def test_a_template_rule_is_rendered_for_the_signals_country(db):
+    """One id for every country: `RULES_BY_ID` does not hold it, and the panel
+    used to drop any rule id it could not find there."""
+    s = _signal(country="philippines", location="Philippines",
+                matched_rule_ids=json.dumps(["tpl-earthquake-national"]))
+    (rule,) = _matched_rules(s, {})
+    assert rule.id == "tpl-earthquake-national"
+    assert rule.description == "Damaging earthquake in the Philippines"
+    assert "the Philippines" in rule.thesis and rule.thesis.count(" → ") == 2
+    assert (rule.scope, rule.category, rule.trigger) == ("local", "earthquake", "country=philippines")
+    assert rule.confidence == 0.5
+
+
+def test_a_template_rule_without_a_country_is_not_rendered(db):
+    s = _signal(country=None, matched_rule_ids=json.dumps(["tpl-earthquake-national"]))
+    assert _matched_rules(s, {}) == []
+
+
+def test_serialize_exposes_the_country_and_each_tickers_tier(db):
+    s = _signal(country="chile", matched_rule_ids=json.dumps(["eq-chile-copper"]))
+    db.add(s)
+    db.flush()
+    for symbol in ("ANTO.L", "ECH", "HG=F"):
+        s.tickers.append(GeoSignalTicker(symbol=symbol, direction="bearish", price_at_signal=1))
+    db.commit()
+    out = _serialize(s, {})
+    assert out.country == "Chile"
+    assert {t.symbol: t.tier for t in out.tickers} == {
+        "ANTO.L": "local", "ECH": "national", "HG=F": "international",
+    }
+    s.country = None
+    assert _serialize(s, {}).country is None
+
+
 def test_serialize_handles_null_ticker_price(db):
     s = _signal()
     db.add(s)
