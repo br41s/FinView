@@ -275,8 +275,8 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   per event id (6h TTL) so N users cost one call. Long-lived feed events cost ~1 call total.
 - **Both LLM calls turn reasoning off** (`llm_envelope.NO_REASONING`, sent as
   `reasoning: {"effort": "none"}`). `max_tokens` pays for the reasoning and the answer
-  alike, and with reasoning on prod lost 2–7 generative calls a day to a 200 with
-  `content: null` and `finish_reason: "length"` (1799–2054 reasoning tokens of 2000; once,
+  alike, and with reasoning on prod lost 3–8 generative calls a day to a 200 with
+  `content: null` and `finish_reason: "length"` (1601–2270 reasoning tokens of 2000; once,
   half a JSON) — each billed in full, debited from the 3-per-request cap and, because a
   failure is not cached, asked again the next cycle. There is nothing to cap on this model:
   OpenRouter's catalogue (`GET /api/v1/models`, the `reasoning` object) gives

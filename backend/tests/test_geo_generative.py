@@ -136,7 +136,7 @@ def test_not_actionable_is_cached_and_costs_one_call(monkeypatch):
 
 
 # ── A 200 with no answer in it ────────────────────────────────────────
-# What Cloud Run logged 2–7 times a day (this one 2026-10-04): the model spent
+# What Cloud Run logged 3–8 times a day (this one 2026-10-04): the model spent
 # the whole budget reasoning, so the 200 carries its reasoning and no answer.
 REASONED_AWAY = {
     "choices": [{

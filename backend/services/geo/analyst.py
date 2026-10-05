@@ -87,8 +87,8 @@ _LLM_CACHE_TTL = 6 * 3600  # seconds
 
 # Both calls below send `reasoning=NO_REASONING` (llm_envelope says why the
 # shared model's reasoning is on or off and nothing in between). Prod measured
-# 1799–2054 reasoning tokens against a budget of 2000: `content: null`,
-# `finish_reason: "length"`, billed in full, 2–7 generative calls a day — and a
+# 1601–2270 reasoning tokens against a budget of 2000: `content: null`,
+# `finish_reason: "length"`, billed in full, 3–8 generative calls a day — and a
 # failure is not cached, so the same event spent a call again the next cycle.
 # Each call asks for one short JSON object, and the generative one writes its
 # chain before it names an instrument. A larger budget only moves the cliff:
