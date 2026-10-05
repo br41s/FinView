@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1349 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 148 frontend tests |
+| Tests | pytest · 1349 collected (all pass with files/; without the real broker PDFs/CSVs 159 skip on CI, 127 in a local worktree) · vitest · 148 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -199,8 +199,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 Backend: `pytest` — 1349 collected (all under `backend/tests/`). On the main machine, with
 the real broker files in `files/`, all 1349 pass in ~90s. Those files are not in the repo,
-so where `files/` is absent — CI, and worktrees unless you symlink it — 127 skip and the
-remaining 1222 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+so where `files/` is absent the tests that need them skip, and how many depends on where:
+159 on CI (1190 run), 127 in a worktree on the main machine unless you symlink it (1222 run
+in ~60s). The 32 between them are `test_ing.py`, gated on an absolute path into the main
+clone, which a worktree still finds. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser, the v2 checkpoint scorer, and the country layer (template rules stay
 out of a signal's scoring, an event only reaches its own country's instruments, each rule
