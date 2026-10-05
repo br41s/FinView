@@ -331,6 +331,10 @@ def _universe_block(allowed: frozenset[str]) -> str:
     return ", ".join(lines)
 
 
+class MalformedAnswer(ValueError):
+    """A JSON object that does not answer the question. The message says why."""
+
+
 def _validate_generated(
     body: object, reach: str = "regional", allowed: frozenset[str] | None = None
 ) -> dict | None:
@@ -341,51 +345,75 @@ def _validate_generated(
     invariant every hand-written rule is tested against. ``allowed`` is the
     event's slice of the universe (`rules.allowed_symbols`): another country's
     instrument is dropped whatever the prompt was told.
+
+    Three outcomes, and they differ in what is worth remembering:
+
+    - a proposal;
+    - None, a "no": the model said `actionable: false`, or it named
+      well-formed picks (a symbol and bullish/bearish) and none is an
+      instrument this event may reach. Asked again it is the same event against
+      the same gates, so the caller keeps it six hours;
+    - MalformedAnswer: the object is not an answer in the format asked for.
+      `{}`, `{"error": …}`, a yes with no well-formed pick, no numeric
+      confidence or risk, or no thesis. That says nothing about the event, and
+      kept as a "no" it would silence it for six hours without a line in the log.
     """
-    if not isinstance(body, dict) or body.get("actionable") is not True:
+    if not isinstance(body, dict):
+        raise MalformedAnswer("not an object")
+    actionable = body.get("actionable")
+    if actionable is False:
         return None
+    if actionable is not True:
+        raise MalformedAnswer("actionable is neither true nor false")
     universe = INSTRUMENT_BREADTH if allowed is None else allowed
     max_breadth = _MAX_BREADTH_FOR_SCOPE.get(reach, 1)
+    named: list[str] = []  # well-formed picks, whether or not the event may reach them
     tickers = []
-    for t in body.get("tickers") or []:
+    picks = body.get("tickers")
+    for t in picks if isinstance(picks, list) else []:
         if not isinstance(t, dict):
             continue
-        sym = str(t.get("symbol") or "").strip()
-        direction = str(t.get("direction") or "").strip().lower()
-        if sym not in universe or direction not in {"bullish", "bearish"}:
+        sym = _text(t.get("symbol"), 40)
+        direction = _text(t.get("direction"), 20).lower()
+        if not sym or direction not in {"bullish", "bearish"}:
+            continue
+        named.append(sym)
+        if sym not in universe:
             continue
         if BREADTH_RANK[INSTRUMENT_BREADTH[sym]] > max_breadth:
             logger.info("geo generative: %s is wider than a %s event — dropped", sym, reach)
             continue
         tickers.append({"symbol": sym, "direction": direction,
-                        "rationale": str(t.get("rationale") or "")[:200]})
+                        "rationale": _text(t.get("rationale"), 200)})
+    if not named:
+        raise MalformedAnswer("actionable with no well-formed pick")
     if not tickers:
+        logger.info("geo generative: none of %r is an instrument the event may reach", named[:5])
         return None
-    try:
-        confidence = max(0, min(_GENERATIVE_MAX_CONFIDENCE, int(body.get("confidence"))))
-        risk = max(1, min(_GENERATIVE_MAX_RISK, int(body.get("riskScore"))))
-    except (TypeError, ValueError):
-        return None
+    confidence, risk = _number(body.get("confidence")), _number(body.get("riskScore"))
+    if confidence is None or risk is None:
+        raise MalformedAnswer("confidence or riskScore is not a number")
     thesis = body.get("thesis")
     if isinstance(thesis, dict):
-        chain = tuple(str(thesis.get(k) or "").strip()[:160] for k in ("effect", "flow", "instrument"))
+        chain = tuple(_text(thesis.get(k), 160) for k in ("effect", "flow", "instrument"))
         thesis_text = " → ".join(c for c in chain if c)
     else:
-        thesis_text = str(thesis or "")[:400]
+        thesis_text = _text(thesis, 400)
     if not thesis_text:
-        return None
+        raise MalformedAnswer("no thesis")
     return {
         "tickers": tickers[:_GENERATIVE_MAX_TICKERS],
-        "confidence": confidence,
-        "riskScore": risk,
+        "confidence": int(max(0, min(_GENERATIVE_MAX_CONFIDENCE, confidence))),
+        "riskScore": int(max(1, min(_GENERATIVE_MAX_RISK, risk))),
         "thesis": thesis_text,
-        "narrative": str(body.get("narrative") or "")[:600],
+        "narrative": _text(body.get("narrative"), 600),
     }
 
 
 def _llm_generate(event: GeoEvent) -> dict | None:
     """One generative call for an event no rule covers. Cached per event id
-    (successes and "not actionable" alike — a no is worth remembering for 6 h).
+    (successes and "not actionable" alike — a no is worth remembering for 6 h;
+    an answer that could not be read or used is neither, and is asked again).
     Returns the validated proposal, or None."""
     if not settings.openrouter_api_key:
         return None
@@ -435,7 +463,16 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         body = _json_object(content, "geo generative LLM", event.id)
         if body is None:
             return None
-        proposal = _validate_generated(body, region_reach(event.region), allowed)
+        try:
+            proposal = _validate_generated(body, region_reach(event.region), allowed)
+        except MalformedAnswer as exc:
+            # Like an answer that would not parse: logged with what it was,
+            # never cached.
+            logger.warning(
+                "geo generative LLM: answer is not usable for %s (%s; %d chars): %r",
+                event.id, exc, len(content), content[:200],
+            )
+            return None
     except Exception:
         logger.warning("geo generative LLM analysis failed", exc_info=True)
         return None
@@ -447,6 +484,8 @@ def _llm_generate(event: GeoEvent) -> dict | None:
     if proposal:
         logger.info("geo generative: %s → %s (conf %s)", event.id,
                     ",".join(t["symbol"] for t in proposal["tickers"]), proposal["confidence"])
+    else:
+        logger.info("geo generative: %s → not actionable", event.id)
     return proposal
 
 
