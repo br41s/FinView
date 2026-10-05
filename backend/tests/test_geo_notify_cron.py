@@ -510,6 +510,166 @@ def test_llm_analyze_answers_none_to_json_that_is_not_an_object(monkeypatch, cap
     assert len(sent) == 2
 
 
+# ── The enrichment's fields are data too ──────────────────────────────
+# A well-formed object is not a well-formed answer. Each fragment below used to
+# reach analyze_event, which Phase C calls with no try around it — and the
+# object was cached first, so a warm instance met it again every cycle for six
+# hours. None has been seen in prod; they are the ways the format can be missed.
+
+
+def _chile_quake():
+    """An event the rules do match (eq-chile-copper, eq-lithium-triangle): the
+    analysis an ugly enrichment has to leave standing."""
+    from backend.services.geo.sentinel import GeoEvent
+
+    return GeoEvent(
+        id="ev-ugly", type="earthquake", title="M6.0 near Copiapó", latitude=-27.0,
+        longitude=-70.0, source="usgs", timestamp=0, magnitude=6.0,
+    )
+
+
+def _shape(result) -> tuple:
+    return (
+        [(t.symbol, t.direction) for t in result.tickers], result.confidence,
+        result.risk_score, result.direction, result.return_low, result.return_high,
+        result.timeframe,
+    )
+
+
+def _analyst_lines(caplog) -> list[str]:
+    from backend.services.geo import analyst
+
+    return [r.getMessage() for r in caplog.records if r.name == analyst.logger.name]
+
+
+UGLY_FIELDS = {
+    # fragment of the answer → how the log names it. What it used to do, right:
+    "impact is null": ('"estimatedImpact": null', "estimatedImpact=None"),  # AttributeError
+    "impact is a list": ('"estimatedImpact": [1, 5]', "estimatedImpact=[1, 5]"),  # AttributeError
+    "returnLow in words": (
+        '"estimatedImpact": {"returnLow": "low", "returnHigh": 5}',
+        "estimatedImpact.returnLow='low'",  # ValueError in float()
+    ),
+    "returnHigh is null": (
+        '"estimatedImpact": {"returnLow": 1, "returnHigh": null}',
+        "estimatedImpact.returnHigh=None",  # TypeError in float()
+    ),
+    "timeframe is a number": (
+        '"estimatedImpact": {"timeframe": 5}', "estimatedImpact.timeframe=5",  # stored as 5
+    ),
+    "tickers is a number": ('"affectedTickers": 5', "affectedTickers=5"),  # TypeError in the loop
+    "a pick that is a string": ('"affectedTickers": ["GLD"]', "affectedTickers[0]='GLD'"),
+    "a symbol that is a list": (
+        '"affectedTickers": [{"symbol": ["GLD"], "direction": "bullish"}]',
+        "affectedTickers[0]={'symbol': ['GLD']",  # TypeError: unhashable, in `sym in allowed`
+    ),
+    "a direction the column cannot hold": (
+        '"affectedTickers": [{"symbol": "GLD", "direction": "up"}]',
+        "affectedTickers[0]={'symbol': 'GLD', 'direction': 'up'}",  # "up" into an enum column
+    ),
+    "risk beyond a float": ('"riskScore": 1e999', "riskScore=inf"),  # OverflowError in int()
+    "risk that is not a number": ('"riskScore": NaN', "riskScore=nan"),
+}
+
+
+@pytest.mark.parametrize(("fragment", "named"), UGLY_FIELDS.values(), ids=UGLY_FIELDS.keys())
+def test_an_ugly_enrichment_field_costs_that_field_and_nothing_else(
+    monkeypatch, caplog, fragment, named
+):
+    from backend.services.geo import analyst
+
+    answer = '{"narrative": "Copper supply at risk.", ' + fragment + "}"
+    sent = _llm_answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    event = _chile_quake()
+    rules_only = analyst.analyze_event(event, {})
+    assert rules_only.matched_rules and rules_only.risk_score == 6
+
+    with caplog.at_level(logging.WARNING):
+        enriched = analyst.analyze_event(event, {}, use_llm=True)
+    # The rules' analysis stands, field for field, and what the model did say
+    # in a usable way is still used.
+    assert _shape(enriched) == _shape(rules_only)
+    assert enriched.llm_narrative == "Copper supply at risk."
+    [line] = _analyst_lines(caplog)
+    assert line.startswith("geo LLM: ignored fields for ev-ugly: ") and named in line
+    # Checked before it was cached: the warm instance's next cycle reads the
+    # same object, without a call and without raising.
+    assert _shape(analyst.analyze_event(event, {}, use_llm=True)) == _shape(rules_only)
+    assert len(sent) == 1
+
+
+def test_a_confidence_in_words_is_not_read_when_no_rule_matched(monkeypatch, caplog):
+    """The one place the enrichment's confidence is used: float("alto") raised."""
+    from backend.services.geo import analyst
+    from backend.services.geo.sentinel import GeoEvent
+
+    _llm_answering(monkeypatch, {"choices": [{"message": {
+        "content": '{"confidence": "alto", "narrative": "Nothing to add."}'}}]})
+    event = GeoEvent(
+        id="ev-words", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    with caplog.at_level(logging.WARNING):
+        result = analyst.analyze_event(event, {}, use_llm=True)
+    assert result.confidence == 50.0 and result.direction == "Nothing to add."
+    assert _analyst_lines(caplog) == ["geo LLM: ignored fields for ev-words: confidence='alto'"]
+
+
+def test_the_enrichment_keeps_what_it_can_use_beside_what_it_cannot(monkeypatch):
+    import json
+
+    from backend.services.geo import analyst
+
+    _llm_answering(monkeypatch, {"choices": [{"message": {"content": json.dumps({
+        "affectedTickers": [
+            {"symbol": " GLD ", "direction": "Bullish", "rationale": "haven bid"},
+            {"symbol": 5, "direction": "bearish"},
+            {"symbol": "USO"},  # no direction: neutral, as it has always been
+        ],
+        "narrative": "Copper supply at risk.",
+        "estimatedImpact": {"returnLow": "2.5", "returnHigh": None, "timeframe": "1-3 days"},
+        "confidence": 250,
+        "riskScore": "8",
+    })}}]})
+    event = _chile_quake()
+    rules_only = analyst.analyze_event(event, {})
+    enriched = analyst.analyze_event(event, {}, use_llm=True)
+    added = [(t.symbol, t.direction, t.rationale) for t in enriched.tickers[len(rules_only.tickers):]]
+    assert added == [("GLD", "bullish", "haven bid"), ("USO", "neutral", "")]
+    assert enriched.tickers[:len(rules_only.tickers)] == rules_only.tickers
+    assert (enriched.risk_score, enriched.return_low, enriched.return_high, enriched.timeframe) == (
+        8, 2.5, 5.0, "1-3 days",
+    )
+    assert enriched.confidence == rules_only.confidence  # the rules', whatever the model claims
+    assert analyst._LLM_CACHE["ev-ugly"][1]["confidence"] == 100.0  # and bounded where it is kept
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "{}",
+        '{"error": {"message": "upstream timeout", "code": 504}}',
+        '{"estimatedImpact": null, "confidence": "alto", "affectedTickers": 5}',
+    ],
+    ids=["empty object", "error object", "every field unusable"],
+)
+def test_an_enrichment_with_nothing_usable_is_logged_and_not_cached(monkeypatch, caplog, answer):
+    from backend.services.geo import analyst
+
+    sent = _llm_answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    event = _chile_quake()
+    rules_only = analyst.analyze_event(event, {})
+    with caplog.at_level(logging.WARNING):
+        assert analyst._llm_analyze(event, []) is None
+    [line] = _analyst_lines(caplog)
+    assert line.startswith("geo LLM: answer is not usable for ev-ugly (no usable field; ")
+    assert f"{len(answer)} chars" in line and repr(answer) in line
+    assert analyst._LLM_CACHE == {}
+    enriched = analyst.analyze_event(event, {}, use_llm=True)
+    assert _shape(enriched) == _shape(rules_only) and enriched.llm_narrative is None
+    assert len(sent) == 2  # asked again: nothing was remembered
+
+
 def test_has_active_signal_gates_known_events(db):
     from backend.services.geo.orchestrator import _has_active_signal
     from backend.services.geo.sentinel import GeoEvent

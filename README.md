@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1349 backend; sin ficheros reales, 159 skipped en CI y 127 en un worktree local) · vitest (148 frontend) · ESLint
+- **Tests:** pytest (1401 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (148 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -338,9 +338,9 @@ Base URL: `http://localhost:8000/api`
 pytest
 ```
 
-**Backend:** 1349 tests, todos en `backend/tests/` (lo fija `testpaths` en `pyproject.toml`).
+**Backend:** 1401 tests, todos en `backend/tests/` (lo fija `testpaths` en `pyproject.toml`).
 Con los PDFs/CSVs reales en `files/` pasan todos; esos ficheros no están en el repo, y donde
-faltan (CI, un worktree sin enlazar `files/`) los tests que los requieren salen como skipped.
+faltan (CI, un worktree sin enlazar `files/`) los 148 tests que los requieren salen como skipped.
 
 **Frontend:**
 

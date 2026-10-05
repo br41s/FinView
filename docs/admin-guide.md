@@ -390,7 +390,7 @@ La cantidad abierta y el coste de cada ISIN salen de `portfolio_service.get_open
 ## 10. Tests
 
 ```bash
-# Todos los tests (734 passed, 163 skipped sin los ficheros reales de broker en files/)
+# Todos los tests (1253 passed, 148 skipped sin los ficheros reales de broker en files/)
 pytest backend/tests/ -v
 
 # Solo un módulo

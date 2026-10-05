@@ -310,6 +310,38 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   would be cached and tracked as a whole one. A non-object used to be worse than
   unlogged — the generative call cached it for six hours as "not actionable", and the
   enrichment handed it to `analyze_event`, which calls `.get()` on it outside any try.
+- **An object that parses is not an answer yet: its fields are checked before anything
+  is cached.** Two calls, two rules, because the answers are used differently. Text must
+  be text and a number must be finite in both (`analyst._number`: `json.loads` reads
+  `NaN`, `Infinity` and `1e999`, `int()` raises on them, and `true` passes `float()`).
+  - **The enrichment is checked field by field** (`_validate_enrichment`). It decorates an
+    analysis the rules already made, so a field that fails costs that field and the
+    rules' value stands: a pick needs a symbol and a direction the enum column can hold,
+    `estimatedImpact` must be an object, each number a number. What failed is named in
+    one WARNING — `geo LLM: ignored fields for <event id>: estimatedImpact=None,
+    confidence='alto'` — and the checked object is what gets cached. `analyze_event` reads
+    it with `.get()` and no try, in Phase C, and the raw object used to be cached first:
+    `"estimatedImpact": null`, `"affectedTickers": 5` or a `riskScore` of `1e999` failed
+    the cycle, and again on every cycle a warm instance served the copy. An object with no
+    usable field (`{}`, `{"error": …}`) is `geo LLM: answer is not usable for <event id>
+    (no usable field; N chars): '…'`, returns None and is not cached. Whether a pick is
+    one the event may reach is still `analyze_event`'s question (`allowed_symbols`).
+  - **The generative answer is all or nothing, with three outcomes** (`_validate_generated`).
+    A proposal. A **"no"**, remembered six hours: `actionable: false`, or well-formed
+    picks none of which the event may reach (outside the universe, another country's,
+    wider than its reach) — asked again it is the same event against the same gates, and
+    the gates decide before the rest of the answer is read. Or `MalformedAnswer`: `{}`,
+    `{"error": …}`, an `actionable` that is not a boolean, a yes with no well-formed pick
+    (a symbol and bullish/bearish — `neutral` is the enrichment's format, not this one),
+    no numeric confidence or risk, no thesis. That is `geo generative LLM: answer is not
+    usable for <event id> (<reason>; N chars): '…'`, not cached and not stored; until
+    2026-10-05 all of these were a "no" for six hours in `geo_generative_answers` with
+    nothing in the log. The price is the one a failed call already pays: the event is
+    asked again next cycle and holds one of the three slots for as long as it keeps
+    answering that way — the line is how that shows. Every real generative call leaves
+    one line: `geo generative: <id> → SYM (conf N)`, `→ not actionable`, or a warning.
+  None of these shapes has been seen in prod — nothing recorded them. The tests are the
+  ways the format can be missed, not a transcript.
 - **Dedup**: per owner by (source, external_id) on ACTIVE signals — and the DB index says
   the same thing (`uq_geo_sig_active_dedup`, partial on `status='active'`). It used to be
   a plain UNIQUE over the whole table, which contradicted the pipeline: the auditor
@@ -339,7 +371,8 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   baselines' pattern). In memory alone it was empty nearly every cycle — 26 instances served
   29 hourly cycles on 2026-10-04 — so the first three salient events were asked again every
   hour (the cap, 73 cycles running, ~72 calls a day) and the events behind them never got a
-  call. A call with no answer stores nothing (it would be a "no" for six hours), a row that
+  call. A call with no answer stores nothing (it would be a "no" for six hours) and neither
+  does an answer that could not be read or used (above: what a "no" is), a row that
   cannot be read is not a "no" either, and a failed write costs a repeated call, never the
   cycle. The cycle logs `N generative analyses attempted, M answers restored`: restored at
   zero on a cold instance with rows in the table means the table is not being read. News is
