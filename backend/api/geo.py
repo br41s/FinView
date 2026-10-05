@@ -133,7 +133,7 @@ def _source_url(raw_json: str | None) -> str | None:
     """Best-effort link to the underlying source event.
 
     Ingest normalizers stash the event's own page in ``raw_data`` under ``url``
-    (USGS, EONET) or ``source_url`` (GDELT). Absent for feeds that don't publish
+    (USGS, EONET) or ``sourceUrl`` (GDELT). Absent for feeds that don't publish
     a per-event page (fires, meteo, flights, AIS) — return None then. Only http(s)
     links pass, so a malformed value never becomes a broken anchor.
     """
@@ -145,7 +145,7 @@ def _source_url(raw_json: str | None) -> str | None:
         return None
     if not isinstance(raw, dict):
         return None
-    url = raw.get("url") or raw.get("source_url")
+    url = raw.get("url") or raw.get("sourceUrl")
     if isinstance(url, str) and url.startswith(("http://", "https://")):
         return url
     return None

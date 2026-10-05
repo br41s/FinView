@@ -16,6 +16,7 @@ from backend.api.geo import (
     _matched_rules,
     _serialize,
     _serialize_run,
+    _source_url,
 )
 from backend.models import (
     Base,
@@ -385,6 +386,40 @@ def test_serialize_keeps_a_pending_checkpoint_unevaluated(db):
     db.commit()
 
     assert _serialize(signal, {}).checkpoints[0].evaluatedAt is None
+
+
+# ── sourceUrl ───────────────────────────────────────────────────────
+
+
+def test_a_gdelt_signal_links_to_the_article_the_sentinel_stored(db, monkeypatch):
+    """Through the real writer, on purpose: the sentinel stored `sourceUrl`, the
+    API read `source_url`, and a test of either side alone passed for months."""
+    from backend.services.geo import sentinel
+    from backend.services.geo.ingest.types import GdeltEvent
+
+    monkeypatch.setattr(sentinel, "_gdelt_history", {})
+    story = GdeltEvent(
+        id="gdelt-1", title="t", event_code="190", event_root_code="19", quad_class=4,
+        goldstein_scale=-10.0, num_mentions=20, num_sources=1, num_articles=20,
+        avg_tone=-8.0, latitude=33.3, longitude=44.4, location="x", actor1="A", actor2="B",
+        date_added="20260920083000", source_url="https://ex.test/article",
+    )
+    event = next(e for e in sentinel.analyze_gdelt_events([story]) if e.type == "armed_conflict")
+    signal = _signal(source="gdelt", raw_json=json.dumps(event.raw_data))
+    db.add(signal)
+    db.commit()
+
+    assert _serialize(signal, {}).sourceUrl == "https://ex.test/article"
+
+
+def test_source_url_keeps_the_feeds_that_store_url_and_only_passes_http():
+    usgs = json.dumps({"url": "https://earthquake.usgs.gov/earthquakes/eventpage/us7000"})
+    assert _source_url(usgs) == "https://earthquake.usgs.gov/earthquakes/eventpage/us7000"
+    # A GDELT link is whatever the article's publisher is: it becomes an href.
+    assert _source_url(json.dumps({"sourceUrl": "javascript:alert(1)"})) is None
+    assert _source_url(json.dumps({"sourceUrl": ""})) is None  # the export had no link
+    assert _source_url(json.dumps({"category": "flood"})) is None
+    assert _source_url("not json") is None and _source_url(None) is None
 
 
 def test_as_utc_does_not_shift_an_already_aware_timestamp():
