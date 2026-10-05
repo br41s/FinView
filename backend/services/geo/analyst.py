@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 
 from backend.config import settings
-from backend.services.llm_envelope import chat
+from backend.services.llm_envelope import NO_REASONING, chat
 from backend.services.llm_rules import NOT_ADVICE_RULE_EN
 
 from .rules import (
@@ -85,20 +85,15 @@ def correlate_with_rules(
 _LLM_CACHE: dict[str, tuple[float, dict]] = {}
 _LLM_CACHE_TTL = 6 * 3600  # seconds
 
-# The shared model reasons before it answers and max_tokens pays for both. Prod
-# measured 1799–2054 reasoning tokens against a budget of 2000: `content: null`,
+# Both calls below send `reasoning=NO_REASONING` (llm_envelope says why the
+# shared model's reasoning is on or off and nothing in between). Prod measured
+# 1799–2054 reasoning tokens against a budget of 2000: `content: null`,
 # `finish_reason: "length"`, billed in full, 2–7 generative calls a day — and a
 # failure is not cached, so the same event spent a call again the next cycle.
-# There is nothing to cap: OpenRouter's catalogue gives deepseek-v4-flash no
-# effort below its default ("high") and no reasoning budget, and
-# `reasoning.exclude` only hides tokens that are still spent. Reasoning is on
-# or off, so both calls here turn it off: each asks for one short JSON object,
-# and the generative one writes its chain before it names an instrument.
-# A larger budget only moves the cliff: 2000 tokens already take 9–12 s of a
-# 20 s timeout, and the key's monthly limit has been hit once.
-# A model whose reasoning is mandatory (`reasoning.mandatory` in OpenRouter's
-# GET /api/v1/models) rejects this; check it when changing openrouter_model.
-_NO_REASONING = {"effort": "none"}
+# Each call asks for one short JSON object, and the generative one writes its
+# chain before it names an instrument. A larger budget only moves the cliff:
+# 2000 tokens already take 9–12 s of a 20 s timeout, and the key's monthly
+# limit has been hit once.
 
 
 def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
@@ -134,7 +129,7 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
             timeout=20.0,
             response_format={"type": "json_object"},
             temperature=0.3,
-            reasoning=_NO_REASONING,
+            reasoning=NO_REASONING,
             max_tokens=2000,  # the answer's own ceiling, with reasoning off
         )
         if content is None:
@@ -275,7 +270,7 @@ def _llm_generate(event: GeoEvent) -> dict | None:
             timeout=20.0,
             response_format={"type": "json_object"},
             temperature=0.2,
-            reasoning=_NO_REASONING,
+            reasoning=NO_REASONING,
             max_tokens=2000,
         )
         if content is None:

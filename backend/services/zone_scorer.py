@@ -133,6 +133,14 @@ def score_break_probability(ticker: str, candidate: dict, indicators: dict) -> d
             #
             # Sized for reasoning headroom, not for the answer. If the model
             # is ever swapped for a non-reasoning one this is simply generous.
+            #
+            # Reasoning stays ON here, unlike the options and geo calls
+            # (llm_envelope.NO_REASONING). The headroom has held: no empty
+            # answer in the 10 days to 2026-10-05, while those two lost 85.
+            # And this number is calibrated against outcomes band by band
+            # (zone_calibration): a scorer that stops reasoning is a different
+            # scorer, gated on the record of the one before it. Turning it
+            # off is a calibration decision, not a token fix.
             max_tokens=2000,
         )
         if content is None:

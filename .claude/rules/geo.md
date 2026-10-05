@@ -273,7 +273,7 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **LLM token gating**: the OpenRouter call fires only on first sighting — skipped when
   the user already has an ACTIVE signal for the event, and results are cached in-memory
   per event id (6h TTL) so N users cost one call. Long-lived feed events cost ~1 call total.
-- **Both LLM calls turn reasoning off** (`analyst._NO_REASONING`, sent as
+- **Both LLM calls turn reasoning off** (`llm_envelope.NO_REASONING`, sent as
   `reasoning: {"effort": "none"}`). `max_tokens` pays for the reasoning and the answer
   alike, and with reasoning on prod lost 2–7 generative calls a day to a 200 with
   `content: null` and `finish_reason: "length"` (1799–2054 reasoning tokens of 2000; once,
@@ -285,8 +285,9 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   larger budget moves the cliff: 2000 tokens already take 9–12 s of the 20 s timeout.
   **Changing `FINVIEW_OPENROUTER_MODEL` means reading that model's `reasoning` entry
   first** — one with `mandatory: true` rejects `effort: "none"` and both calls would fail
-  (logged `OpenRouter HTTP 4xx`, never raised). The options agent and the zone scorer share
-  the model and still reason.
+  (logged `OpenRouter HTTP 4xx`, never raised). The options agent's three calls share the
+  model and the constant (`options.md`); the zone scorer shares the model and still
+  reasons, on purpose (`zonas.md`).
 - **Dedup**: per owner by (source, external_id) on ACTIVE signals — and the DB index says
   the same thing (`uq_geo_sig_active_dedup`, partial on `status='active'`). It used to be
   a plain UNIQUE over the whole table, which contradicted the pipeline: the auditor

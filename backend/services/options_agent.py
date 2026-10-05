@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.services.llm_envelope import chat
+from backend.services.llm_envelope import NO_REASONING, chat
 from backend.database import SessionLocal
 from backend.models import (
     FollowedInstrument,
@@ -347,6 +347,16 @@ def _run_claude_analysis(
                 {"role": "user", "content": user_content},
             ],
             context="options agent",
+            # Reasoning off (llm_envelope.NO_REASONING). With it on, max_tokens
+            # paid for the thinking first: in the 10 days to 2026-10-05 a third
+            # of the cycles that reached the model (48 of 144) came back 200
+            # with no report, all 1500 tokens spent. A budget for both is the
+            # alternative, and reasoning has no bound to size it by: those 1500
+            # tokens took 19 s at the median and up to 70 s, so 3–4× that per
+            # cycle and per on-demand report, on a key whose monthly limit has
+            # been hit. The template plans the report; with reasoning off 1500
+            # is the report's own ceiling again (750 words).
+            reasoning=NO_REASONING,
             max_tokens=1500,
         )
         if text is None:
@@ -459,6 +469,8 @@ def _run_ticker_claude_analysis(
                 {"role": "user", "content": user_content},
             ],
             context=f"options agent {ticker}",
+            # Same bound as the cycle report, and here someone is waiting.
+            reasoning=NO_REASONING,
             max_tokens=1500,
         )
         if text is None:
