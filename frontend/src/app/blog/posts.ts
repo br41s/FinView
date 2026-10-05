@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'inversiones-exteriores-d6-espana',
+    tag: 'Fiscalidad',
+    date: '4 oct 2026',
+    readTime: '9 min',
+    title: 'Inversiones exteriores: el D-6 ya no existe y esto es lo que sí te obliga',
+    excerpt:
+      'El D-6 desapareció con el Real Decreto 571/2023 y con él la obligación de declarar las carteras de valores. Lo que de verdad sigue vivo es el Modelo 720: dos trámites distintos que la gente confunde sin parar.',
+  },
+  {
     slug: 'sucesiones-acciones-eeuu-espana',
     tag: 'Fiscalidad',
     date: '2 oct 2026',
