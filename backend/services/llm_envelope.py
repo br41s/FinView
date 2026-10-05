@@ -38,7 +38,7 @@ def chat(
     ``choices[0].message.content`` raw and turned a null into a 500. Transport
     errors and non-200s come back as ``error`` too, so callers have exactly one
     branch to write. ``params`` are passed through (max_tokens, temperature,
-    response_format).
+    response_format, reasoning).
     """
     if not settings.openrouter_api_key:
         return None, "FINVIEW_OPENROUTER_API_KEY not configured."
