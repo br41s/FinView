@@ -27,6 +27,7 @@ GLOBAL_TABLES = frozenset({
     "exchange_rates",
     "fred_rates",
     "geo_flight_samples",
+    "geo_generative_answers",
     "geo_region_samples",
     "geo_rule_stats",
     "price_cache",

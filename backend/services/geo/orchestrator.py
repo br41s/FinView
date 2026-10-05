@@ -19,13 +19,14 @@ from sqlalchemy.orm import Session
 from backend.models import (
     GeoCycleRun,
     GeoFlightSample,
+    GeoGenerativeAnswer,
     GeoRegionSample,
     GeoRuleStat,
     GeoSignal,
     GeoSignalStatus,
 )
 
-from . import sentinel
+from . import analyst, sentinel
 from .advisor import IMPORTANCE_THRESHOLD, SignalResult, compute_importance, generate_signal
 from .analyst import (
     AnalystResult,
@@ -212,6 +213,66 @@ def _persist_region_samples(db: Session) -> int:
     except SQLAlchemyError:
         db.rollback()
         logger.warning("geo: could not persist region samples", exc_info=True)
+    return written
+
+
+def _hydrate_generative_cache(db: Session) -> int:
+    """Load the answers still inside their TTL into the analyst's cache; returns how many.
+
+    Merged, not replaced: on a warm instance an answer whose write failed is
+    still worth its six hours."""
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=analyst._LLM_CACHE_TTL)
+    rows = (
+        db.query(
+            GeoGenerativeAnswer.event_id, GeoGenerativeAnswer.asked_at,
+            GeoGenerativeAnswer.proposal_json,
+        )
+        .filter(GeoGenerativeAnswer.asked_at >= cutoff)
+        .all()
+    )
+    restored = 0
+    for event_id, asked_at, proposal_json in rows:
+        try:
+            proposal = json.loads(proposal_json)
+        except ValueError:
+            continue
+        if not isinstance(proposal, dict):
+            continue  # unreadable is not a "no": the event is asked again
+        ts = asked_at if asked_at.tzinfo else asked_at.replace(tzinfo=timezone.utc)
+        analyst._GENERATIVE_CACHE[event_id] = (ts.timestamp(), proposal)
+        restored += 1
+    return restored
+
+
+def _persist_generative_cache(db: Session, since: datetime) -> int:
+    """Store the answers this request paid for (cached at or after ``since``); returns rows written.
+
+    Never raises: a cache that cannot be written costs a repeated call next
+    cycle, not the cycle. The merge can fail before the commit does — a manual
+    run and the cron writing the same event id."""
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=analyst._LLM_CACHE_TTL)
+    since_ts = since.timestamp()
+    written = 0
+    try:
+        # Expired rows go first, so an event asked again after its six hours is
+        # a plain insert rather than an update racing the delete.
+        db.query(GeoGenerativeAnswer).filter(GeoGenerativeAnswer.asked_at < cutoff).delete(
+            synchronize_session=False
+        )
+        for event_id, (ts, proposal) in analyst._GENERATIVE_CACHE.items():
+            if ts < since_ts:
+                continue
+            db.merge(GeoGenerativeAnswer(
+                event_id=event_id,
+                asked_at=datetime.fromtimestamp(ts, tz=timezone.utc),
+                proposal_json=json.dumps(proposal),
+            ))
+            written += 1
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        logger.warning("geo: could not persist generative answers", exc_info=True)
+        return 0
     return written
 
 
@@ -431,10 +492,17 @@ def prepare_cycle(db: Session) -> CycleInputs:
     analyses = [analyze_event(e, stats, use_llm=False, regime=regime) for e in events]
     # Phase B: compound rules (orchestrator-level bucket tally).
     analyses.extend(_compound_analyses(analyses, stats, regime))
-    # Phase B2: salient events no rule covers get one generative call each.
+    # Phase B2: salient events no rule covers get one generative call each. The
+    # answers are read from and written to the DB around the pass: the instance
+    # rarely survives to the next cycle, and an empty cache asks the same three
+    # events every hour while the ones behind the cap wait for ever.
+    restored = _hydrate_generative_cache(db)
     generated = _generative_pass(analyses, regime)
-    if generated:
-        logger.info("geo cycle: %d generative analyses attempted", generated)
+    _persist_generative_cache(db, started_at)
+    if generated or restored:
+        logger.info(
+            "geo cycle: %d generative analyses attempted, %d answers restored", generated, restored
+        )
 
     # Phase D: price enrichment for the union of tickers. One allowance for every
     # Yahoo call the request makes — this fetch and the auditor's, for every user.
