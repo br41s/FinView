@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1201 backend, 127 skipped sin ficheros reales) · vitest (138 frontend) · ESLint
+- **Tests:** pytest (1319 backend, 127 skipped sin ficheros reales) · vitest (138 frontend) · ESLint
 
 ## Brokers soportados
 

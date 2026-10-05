@@ -142,7 +142,10 @@ event had a severity. `ingest/events.py` asks `SEARCH` for `TC;FL;VO;DR`, all th
 levels (the default is orange and red only), over the last three days. The window is on
 activity, so an event that already ended comes back too: it is dropped only on an
 explicit `iscurrent=false`, never on a missing flag. `url` is an object there, not a
-string. `TS` in GDACS is tsunami, not storm.
+string. `TS` in GDACS is tsunami, not storm: it is neither requested nor mapped (it was
+mapped to "storm", one request change away from firing the storm rules on a wave), so one
+that ever arrives is "other" and the sentinel drops it. Asking for `TS` starts with a
+written rule that reads a tsunami.
 
 ### Adding regions / rules — overlap is the thing to reason about
 `match_regions` returns **every** box containing the point and `match_rules` gates on
@@ -204,7 +207,11 @@ GDELT writes each batch ~9 min before its stamp, so an on-time :00 cycle reads :
 mentions 4–6 by category, **sources 1** (NumSources was 1 in 1758/1790 rows, so the original
 3–5 floor would drop the whole feed). Classification is CAMEO root code first, actor
 keywords only as fallback; root 17 (coerce, mostly 173 arrest) is deliberately **not** armed
-conflict, and the escalation cluster counts deduped stories, not rows.
+conflict, and the escalation cluster counts deduped stories, not rows. The article behind a
+bucket is its representative row's, stored as `raw_data.sourceUrl`; `api/geo._source_url`
+reads that key (`url` for the feeds with an event page of their own) and is tested through
+the sentinel's own output — writer and reader disagreed on the key from 2026-09-20 and no
+GDELT signal carried its link, with a passing test on each side.
 
 ### OFAC — official designations, because GDELT does not carry them
 Measured 2026-09-21: five OFAC actions and three BIS orders in a week produced one GDELT
@@ -266,6 +273,20 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **LLM token gating**: the OpenRouter call fires only on first sighting — skipped when
   the user already has an ACTIVE signal for the event, and results are cached in-memory
   per event id (6h TTL) so N users cost one call. Long-lived feed events cost ~1 call total.
+- **Both LLM calls turn reasoning off** (`analyst._NO_REASONING`, sent as
+  `reasoning: {"effort": "none"}`). `max_tokens` pays for the reasoning and the answer
+  alike, and with reasoning on prod lost 2–7 generative calls a day to a 200 with
+  `content: null` and `finish_reason: "length"` (1799–2054 reasoning tokens of 2000; once,
+  half a JSON) — each billed in full, debited from the 3-per-request cap and, because a
+  failure is not cached, asked again the next cycle. There is nothing to cap on this model:
+  OpenRouter's catalogue (`GET /api/v1/models`, the `reasoning` object) gives
+  deepseek-v4-flash `supported_efforts: [xhigh, high]`, no reasoning budget and
+  `mandatory: false`, and `reasoning.exclude` only hides tokens that are still spent. A
+  larger budget moves the cliff: 2000 tokens already take 9–12 s of the 20 s timeout.
+  **Changing `FINVIEW_OPENROUTER_MODEL` means reading that model's `reasoning` entry
+  first** — one with `mandatory: true` rejects `effort: "none"` and both calls would fail
+  (logged `OpenRouter HTTP 4xx`, never raised). The options agent and the zone scorer share
+  the model and still reason.
 - **Dedup**: per owner by (source, external_id) on ACTIVE signals — and the DB index says
   the same thing (`uq_geo_sig_active_dedup`, partial on `status='active'`). It used to be
   a plain UNIQUE over the whole table, which contradicted the pipeline: the auditor
