@@ -335,11 +335,12 @@ Base URL: `http://localhost:8000/api`
 ## Tests
 
 ```bash
-pytest tests/ backend/tests/ -v
+pytest
 ```
 
-**Backend:** 453 tests, 131 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
-que no están en el repo).
+**Backend:** 1349 tests, todos en `backend/tests/` (lo fija `testpaths` en `pyproject.toml`).
+Con los PDFs/CSVs reales en `files/` pasan todos; esos ficheros no están en el repo, y donde
+faltan (CI, un worktree sin enlazar `files/`) los tests que los requieren salen como skipped.
 
 **Frontend:**
 
@@ -347,8 +348,10 @@ que no están en el repo).
 cd frontend && pnpm test
 ```
 
-21 tests sobre la lógica pura de `src/lib/`. Requiere `pnpm install` — sin `vitest`
-instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
+148 tests sobre lógica pura: `src/lib/`, `src/app/blog/posts.test.ts`,
+`src/app/options/optionsData.test.ts` (el reducer de estado de la página de opciones) y
+`src/game/garden/` (las reglas del juego del jardín de la landing). Requiere `pnpm install` —
+sin `vitest` instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
 
 ## Despliegue y CI/CD
 
