@@ -1,6 +1,7 @@
 """The generative path: a salient event no rule covers gets one validated LLM thesis."""
 
 import json
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -135,7 +136,7 @@ def test_not_actionable_is_cached_and_costs_one_call(monkeypatch):
 
 
 # ── A 200 with no answer in it ────────────────────────────────────────
-# What Cloud Run logged 2–7 times a day (this one 2026-10-04): the model spent
+# What Cloud Run logged 3–8 times a day (this one 2026-10-04): the model spent
 # the whole budget reasoning, so the 200 carries its reasoning and no answer.
 REASONED_AWAY = {
     "choices": [{
@@ -187,6 +188,64 @@ def test_an_answer_cut_mid_json_is_no_thesis_either(monkeypatch):
     assert analyze_unmatched(ev) is None
     assert "generated" not in ev.raw_data
     assert analyst.has_fresh_generative(ev.id) is False
+
+
+def _warnings(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records
+            if r.name == analyst.logger.name and r.levelno == logging.WARNING]
+
+
+def test_an_answer_that_is_not_json_is_logged_with_what_it_was(monkeypatch, caplog):
+    """Prod, 2026-09-27 and 2026-10-05: `Expecting value: line 1 column 1 (char 0)`
+    under a traceback. The content had passed the non-empty check and nothing
+    recorded it. This text is a stand-in — the real one has never been seen."""
+    answer = "Here is the analysis:\n" + json.dumps(GOOD)
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    ev = _event()
+    with caplog.at_level(logging.WARNING):
+        assert analyze_unmatched(ev) is None
+    [line] = _warnings(caplog)
+    assert line.startswith(f"geo generative LLM: content is not JSON for {ev.id} ")
+    # Where the parser stopped, beside how long the answer was: char 0 of 300 is
+    # a wrapped answer, a position near the length is a cut one.
+    assert "char 0" in line and f"{len(answer)} chars" in line
+    # A repr, and a short one: the newline is escaped, so text the model echoed
+    # from a headline cannot start a log line of its own, and the tail is left out.
+    assert "'Here is the analysis:\\n{" in line and "\n" not in line
+    assert repr(answer[:200]) in line and answer[200:] not in line
+    # Nothing is repaired on a guess: the object after the prose is not used.
+    assert "generated" not in ev.raw_data
+    # And an answer nobody could read is not a "no" for six hours.
+    assert analyst.has_fresh_generative(ev.id) is False
+    assert analyze_unmatched(ev) is None and len(sent) == 2
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["[]", f"[{json.dumps(GOOD)}]", '"not actionable"', "null", "42"],
+    ids=["empty array", "thesis inside an array", "string", "null", "number"],
+)
+def test_json_that_is_not_an_object_is_no_thesis_and_not_a_cached_no(monkeypatch, caplog, answer):
+    """It used to reach the validator, fail there without a word and be
+    remembered for six hours as "not actionable"."""
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    ev = _event()
+    with caplog.at_level(logging.WARNING):
+        assert analyze_unmatched(ev) is None
+    [line] = _warnings(caplog)
+    assert line.startswith(f"geo generative LLM: JSON is not an object for {ev.id} ")
+    assert repr(answer[:200]) in line
+    assert "generated" not in ev.raw_data
+    assert analyst.has_fresh_generative(ev.id) is False
+    assert analyze_unmatched(ev) is None and len(sent) == 2
+
+
+def test_an_answer_nobody_could_read_stores_nothing(db, monkeypatch):
+    _answering(monkeypatch, {"choices": [{"message": {"content": "[]"}}]})
+    started = datetime.now(timezone.utc)
+    assert analyze_unmatched(_event()) is None
+    assert orchestrator._persist_generative_cache(db, started) == 0
+    assert db.query(GeoGenerativeAnswer).count() == 0
 
 
 def test_the_generative_call_turns_reasoning_off(monkeypatch):

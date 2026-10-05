@@ -458,6 +458,58 @@ def test_llm_analyze_turns_reasoning_off(monkeypatch):
     assert sent[0]["reasoning"] == {"effort": "none"}
 
 
+def test_llm_analyze_logs_an_answer_that_is_not_json(monkeypatch, caplog):
+    """The enrichment parses the way the generative call does and had the same
+    blind spot: a traceback said the answer was not JSON, nothing said what it
+    was. Here it is cut inside a string, as prod's were four times in two weeks."""
+    from backend.services.geo import analyst
+    from backend.services.geo.sentinel import GeoEvent
+
+    answer = '{"affectedTickers": [{"symbol": "USO", "direction": "bull'
+    sent = _llm_answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    event = GeoEvent(
+        id="ev-cut", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    with caplog.at_level(logging.WARNING):
+        assert analyst._llm_analyze(event, []) is None
+    [line] = [r.getMessage() for r in caplog.records if r.name == analyst.logger.name]
+    assert line.startswith("geo LLM: content is not JSON for ev-cut ")
+    assert "Unterminated string" in line and f"{len(answer)} chars" in line
+    assert repr(answer) in line
+    assert analyst._LLM_CACHE == {}
+    result = analyst.analyze_event(event, {}, use_llm=True)
+    assert result.llm_narrative is None and result.direction == "quake"
+    assert len(sent) == 2  # asked again: nothing was remembered
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ['[{"symbol": "USO", "direction": "bullish"}]', '"bullish"', "null"],
+    ids=["array", "string", "null"],
+)
+def test_llm_analyze_answers_none_to_json_that_is_not_an_object(monkeypatch, caplog, answer):
+    """analyze_event reads the enrichment with .get() and no try around it: an
+    array would have raised AttributeError there, in the middle of a cycle."""
+    from backend.services.geo import analyst
+    from backend.services.geo.sentinel import GeoEvent
+
+    sent = _llm_answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    event = GeoEvent(
+        id="ev-array", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    with caplog.at_level(logging.WARNING):
+        assert analyst._llm_analyze(event, []) is None
+    [line] = [r.getMessage() for r in caplog.records if r.name == analyst.logger.name]
+    assert line.startswith("geo LLM: JSON is not an object for ev-array ")
+    assert repr(answer) in line
+    assert analyst._LLM_CACHE == {}
+    result = analyst.analyze_event(event, {}, use_llm=True)
+    assert result.llm_narrative is None and result.direction == "quake"
+    assert len(sent) == 2
+
+
 def test_has_active_signal_gates_known_events(db):
     from backend.services.geo.orchestrator import _has_active_signal
     from backend.services.geo.sentinel import GeoEvent

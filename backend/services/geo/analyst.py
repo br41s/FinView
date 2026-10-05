@@ -87,13 +87,40 @@ _LLM_CACHE_TTL = 6 * 3600  # seconds
 
 # Both calls below send `reasoning=NO_REASONING` (llm_envelope says why the
 # shared model's reasoning is on or off and nothing in between). Prod measured
-# 1799–2054 reasoning tokens against a budget of 2000: `content: null`,
-# `finish_reason: "length"`, billed in full, 2–7 generative calls a day — and a
+# 1601–2270 reasoning tokens against a budget of 2000: `content: null`,
+# `finish_reason: "length"`, billed in full, 3–8 generative calls a day — and a
 # failure is not cached, so the same event spent a call again the next cycle.
 # Each call asks for one short JSON object, and the generative one writes its
 # chain before it names an instrument. A larger budget only moves the cliff:
 # 2000 tokens already take 9–12 s of a 20 s timeout, and the key's monthly
 # limit has been hit once.
+
+
+def _json_object(content: str, context: str, event_id: str) -> dict | None:
+    """The model's answer as a JSON object, or None with the answer in the log.
+
+    JSON mode does not make the parse a formality. Prod has had answers that
+    did not begin with a JSON value at all and answers cut inside a string, and
+    the traceback that used to be logged carried neither. The preview is a
+    repr, so text the model echoed from a headline cannot start a log line of
+    its own; the length beside the parser's position tells a cut answer from a
+    wrapped one. Nothing is repaired: until one has been read, a fix is a guess.
+    """
+    try:
+        body = json.loads(content)
+    except json.JSONDecodeError as exc:
+        logger.warning(
+            "%s: content is not JSON for %s (%s; %d chars): %r",
+            context, event_id, exc, len(content), content[:200],
+        )
+        return None
+    if not isinstance(body, dict):
+        logger.warning(
+            "%s: JSON is not an object for %s (%d chars): %r",
+            context, event_id, len(content), content[:200],
+        )
+        return None
+    return body
 
 
 def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
@@ -134,7 +161,11 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
         )
         if content is None:
             return None
-        result = json.loads(content)
+        # analyze_event reads this with .get() outside any try: an array or a
+        # bare string must stop here, not there.
+        result = _json_object(content, "geo LLM", event.id)
+        if result is None:
+            return None
         # Cache only successes so transient failures retry next cycle.
         if len(_LLM_CACHE) > 500:
             cutoff = time.time() - _LLM_CACHE_TTL
@@ -279,7 +310,12 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         )
         if content is None:
             return None
-        proposal = _validate_generated(json.loads(content), region_reach(event.region), allowed)
+        # Returned before the cache below: an answer that cannot be read is not
+        # a "no", and stored it would silence the event for six hours.
+        body = _json_object(content, "geo generative LLM", event.id)
+        if body is None:
+            return None
+        proposal = _validate_generated(body, region_reach(event.region), allowed)
     except Exception:
         logger.warning("geo generative LLM analysis failed", exc_info=True)
         return None

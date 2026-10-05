@@ -18,6 +18,28 @@ paths:
 - **MEFF**: direct HTML scraping from meff.es, 30 verified `.MC` tickers (Ibex-35 blue chips + extended). HV computed via yfinance 60d history since MEFF doesn't publish it.
 - **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day.
 - Options chain cached 5 min (TTL) per ticker to avoid redundant scrapes. Per-expiry chains have their own cache keyed by `TICKER:YYYY-MM-DD`.
+- **A watchlist row can hold an ISIN, and the sources are only ever asked about tickers.**
+  A portfolio position nothing knows a ticker for is sent by its ISIN (`p.ticker || p.isin`
+  in the page), the availability check below admits every ISIN, and the auto-sync stores it
+  as the row's ticker. `options_scraper._as_ticker` is the one place an identifier becomes
+  a symbol, for `fetch_options`, `fetch_expirations` and `fetch_options_for_expiry` alike:
+  an ISIN that resolves (curated map, then Yahoo search) is fetched as its ticker; one that
+  does not has no chain, logs `ISIN <isin> did not resolve to a ticker` at INFO and
+  reaches no source. It used to fall through to `yf.Ticker(<isin>)`: yfinance reads a 12-character
+  ISIN-shaped string as an ISIN, looks it up itself and raises `ValueError: Invalid ISIN
+  number` — three ERROR tracebacks per cycle (477 in the ten days to 2026-10-05) for a bond
+  and two `ES06…` ISINs, Spain's prefix for subscription rights. **The gate is still
+  open**: such a position keeps being synced, costs one Yahoo search per cycle and shows a
+  row with no data until it is hidden ("Ocultar"). Closing it — an ISIN that resolves to
+  nothing is `no_options` — reverses the rule below and needs the resolver to tell "Yahoo
+  knows nothing" from "Yahoo did not answer", or a failed search hides a real position
+  for the cache's 24 h. `_resolve_isin` reads `ticker_map.CURATED` but not the
+  `ticker_map` table (it has no session): a manual correction reaches the options path
+  through the position's ticker, not through a row stored by ISIN. Thirteen ISIN rows
+  resolved through its Yahoo search in prod in the ten days to 2026-10-05 — once per cold
+  instance, `_ISIN_CACHE` being in memory, and taking the search's first quote, which is
+  not always the listing wanted (`ONK.HA` for Oneok; one ISIN alternated between two
+  symbols).
 - **Availability check** (`POST /options/check-availability`, cached 24h): routes per source so the UI doesn't flag tickers as "no options" wrongly. ISIN → always visible; `.MC` → visible if base in `_MEFF_SLUGS` (Yahoo has no Spanish options, so never delegate `.MC` to Yahoo); European suffix → check Eurex RDF `sym_to_code`; else Yahoo `t.options`.
 
 ### Agent cycle (options_agent.py)
