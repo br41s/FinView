@@ -156,6 +156,25 @@ def _resolve_isin(isin: str) -> str | None:
     return None
 
 
+def _as_ticker(identifier: str) -> str | None:
+    """The symbol to ask the sources for, or None when there is none.
+
+    A watchlist row can hold an ISIN: a portfolio position nothing knows a
+    ticker for is followed by its ISIN. One that resolves is fetched as its
+    ticker. One that does not — a bond, a subscription right — has no chain,
+    and must not reach a source as if it were a symbol. yfinance reads a
+    12-character ISIN-shaped string as an ISIN, looks it up itself and raises
+    ValueError when it finds nothing: three ERROR tracebacks per agent cycle in
+    prod, for a bond and two rights that had been synced from the portfolio.
+    """
+    if not _ISIN_RE.match(identifier):
+        return identifier
+    resolved = _resolve_isin(identifier)
+    if resolved is None:
+        logger.info("ISIN %s did not resolve to a ticker: no options chain fetched", identifier)
+    return resolved
+
+
 # ── Eurex RDF (European exchange) ────────────────────────────────────
 
 
@@ -390,13 +409,13 @@ def fetch_options(ticker: str) -> dict | None:
     """Fetch options chain for a ticker. Returns structured options data or None.
 
     If *ticker* looks like an ISIN (e.g. ES0178430E18), it is first resolved
-    to the proper exchange symbol (e.g. TEF.MC) via Yahoo Finance search.
-    Results are cached in memory for 5 minutes.
+    to the proper exchange symbol (e.g. TEF.MC) via Yahoo Finance search;
+    one that resolves to nothing has no chain. Results are cached in memory
+    for 5 minutes.
     """
-    if _ISIN_RE.match(ticker):
-        resolved = _resolve_isin(ticker)
-        if resolved:
-            ticker = resolved
+    ticker = _as_ticker(ticker)
+    if ticker is None:
+        return None
 
     cache_key = ticker.upper()
     cached = _OPTIONS_CACHE.get(cache_key)
@@ -429,10 +448,9 @@ def fetch_expirations(ticker: str) -> list[str]:
     For Yahoo tickers this is a cheap metadata call (no chain data fetched).
     For MEFF/Eurex the full cached result is used to extract unique dates.
     """
-    if _ISIN_RE.match(ticker):
-        resolved = _resolve_isin(ticker)
-        if resolved:
-            ticker = resolved
+    ticker = _as_ticker(ticker)
+    if ticker is None:
+        return []
 
     cache_key = ticker.upper()
     cached = _EXPIRATIONS_CACHE.get(cache_key)
@@ -466,10 +484,9 @@ def fetch_options_for_expiry(ticker: str, expiration: str) -> dict | None:
     For Yahoo: fetches only that one expiry (fast).
     For MEFF/Eurex: reuses the full cached fetch and filters to the requested date.
     """
-    if _ISIN_RE.match(ticker):
-        resolved = _resolve_isin(ticker)
-        if resolved:
-            ticker = resolved
+    ticker = _as_ticker(ticker)
+    if ticker is None:
+        return None
 
     cache_key = f"{ticker.upper()}:{expiration}"
     cached = _EXPIRY_CACHE.get(cache_key)
