@@ -54,6 +54,26 @@ Agent persona: *VolatilityEdge* (quant analyst, senior). Spanish only. Structure
 Model: `settings.openrouter_model` via OpenRouter · max_tokens: 1500 · max 750 words in output.
 Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
 
+- **All three options calls turn reasoning off** — cycle report, per-ticker report
+  (`_run_ticker_claude_analysis`) and the chat (`POST /options/ask`) send
+  `reasoning=NO_REASONING` (`llm_envelope`, `{"effort": "none"}`). `max_tokens` pays for the
+  reasoning and the answer alike, and with reasoning on a third of the cycles that reached
+  the model (48 of 144, 10 days to 2026-10-05) came back 200 with `content: null` and
+  `finish_reason: "length"`: all 1500 tokens spent, billed, no report. The model has no
+  lower effort and no reasoning budget (see the same bullet in `geo.md`), so the choice was
+  off or a budget big enough for both. The budget lost: reasoning has no bound to size it
+  by, the 1500 tokens already took 19 s at the median and up to 70 s (`chat()`'s 60 s
+  timeout is httpx's per-read timeout, not a deadline for the call), so 3–4× that per
+  cycle and per on-demand report, on a key whose monthly limit was hit on 2026-09-28. The
+  price is that the report is written without a reasoning pass; the template's seven
+  sections carry the plan. With reasoning off `max_tokens` is only the answer's ceiling.
+- **Not verified against a live call** (no key outside Cloud Run). After a deploy, or after
+  changing `FINVIEW_OPENROUTER_MODEL`, read the logs: `options agent: OpenRouter HTTP 4xx`
+  means the model rejected the parameter (`reasoning.mandatory`), `options agent: 200 with
+  empty content` with `reasoning_tokens` near 1500 means a provider ignored it. A report
+  that stops before `## 7.` means 1500 is short for the answer: raise it, it no longer
+  buys reasoning. A truncated report is not logged — any non-empty text is a success.
+
 ### Premium spike detector
 Tracks (ticker, option_type, strike) EMA baseline per user in memory (resets on server restart).
 Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `current_premium ≥ $0.10` and `samples ≥ 3`. EMA α = 0.3.
