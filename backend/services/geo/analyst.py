@@ -8,6 +8,7 @@ shared with the options agent.
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 
@@ -123,6 +124,110 @@ def _json_object(content: str, context: str, event_id: str) -> dict | None:
     return body
 
 
+def _number(value: object) -> float | None:
+    """A finite number out of the model's JSON, or None.
+
+    `json.loads` reads `NaN`, `Infinity` and `1e999` as floats that `int()`
+    raises on, and `true` passes `float()` as 1.0. A numeric string is still a
+    number: `compute_risk` has always taken "8".
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _percent(value: object) -> float | None:
+    number = _number(value)
+    return None if number is None else max(0.0, min(100.0, number))
+
+
+def _text(value: object, limit: int) -> str:
+    """The model's text, trimmed and bounded. What is not text is no text."""
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _seen(name: str, value: object) -> str:
+    """A field as a log line names it: a short repr, like the answer's preview."""
+    return f"{name}={repr(value)[:80]}"
+
+
+# GeoDirection: the column a pick's direction is written to is an enum.
+_ENRICHMENT_DIRECTIONS = {"bullish", "bearish", "neutral"}
+
+
+def _enrichment_pick(entry: object) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    symbol = _text(entry.get("symbol"), 40)
+    direction = _text(entry.get("direction", "neutral"), 20).lower()
+    if not symbol or direction not in _ENRICHMENT_DIRECTIONS:
+        return None
+    return {"symbol": symbol, "direction": direction,
+            "rationale": _text(entry.get("rationale"), 200)}
+
+
+def _validate_enrichment(body: dict) -> tuple[dict, list[str]]:
+    """The enrichment's usable fields, and the ones that were there and were not.
+
+    The model's answer is data here too. `analyze_event` reads this object with
+    .get() outside any try, in the middle of a cycle, and a cached one is served
+    for six hours: `"estimatedImpact": null`, a confidence of "alto" and
+    `"affectedTickers": 5` each raised there. Field by field, not all or
+    nothing: the enrichment decorates an analysis the rules already made, so a
+    field that cannot be used costs that field and the rules' value stands.
+
+    What comes back is in the prompt's own format with only checked values in
+    it. Whether a pick is one the event may reach is still `analyze_event`'s
+    question (`allowed_symbols`); this one is about shape.
+    """
+    usable: dict = {}
+    ignored: list[str] = []
+
+    def take(source: dict, key: str, read, into: dict, label: str | None = None) -> None:
+        if key not in source:
+            return
+        value = read(source[key])
+        if value is None:
+            ignored.append(_seen(label or key, source[key]))
+        else:
+            into[key] = value
+
+    tickers = body.get("affectedTickers")
+    if isinstance(tickers, list):
+        picks = []
+        for i, entry in enumerate(tickers):
+            pick = _enrichment_pick(entry)
+            if pick is None:
+                ignored.append(_seen(f"affectedTickers[{i}]", entry))
+            else:
+                picks.append(pick)
+        if picks:
+            usable["affectedTickers"] = picks
+    elif "affectedTickers" in body:
+        ignored.append(_seen("affectedTickers", tickers))
+
+    take(body, "narrative", lambda v: _text(v, 600) or None, usable)
+    take(body, "confidence", _percent, usable)
+    take(body, "riskScore", _number, usable)  # compute_risk clamps it to 1–10
+
+    impact = body.get("estimatedImpact")
+    if isinstance(impact, dict):
+        checked: dict = {}
+        take(impact, "returnLow", _number, checked, "estimatedImpact.returnLow")
+        take(impact, "returnHigh", _number, checked, "estimatedImpact.returnHigh")
+        take(impact, "timeframe", lambda v: _text(v, 40) or None, checked,
+             "estimatedImpact.timeframe")
+        if checked:
+            usable["estimatedImpact"] = checked
+    elif "estimatedImpact" in body:
+        ignored.append(_seen("estimatedImpact", impact))
+    return usable, ignored
+
+
 def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
     """OpenRouter deep analysis. Fire-and-forget — returns None on any failure."""
     if not settings.openrouter_api_key:
@@ -163,9 +268,24 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
             return None
         # analyze_event reads this with .get() outside any try: an array or a
         # bare string must stop here, not there.
-        result = _json_object(content, "geo LLM", event.id)
-        if result is None:
+        body = _json_object(content, "geo LLM", event.id)
+        if body is None:
             return None
+        # Checked before the cache, not at the read: a field that raises in
+        # analyze_event would raise again on every cycle a warm instance serves.
+        result, ignored = _validate_enrichment(body)
+        if not result:
+            # `{}`, `{"error": …}`: nothing to enrich with, and not an answer
+            # to remember for six hours either.
+            logger.warning(
+                "geo LLM: answer is not usable for %s (no usable field; %d chars): %r",
+                event.id, len(content), content[:200],
+            )
+            return None
+        if ignored:
+            logger.warning(
+                "geo LLM: ignored fields for %s: %s", event.id, ", ".join(ignored)[:600]
+            )
         # Cache only successes so transient failures retry next cycle.
         if len(_LLM_CACHE) > 500:
             cutoff = time.time() - _LLM_CACHE_TTL
@@ -358,6 +478,7 @@ def analyze_event(
 ) -> AnalystResult:
     rules, tickers, confidence, direction = correlate_with_rules(event, stats)
 
+    # Not a raw answer: what _validate_enrichment let through, in the same format.
     llm = _llm_analyze(event, [t.symbol for t in tickers]) if use_llm else None
 
     ticker_map = {t.symbol: t for t in tickers}
