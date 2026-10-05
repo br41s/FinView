@@ -401,6 +401,63 @@ def test_llm_analyze_caches_per_event(monkeypatch):
     assert len(calls) == 1
 
 
+def _llm_answering(monkeypatch, body: dict) -> list[dict]:
+    """OpenRouter answers 200 with ``body``; returns the request bodies it was sent."""
+    import httpx
+
+    from backend.config import settings
+    from backend.services.geo import analyst
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(analyst, "_LLM_CACHE", {})
+    sent: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return body
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: sent.append(k["json"]) or _Resp())
+    return sent
+
+
+def test_llm_analyze_survives_an_answer_lost_to_reasoning(monkeypatch):
+    """The enrichment shares the generative call's model and budget, so it shares
+    the failure: a 200 whose tokens all went to reasoning. The rule-based
+    analysis must stand, and the failure must not be cached as an answer."""
+    from backend.services.geo import analyst
+    from backend.services.geo.sentinel import GeoEvent
+
+    sent = _llm_answering(monkeypatch, {
+        "choices": [{"message": {"content": None, "reasoning": "…"}, "finish_reason": "length"}],
+        "usage": {"completion_tokens": 2000, "completion_tokens_details": {"reasoning_tokens": 2000}},
+    })
+    event = GeoEvent(
+        id="ev-empty", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    assert analyst._llm_analyze(event, []) is None
+    assert analyst._LLM_CACHE == {}
+    result = analyst.analyze_event(event, {}, use_llm=True)
+    assert result.llm_narrative is None and result.direction == "quake"
+    assert len(sent) == 2  # asked again: nothing was remembered
+
+
+def test_llm_analyze_turns_reasoning_off(monkeypatch):
+    from backend.services.geo import analyst
+    from backend.services.geo.sentinel import GeoEvent
+
+    sent = _llm_answering(monkeypatch, {"choices": [{"message": {"content": '{"confidence": 80}'}}]})
+    event = GeoEvent(
+        id="ev-shape", type="earthquake", title="quake", latitude=0.0,
+        longitude=0.0, source="usgs", timestamp=0,
+    )
+    assert analyst._llm_analyze(event, []) == {"confidence": 80}
+    assert sent[0]["reasoning"] == {"effort": "none"}
+
+
 def test_has_active_signal_gates_known_events(db):
     from backend.services.geo.orchestrator import _has_active_signal
     from backend.services.geo.sentinel import GeoEvent

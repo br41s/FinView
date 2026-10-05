@@ -1,5 +1,6 @@
 """The generative path: a salient event no rule covers gets one validated LLM thesis."""
 
+import json
 import time
 
 import pytest
@@ -129,6 +130,69 @@ def test_not_actionable_is_cached_and_costs_one_call(monkeypatch):
     assert analyze_unmatched(ev) is None
     assert calls == ["post"]
     assert "generated" not in ev.raw_data
+
+
+# ── A 200 with no answer in it ────────────────────────────────────────
+# What Cloud Run logged 2–7 times a day (this one 2026-10-04): the model spent
+# the whole budget reasoning, so the 200 carries its reasoning and no answer.
+REASONED_AWAY = {
+    "choices": [{
+        "message": {"role": "assistant", "content": None, "refusal": None,
+                    "reasoning": "We need to decide whether this is tradable…",
+                    "reasoning_details": []},
+        "finish_reason": "length",
+    }],
+    "usage": {"prompt_tokens": 843, "completion_tokens": 2000,
+              "completion_tokens_details": {"reasoning_tokens": 1967}},
+}
+
+
+def _answering(monkeypatch, body: dict) -> list[dict]:
+    """OpenRouter answers 200 with ``body``; returns the request bodies it was sent."""
+    sent: list[dict] = []
+
+    class R:
+        status_code = 200
+
+        def json(self):
+            return body
+
+    def fake_post(*a, **k):
+        sent.append(k["json"])
+        return R()
+
+    monkeypatch.setattr(llm_envelope.httpx, "post", fake_post)
+    return sent
+
+
+def test_an_answer_lost_to_reasoning_is_no_thesis_and_not_a_cached_no(monkeypatch):
+    sent = _answering(monkeypatch, REASONED_AWAY)
+    ev = _event()
+    assert analyze_unmatched(ev) is None
+    assert "generated" not in ev.raw_data
+    # "Not actionable" is remembered for six hours. A call that produced nothing
+    # is not that answer: caching it would silence the event on a failure.
+    assert analyst.has_fresh_generative(ev.id) is False
+    assert analyze_unmatched(ev) is None
+    assert len(sent) == 2
+
+
+def test_an_answer_cut_mid_json_is_no_thesis_either(monkeypatch):
+    """The same cut, a little later (prod, 2026-10-02): reasoning left room for half the JSON."""
+    cut = '{"actionable": true, "thesis": {"effect": "Libyan export terminals clo'
+    _answering(monkeypatch, {"choices": [{"message": {"content": cut}, "finish_reason": "length"}]})
+    ev = _event()
+    assert analyze_unmatched(ev) is None
+    assert "generated" not in ev.raw_data
+    assert analyst.has_fresh_generative(ev.id) is False
+
+
+def test_the_generative_call_turns_reasoning_off(monkeypatch):
+    """max_tokens pays for the reasoning and the answer alike, and this model has
+    no lower effort and no reasoning budget to ask for: off is the only bound."""
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": json.dumps(GOOD)}}]})
+    assert analyze_unmatched(_event()) is not None
+    assert sent[0]["reasoning"] == {"effort": "none"}
 
 
 def test_salience_gate():
