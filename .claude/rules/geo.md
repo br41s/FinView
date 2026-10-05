@@ -276,9 +276,10 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **Both LLM calls turn reasoning off** (`llm_envelope.NO_REASONING`, sent as
   `reasoning: {"effort": "none"}`). `max_tokens` pays for the reasoning and the answer
   alike, and with reasoning on prod lost 3–8 generative calls a day to a 200 with
-  `content: null` and `finish_reason: "length"` (1601–2270 reasoning tokens of 2000; once,
-  half a JSON) — each billed in full, debited from the 3-per-request cap and, because a
-  failure is not cached, asked again the next cycle. There is nothing to cap on this model:
+  `content: null` and `finish_reason: "length"` (1601–2270 reasoning tokens of 2000; five
+  times, a JSON that broke mid-answer) — each billed in full, debited from the
+  3-per-request cap and, because a failure is not cached, asked again the next cycle.
+  There is nothing to cap on this model:
   OpenRouter's catalogue (`GET /api/v1/models`, the `reasoning` object) gives
   deepseek-v4-flash `supported_efforts: [xhigh, high]`, no reasoning budget and
   `mandatory: false`, and `reasoning.exclude` only hides tokens that are still spent. A
@@ -288,6 +289,27 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   (logged `OpenRouter HTTP 4xx`, never raised). The options agent's three calls share the
   model and the constant (`options.md`); the zone scorer shares the model and still
   reasons, on purpose (`zonas.md`).
+- **An answer that is not a JSON object is logged, never repaired**
+  (`analyst._json_object`, both calls). One WARNING — `geo generative LLM: content is not
+  JSON for <event id> (<parser message>; N chars): '<first 200 chars, as a repr>'`, or
+  `JSON is not an object` for an array, a string or `null` — then None, nothing cached,
+  asked again the next cycle. `geo LLM:` is the enrichment. Prod had seven of these in
+  the two weeks to 2026-10-05 under a traceback that never showed the content, in two
+  families the parser message tells apart: **`char 0`** (the answer does not begin with a
+  JSON value: 2026-09-27, and 2026-10-05 in the first 12 calls with reasoning off) and **a
+  later position** (broken mid-answer: four inside an unterminated string, one at a
+  property name, all with reasoning on; beside the length the line now carries, a position
+  at the end is a cut). **Read one before fixing it.** OpenRouter's parameter
+  reference promises valid JSON in JSON mode, its Response Healing page lists markdown
+  wrappers and text before the object among what that plugin repairs, and DeepSeek's JSON
+  Output guide documents only truncation at `max_tokens` and empty content: none of them
+  says which shape prod's was. All 16 providers of the model list `response_format`
+  (`GET /api/v1/models/<model>/endpoints`, 2026-10-05), so a provider ignoring the
+  parameter is not what the catalogue shows either. The plugin is not a default to reach
+  for: it also closes the brackets of a cut answer, and a half thesis that validates
+  would be cached and tracked as a whole one. A non-object used to be worse than
+  unlogged — the generative call cached it for six hours as "not actionable", and the
+  enrichment handed it to `analyze_event`, which calls `.get()` on it outside any try.
 - **Dedup**: per owner by (source, external_id) on ACTIVE signals — and the DB index says
   the same thing (`uq_geo_sig_active_dedup`, partial on `status='active'`). It used to be
   a plain UNIQUE over the whole table, which contradicted the pipeline: the auditor
