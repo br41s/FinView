@@ -310,7 +310,18 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 - **Generative path (events no rule covers)**: after the compound tally, `prepare_cycle` gives
   a *salient* unmatched event (red severity, M≥7, or GDELT with a novelty spike or ≥15 mentions)
   one generative LLM call — at most 3 *real* calls per cron request (a cache hit is free),
-  cached 6 h per event, "not actionable" cached too. News is tested first and needs a named
+  cached 6 h per event, "not actionable" cached too. **The answers live in
+  `geo_generative_answers`**, one row per event id; `analyst._GENERATIVE_CACHE` is only the
+  process's view of it, loaded before the pass and written after it
+  (`_hydrate_generative_cache` / `_persist_generative_cache`, the flight and region
+  baselines' pattern). In memory alone it was empty nearly every cycle — 26 instances served
+  29 hourly cycles on 2026-10-04 — so the first three salient events were asked again every
+  hour (the cap, 73 cycles running, ~72 calls a day) and the events behind them never got a
+  call. A call with no answer stores nothing (it would be a "no" for six hours), a row that
+  cannot be read is not a "no" either, and a failed write costs a repeated call, never the
+  cycle. The cycle logs `N generative analyses attempted, M answers restored`: restored at
+  zero on a cold instance with rows in the table means the table is not being read. News is
+  tested first and needs a named
   region (a story in no box is never salient — nearly every conflict bucket is "red", so a
   severity-first test pointed the calls at wire noise). The model must pick from the tradable
   universe and no wider than the event's reach (`rules.region_reach`, the same invariant the
