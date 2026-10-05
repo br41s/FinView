@@ -28,6 +28,18 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# The shared model reasons before it answers, and max_tokens pays for the
+# reasoning and the answer alike: a call that thinks through its whole budget
+# comes back 200 with `content: null` and `finish_reason: "length"`, billed in
+# full. On deepseek-v4-flash that cannot be made smaller, only switched off:
+# OpenRouter's catalogue (GET /api/v1/models, the `reasoning` object) lists no
+# effort below its default ("high") and no reasoning budget, and
+# `reasoning.exclude` only hides tokens that are still spent. A caller that
+# would rather have the answer passes `reasoning=NO_REASONING`.
+# A model whose reasoning is mandatory (`reasoning.mandatory` there) rejects
+# this with a 4xx: read the new model's entry before changing openrouter_model.
+NO_REASONING = {"effort": "none"}
+
 
 def chat(
     messages: list[dict], *, context: str, timeout: float = 60.0, **params
