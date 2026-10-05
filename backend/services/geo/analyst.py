@@ -153,6 +153,10 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
 # `if not a.tickers`. A salient unmatched event now gets one generative call
 # that must pick from the tradable universe; the result is a signal with no
 # matched rules (so it never teaches geo_rule_stats) and a "generated" stamp.
+#
+# The cache is this process's view of `geo_generative_answers`: the orchestrator
+# loads it before the pass and stores what the pass added, because the instance
+# rarely lives to the next cycle. It is not a store of its own.
 _GENERATIVE_CACHE: dict[str, tuple[float, dict]] = {}
 _GENERATIVE_MAX_TICKERS = 3  # the paging bar for a generated thesis lives in advisor
 # The model sets both factors of importance for a generated thesis, and the

@@ -62,6 +62,7 @@ from .geo import (
     GeoRuleStat,
     GeoRegionSample,
     GeoFlightSample,
+    GeoGenerativeAnswer,
     GeoCycleRun,
 )
 from .alt_investments import (
@@ -119,6 +120,7 @@ __all__ = [
     "GeoRuleStat",
     "GeoRegionSample",
     "GeoFlightSample",
+    "GeoGenerativeAnswer",
     "GeoCycleRun",
     "AltInvestmentType",
     "AltInvestmentStatus",

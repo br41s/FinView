@@ -2,9 +2,11 @@
 
 import json
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from backend.models import GeoGenerativeAnswer
 from backend.services import llm_envelope
 from backend.services.geo import analyst, orchestrator
 from backend.services.geo.advisor import _pageable
@@ -250,6 +252,120 @@ def test_a_cached_answer_is_free_and_a_capped_pass_still_refreshes_cached_events
     ]
     assert orchestrator._generative_pass(analyses, None) == 3  # e3, e4, e5 spent the cap
     assert asked == ["e0", "e1", "e2", "e3", "e4", "e5"]  # cached ones refreshed for free; e6 waited
+
+
+# ── The answers outlive the instance ──────────────────────────────────
+NOT_ACTIONABLE = {"choices": [{"message": {"content": '{"actionable": false}'}}]}
+
+
+def _cold_start(monkeypatch) -> None:
+    """Cloud Run reclaimed the instance: the next cycle starts in an empty process."""
+    monkeypatch.setattr(analyst, "_GENERATIVE_CACHE", {})
+
+
+def _cycle(db, monkeypatch, events: list[dict]) -> None:
+    """One cron request through the real prepare_cycle, with the feeds stubbed."""
+    async def no_sources():
+        return None
+
+    monkeypatch.setattr(orchestrator, "fetch_all_sources", no_sources)
+    monkeypatch.setattr(orchestrator, "_collect_events", lambda bundle: [_event(**kw) for kw in events])
+    monkeypatch.setattr(orchestrator, "_macro_regime", lambda: None)
+    orchestrator.prepare_cycle(db)
+
+
+def _asked(sent: list[dict]) -> list[str]:
+    """The event title each request was about, in the order they were sent."""
+    prompts = (s["messages"][0]["content"] for s in sent)
+    return [next(ln[9:] for ln in p.splitlines() if ln.startswith("- Title: ")) for p in prompts]
+
+
+def test_a_new_instance_remembers_the_answers_and_the_cap_moves_on(db, monkeypatch):
+    """Through prepare_cycle, on purpose. Nearly every hourly cycle starts on a
+    new instance, so the in-memory cache was empty: the first three salient
+    events were asked again every hour and the ones behind the cap never were."""
+    sent = _answering(monkeypatch, NOT_ACTIONABLE)
+    events = [dict(id=f"e{i}", title=f"Coup {i}", region="libya") for i in range(5)]
+
+    _cycle(db, monkeypatch, events)
+    assert _asked(sent) == ["Coup 0", "Coup 1", "Coup 2"]
+
+    _cold_start(monkeypatch)
+    _cycle(db, monkeypatch, events)
+    assert _asked(sent)[3:] == ["Coup 3", "Coup 4"]  # not the first three again
+
+    _cold_start(monkeypatch)
+    _cycle(db, monkeypatch, events)
+    assert len(sent) == 5  # every answer is on record: nothing left to ask
+
+
+def test_a_thesis_comes_back_whole_after_a_cold_start(db, monkeypatch):
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": json.dumps(GOOD)}}]})
+    started = datetime.now(timezone.utc)
+    first = analyze_unmatched(_event())
+    assert orchestrator._persist_generative_cache(db, started) == 1
+
+    _cold_start(monkeypatch)
+    assert orchestrator._hydrate_generative_cache(db) == 1
+    again = analyze_unmatched(_event())
+    assert len(sent) == 1  # the second analysis cost nothing
+    assert [(t.symbol, t.direction) for t in again.tickers] == [("USO", "bullish")]
+    assert (again.confidence, again.risk_score, again.direction, again.llm_narrative) == (
+        first.confidence, first.risk_score, first.direction, first.llm_narrative,
+    )
+    # A restored answer is older than this request: it is not written twice.
+    assert orchestrator._persist_generative_cache(db, datetime.now(timezone.utc)) == 0
+
+
+def test_six_hours_later_the_answer_is_forgotten_and_the_event_asked_again(db, monkeypatch):
+    now = datetime.now(timezone.utc)
+    stale = _event()
+    db.add(GeoGenerativeAnswer(event_id=stale.id, asked_at=now - timedelta(hours=7), proposal_json="{}"))
+    db.add(GeoGenerativeAnswer(event_id="recent", asked_at=now - timedelta(hours=1), proposal_json="{}"))
+    db.commit()
+
+    assert orchestrator._hydrate_generative_cache(db) == 1
+    assert analyst.has_fresh_generative("recent") and not analyst.has_fresh_generative(stale.id)
+
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": json.dumps(GOOD)}}]})
+    assert analyze_unmatched(stale) is not None and len(sent) == 1
+    assert orchestrator._persist_generative_cache(db, now) == 1
+    # One row per event: the seven-hour-old "no" is gone, the new thesis is in its place.
+    rows = {r.event_id: json.loads(r.proposal_json) for r in db.query(GeoGenerativeAnswer).all()}
+    assert set(rows) == {stale.id, "recent"}
+    assert rows[stale.id]["tickers"][0]["symbol"] == "USO" and rows["recent"] == {}
+
+
+def test_a_call_with_no_answer_stores_nothing(db, monkeypatch):
+    """A failure is not an answer: stored, it would be a "no" for six hours."""
+    _answering(monkeypatch, REASONED_AWAY)
+    started = datetime.now(timezone.utc)
+    assert analyze_unmatched(_event()) is None
+    assert orchestrator._persist_generative_cache(db, started) == 0
+    assert db.query(GeoGenerativeAnswer).count() == 0
+
+
+def test_a_row_that_cannot_be_read_is_not_a_no(db):
+    now = datetime.now(timezone.utc)
+    for i, body in enumerate(("not json", "[]", "null")):
+        db.add(GeoGenerativeAnswer(event_id=f"bad{i}", asked_at=now, proposal_json=body))
+    db.commit()
+    assert orchestrator._hydrate_generative_cache(db) == 0
+    assert not any(analyst.has_fresh_generative(f"bad{i}") for i in range(3))
+
+
+def test_answers_that_cannot_be_stored_do_not_fail_the_cycle(db, monkeypatch):
+    """The merge can fail before the commit does (a manual run and the cron
+    writing the same event id). The price is a repeated call, not the cycle."""
+    from sqlalchemy.exc import OperationalError
+
+    def refuse(*a, **k):
+        raise OperationalError("INSERT", {}, Exception("database is locked"))
+
+    started = datetime.now(timezone.utc)
+    analyst._GENERATIVE_CACHE["e0"] = (time.time(), {})
+    monkeypatch.setattr(db, "merge", refuse)
+    assert orchestrator._persist_generative_cache(db, started) == 0
 
 
 def test_a_generated_signal_is_pinned_at_first_sighting(db):

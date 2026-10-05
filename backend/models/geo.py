@@ -290,6 +290,26 @@ class GeoFlightSample(Base):
     military: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class GeoGenerativeAnswer(Base):
+    """The generative LLM's last answer for one event: a thesis, or "not actionable".
+
+    The six-hour cache these rows back used to live in process memory, the same
+    mistake as the two baselines above. With ``--min-instances=0`` and an hourly
+    cron nearly every cycle starts on a new instance (26 instances over 29
+    cycles, 2026-10-04), so the cache was empty: the first three salient events
+    were asked again every hour — the per-request cap, 73 cycles running — and
+    the events behind them never got a call. One row per event id, not per
+    user, pruned at the cache's own TTL.
+    """
+
+    __tablename__ = "geo_generative_answers"
+
+    event_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    asked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    # The validated proposal as JSON; "{}" is the model's "not actionable".
+    proposal_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class GeoCycleRun(Base):
     """One execution of the geo pipeline for one user — the section's heartbeat.
 
