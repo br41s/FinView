@@ -62,6 +62,13 @@ zones (zonas_clave_analyzer)
 - **`break_probability = NULL` means "no score"** (no API key, LLM failure,
   unparseable answer). Never coerce it to 0 — that reads as "certainly won't
   break" in any later calibration, and it must not alert either.
+- **The scorer keeps reasoning on**, unlike the options and geo calls
+  (`llm_envelope.NO_REASONING`). Its 2000-token budget has held — no `zone scorer …: 200
+  with empty content` in the 10 days to 2026-10-05, though only two cycles (~14 candidates
+  each) reached the model in that window — and its number is what the gate is calibrated
+  on: a scorer that stops reasoning is a different scorer, and its scores would be gated
+  on bands measured with the old one. If that warning shows up, turning reasoning off is
+  a calibration decision (the bands restart), not a token fix.
 - Scores are cached per (ticker, level rounded to 2dp, UTC day); proximity lasts
   days, so without it every cycle re-pays the same call. `_already_open()` dedups
   the *rows* separately, since a cache miss (restart, TTL) would still duplicate.
