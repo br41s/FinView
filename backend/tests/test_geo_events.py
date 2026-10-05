@@ -75,6 +75,17 @@ def test_earthquakes_and_wildfires_belong_to_other_sources():
     assert got == []
 
 
+def test_a_tsunami_is_not_a_storm():
+    """GDACS "TS" is tsunami. It was mapped to "storm", one request change away
+    from firing the storm rules on a wave. No rule reads a tsunami, so it is
+    unmapped: "other", which the sentinel drops whatever the alert level."""
+    from backend.services.geo import sentinel
+
+    (e,) = events._parse_gdacs(_payload(_feature(eventtype="TS", alertlevel="Red")))
+    assert e.category == "other"
+    assert sentinel.analyze_natural_events([e]) == []
+
+
 def test_a_200_that_is_not_a_payload_yields_nothing():
     for body in ('{"message":"Eventtype is required."}', "null", "[]", "", "<html>busy</html>"):
         assert events._parse_gdacs(body) == [], body

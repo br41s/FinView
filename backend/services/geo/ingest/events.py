@@ -37,13 +37,14 @@ _EONET_CATEGORY = {
     "Severe Storms": "storm",
     "Floods": "flood",
 }
+# TS is GDACS for tsunami, not storm, and is deliberately absent: no rule reads
+# a tsunami. Unmapped it is "other", which the sentinel drops.
 _GDACS_CATEGORY = {
     "TC": "cyclone",
     "FL": "flood",
     "VO": "volcano",
     "DR": "drought",
     "WF": "wildfire",
-    "TS": "storm",
 }
 _GDACS_SEVERITY = {"Red": "red", "Orange": "orange", "Green": "green"}
 
