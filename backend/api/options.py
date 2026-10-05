@@ -31,7 +31,7 @@ from backend.api.schemas import (
 from backend.config import settings
 from backend.database import DbSession
 from backend.services import options_scheduler
-from backend.services.llm_envelope import chat
+from backend.services.llm_envelope import NO_REASONING, chat
 from backend.models import (
     BacktestSignal,
     FollowedInstrument,
@@ -787,6 +787,10 @@ def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
     answer, error = chat(
         [{"role": "system", "content": system_prompt}] + messages,
         context="options ask",
+        # Reasoning off, like the reports (see options_agent): with it on the
+        # 1024 tokens can all go to thinking, and the user waiting on the chat
+        # gets the 502 below instead of an answer.
+        reasoning=NO_REASONING,
         max_tokens=1024,
     )
     if answer is None:
