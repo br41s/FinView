@@ -1,0 +1,143 @@
+export const metadata = {
+  title: 'Método FIFO en el IRPF: cómo calcula Hacienda tu plusvalía',
+  description:
+    'Cuando vendes acciones, Hacienda no te pregunta cuáles compraste: aplica FIFO y da por vendidas las más antiguas. Cómo se calcula lote a lote, con ejemplos y el error del precio medio.',
+};
+
+# El método FIFO en el IRPF: cómo empareja Hacienda tus compras y ventas
+
+> Vendes 100 acciones y tu broker te enseña una ganancia. Hacienda calcula otra. No es un fallo del broker: es que no está usando el mismo criterio que la ley. Y el que manda es el de Hacienda.
+
+---
+
+## 1. Qué es FIFO y por qué no puedes elegir qué vendes
+
+FIFO son las siglas de *First In, First Out*: lo primero que entra, lo primero que sale. Cuando tienes varias compras de la misma empresa a precios distintos, el fisco considera que la venta consume **las acciones más antiguas**, no las que a ti te vendría bien vender.
+
+La regla está en el artículo 37.2 de la Ley del IRPF: "cuando existan valores homogéneos se considerará que los transmitidos por el contribuyente son aquéllos que adquirió en primer lugar". No es una recomendación ni una casilla que puedas configurar. Es obligatorio.
+
+Esto te separa de otros países. En Estados Unidos puedes elegir lotes concretos (*specific identification*) y vender los más caros para pagar menos. Aquí no. Si tienes dos paquetes de Iberdrola, uno comprado a 8 € y otro a 14 €, y vendes uno, Hacienda entiende que vendiste el de 8 €.
+
+¿Qué son "valores homogéneos"? Acciones del mismo emisor, con la misma naturaleza y derechos. Da igual que las compraras en años distintos, en tramos distintos o a precios distintos. Todas son el mismo valor a efectos de FIFO.
+
+---
+
+## 2. El error de fiarse del precio medio del broker
+
+Casi todos los brokers te enseñan un **precio medio ponderado** de tu posición. Es cómodo para ver tu rentabilidad, pero no es lo que Hacienda quiere para calcular la plusvalía.
+
+Mira la diferencia con un caso sencillo:
+
+| Momento | Operación | Importe |
+|---------|-----------|---------|
+| Ene 2022 | Compra 100 acciones a 10 € | 1.000 € |
+| Jun 2024 | Compra 100 acciones a 20 € | 2.000 € |
+| Mar 2026 | Vende 100 acciones a 18 € | 1.800 € |
+
+Tu broker te dirá que el precio medio es 15 € (3.000 € entre 200 acciones) y que tu ganancia es de 300 € (1.800 − 1.500).
+
+Con FIFO, la venta consume el paquete de 2022, el de 10 €. La ganancia real es de **800 €** (1.800 − 1.000). Son 500 € más de base imponible, y con los tipos del ahorro eso ronda el centenar de euros más de cuota que tu calculadora no vio venir.
+
+No te estoy diciendo que el broker se equivoque. El precio medio vale para mirar tu cartera; FIFO es lo que hay que usar para declarar. Son dos cosas distintas y solo una acaba en el Modelo 100.
+
+---
+
+## 3. Cómo se calcula lote a lote, con comisiones
+
+Cuando vendes, FIFO va vaciando paquetes por antigüedad hasta completar la cantidad. Y una misma venta puede tocar dos lotes si no le alcanza el primero.
+
+Supón que compraste 100 acciones a 10 € (lote A) y 50 a 14 € (lote B), y vendes 120 a 16 €. La venta se reparte así: 100 del lote A y 20 del lote B.
+
+- Valor de adquisición: (100 × 10) + (20 × 14) = 1.000 + 280 = 1.280 €
+- Valor de transmisión: 120 × 16 = 1.920 €
+- Ganancia: 1.920 − 1.280 = **640 €**
+- Te quedan 30 acciones del lote B, con un coste de 14 € cada una.
+
+Las comisiones también entran, y en direcciones opuestas. El artículo 35 de la Ley del IRPF dice que el valor de adquisición suma los gastos y tributos inherentes a la compra, y el valor de transmisión resta los de la venta. La comisión de compra engorda tu coste (pagas menos); la de venta recorta tu ingreso (también pagas menos). Si las ignoras, inflas tu ganancia.
+
+Un apunte para acciones cotizadas: el valor de transmisión no es el que tú digas, es la cotización de ese día o el precio pactado si es superior (artículo 37.1.a). Guárdate el contrato con la fecha exacta.
+
+---
+
+## 4. FIFO es global: cruza todos tus brokers
+
+Aquí está el fallo que más declaraciones estropea. El orden FIFO no se aplica broker a broker. Se aplica a **todas tus acciones del mismo valor**, estén donde estén. Si tienes Telefónicas en Trade Republic y en DEGIRO, el fisco las junta en una sola lista ordenada por fecha de compra.
+
+| Broker | Compra | Acciones | Precio |
+|--------|--------|----------|--------|
+| DEGIRO | Ene 2023 | 100 | 9 € |
+| Trade Republic | Mar 2023 | 100 | 12 € |
+
+Si en junio de 2026 vendes 100 acciones desde Trade Republic a 15 €, no vendes "las de Trade Republic". Vendes las más antiguas, que son las de DEGIRO compradas a 9 €. Coste 900 €, ganancia **600 €**. Si solo miras el extracto de Trade Republic, declararás 300 € y te faltarán 300 € de base.
+
+Cada broker solo ve su parte. Tú eres el único que tiene la foto completa, y Hacienda te la va a pedir. Si has movido posiciones de una casa a otra, tienes el detalle en [traspasar acciones entre brokers](/blog/traspaso-acciones-entre-brokers).
+
+---
+
+## 5. FIFO con splits, liberadas, herencias y fraccionadas
+
+La regla no cambia con las operaciones de empresa, pero hay matices que la gente pasa por alto.
+
+**Acciones totalmente liberadas.** El artículo 37.2 cierra el asunto: su antigüedad es la de las acciones de las que proceden. Si recibes acciones liberadas de un paquete comprado en 2019, esas nuevas cuentan como de 2019, no de 2026. Es la forma de que una ampliación liberada no te regale un lote "nuevo" que rompa el orden.
+
+**Splits y contrasplits.** No cambian la fecha del lote, solo el número de títulos y el coste por acción. Un split 2x1 sobre 100 acciones a 10 € te deja 200 a 5 €. El lote sigue siendo el mismo y conserva su antigüedad. Lo desarrollo en [splits, contrasplits y fusiones en el IRPF](/blog/splits-fusiones-canje-acciones-irpf).
+
+**Herencias y donaciones.** Las acciones heredadas entran en tu FIFO con la fecha del fallecimiento, y su coste es el valor de cotización de ese día. El TEAC lo confirmó en 2025 (reclamación 00-03001-2022, reiterada en la 00-01535-2024): FIFO también se aplica a las transmisiones lucrativas, aunque la ley solo mencione las onerosas. Si heredas posiciones que se solapan con las tuyas, el orden cronológico se calcula con las dos. Lo cuento en [heredar o donar acciones](/blog/heredar-acciones-irpf).
+
+**Acciones fraccionadas.** FIFO funciona igual con decimales. Si vendes 1,5 acciones, consume 1,5 de tu lote más antiguo. Muchos brokers las mezclan en una sola posición sin desglosar lotes, y ahí es donde se pierde el rastro. Tienes el detalle en [acciones fraccionadas en el IRPF](/blog/acciones-fraccionadas-irpf-espana).
+
+---
+
+## 6. FIFO y la regla de los dos meses no son lo mismo
+
+Se confunden todo el tiempo, así que vamos a separarlos.
+
+FIFO decide **qué lote has vendido** y, por tanto, cuál es tu coste. La regla de los dos meses (artículo 33.5.f) decide algo distinto: si una **pérdida** puede computarse siquiera. Si vendes con pérdida y recompras valores homogéneos dentro de los dos meses anteriores o posteriores, esa pérdida queda congelada hasta que salgas de verdad de la posición.
+
+Son reglas independientes y actúan en momentos distintos. Una fija el coste; la otra decide si el resultado negativo entra en la declaración este año. Tienes el mecanismo completo en [compensar pérdidas con ganancias](/blog/compensar-perdidas-ganancias-irpf).
+
+Y un detalle que casi nadie aplica: esos dos meses son para valores admitidos a negociación en los mercados que define la Directiva europea. Para acciones que cotizan fuera de esa definición —por ejemplo, un mercado de Estados Unidos— la Dirección General de Tributos ha respondido en consultas vinculantes (V0457-22 y V0896-23) que el plazo se estira a **un año**. Si haces *tax loss harvesting* con acciones americanas, ese año es el que cuenta.
+
+---
+
+## 7. Cómo documentar tus lotes para sobrevivir a un requerimiento
+
+FIFO es fácil de aplicar cuando tienes tres compras. Con quince años de cartera repartida en cuatro brokers, es un rompecabezas. Y el día que Hacienda te pida explicaciones, tu memoria no vale como prueba.
+
+Lo que necesitas guardar, por cada compra:
+
+- fecha exacta de la operación (la del contrato, no la de liquidación);
+- número de títulos;
+- precio unitario;
+- comisiones y gastos de la compra;
+- y, si hubo split, liberada o herencia, la nota que ajusta cantidad y antigüedad.
+
+Los informes anuales de los brokers suelen dar el precio medio, no el desglose por lotes. Si algún día vendes, tendrás que reconstruir el orden a mano. FinView consolida tus operaciones de todos los brokers y aplica FIFO sobre el conjunto, así que el lote que consume cada venta sale calculado sin que tengas que ordenar nada.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Puedo vender mis acciones más caras para pagar menos impuestos?
+
+No. Con valores homogéneos, el artículo 37.2 obliga a que las vendidas sean las más antiguas. No puedes elegir el lote, aunque el resultado fiscal te perjudique.
+
+### ¿FIFO también se aplica a los fondos de inversión?
+
+Sí. El artículo 37.2 se remite a las letras a), b) y c) del artículo 37.1, y la c) son las instituciones de inversión colectiva. Ojo con una excepción: los traspasos entre fondos no tributan, así que ahí no hay venta que emparejar hasta que reembolsas del todo.
+
+### ¿Y si compro el mismo valor en dos brokers el mismo día?
+
+El criterio es la fecha y hora de la operación. Si coinciden, da igual el broker: documenta el orden con los contratos. Lo que no puedes es tratar cada broker como un compartimento estanco.
+
+### ¿FIFO se aplica a las criptomonedas?
+
+La AEAT lo aplica. En su manual de renta señala que, cuando no hay regla específica para identificar monedas virtuales homogéneas, las que se transmiten son las adquiridas en primer lugar. Puedes ver cómo encaja con el resto en [criptomonedas en el IRPF](/blog/criptomonedas-irpf-espana).
+
+### ¿Cuenta la fecha de compra o la de liquidación?
+
+La fecha de la operación, la que figura en el contrato o en la confirmación del broker. La fecha de liquidación (cuando el dinero y los títulos se cruzan) no altera el orden FIFO.
+
+---
+
+*¿Tu cartera está repartida en varios brokers? FinView une todas tus operaciones, aplica FIFO sobre el conjunto y te muestra el coste real de cada venta. Sin hojas de cálculo ni lotes a mano.*
