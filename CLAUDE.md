@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1349 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 148 frontend tests |
+| Tests | pytest · 1401 collected (all pass with files/; 148 skip without real broker PDFs/CSVs) · vitest · 148 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -197,10 +197,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1349 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1349 pass in ~90s. Those files are not in the repo,
-so where `files/` is absent — CI, and worktrees unless you symlink it — 127 skip and the
-remaining 1222 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+Backend: `pytest` — 1401 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1401 pass in ~95s. Those files are not in the repo,
+so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
+remaining 1253 run in ~65s. The geo suite is the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser, the v2 checkpoint scorer, and the country layer (template rules stay
 out of a signal's scoring, an event only reaches its own country's instruments, each rule
@@ -208,10 +208,13 @@ learns from its own legs, the ladder reads tiers without moving a confidence) �
 
 A skipped test reports as a pass, so a broken gate hides silently: the 35 tests in
 `test_tr_parser.py` were gated on a hardcoded `~/Downloads` path that no longer existed
-and ran nothing for months. Gate on a path built from `Path(__file__).resolve().parents[2]
-/ "files"`, and put the gate where the dependency is — a fixture that calls
-`pytest.skip()`, not a module-level `pytestmark` that also takes the pure unit tests down
-with it.
+and ran nothing for months. `test_ing.py` failed the other way round: its gate was an
+absolute path into the main clone, so all 32 ran on the owner's machine from any checkout
+and all 32 skipped in CI, the 11 that need no PDF included — and a tree without `files/`
+reported 127 skips here against 159 there. Gate on a path built from
+`Path(__file__).resolve().parents[2] / "files"`, and put the gate where the dependency
+is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
+the pure unit tests down with it.
 
 Frontend: `cd frontend && pnpm test` (vitest) — 148 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
@@ -229,4 +232,7 @@ If a test breaks, fix it before committing — no exceptions.
 **Anything that talks to an external service gets tests for the ugly paths, not just the
 happy one.** `zone_scorer.py` shipped with zero and spent its first prod cycle failing on
 every call: the LLM returned 200 with `content: null` and `json.loads(None)` raised. A 200
-means the server answered — nothing more. Validate the envelope before parsing.
+means the server answered — nothing more. Validate the envelope before parsing, and the
+fields after it: an object that parses can still carry `"estimatedImpact": null` or a
+confidence of `"alto"`, and a field read with `.get()` outside a try takes the cycle down
+on every warm instance that serves the cached copy (`.claude/rules/geo.md`).

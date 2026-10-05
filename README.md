@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1349 backend, 127 skipped sin ficheros reales) · vitest (148 frontend) · ESLint
+- **Tests:** pytest (1401 backend, 148 skipped sin ficheros reales) · vitest (148 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -338,7 +338,7 @@ Base URL: `http://localhost:8000/api`
 pytest tests/ backend/tests/ -v
 ```
 
-**Backend:** 453 tests, 131 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
+**Backend:** 1401 tests, 148 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
 que no están en el repo).
 
 **Frontend:**
