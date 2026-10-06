@@ -1,16 +1,16 @@
-"""Notification gating: HIGH only, deduplicated across cycles.
+"""Notification gating: HIGH only, one notification per alert episode.
 
 The options cycle re-emits the same alerts every 15 minutes for as long as they
 stay true. Before this, notify_alerts pushed the full set on every cycle — the
 email became ~64 messages a day of ~100 rows each. Two rules fix it: only HIGH
 severity notifies (MEDIUM/LOW live in the Monitor tab), and an alert already
-pushed within the TTL window is not pushed again.
+pushed is not pushed again until a cycle clears it and a later one brings it back.
 
 The dedup lives in the DB: prod scales to zero between cron ticks, so every cycle
 runs on a fresh instance and an in-memory cache never remembered anything.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -37,10 +37,21 @@ def db(engine):
     session.close()
 
 
-def filter_new_alerts(db, alerts, user_id=USER):
-    out = ns.filter_new_alerts(db, user_id, alerts)
+def _tickers(alerts):
+    return {a["ticker"] for a in alerts}
+
+
+def filter_new_alerts(db, alerts, user_id=USER, analyzed=None):
+    """One cycle. By default it analyzed exactly the tickers its alerts are on."""
+    fresh, _ = ns.filter_new_alerts(
+        db, user_id, alerts, _tickers(alerts) if analyzed is None else analyzed
+    )
     db.commit()
-    return out
+    return fresh
+
+
+def notify(db, alerts, analyzed=None):
+    ns.notify_alerts(db, USER, alerts, _tickers(alerts) if analyzed is None else analyzed)
 
 
 def alert(ticker="TEF.MC", type="HIGH_PUT_CALL_RATIO", severity="HIGH", message="msg", **extra):
@@ -79,16 +90,6 @@ def test_the_same_alert_twice_in_one_batch_is_sent_once(db):
     assert filter_new_alerts(db, [alert(), alert()]) == [alert()]
 
 
-def test_the_window_expires(db):
-    a = alert()
-    filter_new_alerts(db, [a])
-    # Age the stored timestamp past the TTL: the alert is fresh again.
-    row = db.query(OptionsAlertNotification).one()
-    row.notified_at -= ns._NOTIFY_TTL + timedelta(seconds=1)
-    db.commit()
-    assert filter_new_alerts(db, [a]) == [a]
-    assert db.query(OptionsAlertNotification).count() == 1  # updated, not duplicated
-
 
 def test_dedup_survives_a_new_instance(engine):
     """Each cron tick runs on a cold instance: only what the DB holds carries over."""
@@ -101,21 +102,66 @@ def test_dedup_survives_a_new_instance(engine):
     second.close()
 
 
+# ── episodes ─────────────────────────────────────────────────────────
+
+
+def test_an_alert_that_stays_true_for_days_is_sent_once(db):
+    a = alert()
+    assert filter_new_alerts(db, [a]) == [a]
+    for _ in range(100):  # 50 hours of 30-min cycles
+        assert filter_new_alerts(db, [a]) == []
+
+
+def test_an_alert_that_clears_and_comes_back_is_sent_again(db):
+    a = alert()
+    filter_new_alerts(db, [a])
+    filter_new_alerts(db, [], analyzed={"TEF.MC"})  # analyzed, alert gone: cleared
+    assert filter_new_alerts(db, [a]) == [a]
+
+
+def test_a_cycle_without_data_for_the_ticker_does_not_clear_it(db):
+    """A failed fetch says nothing about the alert; it must not reopen the episode."""
+    a = alert()
+    filter_new_alerts(db, [a])
+    filter_new_alerts(db, [], analyzed=set())  # TEF.MC fetched nothing
+    assert filter_new_alerts(db, [a]) == []
+
+
+def test_another_tickers_cycle_does_not_clear_it(db):
+    a = alert()
+    filter_new_alerts(db, [a])
+    filter_new_alerts(db, [alert(ticker="SAN.MC")])  # TEF.MC not analyzed
+    assert filter_new_alerts(db, [a]) == []
+
+
+def test_one_type_clearing_leaves_the_others_open(db):
+    pc, spike = alert(), alert(type="PREMIUM_SPIKE")
+    filter_new_alerts(db, [pc, spike])
+    filter_new_alerts(db, [spike])  # P/C cleared, spike still true
+    assert filter_new_alerts(db, [pc, spike]) == [pc]
+
+
+def test_the_overnight_gap_does_not_end_an_episode(db):
+    """Clearing is by cycle, not by clock: 22:00 → 07:00 is still one episode."""
+    a = alert()
+    filter_new_alerts(db, [a])
+    row = db.query(OptionsAlertNotification).one()
+    row.notified_at -= timedelta(days=3)  # a long weekend
+    db.commit()
+    assert filter_new_alerts(db, [a]) == []
+
+
+def test_clearing_is_reported(db):
+    filter_new_alerts(db, [alert()])
+    _, cleared = ns.filter_new_alerts(db, USER, [], {"TEF.MC"})
+    assert cleared == 1
+
+
 def test_dedup_is_per_user(db):
     a = alert()
     assert filter_new_alerts(db, [a], user_id=1) == [a]
     assert filter_new_alerts(db, [a], user_id=2) == [a]
 
-
-def test_a_stored_naive_timestamp_compares_against_now(db):
-    """Postgres/SQLite hand back naive datetimes; comparing must not raise."""
-    db.add(OptionsAlertNotification(
-        user_id=USER,
-        alert_key=ns._alert_key(alert()),
-        notified_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1),
-    ))
-    db.commit()
-    assert filter_new_alerts(db, [alert()]) == []
 
 
 # ── notify_alerts gating ─────────────────────────────────────────────
@@ -132,7 +178,7 @@ def _channels():
 def test_medium_and_low_never_notify(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy as ntfy, p_tg as tg, p_mail as mail:
-        ns.notify_alerts(db, USER, [alert(severity="MEDIUM"), alert(severity="LOW", type="LOW_PUT_CALL_RATIO")])
+        notify(db, [alert(severity="MEDIUM"), alert(severity="LOW", type="LOW_PUT_CALL_RATIO")])
         ntfy.assert_not_called()
         tg.assert_not_called()
         mail.assert_not_called()
@@ -141,7 +187,7 @@ def test_medium_and_low_never_notify(db):
 def test_a_fresh_high_hits_all_three_channels(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy as ntfy, p_tg as tg, p_mail as mail:
-        ns.notify_alerts(db, USER, [alert(severity="HIGH")])
+        notify(db, [alert(severity="HIGH")])
         ntfy.assert_called_once()
         tg.assert_called_once()
         mail.assert_called_once()
@@ -150,8 +196,8 @@ def test_a_fresh_high_hits_all_three_channels(db):
 def test_the_same_high_next_cycle_sends_nothing(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy as ntfy, p_tg, p_mail as mail:
-        ns.notify_alerts(db, USER, [alert(severity="HIGH")])
-        ns.notify_alerts(db, USER, [alert(severity="HIGH")])
+        notify(db, [alert(severity="HIGH")])
+        notify(db, [alert(severity="HIGH")])
         assert ntfy.call_count == 1
         assert mail.call_count == 1
 
@@ -159,7 +205,7 @@ def test_the_same_high_next_cycle_sends_nothing(db):
 def test_only_the_high_rows_reach_the_email_body(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy, p_tg, p_mail as mail:
-        ns.notify_alerts(db, USER, [alert(severity="HIGH", ticker="AAA"), alert(severity="MEDIUM", ticker="BBB")])
+        notify(db, [alert(severity="HIGH", ticker="AAA"), alert(severity="MEDIUM", ticker="BBB")])
         html = mail.call_args.args[1]
         assert "AAA" in html
         assert "BBB" not in html
@@ -168,8 +214,8 @@ def test_only_the_high_rows_reach_the_email_body(db):
 def test_a_new_high_alongside_an_already_sent_one_notifies_only_the_new(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy, p_tg, p_mail as mail:
-        ns.notify_alerts(db, USER, [alert(ticker="AAA", severity="HIGH")])
-        ns.notify_alerts(db, USER, [alert(ticker="AAA", severity="HIGH"), alert(ticker="BBB", severity="HIGH")])
+        notify(db, [alert(ticker="AAA", severity="HIGH")])
+        notify(db, [alert(ticker="AAA", severity="HIGH"), alert(ticker="BBB", severity="HIGH")])
         html = mail.call_args.args[1]
         assert "BBB" in html
         assert "AAA" not in html
@@ -179,7 +225,7 @@ def test_a_new_high_alongside_an_already_sent_one_notifies_only_the_new(db):
 def test_spikes_are_labelled_distinctly_on_telegram(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy, p_tg as tg, p_mail:
-        ns.notify_alerts(db, USER, [alert(type="PREMIUM_SPIKE", severity="HIGH", _strike=100.0, _option_type="call")])
+        notify(db, [alert(type="PREMIUM_SPIKE", severity="HIGH", _strike=100.0, _option_type="call")])
         assert "⚡" in tg.call_args.args[0]
 
 
@@ -198,7 +244,7 @@ def test_a_put_call_alert_is_valid_telegram_markdown(db):
     """HIGH_PUT_CALL_RATIO's underscores opened an italic that never closed."""
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy, p_tg as tg, p_mail:
-        ns.notify_alerts(db, USER, [
+        notify(db, [
             alert(ticker="TEF.MC", message="P/C ratio alto: 1.62 — sentimiento bajista"),
             alert(ticker="DGE.L", type="PREMIUM_SPIKE", message="3 contratos con spike (3 puts), +160%"),
         ])
@@ -219,12 +265,12 @@ def test_markdown_specials_in_a_message_are_escaped():
 def test_each_cycle_logs_what_it_sent_and_held_back(db, caplog):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy, p_tg, p_mail, caplog.at_level("INFO", logger=ns.logger.name):
-        ns.notify_alerts(db, USER, [alert(ticker="AAA")])
-        ns.notify_alerts(db, USER, [alert(ticker="AAA"), alert(ticker="BBB")])
-        ns.notify_alerts(db, USER, [alert(ticker="AAA", severity="MEDIUM")])
+        notify(db, [alert(ticker="AAA")])
+        notify(db, [alert(ticker="AAA"), alert(ticker="BBB")])
+        notify(db, [alert(ticker="AAA", severity="MEDIUM")])
     lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("options notify")]
     assert lines == [
-        "options notify: user=1 high=1 sent=1 suppressed=0 ['AAA|HIGH_PUT_CALL_RATIO']",
-        "options notify: user=1 high=2 sent=1 suppressed=1 ['BBB|HIGH_PUT_CALL_RATIO']",
-        "options notify: user=1 high=0 sent=0 suppressed=0 []",
+        "options notify: user=1 high=1 sent=1 suppressed=0 cleared=0 ['AAA|HIGH_PUT_CALL_RATIO']",
+        "options notify: user=1 high=2 sent=1 suppressed=1 cleared=0 ['BBB|HIGH_PUT_CALL_RATIO']",
+        "options notify: user=1 high=0 sent=0 suppressed=0 cleared=1 []",
     ]

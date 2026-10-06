@@ -119,24 +119,41 @@ contract traded this session (`volume > 0`) and `prevClose ≥ 0.10`.
   `notification_service._alert_key` collapse to `(ticker, PREMIUM_SPIKE)`, so dedup
   is one push per ticker per window instead of one per strike.
 
-### Notifications — HIGH only, deduplicated across cycles
+### Notifications — HIGH only, once per episode
 `notify_alerts()` is the **single entry point** for every channel (ntfy + Telegram +
 email). Two gates, both load-bearing:
 - **Only `severity == "HIGH"` notifies.** MEDIUM/LOW still persist and show in the
   Monitor tab — they're for browsing, not pushing. Without this, email carried ~100
   MEDIUM/LOW rows across 70 tickers every cycle.
-- **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 30-min
-  cycle is pushed once per 6h TTL, not every cycle. Keyed on ticker+type (+contract
-  for spikes), never on the message (its numbers drift). **Persisted per user in
-  `options_alert_notifications`, never in memory**: prod scales to zero between cron
-  ticks, so nearly every cycle starts on a cold instance (`Starting new instance` at
-  each tick in the logs). The in-memory dict it used to be was always empty there, and
-  every still-true HIGH alert was re-pushed each cycle until ntfy answered 429
-  (2026-10-05). The row is written and committed *before* the channels send: a failed
-  commit sends nothing and retries next cycle, rather than sending without a record.
-- **Every cycle logs its decision**: `options notify: user=… high=N sent=K suppressed=M
-  [keys sent]`, sends or not. Read that line to verify the dedup after a deploy; a
-  quiet log otherwise cannot tell "no HIGH fired" from "held back".
+- **One notification per episode** (`filter_new_alerts`): an alert is pushed when it
+  appears and not again while it stays true — for hours or days. It is pushed again
+  only after a cycle that **analyzed its ticker without it** (cleared) and a later one
+  where it is back. A row in `options_alert_notifications` is an open episode:
+  inserted when notified, deleted when cleared. Brais chose this over the earlier 6 h
+  re-send on 2026-10-06. Keyed on ticker+type (+contract for spikes), never on the
+  message (its numbers drift).
+  - **Clearing is by cycle, never by clock.** The cron runs `*/30 7-22` UTC on
+    weekdays, so any "unseen for N hours" rule would end every episode overnight and
+    at weekends and re-push them all at 07:00.
+  - **Only an analyzed ticker clears.** `run_cycle` passes `analyzed` — every ticker
+    it got data for, under **both** names an alert can carry: the watchlist entry
+    (spikes) and `options_data["ticker"]` (analyzer alerts). They differ for a row
+    stored by ISIN; with only one of them that row's episodes never close
+    (`test_options_agent_notify.py`). A failed fetch clears nothing.
+  - `notify_alerts` runs **every cycle, alerts or not** — a quiet cycle is what ends
+    an episode. Don't put it back behind `if all_alerts`.
+  - Known costs: a condition hovering at its threshold re-pushes each time it
+    crosses back (no hysteresis); a ticker removed from the watchlist leaves its
+    episode open, so re-adding it while the condition still holds sends nothing.
+  - **Persisted, never in memory**: prod scales to zero between cron ticks, so nearly
+    every cycle starts on a cold instance. The in-memory dict this used to be was
+    always empty there, and every still-true HIGH alert was re-pushed each cycle until
+    ntfy answered 429 (2026-10-05). Episode changes are committed *before* the
+    channels send: a failed commit sends nothing rather than sending without a record.
+- **Every cycle logs its decision**: `options notify: user=… high=N sent=K
+  suppressed=M cleared=C [keys sent]`, sends or not. Read that line to verify the
+  dedup after a deploy; a quiet log otherwise cannot tell "no HIGH fired" from "held
+  back".
 - The old split `notify_spike_telegram()` is **gone**: it double-sent spikes on
   Telegram and had no dedup. Spikes now flow through `notify_alerts` with their own
   Telegram label.

@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -200,14 +200,20 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
     return False
 
 
-# Cross-cycle dedup. An alert that stays true (HIGH_PUT_CALL_RATIO on TEF.MC for
-# three hours) is one alert, not one every cycle. Keyed on identity — ticker +
-# type, plus the contract for per-contract spikes — never on the message, whose
-# numbers drift each cycle and would defeat the dedup. Persisted per user: prod
-# scales to zero between cron ticks, so each cycle starts on a fresh instance and
-# the in-memory dict this used to be was always empty — every still-true HIGH
-# alert was re-pushed every cycle (ntfy answered 429).
-_NOTIFY_TTL = timedelta(hours=6)  # re-notify a still-true alert at most once per 6h
+# Cross-cycle dedup, by episode. An alert that stays true (HIGH_PUT_CALL_RATIO on
+# TEF.MC for three days) is one notification, sent when it appears; it is sent
+# again only after a cycle that analyzed its ticker without it (it cleared) and a
+# later one where it is back. A row in options_alert_notifications is an active
+# episode: inserted when notified, deleted when cleared.
+#
+# Keyed on identity — ticker + type, plus the contract for per-contract spikes —
+# never on the message, whose numbers drift each cycle and would defeat the dedup.
+# Persisted per user: prod scales to zero between cron ticks, so an in-memory
+# record was always empty and every still-true alert was re-pushed every cycle.
+#
+# Clearing is by cycle, not by clock: the cron does not run overnight or at
+# weekends, so "unseen for N hours" would end every episode each night. And only a
+# ticker that was analyzed can clear — a failed fetch says nothing about the alert.
 
 
 def _alert_key(a: dict) -> str:
@@ -217,36 +223,37 @@ def _alert_key(a: dict) -> str:
     return "|".join(parts)
 
 
-def filter_new_alerts(db: Session, user_id: int, alerts: list[dict]) -> list[dict]:
-    """Return only the alerts not already notified within the TTL window.
+def filter_new_alerts(
+    db: Session, user_id: int, alerts: list[dict], analyzed_tickers: set[str]
+) -> tuple[list[dict], int]:
+    """Return the alerts that start an episode, and how many episodes cleared.
 
-    Marks the returned ones as notified in ``db``; the caller commits.
+    ``alerts`` is this cycle's full HIGH set; ``analyzed_tickers`` every ticker
+    the cycle got data for. Writes the episode changes to ``db``; the caller
+    commits.
     """
-    if not alerts:
-        return []
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    keys = {_alert_key(a) for a in alerts}
-    rows = {
+    current: dict[str, dict] = {}
+    for a in alerts:
+        current.setdefault(_alert_key(a), a)  # the same alert twice is one
+    active = {
         r.alert_key: r
         for r in db.query(OptionsAlertNotification).filter(
-            OptionsAlertNotification.user_id == user_id,
-            OptionsAlertNotification.alert_key.in_(keys),
+            OptionsAlertNotification.user_id == user_id
         )
     }
+    cleared = 0
+    for key, row in active.items():
+        if key not in current and key.split("|", 1)[0] in analyzed_tickers:
+            db.delete(row)
+            cleared += 1
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     fresh = []
-    for a in alerts:
-        key = _alert_key(a)
-        row = rows.get(key)
-        if row is not None and now - row.notified_at < _NOTIFY_TTL:
-            continue  # already sent this window, or earlier in this same batch
-        if row is None:
-            row = OptionsAlertNotification(user_id=user_id, alert_key=key, notified_at=now)
-            db.add(row)
-            rows[key] = row
-        else:
-            row.notified_at = now
+    for key, a in current.items():
+        if key in active:
+            continue  # same episode, already notified
+        db.add(OptionsAlertNotification(user_id=user_id, alert_key=key, notified_at=now))
         fresh.append(a)
-    return fresh
+    return fresh, cleared
 
 
 # Telegram parses these as legacy Markdown, where an unbalanced * _ ` [ makes it
@@ -269,29 +276,27 @@ def _telegram_line(a: dict) -> str:
     return f"{icon} *{_md_escape(a['ticker'])}* · {_md_escape(a['message'])}"
 
 
-def notify_alerts(db: Session, user_id: int, alerts: list[dict]) -> None:
-    """Notify on HIGH alerts only, and only those not already pushed.
+def notify_alerts(
+    db: Session, user_id: int, alerts: list[dict], analyzed_tickers: set[str]
+) -> None:
+    """Notify on HIGH alerts only, once per episode.
 
-    MEDIUM/LOW still persist to the Monitor tab — that's for browsing, not for
-    pushing. Gating to HIGH plus the cross-cycle dedup is what turns this from
-    ~64 emails a day of ~100 rows each into a message only when something new and
-    actionable actually fires. All channels agree now: what notifies is HIGH and
-    fresh, nothing else.
+    Called every cycle, alerts or not: a cycle without an alert is what ends its
+    episode. MEDIUM/LOW still persist to the Monitor tab — that's for browsing,
+    not for pushing. All channels agree: what notifies is HIGH and new.
     """
-    if not alerts:
-        return
     high = [a for a in alerts if a.get("severity") == "HIGH"]
-    fresh = filter_new_alerts(db, user_id, high)
+    fresh, cleared = filter_new_alerts(db, user_id, high, analyzed_tickers)
+    db.commit()
     # One line per cycle, sends or not: without it, "no HIGH fired" and "sent at
     # 07:00, held back at 07:30" read the same in the logs.
     logger.info(
-        "options notify: user=%d high=%d sent=%d suppressed=%d %s",
-        user_id, len(high), len(fresh), len(high) - len(fresh),
+        "options notify: user=%d high=%d sent=%d suppressed=%d cleared=%d %s",
+        user_id, len(high), len(fresh), len(high) - len(fresh), cleared,
         [_alert_key(a) for a in fresh],
     )
     if not fresh:
         return
-    db.commit()
 
     title = f"⚡ {len(fresh)} alerta(s) HIGH"
     body = "\n".join(f"🔴 [{a['ticker']}] {a['message']}" for a in fresh)
