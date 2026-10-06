@@ -2447,7 +2447,32 @@ function ImgMetodoFifo() {
   );
 }
 
+function ImgCertificadoResidenciaFiscal() {
+  return (
+    <div className={styles.postImgCertificadoResidenciaFiscal}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">CERTIFICADO DE RESIDENCIA · AEAT</text>
+        {/* Certificate document */}
+        <rect x="30" y="28" width="70" height="76" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <line x1="40" y1="46" x2="90" y2="46" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="40" y1="57" x2="90" y2="57" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="40" y1="68" x2="78" y2="68" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <text x="40" y="38" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui">EN · ES</text>
+        {/* 12-month validity badge */}
+        <circle cx="138" cy="52" r="20" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="138" y="50" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">12</text>
+        <text x="138" y="60" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">meses</text>
+        {/* CSV verification */}
+        <rect x="118" y="82" width="52" height="16" rx="3" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="144" y="93" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">CSV ✓</text>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">acredita que resides en España</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'certificado-residencia-fiscal-dividendos': ImgCertificadoResidenciaFiscal,
   'inversiones-exteriores-d6-espana': ImgInversionesExterioresD6,
   'metodo-fifo-irpf-espana': ImgMetodoFifo,
   'sucesiones-acciones-eeuu-espana': ImgSucesionesEeuu,

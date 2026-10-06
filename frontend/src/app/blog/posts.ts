@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'certificado-residencia-fiscal-dividendos',
+    tag: 'Fiscalidad',
+    date: '5 oct 2026',
+    readTime: '10 min',
+    title: 'Certificado de residencia fiscal: el papel gratis que desbloquea tus convenios',
+    excerpt:
+      'Sin este papel, el pagador extranjero te aplica su retención máxima y el convenio se queda sin invocar. Lo expide la AEAT, es gratis y suele salir al momento, pero caduca a los 12 meses y tiene dos versiones. Cómo pedirlo bien y por qué te lo deniegan.',
+  },
+  {
     slug: 'inversiones-exteriores-d6-espana',
     tag: 'Fiscalidad',
     date: '4 oct 2026',
