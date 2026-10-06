@@ -120,9 +120,14 @@ email). Two gates, both load-bearing:
   Monitor tab — they're for browsing, not pushing. Without this, email carried ~100
   MEDIUM/LOW rows across 70 tickers every cycle.
 - **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 30-min
-  cycle is pushed once per 6h TTL, not every cycle. In-memory, keyed on
-  ticker+type (+contract for spikes), never on the message (its numbers drift).
-  Resets on deploy like the spike baseline — re-notifies once, accepted.
+  cycle is pushed once per 6h TTL, not every cycle. Keyed on ticker+type (+contract
+  for spikes), never on the message (its numbers drift). **Persisted per user in
+  `options_alert_notifications`, never in memory**: prod scales to zero between cron
+  ticks, so nearly every cycle starts on a cold instance (`Starting new instance` at
+  each tick in the logs). The in-memory dict it used to be was always empty there, and
+  every still-true HIGH alert was re-pushed each cycle until ntfy answered 429
+  (2026-10-05). The row is written and committed *before* the channels send: a failed
+  commit sends nothing and retries next cycle, rather than sending without a record.
 - The old split `notify_spike_telegram()` is **gone**: it double-sent spikes on
   Telegram and had no dedup. Spikes now flow through `notify_alerts` with their own
   Telegram label.

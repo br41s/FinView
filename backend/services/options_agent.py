@@ -215,7 +215,7 @@ def run_cycle(user_id: int) -> dict:
         # double-sent spikes on Telegram and had no dedup at all.
         if all_alerts:
             try:
-                notify_alerts(all_alerts)
+                notify_alerts(db, user_id, all_alerts)
             except Exception:
                 logger.exception("Notification failed")
 

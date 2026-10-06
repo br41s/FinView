@@ -13,10 +13,14 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from sqlalchemy.orm import Session
+
 from backend.config import settings
+from backend.models import OptionsAlertNotification
 
 logger = logging.getLogger(__name__)
 
@@ -196,16 +200,14 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
     return False
 
 
-# Cross-cycle dedup. An alert that stays true (HIGH_IV on TEF.MC for three hours)
-# is one alert, not one every 15 minutes. Keyed on identity — ticker + type, plus
-# the contract for per-contract spikes — never on the message, whose numbers drift
-# each cycle and would defeat the dedup. In-memory with a TTL, same tradeoff as
-# premium_spike's baseline: a deploy clears it and the next cycle re-notifies
-# once. That's cheaper than a DB column + migration for a notification nicety, and
-# the reset is rare in steady state.
-_NOTIFIED: dict[str, float] = {}
-_NOTIFY_TTL = 6 * 3600  # re-notify a still-true alert at most once per 6h
-_NOTIFY_CACHE_MAX = 2000
+# Cross-cycle dedup. An alert that stays true (HIGH_PUT_CALL_RATIO on TEF.MC for
+# three hours) is one alert, not one every cycle. Keyed on identity — ticker +
+# type, plus the contract for per-contract spikes — never on the message, whose
+# numbers drift each cycle and would defeat the dedup. Persisted per user: prod
+# scales to zero between cron ticks, so each cycle starts on a fresh instance and
+# the in-memory dict this used to be was always empty — every still-true HIGH
+# alert was re-pushed every cycle (ntfy answered 429).
+_NOTIFY_TTL = timedelta(hours=6)  # re-notify a still-true alert at most once per 6h
 
 
 def _alert_key(a: dict) -> str:
@@ -215,20 +217,34 @@ def _alert_key(a: dict) -> str:
     return "|".join(parts)
 
 
-def filter_new_alerts(alerts: list[dict]) -> list[dict]:
-    """Return only the alerts not already notified within the TTL window."""
-    now = time.time()
-    if len(_NOTIFIED) > _NOTIFY_CACHE_MAX:
-        for k, ts in list(_NOTIFIED.items()):
-            if now - ts > _NOTIFY_TTL:
-                _NOTIFIED.pop(k, None)
+def filter_new_alerts(db: Session, user_id: int, alerts: list[dict]) -> list[dict]:
+    """Return only the alerts not already notified within the TTL window.
+
+    Marks the returned ones as notified in ``db``; the caller commits.
+    """
+    if not alerts:
+        return []
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    keys = {_alert_key(a) for a in alerts}
+    rows = {
+        r.alert_key: r
+        for r in db.query(OptionsAlertNotification).filter(
+            OptionsAlertNotification.user_id == user_id,
+            OptionsAlertNotification.alert_key.in_(keys),
+        )
+    }
     fresh = []
     for a in alerts:
         key = _alert_key(a)
-        last = _NOTIFIED.get(key)
-        if last is not None and now - last < _NOTIFY_TTL:
-            continue
-        _NOTIFIED[key] = now
+        row = rows.get(key)
+        if row is not None and now - row.notified_at < _NOTIFY_TTL:
+            continue  # already sent this window, or earlier in this same batch
+        if row is None:
+            row = OptionsAlertNotification(user_id=user_id, alert_key=key, notified_at=now)
+            db.add(row)
+            rows[key] = row
+        else:
+            row.notified_at = now
         fresh.append(a)
     return fresh
 
@@ -239,7 +255,7 @@ def _telegram_line(a: dict) -> str:
     return f"🔴 *{a['ticker']}* — {a['type']}\n`{a['message']}`"
 
 
-def notify_alerts(alerts: list[dict]) -> None:
+def notify_alerts(db: Session, user_id: int, alerts: list[dict]) -> None:
     """Notify on HIGH alerts only, and only those not already pushed.
 
     MEDIUM/LOW still persist to the Monitor tab — that's for browsing, not for
@@ -251,9 +267,10 @@ def notify_alerts(alerts: list[dict]) -> None:
     if not alerts:
         return
     high = [a for a in alerts if a.get("severity") == "HIGH"]
-    fresh = filter_new_alerts(high)
+    fresh = filter_new_alerts(db, user_id, high)
     if not fresh:
         return
+    db.commit()
 
     title = f"⚡ {len(fresh)} alerta(s) HIGH"
     body = "\n".join(f"🔴 [{a['ticker']}] {a['message']}" for a in fresh)
