@@ -180,4 +180,34 @@ def test_spikes_are_labelled_distinctly_on_telegram(db):
     p_ntfy, p_tg, p_mail = _channels()
     with p_ntfy, p_tg as tg, p_mail:
         ns.notify_alerts(db, USER, [alert(type="PREMIUM_SPIKE", severity="HIGH", _strike=100.0, _option_type="call")])
-        assert "spike" in tg.call_args.args[0].lower()
+        assert "⚡" in tg.call_args.args[0]
+
+
+# ── Telegram Markdown ────────────────────────────────────────────────
+
+
+def _balanced_markdown(text: str) -> bool:
+    """Legacy Markdown: every unescaped * _ ` must close, or Telegram 400s."""
+    unescaped = text
+    for ch in "*_`[":
+        unescaped = unescaped.replace(f"\\{ch}", "")
+    return all(unescaped.count(ch) % 2 == 0 for ch in "*_`")
+
+
+def test_a_put_call_alert_is_valid_telegram_markdown(db):
+    """HIGH_PUT_CALL_RATIO's underscores opened an italic that never closed."""
+    p_ntfy, p_tg, p_mail = _channels()
+    with p_ntfy, p_tg as tg, p_mail:
+        ns.notify_alerts(db, USER, [
+            alert(ticker="TEF.MC", message="P/C ratio alto: 1.62 — sentimiento bajista"),
+            alert(ticker="DGE.L", type="PREMIUM_SPIKE", message="3 contratos con spike (3 puts), +160%"),
+        ])
+        text = tg.call_args.args[0]
+        assert "HIGH_PUT_CALL_RATIO" not in text  # the message names the alert already
+        assert _balanced_markdown(text)
+
+
+def test_markdown_specials_in_a_message_are_escaped():
+    line = ns._telegram_line(alert(ticker="X_Y", message="a*b_c`d[e"))
+    assert _balanced_markdown(line)
+    assert "a\\*b\\_c\\`d\\[e" in line

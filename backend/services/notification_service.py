@@ -249,10 +249,24 @@ def filter_new_alerts(db: Session, user_id: int, alerts: list[dict]) -> list[dic
     return fresh
 
 
+# Telegram parses these as legacy Markdown, where an unbalanced * _ ` [ makes it
+# reject the whole message. The line used to carry the alert type outside any
+# entity, and HIGH_PUT_CALL_RATIO's three underscores opened an italic that never
+# closed: every message with a P/C alert came back 400 and went out on the plain
+# retry with its asterisks showing.
+_MD_SPECIALS = "*_`["
+
+
+def _md_escape(text: str) -> str:
+    for ch in _MD_SPECIALS:
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 def _telegram_line(a: dict) -> str:
-    if a.get("type") == "PREMIUM_SPIKE":
-        return f"⚡ *{a['ticker']}* — spike de prima\n`{a['message']}`"
-    return f"🔴 *{a['ticker']}* — {a['type']}\n`{a['message']}`"
+    """One line per alert. The type is left out: the message already names it."""
+    icon = "⚡" if a.get("type") == "PREMIUM_SPIKE" else "🔴"
+    return f"{icon} *{_md_escape(a['ticker'])}* · {_md_escape(a['message'])}"
 
 
 def notify_alerts(db: Session, user_id: int, alerts: list[dict]) -> None:
