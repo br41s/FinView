@@ -109,8 +109,8 @@ def run_cycle(user_id: int) -> dict:
             all_unusual.extend(unusual)
             all_sentiments.append(summary["market_sentiment"])
 
-            # Premium spike detection (in-memory EMA baseline, no DB needed)
-            spike_alerts = detect_spikes(user_id, ticker, options_data)
+            # Premium spikes: each contract against its own previous close
+            spike_alerts = detect_spikes(ticker, options_data)
             if spike_alerts:
                 all_alerts.extend(spike_alerts)
                 logger.info("%d premium spike(s) detected for %s", len(spike_alerts), ticker)
@@ -215,7 +215,7 @@ def run_cycle(user_id: int) -> dict:
         # double-sent spikes on Telegram and had no dedup at all.
         if all_alerts:
             try:
-                notify_alerts(all_alerts)
+                notify_alerts(db, user_id, all_alerts)
             except Exception:
                 logger.exception("Notification failed")
 

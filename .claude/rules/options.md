@@ -97,21 +97,27 @@ Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
   buys reasoning. A truncated report is not logged — any non-empty text is a success.
 
 ### Premium spike detector
-Tracks (ticker, option_type, strike) EMA baseline per user in memory (resets on server restart).
-Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `current_premium ≥ $0.10` and `samples ≥ 3`. EMA α = 0.3.
-- **Baseline per contract, alert per ticker.** A broad move spikes every strike at
-  once — IWDA.AS produced 17 alerts (K=136…148) for one event. `detect_spikes`
-  collapses a ticker's hits into ONE alert via `_aggregate_ticker_spikes`, keeping
-  the direction in the message ("6 calls + 11 puts, +151% a +195%"). The learning
-  stays per contract; only the output is aggregated. Don't un-aggregate it.
+Stateless: each contract's premium against **its own previous close**, as the source
+publishes it (`prevClose` on the contract — Yahoo `lastPrice − change`, MEFF's `Prev`
+column). Fires `PREMIUM_SPIKE` severity=HIGH when `lastPrice ≥ 2.5 × prevClose`, the
+contract traded this session (`volume > 0`) and `prevClose ≥ 0.10`.
+- **Why there is no baseline.** It used to learn an in-memory EMA keyed on (ticker,
+  type, strike) — **no expiration**. A chain holds several expiries (3 on Yahoo, every
+  listed one on Eurex), so one cycle fed a strike's near and far premiums into one EMA,
+  reached `samples ≥ 3` on its own, and read the far expiry's time value as a +150%
+  spike. Prod also scales to zero between cron ticks, so that mix was rebuilt on every
+  cycle. In the 7 days to 2026-10-05, 1,236 of 1,250 spike hits were Eurex London
+  tickers (DGE.L alone 620). Do not bring back a learned baseline without an
+  expiration in the key and a store that survives a cold start.
+- **Eurex never spikes**: the RDF has one daily settlement per contract (bid = ask =
+  last, volume 0) and no previous one, so nothing moves between two cycles of a day.
+- **Alert per ticker.** A broad move spikes every strike at once — IWDA.AS produced 17
+  alerts (K=136…148) for one event. `_aggregate_ticker_spikes` collapses a ticker's hits
+  into ONE alert, keeping the direction in the message ("6 calls + 11 puts, +151% a
+  +195% sobre el cierre anterior"). Don't un-aggregate it.
 - The aggregate carries **no `_strike`/`_option_type`** on purpose: that makes
   `notification_service._alert_key` collapse to `(ticker, PREMIUM_SPIKE)`, so dedup
   is one push per ticker per window instead of one per strike.
-- **Reset caveat**: the baseline is empty after every deploy, so the first cycle or two
-  post-deploy fire spikes off a cold baseline — noise, not signal. Discount them.
-- **The effective bar is higher than `SPIKE_MULTIPLIER`**: the EMA absorbs the current
-  premium *before* the spike check, so an isolated spike needs ≈7× the prior baseline,
-  not 2.5×. Pre-existing; worth revisiting if real spikes seem to be missed.
 
 ### Notifications — HIGH only, deduplicated across cycles
 `notify_alerts()` is the **single entry point** for every channel (ntfy + Telegram +
@@ -120,12 +126,22 @@ email). Two gates, both load-bearing:
   Monitor tab — they're for browsing, not pushing. Without this, email carried ~100
   MEDIUM/LOW rows across 70 tickers every cycle.
 - **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 30-min
-  cycle is pushed once per 6h TTL, not every cycle. In-memory, keyed on
-  ticker+type (+contract for spikes), never on the message (its numbers drift).
-  Resets on deploy like the spike baseline — re-notifies once, accepted.
+  cycle is pushed once per 6h TTL, not every cycle. Keyed on ticker+type (+contract
+  for spikes), never on the message (its numbers drift). **Persisted per user in
+  `options_alert_notifications`, never in memory**: prod scales to zero between cron
+  ticks, so nearly every cycle starts on a cold instance (`Starting new instance` at
+  each tick in the logs). The in-memory dict it used to be was always empty there, and
+  every still-true HIGH alert was re-pushed each cycle until ntfy answered 429
+  (2026-10-05). The row is written and committed *before* the channels send: a failed
+  commit sends nothing and retries next cycle, rather than sending without a record.
 - The old split `notify_spike_telegram()` is **gone**: it double-sent spikes on
   Telegram and had no dedup. Spikes now flow through `notify_alerts` with their own
   Telegram label.
+- The Telegram line is `icon *TICKER* · message`, with ticker and message escaped by
+  `_md_escape` (same rule as geo). It used to carry the alert type unescaped, and
+  `HIGH_PUT_CALL_RATIO`'s three underscores opened an italic that never closed: every
+  message with a P/C alert came back 400 and arrived through the plain retry with its
+  asterisks showing. The type is not shown — the message already names the alert.
 - `send_telegram` retries once as plain text on a 400 (legacy Markdown rejects a whole
   message over one stray char), and logs Telegram's `description` — a bare 400 hid a
   wrong `chat_id` for a while.

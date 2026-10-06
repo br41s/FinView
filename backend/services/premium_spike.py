@@ -1,135 +1,71 @@
-"""Premium spike detector — identifies unusual option premium increases.
+"""Premium spike detector — a contract's premium against its own previous close.
 
-Compares the current last_price (option premium) of each contract against a
-rolling in-memory baseline for the same (ticker, option_type, strike) key.
-When the current premium is ≥ SPIKE_MULTIPLIER × baseline it emits a
-PREMIUM_SPIKE alert with severity HIGH.
+A spike is a contract that traded this session at ≥ SPIKE_MULTIPLIER × its
+previous close, as published by the source: Yahoo's ``change`` column and MEFF's
+``Prev`` column, carried on each contract as ``prevClose``. Stateless on purpose.
 
-The baseline is updated every cycle using exponential moving average (EMA)
-so it adapts to gradually rising premiums without triggering false positives.
+It used to learn an in-memory EMA per (ticker, type, strike), and that produced
+noise, not signal, for two reasons. The key had no expiration, while a chain
+holds several (three on Yahoo, every listed one on Eurex), so one cycle fed the
+same strike's near and far expiries into one EMA and a far expiry's time value
+read as a +150% "spike". And prod scales to zero between cron ticks, so the
+baseline was rebuilt from that mix on every cycle. In the 7 days to 2026-10-05,
+1,236 of 1,250 spike hits were Eurex London tickers.
 
-No external dependencies — pure stdlib + what is already in the project.
+Eurex publishes one daily settlement per contract and no previous one, so its
+contracts carry no ``prevClose`` and never spike: a settlement does not move
+between two cycles of the same day.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
 # ── Tunables ────────────────────────────────────────────────────────────────
 
-# Premium must be at least this multiple of the EMA baseline to fire
+# Premium must be at least this multiple of the previous close to fire (+150%)
 SPIKE_MULTIPLIER: float = 2.5
 
-# Minimum absolute premium (in currency units) to avoid noise on near-zero contracts
+# Minimum previous close (in currency units): a 0.04 → 0.10 move is +150% on a
+# contract nobody trades, not a signal.
 MIN_PREMIUM: float = 0.10
-
-# Minimum number of baseline samples before we start firing alerts
-MIN_SAMPLES: int = 3
-
-# EMA smoothing factor α ∈ (0, 1]. Smaller = slower adaptation (more stable baseline)
-EMA_ALPHA: float = 0.3
-
-
-# ── Baseline store ──────────────────────────────────────────────────────────
-
-class _Key(NamedTuple):
-    ticker: str
-    option_type: str  # "call" | "put"
-    strike: float
-
-
-@dataclass
-class _Baseline:
-    ema: float
-    samples: int = 0
-    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-# Per-user baseline store: user_id → { _Key → _Baseline }
-_baselines: dict[int, dict[_Key, _Baseline]] = {}
-
-
-def _get_store(user_id: int) -> dict[_Key, _Baseline]:
-    if user_id not in _baselines:
-        _baselines[user_id] = {}
-    return _baselines[user_id]
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
 
-def detect_spikes(
-    user_id: int,
-    ticker: str,
-    options_data: dict,
-) -> list[dict]:
-    """Scan calls + puts for premium spikes.
+def detect_spikes(ticker: str, options_data: dict) -> list[dict]:
+    """Scan calls + puts for premium spikes; at most one alert for the ticker.
 
-    Parameters
-    ----------
-    user_id:
-        Owner — baselines are isolated per user so users with different
-        watchlists don't bleed into each other.
-    ticker:
-        Underlying symbol (e.g. "AAPL", "IBE.MC").
-    options_data:
-        Dict with keys ``"calls"`` and ``"puts"``, each a list of option
-        contract dicts as returned by ``options_scraper.fetch_options``.
-
-    Returns
-    -------
-    list[dict]
-        Zero or more alert dicts compatible with the existing alert schema:
-        ``{"ticker", "type", "severity", "message"}``.
+    ``options_data`` holds ``"calls"`` and ``"puts"``, each a list of contract
+    dicts as returned by ``options_scraper.fetch_options``.
     """
-    store = _get_store(user_id)
-    # Raw per-contract hits, collected then collapsed into one alert per ticker.
-    # When an underlying moves, every strike spikes together — IWDA.AS fired on 17
-    # adjacent strikes at once, which is one event, not 17 signals. The baseline
-    # is still learned per contract (below); only the *output* is aggregated.
+    # Raw per-contract hits, collapsed into one alert per ticker: when an
+    # underlying moves, every strike spikes together — IWDA.AS fired on 17
+    # adjacent strikes at once, which is one event, not 17 signals.
     hits: list[dict] = []
 
     for option_type in ("calls", "puts"):
-        contracts = options_data.get(option_type) or []
         ot_label = "call" if option_type == "calls" else "put"
-
-        for contract in contracts:
+        for contract in options_data.get(option_type) or []:
             try:
+                premium = float(contract.get("lastPrice") or 0)
+                prev = float(contract.get("prevClose") or 0)
+                volume = int(contract.get("volume") or 0)
                 strike = float(contract.get("strike") or 0)
-                premium = float(contract.get("lastPrice") or contract.get("last_price") or 0)
             except (TypeError, ValueError):
                 continue
 
-            if premium < MIN_PREMIUM or strike <= 0:
+            # No trade this session means lastPrice is an older print, and its
+            # change is against a close that is not yesterday's.
+            if volume <= 0 or prev < MIN_PREMIUM:
                 continue
-
-            key = _Key(ticker=ticker, option_type=ot_label, strike=strike)
-            baseline = store.get(key)
-
-            if baseline is None:
-                # First observation — initialise baseline, no alert yet
-                store[key] = _Baseline(ema=premium, samples=1)
-                continue
-
-            # Update EMA
-            new_ema = EMA_ALPHA * premium + (1 - EMA_ALPHA) * baseline.ema
-            baseline.ema = new_ema
-            baseline.samples += 1
-            baseline.last_seen = datetime.now(timezone.utc)
-
-            # Check for spike only once we have enough history
-            if baseline.samples < MIN_SAMPLES:
-                continue
-
-            if baseline.ema > 0 and premium >= SPIKE_MULTIPLIER * baseline.ema:
-                pct = round((premium / baseline.ema - 1) * 100)
-                hits.append({"option_type": ot_label, "strike": strike, "premium": premium, "pct": pct})
-                logger.info("PREMIUM_SPIKE %s %s K=%s: %.2f vs baseline %.2f",
-                            ticker, ot_label, strike, premium, baseline.ema)
+            if premium >= SPIKE_MULTIPLIER * prev:
+                pct = round((premium / prev - 1) * 100)
+                hits.append({"option_type": ot_label, "strike": strike, "pct": pct})
+                logger.info("PREMIUM_SPIKE %s %s K=%s exp=%s: %.2f vs prev close %.2f",
+                            ticker, ot_label, strike, contract.get("expiration"), premium, prev)
 
     alert = _aggregate_ticker_spikes(ticker, hits)
     return [alert] if alert else []
@@ -162,7 +98,7 @@ def _aggregate_ticker_spikes(ticker: str, hits: list[dict]) -> dict | None:
 
     n = len(hits)
     contratos = "contrato con spike" if n == 1 else "contratos con spike"
-    msg = f"{n} {contratos} ({breakdown}), {pct_range} sobre baseline"
+    msg = f"{n} {contratos} ({breakdown}), {pct_range} sobre el cierre anterior"
 
     return {
         "ticker": ticker,

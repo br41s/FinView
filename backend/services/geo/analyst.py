@@ -82,7 +82,7 @@ def correlate_with_rules(
 
 
 # The pipeline runs per user but events are global: cache LLM analyses by event id
-# so N users cost one call. In-memory only (resets on cold start, like premium_spike).
+# so N users cost one call. In-memory only (resets on cold start).
 _LLM_CACHE: dict[str, tuple[float, dict]] = {}
 _LLM_CACHE_TTL = 6 * 3600  # seconds
 
