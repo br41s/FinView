@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'prestamo-de-valores-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '7 oct 2026',
+    readTime: '11 min',
+    title: 'Préstamo de valores: el «falso dividendo» que Hacienda no te deja deducir',
+    excerpt:
+      'Prestas tus acciones al bróker, cobras una comisión y sigues teniendo la posición. Pero si el dividendo llega con los títulos prestados, ya no es un dividendo: Hacienda lo trata como interés, cambia de casilla y pierdes la deducción por doble imposición.',
+  },
+  {
     slug: 'certificado-residencia-fiscal-dividendos',
     tag: 'Fiscalidad',
     date: '5 oct 2026',

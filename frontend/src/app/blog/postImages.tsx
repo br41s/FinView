@@ -2471,7 +2471,38 @@ function ImgCertificadoResidenciaFiscal() {
   );
 }
 
+function ImgPrestamoDeValores() {
+  return (
+    <div className={styles.postImgPrestamoDeValores}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ACCIÓN PRESTADA · DIVIDENDO → PAGO EN LUGAR</text>
+        {/* Share lent out */}
+        <rect x="16" y="40" width="40" height="26" rx="3" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <path d="M16 48h40" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="36" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acción</text>
+        <text x="36" y="80" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">prestada</text>
+        {/* Arrow out */}
+        <path d="M62 53h18" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <polygon points="80,48 88,53 80,58" fill="var(--fv-ink-30)" />
+        {/* Issuer pays real dividend to borrower, not to you */}
+        <rect x="90" y="38" width="46" height="30" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none" />
+        <text x="113" y="52" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">empresa</text>
+        <text x="113" y="62" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">paga al prestatario</text>
+        {/* Substitution payment back to you */}
+        <path d="M113 68v16h-77" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <polygon points="42,80 36,84 42,88" fill="var(--fv-ochre)" />
+        {/* Tax boxes */}
+        <rect x="122" y="84" width="66" height="26" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="155" y="95" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">cesión capitales</text>
+        <text x="155" y="105" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">no es dividendo · sin 0588</text>
+        <text x="100" y="117" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el bróker te compensa: base del ahorro, casilla 0027</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'prestamo-de-valores-irpf-espana': ImgPrestamoDeValores,
   'certificado-residencia-fiscal-dividendos': ImgCertificadoResidenciaFiscal,
   'inversiones-exteriores-d6-espana': ImgInversionesExterioresD6,
   'metodo-fifo-irpf-espana': ImgMetodoFifo,
