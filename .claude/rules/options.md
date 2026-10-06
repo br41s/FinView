@@ -134,6 +134,9 @@ email). Two gates, both load-bearing:
   every still-true HIGH alert was re-pushed each cycle until ntfy answered 429
   (2026-10-05). The row is written and committed *before* the channels send: a failed
   commit sends nothing and retries next cycle, rather than sending without a record.
+- **Every cycle logs its decision**: `options notify: user=… high=N sent=K suppressed=M
+  [keys sent]`, sends or not. Read that line to verify the dedup after a deploy; a
+  quiet log otherwise cannot tell "no HIGH fired" from "held back".
 - The old split `notify_spike_telegram()` is **gone**: it double-sent spikes on
   Telegram and had no dedup. Spikes now flow through `notify_alerts` with their own
   Telegram label.
