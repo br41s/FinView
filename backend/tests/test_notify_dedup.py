@@ -211,3 +211,20 @@ def test_markdown_specials_in_a_message_are_escaped():
     line = ns._telegram_line(alert(ticker="X_Y", message="a*b_c`d[e"))
     assert _balanced_markdown(line)
     assert "a\\*b\\_c\\`d\\[e" in line
+
+
+# ── observability ────────────────────────────────────────────────────
+
+
+def test_each_cycle_logs_what_it_sent_and_held_back(db, caplog):
+    p_ntfy, p_tg, p_mail = _channels()
+    with p_ntfy, p_tg, p_mail, caplog.at_level("INFO", logger=ns.logger.name):
+        ns.notify_alerts(db, USER, [alert(ticker="AAA")])
+        ns.notify_alerts(db, USER, [alert(ticker="AAA"), alert(ticker="BBB")])
+        ns.notify_alerts(db, USER, [alert(ticker="AAA", severity="MEDIUM")])
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("options notify")]
+    assert lines == [
+        "options notify: user=1 high=1 sent=1 suppressed=0 ['AAA|HIGH_PUT_CALL_RATIO']",
+        "options notify: user=1 high=2 sent=1 suppressed=1 ['BBB|HIGH_PUT_CALL_RATIO']",
+        "options notify: user=1 high=0 sent=0 suppressed=0 []",
+    ]

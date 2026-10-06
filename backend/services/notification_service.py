@@ -282,6 +282,13 @@ def notify_alerts(db: Session, user_id: int, alerts: list[dict]) -> None:
         return
     high = [a for a in alerts if a.get("severity") == "HIGH"]
     fresh = filter_new_alerts(db, user_id, high)
+    # One line per cycle, sends or not: without it, "no HIGH fired" and "sent at
+    # 07:00, held back at 07:30" read the same in the logs.
+    logger.info(
+        "options notify: user=%d high=%d sent=%d suppressed=%d %s",
+        user_id, len(high), len(fresh), len(high) - len(fresh),
+        [_alert_key(a) for a in fresh],
+    )
     if not fresh:
         return
     db.commit()
