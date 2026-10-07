@@ -1,0 +1,168 @@
+export const metadata = {
+  title: 'Préstamo de valores y dividendos: cómo tributa — FinView',
+  description: 'Si tu broker presta tus acciones, el dividendo se convierte en un "pago en lugar". Hacienda lo trata como interés, no como dividendo: cambia la casilla y pierdes la deducción por doble imposición. Así se declara.',
+};
+
+# Préstamo de valores: el «falso dividendo» que Hacienda no te deja deducir
+
+> Prestas tus acciones, cobras una comisión todos los meses y sigues teniendo las acciones. Suena a dinero gratis. Pero hay una fecha del calendario en la que ese trato se rompe: el día del dividendo. Si tus títulos están prestados justo entonces, no cobras un dividendo. Cobras algo parecido, con otro nombre, que Hacienda clasifica distinto. Y esa diferencia te cuesta una deducción.
+
+---
+
+## 1. Qué es el préstamo de valores (y por qué tu broker te lo ofrece)
+
+El préstamo de valores existe desde hace décadas en el mundo institucional. La idea es simple: alguien quiere vender en corto una acción —vender algo que no tiene para recomprarlo más barato— y necesita que se la presten. Tú tienes esa acción parada en cartera. Tu broker hace de intermediario.
+
+Cuando aceptas, pasa esto:
+
+- **Transfieres la titularidad legal** de tus acciones al broker. Tú sigues siendo el dueño económico, pero el papel pasa a estar a su nombre.
+- El broker deja **una garantía** (efectivo o deuda pública) que se ajusta cada día. En DEGIRO es del 105 % del valor del préstamo.
+- A cambio, recibes una **remuneración**: un pago periódico mientras tus títulos estén prestados.
+
+Tu posición no desaparece. Sigue en tu cartera, sigue expuesta a las subidas y bajadas del precio y puedes vender cuando quieras. Lo que cambia es quién figura como titular legal y, con ello, quién cobra las rentas que genere la acción mientras está fuera.
+
+Cada broker lo monta a su manera:
+
+| Broker | Programa | Reparto | Nombre del pago mensual |
+| --- | --- | --- | --- |
+| DEGIRO | Préstamo de Valores | 50 % para ti, 50 % para el broker | «Pago de Compensación» |
+| Interactive Brokers | Stock Yield Enhancement Program (SYEP) | 50 % de un tipo de mercado | Comisión SYEP sobre la garantía |
+
+En DEGIRO es opcional y se activa en Configuración, Características del producto. En IBKR, el SYEP pide haber sido aprobado para cuenta de margen o una cuenta de efectivo con un patrimonio neto líquido por encima de cierto umbral. Ninguno de los dos garantiza que tus acciones se presten: solo se prestan si hay demanda. Si nadie quiere ponerse corto en tus títulos, no cobras nada.
+
+---
+
+## 2. El dividendo que no es un dividendo: el «pago en lugar»
+
+Aquí está el detalle que casi nadie revisa. Fíjate en la letra pequeña de DEGIRO: «Si sus valores han sido prestados en la fecha de registro, recibirá un Pago de Sustitución». Y en la de IBKR: «Si una acción que posee es prestada […] no recibirá un dividendo ordinario, sino un pago en lugar de dividendo».
+
+¿Qué significa en la práctica?
+
+- Si tus acciones **no** están prestadas el día del dividendo, cobras el dividendo normal. La empresa te paga, con su retención en origen si es extranjera.
+- Si tus acciones **sí** están prestadas ese día, la empresa paga el dividendo al prestatario. A ti te llega un **pago equivalente** del broker, con un nombre distinto: «Pago de Sustitución» en DEGIRO, «Payment in Lieu» (PIL) en IBKR.
+
+El importe se parece. El apellido fiscal no.
+
+---
+
+## 3. Cómo lo ve Hacienda: no es un dividendo, es cesión de capitales
+
+La Agencia Tributaria regula esto con precisión. El criterio está en la disposición adicional decimoctava de la Ley 62/2003, que sigue viva para el IRPF aunque se derogó para el Impuesto sobre Sociedades. Y el Manual Práctico de Renta lo resume en una frase que conviene copiar tal cual:
+
+> «En cuanto al prestamista, la remuneración del préstamo, así como el importe de las compensaciones por los derechos económicos que se deriven de los valores prestados durante la vigencia del préstamo, tendrán para este la consideración de rendimientos obtenidos por la cesión a terceros de capitales propios.»
+
+Traducido: **ni tu comisión ni el pago que sustituye al dividendo son dividendos**. Son rendimientos del capital mobiliario por ceder capitales a un tercero, el mismo cajón del artículo 25.2 de la Ley del IRPF donde caen los intereses de un depósito.
+
+Eso tiene una consecuencia directa en tu Renta: no van al apartado de dividendos, sino al de **rendimientos por cesión a terceros de capitales propios**. En el modelo vigente, los dividendos se consignan en la casilla 0029 y estos rendimientos en la 0027. Comprueba siempre el número en tu programa de Renta: la orden que aprueba los modelos cada campaña puede mover las casillas, y lo que no cambia nunca es el apartado.
+
+¿Y el tipo? El mismo. Ambos conceptos van a la base del ahorro y tributan por los tramos del 19 % al 30 %. El problema no es el tipo. Es lo que dejas por el camino.
+
+---
+
+## 4. El error que sale caro: pedir la deducción del 0588
+
+Aquí llega el daño real. Cuando cobras un dividendo de fuera, el país de origen te retiene una parte y tú puedes recuperar la diferencia entre lo que te retuvo y lo que permite el convenio. Ese ajuste se pide en la deducción por doble imposición internacional de la **casilla 0588**.
+
+Ahora la pregunta clave: ¿cuánto impuesto extranjero has pagado sobre un pago en lugar? Lo normal es **cero**. El pago no viene de la empresa de Estados Unidos que reparte el dividendo; viene de tu broker. No hay retención del fisco de origen que deducir.
+
+Puesto que la deducción se calcula sobre «el impuesto efectivamente satisfecho en el extranjero», si no pagaste nada fuera, no hay nada que deducir. El error típico es sumar los «payments in lieu» a la columna de dividendos brutos, meter todo junto en la 0029 y arrastrar el 15 % de retención al 0588. Estás pidiendo una deducción por un impuesto que nadie ingresó. Si Hacienda lo cruza, toca devolverla.
+
+La regla práctica: **separa los pagos en lugar de los dividendos reales**. Van a casillas distintas y solo uno de los dos alimenta el 0588.
+
+---
+
+## 5. La comisión del préstamo también tributa
+
+No te olvides del otro concepto. El «Pago de Compensación» mensual de DEGIRO o la comisión SYEP de IBKR son, para Hacienda, la remuneración del préstamo. Mismo tratamiento: rendimiento por cesión de capitales propios, base del ahorro.
+
+Y hay una prueba de que Hacienda sigue estos pagos con lupa: el **Modelo 193**, el resumen anual de retenciones sobre rendimientos del capital mobiliario, tiene un código específico —la letra «P»— para las operaciones de préstamo de valores, con campos propios para la remuneración del prestamista, las compensaciones y las garantías. Si tu broker es español, ese pago lleva retención del 19 % y aparece informado. Si es extranjero, como DEGIRO o IBKR, no hay retención ni información: la declaras tú.
+
+Los importes suelen ser pequeños, sí. Pero se declaran igual.
+
+---
+
+## 6. Qué cambia y qué no cambia al prestar tus acciones
+
+Antes de decidir si activas el servicio, conviene tener claro el mapa. Esto es lo que se mueve y lo que se queda igual:
+
+| Punto | ¿Cambia al prestar? | Detalle |
+| --- | --- | --- |
+| Tu posición y su valor | No | Sigues expuesto al precio y puedes vender cuando quieras |
+| ¿Es una venta? | No | No aflora plusvalía ni reinicias la antigüedad de tus lotes |
+| Modelo 720 | No | Los títulos siguen siendo tuyos a efectos económicos |
+| Naturaleza del dividendo | **Sí** | Pasa a ser pago en lugar, ya no es dividendo |
+| Deducción doble imposición 0588 | **Sí** | Se pierde sobre lo que quedó prestado |
+| Derecho de voto | **Sí** | Durante el préstamo lo ejerce quien tiene la titularidad legal |
+| Fecha de cobro | **Sí** | El pago en lugar puede llegar más tarde que el dividendo |
+
+El préstamo no es una transmisión para ti: no hay ganancia patrimonial, no reinicia la antigüedad de tus compras para el FIFO y no cambia lo que declaras en el 720. Lo que sí cambia es la naturaleza de la renta que recibes mientras el título está fuera, y con ella la deducción que puedes aplicar.
+
+---
+
+## 7. Un ejemplo con números
+
+Imagina que tienes 1.000 acciones de una empresa estadounidense que reparte 0,60 $ por acción. Son 600 $ de dividendo y tienes el W-8BEN en regla, así que el fisco americano te retiene el 15 % del convenio.
+
+**Si las acciones no están prestadas:**
+
+- Cobras 600 $ brutos, retención de 90 $ (15 %).
+- Declaras los 600 $ como dividendo en la casilla 0029.
+- Pides los 90 $ de impuesto extranjero en el 0588, dentro del límite del artículo 80. En un caso así, con un tipo medio de ahorro habitual, recuperas buena parte.
+
+**Si las acciones están prestadas el día del dividendo:**
+
+- Recibes el pago en lugar por el importe equivalente.
+- No hay retención del fisco estadounidense sobre ese pago.
+- Va a la 0027 como rendimiento por cesión de capitales propios.
+- En el 0588 no declaras nada por él, porque no pagaste impuesto fuera.
+
+La diferencia no está en el tipo que pagas en España, que es el mismo. Está en que los 90 $ que deducías en el caso normal, aquí no existen. Sobre esa parte, la doble imposición desaparece. Y ojo: si el bróker sí te hubiera practicado alguna retención sobre el pago en lugar, ese importe sí sería deducible, hasta donde corresponda. Por eso lo primero es leer el extracto y ver si hubo o no retención.
+
+---
+
+## 8. Cómo declararlo, paso a paso
+
+1. Descarga el informe fiscal anual de tu broker o el detalle de movimientos.
+2. Busca los apuntes con el nombre «Pago de Sustitución» (DEGIRO) o «Payment in Lieu of Dividend» (IBKR). No los mezcles con la línea de dividendos.
+3. Separa también la remuneración del préstamo: el «Pago de Compensación» o la comisión SYEP.
+4. Lleva los dos conceptos al bloque de rendimientos del capital mobiliario por cesión de terceros de capitales propios, en la base del ahorro.
+5. No los incluyas en la deducción por doble imposición internacional salvo que hayas pagado impuesto fuera sobre ellos, y solo por ese importe.
+6. Guarda los extractos. Si Hacienda pregunta de dónde sale un importe declarado como cesión de capitales y no como dividendo, el justificante es tu defensa.
+
+Si tu cartera está en un broker extranjero, este trámite va en paralelo al [Modelo 720](/blog/modelo-720-bienes-extranjero), que sigue aplicándose con normalidad aunque tus acciones estén prestadas. Y si quieres la foto completa de cómo funciona la deducción por doble imposición con dividendos de verdad, la tienes en [dividendos extranjeros y doble imposición](/blog/dividendos-extranjeros-doble-imposicion-irpf).
+
+---
+
+## Preguntas frecuentes
+
+### ¿Prestar mis acciones cuenta como venderlas?
+
+No. Aunque la titularidad legal pasa temporalmente al broker, para Hacienda no es una transmisión: no hay ganancia patrimonial, no cambias la antigüedad de tus lotes y no toca declarar ninguna plusvalía por prestar.
+
+### ¿Tengo que pagar impuestos por lo que me paga el broker por prestar?
+
+Sí. Tanto la comisión periódica como el pago que sustituye al dividendo son rendimientos del capital mobiliario por cesión de capitales a un tercero. Se integran en la base del ahorro y tributan por los tramos del 19 % al 30 %.
+
+### ¿Por qué el dividendo de una acción prestada no es un dividendo?
+
+Porque no te lo paga la empresa. La empresa paga el dividendo a quien tiene los títulos en la fecha de registro, que en ese momento es el prestatario. Lo que te llega a ti es una compensación del bróker por el derecho económico, y esa compensación tiene otra calificación fiscal.
+
+### ¿Pierdo la deducción por doble imposición internacional?
+
+Sobre la parte prestada, en la práctica sí, siempre que el pago en lugar no lleve retención extranjera. La deducción del 0588 se calcula sobre el impuesto efectivamente pagado fuera; si no se pagó nada, no hay nada que deducir. No lo metas en la 0588 con los dividendos reales.
+
+### ¿Puedo reclamar algo al fisco de otro país por el pago en lugar?
+
+En general no, porque no has soportado una retención en ese país: el pago no nace del dividendo de la empresa extranjera, sino de un acuerdo entre tú y tu bróker. La reclamación del exceso retenido solo tiene sentido cuando hay un impuesto extranjero que se pueda acreditar.
+
+### ¿Dejo de ser dueño de mis acciones?
+
+Sigues siendo el dueño económico: tu posición se mantiene y responde a las variaciones del mercado. Lo que se transfiere es la titularidad legal durante el préstamo, y con ella el derecho de voto. Puedes vender las acciones prestadas en cualquier momento.
+
+### ¿Me afecta al Modelo 720?
+
+No. Si tenías que declarar tus acciones en un broker extranjero, sigue siendo así: el préstamo no altera esa obligación ni cambia el titular económico a efectos informativos. Se trata de un trámite distinto de la declaración del IRPF.
+
+### ¿Y si mi bróker es español?
+
+Entonces la remuneración y las compensaciones llevan retención del 19 % y te llegan informadas en tus datos fiscales. Con un bróker extranjero no hay retención: el importe íntegro lo declaras tú y lo ingresas al presentar la Renta.
