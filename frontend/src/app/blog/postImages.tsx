@@ -2501,7 +2501,40 @@ function ImgPrestamoDeValores() {
   );
 }
 
+function ImgMlp() {
+  return (
+    <div className={styles.postImgMlp}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">MLP EEUU · SOCIO, NO ACCIONISTA</text>
+        {/* MLP units */}
+        <rect x="16" y="44" width="20" height="14" rx="2" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <rect x="16" y="62" width="20" height="14" rx="2" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="26" y="84" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">unidades</text>
+        {/* Arrow to partnership */}
+        <path d="M40 58h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="54,54 61,58 54,62" fill="var(--fv-ink-30)" />
+        {/* Partnership block with pipeline */}
+        <rect x="63" y="38" width="54" height="42" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="90" y="52" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">partnership</text>
+        <path d="M72 66h36" stroke="var(--fv-ochre)" strokeWidth="1.6" strokeDasharray="5 3" />
+        <path d="M90 66v6" stroke="var(--fv-ochre)" strokeWidth="1.6" />
+        <text x="90" y="78" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">actividad en EEUU</text>
+        {/* Withholding badges */}
+        <rect x="128" y="34" width="60" height="26" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="158" y="46" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">37 %</text>
+        <text x="158" y="55" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retención ECI</text>
+        <rect x="128" y="66" width="60" height="22" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none" />
+        <text x="158" y="78" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        <text x="158" y="85" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">convenio: no aplica</text>
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">K-1 · ITIN · Form 1040-NR cada año</text>
+        <text x="100" y="117" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">en España: renta conectada + devolución de aportaciones</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'mlp-dividendos-espana': ImgMlp,
   'prestamo-de-valores-irpf-espana': ImgPrestamoDeValores,
   'certificado-residencia-fiscal-dividendos': ImgCertificadoResidenciaFiscal,
   'inversiones-exteriores-d6-espana': ImgInversionesExterioresD6,

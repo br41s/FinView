@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'mlp-dividendos-espana',
+    tag: 'Fiscalidad',
+    date: '8 oct 2026',
+    readTime: '12 min',
+    title: 'MLPs de EEUU: el dividendo al que el fisco retiene el 37 % y España no te devuelve',
+    excerpt:
+      'Los MLP estadounidenses reparten rentabilidades altas, pero para el fisco de EEUU no eres un accionista: eres un socio. Te retienen el 37 % sobre la parte de negocio, el 15 % del convenio no te cubre y el papel que lo arregla no existe.',
+  },
+  {
     slug: 'prestamo-de-valores-irpf-espana',
     tag: 'Fiscalidad',
     date: '7 oct 2026',
