@@ -247,9 +247,18 @@ Monitorizar builds: https://console.cloud.google.com/cloud-build/builds?project=
   vCPU-s por instancia recibieron €0.39 de descuento sobre €21.18. En agosto, ya con
   facturación por petición, €1.39 de uso bruto quedaron en €0.01 netos. No es solo
   "gastar menos": es el nivel de precio en el que esta carga es gratis.
-- **Artifact Registry acumula una imagen por commit.** Hay 123 revisiones y ninguna
-  política de limpieza; el almacenamiento se factura aunque el servicio esté parado.
-  Mantener una política que conserve las últimas 10 versiones.
+- **Artifact Registry conserva solo las 10 imágenes más recientes.** Cada commit deja una
+  imagen y el almacenamiento se factura aunque el servicio esté parado. Desde el
+  2026-10-08 el repositorio `cloud-run-source-deploy` (europe-west1) tiene dos políticas
+  de limpieza, fuera del modo de prueba: `keep-newest-10` (las 10 versiones más recientes
+  de cada paquete) y `delete-the-rest` (todo lo demás); si una imagen cumple las dos,
+  gana la de conservar. Google las aplica una vez al día, así que el tamaño baja con un
+  día de retraso. Antes había 55 imágenes de `finview-api` (~7 GB), un registro
+  abandonado de abril en `europe-west3` (1.4 GB) y el servicio antiguo `finview-backend`
+  con sus dos imágenes, sin tráfico; los tres se borraron ese día. No está comprobado si
+  Cloud Run puede arrancar instancias de una revisión cuya imagen ya se borró: para un
+  rollback manual, elegir una revisión de las 10 más recientes. Comprobar la política:
+  `gcloud artifacts repositories describe cloud-run-source-deploy --location=europe-west1 --format='yaml(cleanupPolicies,sizeBytes)'`.
 - **El trigger compila en `global`.** Empujar la imagen a un registro europeo desde
   ahí sale a internet: €2.13 de "Network Data Transfer Out ... within North America"
   en dos semanas. Mover el trigger a `europe-west1` lo elimina.
