@@ -64,6 +64,21 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 > el rollout fija el tráfico con `--to-revisions`, así que la revisión nueva puede quedarse
 > a 0 % y las claves no llegan a producción. `--to-latest` lo resuelve.
 
+> **Rotar `FINVIEW_OPENROUTER_API_KEY` (hecho el 2026-10-09: clave `finview` de la cuenta de OpenRouter de Biglobster LLC).**
+> El servicio tiene el tráfico fijado a una revisión con nombre, así que el orden seguro es:
+> 1. `gcloud run services update finview-api … --update-env-vars="FINVIEW_OPENROUTER_API_KEY=$K" --no-traffic`
+>    (la clave se lee con `read -rs`, nunca como texto en el comando; `gcloud` guarda los argumentos
+>    en `~/.config/gcloud/logs`, así que ese fichero conserva la clave).
+> 2. Comparar la revisión nueva con la que sirve (`gcloud run revisions describe … --format=json`):
+>    solo debe diferir esa variable, y debe estar `Ready`.
+> 3. `gcloud run services update-traffic finview-api --to-latest`; marcha atrás con
+>    `--to-revisions=<revisión anterior>=100`.
+> 4. Esperar al siguiente ciclo (`geo-intel-cycle` corre en el minuto :00): `/api/geo/cron` debe
+>    devolver 200 y no debe aparecer `User not found`. Los jobs del Scheduler no se pausan (no es un build).
+>
+> Cambiar el modelo (`FINVIEW_OPENROUTER_MODEL`) se hace en otra revisión: el scorer de zonas está
+> calibrado con resultados y un modelo distinto mueve sus puntuaciones.
+
 | Clave de fuente | Qué desbloquea | Sin ella |
 |---|---|---|
 | `FINVIEW_FIRMS_MAP_KEY` | 5 reglas de incendio | `fire` no se emite nunca |
