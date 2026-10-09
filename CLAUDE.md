@@ -26,7 +26,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | Backend | Python 3.12 · FastAPI · SQLAlchemy (create_all + ensure_columns, no Alembic) |
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
-| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, default `deepseek/deepseek-v4-flash`. One shared model for options analysis + geo analyst. |
+| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, default `deepseek/deepseek-v4-flash`. One shared model for options analysis + geo analyst. Every call goes through `llm_envelope.chat()`, which always sends `provider.data_collection: "deny"` (`PROVIDER_POLICY`; callers cannot override it). |
 | Frontend | Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
