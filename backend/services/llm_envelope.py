@@ -40,6 +40,14 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # this with a 4xx: read the new model's entry before changing openrouter_model.
 NO_REASONING = {"effort": "none"}
 
+# Every request asks OpenRouter to route only to providers that neither store the prompt nor
+# train on it. The options assistant forwards free text typed by users, so this is not a
+# per-caller choice: it is applied last in `chat()` and `params` cannot override it. It
+# replaces the account-wide Zero Data Retention switch, which left some models with no
+# provider. A model with no provider left answers 404 and the caller gets the usual error.
+# Free (`:free`) models all train on prompts, so none of them can be the shared model.
+PROVIDER_POLICY = {"data_collection": "deny"}
+
 
 def chat(
     messages: list[dict], *, context: str, timeout: float = 60.0, **params
@@ -50,7 +58,7 @@ def chat(
     ``choices[0].message.content`` raw and turned a null into a 500. Transport
     errors and non-200s come back as ``error`` too, so callers have exactly one
     branch to write. ``params`` are passed through (max_tokens, temperature,
-    response_format, reasoning).
+    response_format, reasoning); ``provider`` is not one of them, see PROVIDER_POLICY.
     """
     if not settings.openrouter_api_key:
         return None, "FINVIEW_OPENROUTER_API_KEY not configured."
@@ -58,7 +66,12 @@ def chat(
         resp = httpx.post(
             OPENROUTER_URL,
             headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={"model": settings.openrouter_model, "messages": messages, **params},
+            json={
+                "model": settings.openrouter_model,
+                "messages": messages,
+                **params,
+                "provider": dict(PROVIDER_POLICY),
+            },
             timeout=timeout,
         )
     except Exception as exc:
