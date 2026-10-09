@@ -62,6 +62,10 @@ con lo que implican para que quien revise el cumplimiento sepa que fueron elecci
       Opciones: restringir el enrutado a proveedores sin retención de datos
       (`provider.data_collection: "deny"` en la petición), o cambiar de modelo. No se ha
       tocado porque puede dejar el modelo sin proveedor; hay que probarlo contra la API real.
+      2026-10-09: la clave pasó a la cuenta de OpenRouter de Biglobster LLC. El punto único de
+      llamada es `backend/services/llm_envelope.py` (donde irá `provider.data_collection: "deny"`);
+      antes se prueba con `tasks/openrouter_deny_probe.py` del workspace. El DPA de OpenRouter sigue
+      sin descargarse ni guardarse.
 - [ ] Confirmar la retención de copias de **Neon**. La política de privacidad dice "máximo
       30 días".
 
