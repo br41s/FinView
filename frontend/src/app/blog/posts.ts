@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'directiva-faster-retenciones-dividendos',
+    tag: 'Fiscalidad',
+    date: '10 oct 2026',
+    readTime: '11 min',
+    title: 'Directiva FASTER: el fin de las retenciones que reclamabas a mano',
+    excerpt:
+      'La UE ya tiene aprobada la norma que promete acabar en 2030 con las devoluciones de retenciones a mano: un certificado digital único para toda tu cartera europea, ajuste en origen o devolución en 60 días, y el bróker haciendo el papeleo. Qué cambia para tus dividendos y qué no.',
+  },
+  {
     slug: 'mlp-dividendos-espana',
     tag: 'Fiscalidad',
     date: '8 oct 2026',

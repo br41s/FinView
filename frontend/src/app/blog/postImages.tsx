@@ -2533,7 +2533,36 @@ function ImgMlp() {
   );
 }
 
+function ImgFaster() {
+  return (
+    <div className={styles.postImgFaster}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">DIRECTIVA FASTER (UE) 2025/50</text>
+        {/* Single digital certificate for the whole year */}
+        <rect x="24" y="30" width="52" height="66" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="50" y="44" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">eTRC · UE</text>
+        <line x1="32" y1="54" x2="68" y2="54" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="32" y1="64" x2="68" y2="64" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="32" y1="74" x2="58" y2="74" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <text x="50" y="88" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">1 certificado</text>
+        {/* One certificate fans out to several countries */}
+        <path d="M80 60h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="94,56 101,60 94,64" fill="var(--fv-ink-30)" />
+        {/* Fast-track paths */}
+        <rect x="104" y="30" width="76" height="24" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" />
+        <text x="142" y="42" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">ajuste en origen</text>
+        <text x="142" y="50" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tipo correcto al pagar</text>
+        <rect x="104" y="60" width="76" height="24" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="142" y="72" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">devolución express</text>
+        <text x="142" y="80" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">60 días · tu bróker</text>
+        <text x="100" y="106" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">aplicable desde el 1 de enero de 2030</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'directiva-faster-retenciones-dividendos': ImgFaster,
   'mlp-dividendos-espana': ImgMlp,
   'prestamo-de-valores-irpf-espana': ImgPrestamoDeValores,
   'certificado-residencia-fiscal-dividendos': ImgCertificadoResidenciaFiscal,
