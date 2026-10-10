@@ -136,7 +136,7 @@ Módulo independiente accesible en `/options`. Funcionalidades implementadas:
 3. **Analyze** — reglas IV/P·C ratio/skew/volumen inusual (`options_analyzer.py`)
 4. **Premium Spike** — prima de cada contrato contra su propio cierre anterior (Yahoo, MEFF; Eurex no publica cierre previo); ≥ 2.5× → alerta HIGH
 5. **Store** — snapshot a DB + alertas + actividad inusual + señal de backtest (HIGH/MEDIUM)
-6. **Análisis IA** — vía OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`), estructurado en 7 secciones (sólo si hay alertas y `FINVIEW_OPENROUTER_API_KEY` configurada)
+6. **Análisis IA** — vía OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`; en producción `deepseek/deepseek-v4.1-flash`), estructurado en 7 secciones (sólo si hay alertas y `FINVIEW_OPENROUTER_API_KEY` configurada)
 7. **Notify** — ntfy.sh (push) + Email SMTP + Telegram Bot (spikes premium)
 8. **Backtest** — `evaluate_pending()` llena outcomes a +1d/+3d/+7d en el siguiente ciclo
 
@@ -370,7 +370,7 @@ Sin prefijo **no se leen** y el módulo degrada en silencio.
 |----------|-------------|
 | `FINVIEW_CRON_SECRET` | **Obligatoria en prod.** Secreto compartido con Cloud Scheduler. Sin ella los pipelines no corren — ver [docs/deployment.md](docs/deployment.md) |
 | `FINVIEW_OPENROUTER_API_KEY` | Habilita el análisis IA (opcional — sin ella el ciclo sigue, sin informe, y las señales técnicas se guardan sin puntuar) |
-| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido. Default `deepseek/deepseek-v4-flash` |
+| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido. Default `deepseek/deepseek-v4-flash` (producción: `deepseek/deepseek-v4.1-flash`) |
 | `FINVIEW_FRED_API_KEY` | Tipo libre de riesgo por divisa + régimen macro (opcional, gratuita) |
 | `FINVIEW_TELEGRAM_BOT_TOKEN` | Token del bot de Telegram para notificaciones de spikes |
 | `FINVIEW_TELEGRAM_CHAT_ID` | Chat ID destino de las notificaciones Telegram |

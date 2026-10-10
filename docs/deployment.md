@@ -49,7 +49,7 @@ Configuradas via `gcloud run services update --set-env-vars`:
 
 | `FINVIEW_CRON_SECRET` | Secreto compartido con Cloud Scheduler | **Obligatorio para que los pipelines corran en prod** (ver "Cloud Scheduler"). Si está vacío, los tres endpoints `/cron` devuelven 403 y nada se ejecuta. |
 | `FINVIEW_OPENROUTER_API_KEY` | Clave de OpenRouter (análisis IA de opciones, analyst de geo, scorer de zonas) | Opcional. Sin ella, el ciclo corre igual pero sin análisis IA y las señales técnicas se guardan **sin puntuar** (`break_probability = NULL`). |
-| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido | Default `deepseek/deepseek-v4-flash`. Las dos llamadas de Ideas y las tres de opciones (informe del ciclo, informe por ticker, chat) piden `reasoning: {"effort": "none"}`: antes de cambiar el modelo, mira su objeto `reasoning` en `GET https://openrouter.ai/api/v1/models` — uno con `mandatory: true` rechaza esa petición y tanto Ideas como opciones se quedan sin análisis IA (los ciclos siguen; el chat responde 502). El scorer de zonas no la envía. |
+| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido | **En producción: `deepseek/deepseek-v4.1-flash` desde el 2026-10-10**, fijado en la variable de Cloud Run; el default del código sigue siendo `deepseek/deepseek-v4-flash` y la variable lo sobrescribe. Las dos llamadas de Ideas y las tres de opciones (informe del ciclo, informe por ticker, chat) piden `reasoning: {"effort": "none"}`: antes de cambiar el modelo, mira su objeto `reasoning` en `GET https://openrouter.ai/api/v1/models` — uno con `mandatory: true` rechaza esa petición y tanto Ideas como opciones se quedan sin análisis IA (los ciclos siguen; el chat responde 502). El scorer de zonas no la envía. |
 | `FINVIEW_FRED_API_KEY` | Clave FRED (tipo libre de riesgo + régimen macro) | Opcional y gratuita. Sin ella los Greeks usan constantes por divisa y el régimen macro se omite. |
 
 Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes geo) declaradas en [backend/config.py](../backend/config.py). `gcloud run deploy` preserva las env vars existentes si no se pasa `--set-env-vars` ni `--clear-env-vars`.
@@ -78,6 +78,16 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 >
 > Cambiar el modelo (`FINVIEW_OPENROUTER_MODEL`) se hace en otra revisión: el scorer de zonas está
 > calibrado con resultados y un modelo distinto mueve sus puntuaciones.
+>
+> **Cambio a `deepseek/deepseek-v4.1-flash` (2026-10-10).** Mismo procedimiento (revisión `--no-traffic`,
+> comparar, `update-traffic --to-latest`). Antes de moverlo se comprobó, con una petición real, que acepta
+> `reasoning: {effort: "none"}` junto con `provider.data_collection: deny` (su objeto `reasoning` en
+> `GET /api/v1/models` dice `mandatory: false`). Primeros ciclos tras el cambio: `/api/geo/cron` 200 en 58 s y
+> `/api/geo/audit` 200 en 17 s, sin avisos del LLM. **Pendiente de observar:** la primera ejecución del scorer
+> de Zonas Clave con el modelo nuevo (22:15 UTC, lunes a viernes): sus puntuaciones pueden desplazarse y el
+> umbral que aprende de resultados mezclará los medidos con el modelo anterior y con este. Marcha atrás:
+> `gcloud run services update-traffic finview-api --to-revisions=<revisión anterior>=100` (la anterior fue
+> `finview-api-025014b`).
 
 | Clave de fuente | Qué desbloquea | Sin ella |
 |---|---|---|

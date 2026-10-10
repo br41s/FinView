@@ -56,7 +56,7 @@ con lo que implican para que quien revise el cumplimiento sepa que fueron elecci
 ## Proveedores
 
 - [ ] Aceptar o descargar el DPA de **Neon** y de **Vercel** y guardar constancia.
-- [ ] **OpenRouter y el modelo.** El modelo por defecto es `deepseek/deepseek-v4-flash`.
+- [ ] **OpenRouter y el modelo.** El modelo por defecto del código es `deepseek/deepseek-v4-flash`; producción usa `deepseek/deepseek-v4.1-flash` desde el 2026-10-10.
       OpenRouter decide qué proveedor lo sirve, que puede estar fuera del EEE y de EE. UU.
       Los prompts no llevan identidad, pero el asistente envía texto libre del usuario.
       Opciones: restringir el enrutado a proveedores sin retención de datos
