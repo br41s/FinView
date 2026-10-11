@@ -1,0 +1,141 @@
+export const metadata = {
+  title: "Diferencias de cambio en el IRPF: cómo tributa el dólar de tu cartera — FinView",
+  description:
+    "Si inviertes en acciones en dólares o libras, la conversión a euros es un segundo hecho imponible en el IRPF. Cómo calcularlo, con qué tipo de cambio y por qué el informe del bróker no basta.",
+};
+
+# Diferencias de cambio en el IRPF: cómo tributa el dólar de tu cartera
+
+> Compras Coca-Cola, la acción sube un 20 % en dólares y tú crees que has ganado ese 20 %. En euros has ganado otra cosa. Y esa diferencia —la que casi nadie mira— tiene su propia casilla en la Renta.
+
+---
+
+## 1. Dos operaciones distintas disfrazadas de una
+
+Cuando vendes una acción de una empresa de EEUU, en realidad estás haciendo dos cosas a la vez. La primera, heredada de siempre: transmites un valor y obtienes una ganancia o pérdida patrimonial. La segunda, la que se te escapa: mueves dinero de una moneda a otra, y ese movimiento también es una alteración patrimonial a ojos de Hacienda.
+
+La Dirección General de Tributos lo dejó por escrito en una consulta de enero de 2026 (V0152-26), respondiendo justo a este caso: un residente en España que opera acciones estadounidenses desde un bróker con cuenta en dólares. Su conclusión es tajante: la venta de las acciones y la conversión posterior de los dólares a euros son **dos hechos imponibles que no se pueden mezclar**.
+
+Traducción: puedes vender con ganancia y que la conversión te deje una pérdida, o al revés. Son cuentas separadas y van a la misma base del ahorro, pero por caminos distintos.
+
+---
+
+## 2. La venta: calcula en dólares, convierte después
+
+Aquí está el primer error de bulto. Mucha gente convierte el precio de compra y el de venta a euros por separado, cada uno con el tipo de cambio de su día, y resta. Suena lógico. Es incorrecto.
+
+La DGT (consultas V1740-17 y V0706-22, reiteradas en la V0152-26) dice que la ganancia o pérdida se calcula **en la moneda en que están denominadas las acciones**, y solo al final se convierte *el resultado* a euros usando el tipo de cambio del día de la venta. No los dos importes. El resultado de la resta.
+
+Veámoslo con números:
+
+| Concepto | En dólares | Tipo EUR/USD del día |
+|---|---|---|
+| Compra 100 acciones a 50 $ | 5.000 $ | 1,10 |
+| Venta 100 acciones a 60 $ | 6.000 $ | 1,20 |
+| Ganancia calculada en dólares | 1.000 $ | — |
+
+Con el criterio de la DGT: 1.000 $ ÷ 1,20 = **833 € de ganancia**.
+
+Con el método de "convierto cada operación por su lado": venta 6.000 $ ÷ 1,20 = 5.000 €, compra 5.000 $ ÷ 1,10 = 4.545 €, ganancia = **455 €**. Casi la mitad. El dólar se debilitó entre la compra y la venta, y cada método recoge ese efecto de forma distinta. Hacienda quiere el primero.
+
+Dos detalles que cambian la cifra y que el criterio deja claros:
+
+- Las **comisiones de compra y venta** sí entran. Suman al valor de adquisición y restan del de transmisión.
+- Los gastos de mantenimiento de la cartera (custodia, administración) no entran aquí: si acaso se deducen contra los rendimientos del capital mobiliario. Lo tienes desglosado en [gastos deducibles del inversor](/blog/gastos-deducibles-inversion-irpf).
+
+---
+
+## 3. La conversión: el segundo impuesto que aparece al cambiar
+
+Ahora la parte que casi nadie declara. Vender y dejar los dólares quietos en la cuenta no genera todavía una renta por cambio de divisa. El impuesto espera al momento en que **conviertes esos dólares a euros de verdad**.
+
+El artículo 14.2.e de la Ley del IRPF lo dice sin rodeos: las diferencias que se produzcan en cuentas de saldos en divisas por la variación de su cotización se imputan *"en el momento del cobro o del pago respectivo"*. Es decir, el día que pasas los dólares a euros.
+
+Ese día tienes una ganancia o pérdida igual a la diferencia entre:
+
+- el valor de adquisición de las divisas: el tipo de cambio del día en que las recibiste, y
+- el valor de transmisión: el tipo de cambio del día en que las cambias.
+
+Siguiendo el ejemplo anterior: vendiste y recibiste 6.000 $ cuando 1 euro valía 1,20 $, así que su valor de adquisición son 5.000 €. Si conviertes más tarde, cuando 1 euro vale 1,25 $, obtienes 6.000 ÷ 1,25 = 4.800 €. Has perdido **200 €** por el camino, sin haber tocado ni una acción. Esa pérdida entra en la base del ahorro y compensa con tus otras ganancias patrimoniales.
+
+Y ojo con la tentación de saltarte el cálculo. Si haces las compras y ventas pasando por dólares y nunca conviertes, el evento no desaparece: se te queda acumulado para el día que sí conviertas, con tipos de cambio de ejercicios anteriores. Por eso los brokers en dólares son un nido de estos ajustes.
+
+---
+
+## 4. Los dividendos en divisa: el mismo patrón
+
+Un dividendo pagado en dólares se declara como rendimiento del capital mobiliario, y ahí no cambia nada respecto a lo que ya cuentan en [dividendos extranjeros y doble imposición](/blog/dividendos-extranjeros-doble-imposicion-irpf): el importe bruto va a la casilla 0029 y la retención de origen a la 0588.
+
+La conversión a euros se hace con el tipo de cambio **del día del devengo**, es decir, la fecha de pago del dividendo. Ese euro es tu renta. Pero si dejas los dólares en la cuenta y no los cambias, y luego los conviertes a un tipo distinto, aparece otra vez el evento de divisa: la diferencia entre el tipo del día del cobro y el del día de la conversión.
+
+Cobras 200 $ de dividendo con el EUR/USD a 1,15, así que declaras 173,91 €. Meses después conviertes con el EUR/USD a 1,25 y obtienes 160 €. Esa diferencia de 13,91 € no es más dividendo: es una pérdida patrimonial por diferencia de cambio. Y como verás en el apartado anterior, va por una vía distinta a la del dividendo, que ya tributó.
+
+Esto convive con otra cosa que también mueve tu cobro real: el [riesgo divisa de la cartera](/blog/riesgo-divisa-cartera-dividendos), que explica por qué dos trimestres del mismo dividendo en dólares no te llegan iguales en euros.
+
+---
+
+## 5. Qué tipo de cambio vale
+
+El tipo de referencia es el oficial del euro, el que publica el **Banco Central Europeo** (y difunde el Banco de España), según el artículo 36 de la Ley 46/1998 sobre la introducción del euro. No vale el cambio que se le antoje a tu broker el día del extracto, ni el tipo medio del mes.
+
+En la práctica, casi todo el mundo tira del cambio publicado por el BCE en la fecha de la operación. Es defendible, es público y es reconstruible. Lo importante es ser **consistente**: si usas el del BCE para las ventas, úsalo también para los dividendos y para las conversiones, y guarda la prueba del tipo aplicado de cada día.
+
+---
+
+## 6. La trampa de la regla de los dos meses (que aquí no aplica)
+
+La regla de los dos meses es la pesadilla del que compensa pérdidas: si vendes con pérdida y recompras el mismo valor en dos meses, la pérdida queda congelada. La pregunta natural es si esa regla se aplica también a las pérdidas por cambio de divisa.
+
+La DGT respondió que no en una consulta de septiembre de 2025 (V1613-25). A las divisas no les aplica la letra f) ni la g) del artículo 33.5 (el plazo de dos meses o un año de los valores), sino la **letra e)**: no se computa la pérdida cuando vuelves a adquirir el mismo elemento dentro del año siguiente a la transmisión, y se integra cuando hagas la siguiente transmisión.
+
+En cristiano: si cambias dólares a euros con pérdida y vuelves a comprar dólares dentro de un año, esa pérdida no se pierde del todo, pero se te **aplace** hasta que la integrar en una conversión posterior. Cambia el cuándo, no el si.
+
+---
+
+## 7. El informe del bróker no es una casilla
+
+Aquí viene el golpe de realidad para quien usa Interactive Brokers y quiere hacerlo en dos minutos. IBKR entrega un *Forex Income Worksheet* que da una única cifra consolidada. Suena perfecto para copiar y pegar.
+
+No lo es. Esa cifra mezcla tres cosas que fiscalmente no van juntas:
+
+- ganancia/pérdida por las conversiones de divisa propias,
+- el efecto del tipo de cambio dentro de la compraventa de valores en otra moneda, y
+- los dividendos o intereses cobrados en moneda distinta de la funcional.
+
+Las dos primeras son ganancias patrimoniales, pero se calculan y se justifican de forma separada. Si metes el sumatorio entero en una sola casilla, el global puede cuadrar por casualidad mientras el desglose no cuadra por ningún sitio. Y en una comprobación, un desglose que no cuadra es una bandera roja.
+
+Lo limpio: sacar tus propias conversiones EUR↔USD con el tipo del BCE del día, calcular la ganancia de cada venta de valores en su divisa (apartado 2), y tratar la conversión de saldos como su propio evento (apartado 3).
+
+---
+
+## 8. Dónde va todo esto en la Renta
+
+Las diferencias de cambio son **renta del ahorro**. Se declaran en el bloque de ganancias y pérdidas patrimoniales de la base del ahorro (epígrafe F2 de la declaración, casillas 1624 y siguientes), junto al resto de tus ganancias patrimoniales, sin distinguirlas de las de valores.
+
+Se integran y compensan entre sí junto con las demás ganancias y pérdidas patrimoniales del ahorro, y con el cruce del 25 % frente a los rendimientos del capital mobiliario, igual que el resto de la base del ahorro. Si te suena a chino, el artículo sobre [compensar pérdidas con ganancias](/blog/compensar-perdidas-ganancias-irpf) lo desarrolla entero.
+
+Un recordatorio que enlaza con esto: si vendiste con pérdida y quieres cruzarla, el orden de las compras y ventas importa. La mecánica del [método FIFO](/blog/metodo-fifo-irpf-espana) decide qué lote vendiste, y por tanto en qué divisa y a qué tipo nació tu ganancia.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Tengo que declarar la conversión de divisas si solo tuve pérdidas?
+
+Sí. Las pérdidas por diferencia de cambio son igual de declarables que las ganancias: entran en la base del ahorro y se compensan con tus ganancias patrimoniales. Lo único que cambia es el signo. Y recuerda el límite de recompra del apartado 6 si vuelves a comprar la misma divisa pronto.
+
+### ¿Y si el bróker ya me convierte a euros automáticamente al vender?
+
+Entonces no tienes un saldo en divisa abierto: la conversión ocurre el mismo día de la venta. En la práctica tendrás un solo evento en euros y el ajuste de divisa suele quedar absorbido, pero conviene comprobar con qué tipo lo hizo el bróker, porque no tiene por qué ser el del BCE.
+
+### ¿Cuenta como actividad económica si opero mucho con divisas?
+
+La calificación como ganancia patrimonial asume que no hay actividad económica detrás. Comprar y vender divisas como particulares, sin organización ni medios de negocio, no lo es. Si operas a gran escala de forma profesional, cambia el régimen. Para una cartera de dividendos normal, no te afecta.
+
+### ¿Aplico el cambio del BCE del día o el del broker?
+
+Los dos pueden valer si eres consistente y puedes probar la fuente. Lo importante es no mezclar criterios dentro del mismo ejercicio. El del BCE es más fácil de reconstruir si Hacienda te pide justificar una cifra.
+
+### ¿Esto también afecta a acciones británicas, suizas o canadienses?
+
+Sí. El problema no es el dólar, es cualquier moneda que no sea el euro. Las reglas que has visto (cálculo en la divisa original, conversión al día de la alteración, imputación al cambio efectivo) son las mismas para libras, francos suizos, coronas o dólares canadienses.

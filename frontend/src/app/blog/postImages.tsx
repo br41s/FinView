@@ -2561,7 +2561,34 @@ function ImgFaster() {
   );
 }
 
+function ImgDiferenciasCambio() {
+  return (
+    <div className={styles.postImgDiferenciasCambio}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">VENTA + CAMBIO = DOS HECHOS</text>
+        {/* Event 1: sale of shares, priced in dollars */}
+        <rect x="16" y="26" width="46" height="34" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="39" y="40" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1 · VENTA</text>
+        <text x="39" y="51" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">100 $</text>
+        {/* Event 2: conversion to euros */}
+        <rect x="138" y="26" width="46" height="34" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="161" y="40" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">2 · CAMBIO</text>
+        <text x="161" y="51" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">€</text>
+        {/* Conversion arrow carrying the official rate */}
+        <path d="M62 43h60" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="122,39 130,43 122,47" fill="var(--fv-ink-30)" />
+        <text x="92" y="37" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tipo del día</text>
+        {/* FX rate line */}
+        <path d="M30 84 L60 74 L90 88 L120 72 L150 80 L172 66" stroke="var(--fv-ochre)" strokeWidth="1.4" fill="none" />
+        <line x1="24" y1="92" x2="176" y2="92" stroke="var(--fv-ink-30)" strokeWidth="1" />
+        <text x="100" y="106" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">el EUR/USD mueve tu ganancia en euros</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'diferencias-cambio-divisa-irpf-espana': ImgDiferenciasCambio,
   'directiva-faster-retenciones-dividendos': ImgFaster,
   'mlp-dividendos-espana': ImgMlp,
   'prestamo-de-valores-irpf-espana': ImgPrestamoDeValores,

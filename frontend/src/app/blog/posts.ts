@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'diferencias-cambio-divisa-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '11 oct 2026',
+    readTime: '11 min',
+    title: 'Diferencias de cambio en el IRPF: cómo tributa el dólar (y la libra) de tu cartera',
+    excerpt:
+      'Vender una acción en dólares son dos hechos imponibles: la venta y el cambio de divisa. Hacienda calcula la ganancia en la moneda original y cobra aparte la conversión a euros. Cómo se hace, con qué tipo y por qué el informe del bróker no basta.',
+  },
+  {
     slug: 'directiva-faster-retenciones-dividendos',
     tag: 'Fiscalidad',
     date: '10 oct 2026',
