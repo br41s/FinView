@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'oro-fiscalidad-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '12 oct 2026',
+    readTime: '11 min',
+    title: 'Oro: lingotes, monedas, ETC y mineras — cómo tributa cada uno en el IRPF',
+    excerpt:
+      'Tu lingote, tu ETC del bróker y tus acciones de una minera van a casillas distintas. El ETC no es un ETF y eso lo mueve de bloque. Guía del IVA, el coste de adquisición y las trampas del oro en la Renta.',
+  },
+  {
     slug: 'diferencias-cambio-divisa-irpf-espana',
     tag: 'Fiscalidad',
     date: '11 oct 2026',
