@@ -2587,7 +2587,34 @@ function ImgDiferenciasCambio() {
   );
 }
 
+function ImgQuiebraEmpresa() {
+  return (
+    <div className={styles.postImgQuiebraEmpresa}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">EMPRESA EN CONCURSO · LA PÉRDIDA ESPERA</text>
+        {/* Price collapsing to zero */}
+        <path d="M18 30 L38 36 L58 46 L78 62 L96 78 L112 90" stroke="var(--fv-ink-30)" strokeWidth="1.4" fill="none" />
+        <line x1="14" y1="92" x2="116" y2="92" stroke="var(--fv-ink-30)" strokeWidth="1" />
+        <text x="20" y="26" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui">cotiza</text>
+        <text x="112" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="end">0 €</text>
+        <path d="M58 50v8" stroke="var(--fv-ink-20)" strokeWidth="1" strokeDasharray="2 2" />
+        <text x="58" y="64" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">concurso</text>
+        {/* Loss only recognised when the company is extinguished */}
+        <rect x="124" y="24" width="64" height="28" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="156" y="36" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">pérdida</text>
+        <text x="156" y="46" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">al extinguirse</text>
+        <path d="M156 52v14" stroke="var(--fv-ochre)" strokeWidth="1.4" />
+        <polygon points="152,64 156,70 160,64" fill="var(--fv-ochre)" />
+        <rect x="124" y="72" width="64" height="22" rx="5" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none" />
+        <text x="156" y="86" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">base del ahorro</text>
+        <text x="156" y="112" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">hasta 25 % de los dividendos</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'deducir-perdida-acciones-quiebra-irpf': ImgQuiebraEmpresa,
   'diferencias-cambio-divisa-irpf-espana': ImgDiferenciasCambio,
   'directiva-faster-retenciones-dividendos': ImgFaster,
   'mlp-dividendos-espana': ImgMlp,
