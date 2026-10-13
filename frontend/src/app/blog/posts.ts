@@ -53,6 +53,15 @@ export const POST_META = [
       'Tu lingote, tu ETC del bróker y tus acciones de una minera van a casillas distintas. El ETC no es un ETF y eso lo mueve de bloque. Guía del IVA, el coste de adquisición y las trampas del oro en la Renta.',
   },
   {
+    slug: 'deducir-perdida-acciones-quiebra-irpf',
+    tag: 'Fiscalidad',
+    date: '12 oct 2026',
+    readTime: '12 min',
+    title: 'Cuando una empresa de tu cartera quiebra: la pérdida que Hacienda no te deja deducir todavía',
+    excerpt:
+      'Una empresa de tu cartera entra en concurso, la acción se hunde y Hacienda no te deja apuntar la pérdida todavía: solo cuenta cuando se disuelve y liquida. Los plazos, el artículo 37.1.e y lo que dice la DGT.',
+  },
+  {
     slug: 'diferencias-cambio-divisa-irpf-espana',
     tag: 'Fiscalidad',
     date: '11 oct 2026',
