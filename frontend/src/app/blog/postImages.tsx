@@ -2587,6 +2587,31 @@ function ImgDiferenciasCambio() {
   );
 }
 
+function ImgOro() {
+  return (
+    <div className={styles.postImgOro}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ORO: FÍSICO vs ETC</text>
+        {/* Physical gold bar (ownership) */}
+        <polygon points="16,32 80,32 73,56 23,56" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="48" y="49" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">999,9</text>
+        <text x="48" y="70" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">LINGOTE · MONEDA</text>
+        <text x="48" y="80" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">sin IVA · G/P patrimonial</text>
+        {/* Debt note (ETC) */}
+        <rect x="122" y="30" width="58" height="42" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <line x1="130" y1="42" x2="172" y2="42" stroke="var(--fv-ink-30)" strokeWidth="1.1" />
+        <line x1="130" y1="52" x2="172" y2="52" stroke="var(--fv-ink-30)" strokeWidth="1.1" />
+        <line x1="130" y1="62" x2="158" y2="62" stroke="var(--fv-ink-30)" strokeWidth="1.1" />
+        <text x="151" y="70" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">nota de deuda · ETC</text>
+        <text x="151" y="80" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">RCM · casilla 0031</text>
+        {/* Divider */}
+        <line x1="100" y1="26" x2="100" y2="86" stroke="var(--fv-ink-30)" strokeWidth="1" opacity="0.5" strokeDasharray="3 3" />
+        <text x="100" y="106" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">mismo metal, distinta casilla</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgQuiebraEmpresa() {
   return (
     <div className={styles.postImgQuiebraEmpresa}>
@@ -2614,6 +2639,7 @@ function ImgQuiebraEmpresa() {
 }
 
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'oro-fiscalidad-irpf-espana': ImgOro,
   'deducir-perdida-acciones-quiebra-irpf': ImgQuiebraEmpresa,
   'diferencias-cambio-divisa-irpf-espana': ImgDiferenciasCambio,
   'directiva-faster-retenciones-dividendos': ImgFaster,
