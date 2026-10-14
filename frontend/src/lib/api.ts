@@ -61,6 +61,19 @@ export interface GeoRunResult {
   notified?: number | null;
 }
 
+/** The last options-agent cycle report (GET /options/agent/last-analysis). */
+export interface LastAnalysis {
+  timestamp: string | null;
+  cycle: number | null;
+  tickers_analyzed: number | null;
+  alerts: number | null;
+  unusual: number | null;
+  market_sentiment: string | null;
+  claude_analysis: string | null;
+  ai_configured: boolean;
+  macro: GeoMacro | null;
+}
+
 export interface TickerAnalysis {
   status: string;
   ticker: string;
@@ -644,6 +657,13 @@ export const api = {
     portal: () => send<{ url: string }>("POST", "/billing/portal"),
   },
 
+  // Account creation. Unauthenticated, but it still goes through request() so a
+  // rejected sign-up surfaces the backend's Spanish `detail` like every other call.
+  auth: {
+    register: (body: { email: string; name: string; password: string; accept_terms: boolean }) =>
+      send("POST", "/auth/register", body),
+  },
+
   // The signed-in user's own account: consent, data export, deletion.
   me: {
     get: () => fetchJSON<{ terms_accepted: boolean }>("/auth/me"),
@@ -736,25 +756,7 @@ export const api = {
     unusual: (ticker?: string, days = 7) =>
       fetchJSON(`/options/unusual${qs({ ticker, days })}`),
     agentStatus: () => fetchJSON("/options/agent/status"),
-    lastAnalysis: () =>
-      fetchJSON<{
-        timestamp: string | null;
-        cycle: number | null;
-        tickers_analyzed: number | null;
-        alerts: number | null;
-        unusual: number | null;
-        market_sentiment: string | null;
-        claude_analysis: string | null;
-        ai_configured: boolean;
-        macro: {
-          regime: string;
-          vix: number | null;
-          yield_spread: number | null;
-          financial_stress: number | null;
-          hy_spread: number | null;
-          as_of: string | null;
-        } | null;
-      }>("/options/agent/last-analysis"),
+    lastAnalysis: () => fetchJSON<LastAnalysis>("/options/agent/last-analysis"),
     runCycle: () => send<{ status: string }>("POST", "/options/agent/run"),
     analyzeTicker: (ticker: string) =>
       send<TickerAnalysis>("POST", "/options/agent/analyze-ticker", { ticker }),
