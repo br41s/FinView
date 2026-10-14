@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'adr-fiscalidad-espana',
+    tag: 'Fiscalidad',
+    date: '13 oct 2026',
+    readTime: '11 min',
+    title: 'Fiscalidad de los ADR: el dividendo no sigue el convenio España-país (y no es valor homogéneo)',
+    excerpt:
+      'Un ADR no es la acción: es un certificado del banco depositario. Eso cambia la retención que sufre el dividendo, dónde va en tu Renta y hasta si puedes aflorar pérdidas sin esperar dos meses.',
+  },
+  {
     slug: 'oro-fiscalidad-irpf-espana',
     tag: 'Fiscalidad',
     date: '12 oct 2026',

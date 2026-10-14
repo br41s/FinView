@@ -2587,6 +2587,37 @@ function ImgDiferenciasCambio() {
   );
 }
 
+function ImgAdr() {
+  return (
+    <div className={styles.postImgAdr}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ADR · UN CERTIFICADO, NO UNA ACCIÓN</text>
+        {/* Underlying foreign shares held by the depositary */}
+        <rect x="16" y="30" width="42" height="44" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="37" y="48" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acciones</text>
+        <text x="37" y="58" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">empresa</text>
+        <text x="37" y="67" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">no-EEUU</text>
+        {/* Depositary bank holds them */}
+        <path d="M58 52h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="72,48 79,52 72,56" fill="var(--fv-ink-30)" />
+        <rect x="80" y="30" width="52" height="44" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="106" y="48" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">depositario</text>
+        <path d="M90 58h32" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="4 3" />
+        <text x="106" y="68" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">comisión</text>
+        {/* ADR certificate to the investor */}
+        <path d="M132 52h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="146,48 153,52 146,56" fill="var(--fv-ink-30)" />
+        <rect x="154" y="34" width="32" height="36" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="170" y="52" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">ADR</text>
+        <text x="170" y="62" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">tú</text>
+        {/* Two facts */}
+        <text x="100" y="92" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">retención: ley interna / convenio con EE.UU.</text>
+        <text x="100" y="104" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">no son valores homogéneos (DGT V0082-17)</text>
+      </svg>
+    </div>
+  );
+}
+
 function ImgOro() {
   return (
     <div className={styles.postImgOro}>
@@ -2639,6 +2670,7 @@ function ImgQuiebraEmpresa() {
 }
 
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'adr-fiscalidad-espana': ImgAdr,
   'oro-fiscalidad-irpf-espana': ImgOro,
   'deducir-perdida-acciones-quiebra-irpf': ImgQuiebraEmpresa,
   'diferencias-cambio-divisa-irpf-espana': ImgDiferenciasCambio,

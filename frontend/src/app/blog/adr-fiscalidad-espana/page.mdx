@@ -1,0 +1,133 @@
+export const metadata = {
+  title: "ADR: cómo tributa su dividendo en el IRPF — FinView",
+  description:
+    "Un ADR no es la acción: es un certificado del banco depositario. Eso cambia la retención que sufre el dividendo, dónde va en tu Renta y hasta si puedes aflorar pérdidas sin esperar dos meses.",
+};
+
+# ADR: el dividendo de un ADR no es el de la acción (y a veces te cuesta más)
+
+> Compras un ADR creyendo que tienes acciones de una empresa extranjera. En realidad tienes un certificado emitido por un banco estadounidense que sí guarda esas acciones. Suena a matiz de abogados hasta que miras el dividendo: llega con una retención que tú no elegiste, con una comisión del depositario descontada antes de que la veas, y con un tratamiento fiscal que no coincide con el de la acción original.
+
+---
+
+## 1. Qué compras cuando compras un ADR
+
+Un ADR (American Depositary Receipt) es un título que cotiza en Estados Unidos y representa acciones de una empresa que **no** es estadounidense. Lo emite un banco depositario —BNY Mellon, JPMorgan, Citi, Deutsche Bank— que compró un paquete de acciones de la compañía, las tiene en depósito y emite recibos respaldados por ellas.
+
+El banco no emite un recibo por cada acción. Fija una **ratio**: puede que 1 ADR valga por 2 acciones, por media acción o por una fracción. Esa ratio decide cuánto cobras de dividendo por cada recibo, y es el primer número que hay que mirar antes de comparar rentabilidades.
+
+Hay dos tipos de programa. **Patrocinado** cuando la empresa firma el acuerdo con el depositario (niveles I, II y III, según coticen en el mercado OTC o en un mercado nacional, y según puedan levantar capital). **No patrocinado** cuando el banco crea el recibo sin acuerdo con la empresa: estos cotizan solo en OTC y suelen ser menos líquidos.
+
+El detalle que importa: **el titular del ADR no es accionista**. El accionista legal es el depositario. Los derechos —voto, información, dividendo— te llegan canalizados a través del banco, no de forma directa. Por eso, si ya puedes comprar la acción en la Bolsa de Madrid, el ADR de una empresa española no te aporta nada: añade una comisión y una capa de intermediarios.
+
+---
+
+## 2. El recorrido del dividendo: tres manos antes de llegar a ti
+
+Cuando la empresa reparte dividendo, el dinero no te llega directo. Recorre una cadena:
+
+1. La empresa paga en su moneda local al custodio del depositario en el país de origen.
+2. Ese custodio aplica la retención del país de origen sobre el dividendo bruto.
+3. El depositario convierte a dólares, resta su comisión y pasa el neto a tu bróker.
+
+De esos tres pasos salen dos recortes que conviene no mezclar:
+
+- La **retención en origen** es un impuesto del país de la empresa. Sí genera deducción por doble imposición en tu IRPF.
+- La **comisión del depositario** no es un impuesto: es un gasto de administración. Se cobra por recibo y por año, típicamente entre 1 y 5 céntimos de dólar, y se descuenta del dividendo antes de que lo veas. Como es un importe fijo por título y no un porcentaje, en un ADR barato pesa mucho más: sobre un precio de 5 dólares, 2 céntimos son casi medio punto de rentabilidad al año.
+
+Esa comisión **no** entra en la deducción por doble imposición del artículo 80. Lo que sí puedes hacer es restarla del rendimiento como gasto de administración y depósito de valores (artículo 26.1.a de la Ley del IRPF), igual que la custodia de tu bróker. Tienes el detalle en [qué comisiones son deducibles](/blog/gastos-deducibles-inversion-irpf).
+
+---
+
+## 3. La retención de un ADR no sigue el convenio España-país
+
+Aquí está la trampa que más cuesta dinero.
+
+Cuando compras la acción directamente, la retención en origen se aplica a ti, residente en España, y sigue el **convenio España–país de origen**: el 15% de siempre en Alemania, Portugal o Suiza, por ejemplo. El artículo 80 te devuelve después lo que exceda, y si el país retiene de más, lo reclamas con los formularios que ya hemos contado país por país, como en la guía de [dividendos alemanes](/blog/dividendos-alemanes-espana).
+
+Con un ADR, la retención no se aplica a ti. Se aplica **dentro de la cadena del depositario**, entre el país de la empresa y el banco estadounidense. Es decir: la retención que sufre tu dividendo no la fija tu convenio con el país, sino la ley interna de ese país o el convenio que ese país tenga con Estados Unidos. Puede coincidir en el tipo, pero no tiene por qué, y aunque coincida no siempre coincide en el trámite.
+
+Caso real, con una empresa alemana. La acción directa, en manos de un residente español, sufre el 15% del convenio España-Alemania. El mismo dividendo por vía de un ADR sufre por defecto la retención alemana con su recargo, por encima del 15%, y solo baja si el depositario tramita la documentación. Y reclamar el exceso no lo haces tú ante la administración alemana: lo presenta el depositario, o los servicios especializados con los que trabaja, a petición tuya y con una autorización firmada.
+
+Consecuencia práctica: si tu motivo para invertir es el dividendo, mira el neto que te llega y no el yield que anuncia la empresa. Un 5% bruto puede ser bastante menos después de retención y comisión.
+
+---
+
+## 4. Cómo lo declaras en España
+
+El dividendo de un ADR, para Hacienda, es un rendimiento del capital mobiliario de la base del ahorro. Como no procede de la participación en fondos propios del emisor —los fondos propios los tiene el depositario, no tú—, encaja en el segundo grupo del artículo 25 de la Ley del IRPF: rendimientos de cualquier clase de activos que faculten para participar en los beneficios. Mismo bloque, misma declaración.
+
+Dónde va cada cosa:
+
+| Casilla | Qué pones |
+|---|---|
+| 0029 | El dividendo bruto, convertido a euros |
+| 0588 | La retención que sufrió en origen (art. 80) |
+
+Dos apuntes:
+
+- **Declara el bruto, no el neto.** El bruto en 0029 y la retención extranjera en 0588. Si declaras solo lo que llegó a la cuenta, te falta base y te sobra un derecho a deducir. El recorrido completo está en [dividendos extranjeros y doble imposición](/blog/dividendos-extranjeros-doble-imposicion-irpf).
+- **Si el ADR lo custodia un banco español**, ese banco te retiene el 19% español sobre el dividendo neto —el que ya pasó por la retención extranjera—, igual que con cualquier valor extranjero depositado en España. Con un bróker extranjero (DEGIRO, IBKR, Trade Republic) no hay retención española y lo declaras tú.
+
+Y ojo con el cambio de divisa: el ADR paga en dólares. El día que conviertas esos dólares a euros hay un segundo hecho imponible, con sus propias reglas, que contamos en [diferencias de cambio](/blog/diferencias-cambio-divisa-irpf-espana).
+
+---
+
+## 5. El detalle que casi nadie conoce: un ADR no es "valor homogéneo" con su acción
+
+Esta es la parte que justifica el artículo.
+
+La ley del IRPF llama valores homogéneos a los que son del mismo emisor, de igual naturaleza y régimen de transmisión, y dan derechos parecidos (artículo 8 del Reglamento). Ese concepto decide varias cosas, y una de ellas es la regla de los dos meses: si vendes unos valores con pérdida y compras valores homogéneos dos meses antes o después, la pérdida no te la puedes deducir todavía.
+
+En 2017, la Dirección General de Tributos dijo en la consulta **V0082-17** que un ADR y su acción subyacente **no son valores homogéneos**. El motivo: el ADR lo emite una entidad distinta —el depositario— y no representa participación en los fondos propios de la empresa. Por parecidos que sean los derechos, no son el mismo valor.
+
+Qué implica, en la práctica:
+
+- La regla de los dos meses **no conecta** el ADR con la acción. Puedes vender las acciones con pérdida y mantener o comprar el ADR de la misma empresa —o al revés— sin que la pérdida quede bloqueada por la recompra.
+- El **FIFO** de tu ADR y el de tu acción corren por separado: son dos posiciones distintas, con precios y fechas de compra distintos.
+
+No es un agujero legal: es la consecuencia de que son productos distintos. Pero convierte al ADR en una pieza útil para ordenar una cartera sin que la regla de los dos meses te frene. Eso sí, la regla sigue aplicándose íntegra entre dos ADR de la misma empresa y entre dos compras de la acción. Puedes repasar el mecanismo en [compensar pérdidas y ganancias](/blog/compensar-perdidas-ganancias-irpf).
+
+---
+
+## 6. ¿Te compensa un ADR?
+
+Comparado con la acción directa, el ADR suma costes sobre el dividendo y una capa de intermediarios que no controlas. Puestas en una balanza:
+
+**A favor**
+
+- Acceso a empresas que no cotizan en tu mercado, o no de forma sencilla.
+- Cobras en dólares, sin lidiar con la custodia en el mercado local.
+- El punto de los valores homogéneos, si haces gestión fiscal de la cartera.
+
+**En contra**
+
+- Dos costes sobre el dividendo: retención en origen (que puede ser más alta que la del convenio directo) y comisión del depositario.
+- No eres accionista: no votas en la junta como titular y tienes menos control sobre los trámites de reclamación de retenciones.
+- Riesgo de divisa en dólares, que se suma al riesgo propio de la acción.
+
+La excepción razonable es la compañía que solo puedes alcanzar por esa vía. Cuando la acción se compra directamente sin problema, el ADR añade coste sin darte nada a cambio.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Un ADR y su acción son valores homogéneos?
+
+No. La DGT lo aclaró en la consulta [V0082-17](https://www.iberley.es/resoluciones/resolucion-vinculante-dgt-v0082-17-19-01-2017-1443241) (2017): el ADR lo emite el banco depositario, no la empresa, y no representa participación en los fondos propios, así que no cumple el artículo 8 del Reglamento del IRPF. En la práctica, comprar el ADR tras vender la acción con pérdida no activa la regla de los dos meses.
+
+### ¿La retención del dividendo de un ADR sigue el convenio de España con ese país?
+
+No. La retención se aplica dentro de la cadena del depositario, según la ley interna del país de la empresa o el convenio de ese país con Estados Unidos. Puede salir más alta que la que sufrirías con la acción directa y, a menudo, la solicitud de devolución del exceso la presenta el depositario, no tú.
+
+### ¿Puedo deducir la comisión del depositario?
+
+No entra en la deducción por doble imposición del artículo 80, porque no es un impuesto. Sí es un gasto de administración y depósito de valores y se resta del rendimiento dentro de los límites del artículo 26.1.a de la Ley del IRPF, igual que la comisión de custodia de tu bróker.
+
+### ¿Declaro lo que me llega o el dividendo bruto?
+
+El bruto. Va en la casilla 0029, y la retención extranjera que sufrió se lleva a la casilla 0588 como deducción por doble imposición. Si declaras el neto, pagas de menos y te queda una base mal calculada.
+
+### ¿Cómo tributo si vendo el ADR?
+
+La venta es una ganancia o pérdida patrimonial en la base del ahorro, igual que con una acción, con su propio FIFO. La mecánica general está en la [guía de plusvalías](/blog/plusvalias-espana-irpf-guia). Si vendes por debajo del coste y compras valores homogéneos —otro ADR de la misma empresa— en los dos meses siguientes, verás la regla antiaplicación. La acción subyacente no cuenta como homogénea.
