@@ -422,7 +422,8 @@ def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = 
 
     gains = _sum_realized_pl(positive=True)
     losses = _sum_realized_pl(positive=False)
-    fifo_cas = _fifo_casilla_deltas(_fifo_rows(db, user.id, fiscal_year))
+    # 0 reads as "all years" here, like _with_year above.
+    fifo_cas = _fifo_casilla_deltas(_fifo_rows(db, user.id, fiscal_year or None))
     gains += fifo_cas.get(332, Decimal("0"))
     losses += fifo_cas.get(337, Decimal("0"))
 

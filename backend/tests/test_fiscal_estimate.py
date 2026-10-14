@@ -565,3 +565,40 @@ def test_yearly_comparison_query_count_does_not_grow_with_years(db):
     assert by_year[2023].dividends_gross == D("110")
     assert by_year[2023].withholdings == D("1")
     assert by_year[2024].gains == D("70")  # 20 manual + 50 FIFO delta
+
+
+def test_withholding_rows_with_only_a_credit_or_a_split_still_count(db):
+    """The withholding scan filters rows in SQL. A row whose only non-zero field is
+    the double-taxation credit, the explicit domestic amount or the explicit foreign
+    amount must still reach the fold: dropping any branch of that filter would pass
+    every other test in this file, since they all carry a non-zero withholding_tax.
+    """
+    acc = Account(user_id=1, broker=Broker.TR, account_id="TR")
+    db.add(acc)
+    db.flush()
+    db.add_all([
+        Transaction(account_id=acc.id, type=TransactionType.DIVIDEND.value,
+                    trade_date=date(2024, 3, 1), quantity=D("1"), price=D("0"),
+                    gross_amount=D("100"), withholding_tax=None,
+                    double_taxation_amount=D("15"), net_amount_eur=D("100")),
+        Transaction(account_id=acc.id, type=TransactionType.DIVIDEND.value,
+                    trade_date=date(2024, 4, 1), quantity=D("1"), price=D("0"),
+                    gross_amount=D("80"), withholding_tax=D("0"),
+                    domestic_withholding_tax=D("12"), foreign_withholding_tax=D("0"),
+                    net_amount_eur=D("68")),
+        Transaction(account_id=acc.id, type=TransactionType.DIVIDEND.value,
+                    trade_date=date(2024, 5, 1), quantity=D("1"), price=D("0"),
+                    gross_amount=D("60"), withholding_tax=D("0"),
+                    domestic_withholding_tax=D("0"), foreign_withholding_tax=D("9"),
+                    net_amount_eur=D("51")),
+    ])
+    db.commit()
+
+    whg = _load_year_inputs(db, 1, 2024).withholding
+
+    assert whg["credit"] == D("15")
+    assert whg["foreign_income"] == D("100")
+    assert whg["domestic"] == D("12")
+    assert whg["foreign"] == D("9")
+    assert whg["cash"] == D("0")
+    assert whg["complete"] is True
