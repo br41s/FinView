@@ -1,5 +1,6 @@
 """APScheduler wrapper for periodic options monitoring cycles."""
 
+import contextlib
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -45,10 +46,8 @@ def stop_user_schedule(user_id: int) -> None:
     """Stop the periodic monitoring job for a user."""
     job_id = _active_jobs.pop(user_id, None)
     if job_id:
-        try:
+        with contextlib.suppress(Exception):
             _scheduler.remove_job(job_id)
-        except Exception:
-            pass
         logger.info("Stopped options monitor for user %d", user_id)
 
 

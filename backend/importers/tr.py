@@ -105,11 +105,7 @@ def _extract_pages_text(pdf: pdfplumber.PDF) -> list[str]:
 
 def _pages_for_section(pages_text: list[str], section: str) -> list[str]:
     """Get all page texts belonging to a given section."""
-    result = []
-    for text in pages_text:
-        if _identify_section(text) == section:
-            result.append(text)
-    return result
+    return [text for text in pages_text if _identify_section(text) == section]
 
 
 # -- Header extraction --
@@ -560,8 +556,8 @@ def _parse_section_vii(pages_text: list[str]) -> list[ParsedPortfolioHolding]:
     results = []
 
     for text in pages:
-        for m in _HOLDING_RE.finditer(text):
-            results.append(ParsedPortfolioHolding(
+        results.extend(
+            ParsedPortfolioHolding(
                 isin=m.group(1),
                 name=m.group(2).strip(),
                 currency=m.group(3),
@@ -572,7 +568,9 @@ def _parse_section_vii(pages_text: list[str]) -> list[ParsedPortfolioHolding]:
                 avg_q4_balance=parse_eur_decimal(m.group(8)),
                 value_dec31_eur=parse_eur_decimal(m.group(9)),
                 fiscal_valuation=parse_eur_decimal(m.group(10)),
-            ))
+            )
+            for m in _HOLDING_RE.finditer(text)
+        )
 
     return results
 

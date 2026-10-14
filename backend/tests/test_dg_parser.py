@@ -95,7 +95,7 @@ def test_holdings_options(report):
 
 
 def test_enagas_holding(report):
-    h = [h for h in report.holdings if h.isin == "ES0130960018"][0]
+    h = next(h for h in report.holdings if h.isin == "ES0130960018")
     assert h.quantity == Decimal("200")
     assert h.price == Decimal("11.7800")
     assert h.value_dec31_eur == Decimal("2356.00")
@@ -126,10 +126,10 @@ def test_bayer_buy(report):
 
 
 def test_bayer_sell_pl(report):
-    bayer_sell = [
+    bayer_sell = next(
         t for t in report.transactions
         if t.isin == "DE000BAY0017" and t.tx_type == TxType.SELL
-    ][0]
+    )
     assert bayer_sell.net_amount_eur == Decimal("2750.00")
     assert bayer_sell.realized_pl_eur == Decimal("96.0000")
 

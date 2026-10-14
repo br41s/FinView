@@ -215,10 +215,7 @@ def _parse_closed_positions(wb: openpyxl.Workbook) -> list[ParsedCapitalGain]:
         proceeds_usd = units * close_rate
 
         # Derive USD→EUR ratio from the two Profit columns so EUR totals match
-        if profit_usd != 0:
-            fx = profit_eur / profit_usd
-        else:
-            fx = _D("1")
+        fx = profit_eur / profit_usd if profit_usd != 0 else _D("1")
         proceeds_eur = (proceeds_usd * fx).quantize(_D("0.01"))
         cost_basis_eur = (proceeds_eur - profit_eur).quantize(_D("0.01"))
 

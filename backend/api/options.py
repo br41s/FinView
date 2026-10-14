@@ -120,7 +120,7 @@ def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
         # auto-sync and a manual add firing together. Same outcome as the
         # pre-check: it's already followed.
         db.rollback()
-        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist")
+        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist") from None
     db.refresh(item)
     return _to_watchlist_out(item)
 
@@ -692,7 +692,7 @@ def test_telegram(user: CurrentUser):
 
 
 @router.post("/ask", response_model=AskOut)
-def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
+def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):
     """Stateless Q&A with the options agent.
 
     Provides the model with: last agent cycle log + latest snapshots (top 8 by

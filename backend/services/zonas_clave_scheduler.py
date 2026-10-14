@@ -1,5 +1,6 @@
 """APScheduler wrapper for periodic Zonas Clave recalculation — runs every 24 hours."""
 
+import contextlib
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -39,10 +40,8 @@ def stop_user_schedule(user_id: int) -> None:
     """Stop the recalculation job for a user."""
     job_id = _active_jobs.pop(user_id, None)
     if job_id:
-        try:
+        with contextlib.suppress(Exception):
             _scheduler.remove_job(job_id)
-        except Exception:
-            pass
         logger.info("Stopped Zonas Clave scheduler for user %d", user_id)
 
 

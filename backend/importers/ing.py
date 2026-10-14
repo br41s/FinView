@@ -313,10 +313,7 @@ def _parse_transactions(text: str, fiscal_year: int) -> list[ParsedTransaction]:
         qty = _D(m.group(4))
         amount = parse_eur_decimal(m.group(5))
 
-        if op_type_str in ("VENTA", "BAJA POR CANJE"):
-            tx_type = TxType.SELL
-        else:
-            tx_type = TxType.BUY
+        tx_type = TxType.SELL if op_type_str in ("VENTA", "BAJA POR CANJE") else TxType.BUY
 
         # Resolve ISIN: first from name map, then check next line for (ISIN)
         isin = name_isin.get(name.upper(), "")

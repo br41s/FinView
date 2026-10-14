@@ -66,7 +66,7 @@ def _start_instance_background_workers() -> None:
             from backend.services.exchange_rates import sync_rates
 
             sync_rates()
-        except Exception as exc:  # noqa: BLE001 - background best-effort
+        except Exception as exc:  # background best-effort
             logger.warning("[ecb-sync] skipped: %s", exc)
 
     threading.Thread(target=_sync_fx_rates, daemon=True, name="ecb-fx-sync").start()
@@ -78,7 +78,7 @@ def _start_instance_background_workers() -> None:
 
             sync_fred()
             sync_macro()
-        except Exception as exc:  # noqa: BLE001 - background best-effort
+        except Exception as exc:  # background best-effort
             logger.warning("[fred-sync] skipped: %s", exc)
 
     threading.Thread(target=_sync_fred_rates, daemon=True, name="fred-rate-sync").start()
@@ -92,7 +92,7 @@ def _start_instance_background_workers() -> None:
                 stale = catalog_is_stale(db)
             if stale:
                 refresh_iic_catalog()
-        except Exception as exc:  # noqa: BLE001 - background best-effort
+        except Exception as exc:  # background best-effort
             logger.warning("[cnmv-catalog] skipped: %s", exc)
 
     threading.Thread(target=_refresh_cnmv_catalog, daemon=True, name="cnmv-catalog-refresh").start()

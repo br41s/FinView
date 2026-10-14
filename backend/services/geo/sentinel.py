@@ -371,10 +371,12 @@ def analyze_weather_extremes(points: list[MeteoPoint]) -> list[GeoEvent]:
         rlabel = region.replace("_", " ")
         key = f"{int(p.latitude)}_{int(p.longitude)}"
 
+        # B023 below: `ev` reads this iteration's `key`, `p` and `region`, and every
+        # call to it is in this same iteration, so the late binding cannot bite.
         def ev(suffix: str, etype: str, title: str, extra: dict) -> GeoEvent:
             return GeoEvent(
-                id=f"wx-{suffix}-{key}", type=etype, title=title,
-                latitude=p.latitude, longitude=p.longitude, region=region,
+                id=f"wx-{suffix}-{key}", type=etype, title=title,  # noqa: B023
+                latitude=p.latitude, longitude=p.longitude, region=region,  # noqa: B023
                 source="windy", timestamp=now, raw_data=extra,
             )
 
@@ -836,10 +838,12 @@ def analyze_vessels(vessels: list[VesselSnapshot]) -> list[GeoEvent]:
         clat = (cp.lat_min + cp.lat_max) / 2
         clon = (cp.lon_min + cp.lon_max) / 2
 
+        # B023 below: `_ev` reads this iteration's `clat`, `clon` and `cp`, and every
+        # call to it is in this same iteration, so the late binding cannot bite.
         def _ev(eid: str, etype: str, title: str, extra: dict) -> GeoEvent:
             return GeoEvent(
-                id=eid, type=etype, title=title, latitude=clat, longitude=clon,
-                region=cp.region, source="ais", timestamp=now, raw_data=extra,
+                id=eid, type=etype, title=title, latitude=clat, longitude=clon,  # noqa: B023
+                region=cp.region, source="ais", timestamp=now, raw_data=extra,  # noqa: B023
             )
 
         # Tanker traffic drop.

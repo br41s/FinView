@@ -201,7 +201,9 @@ def test_cron_releases_guard_even_when_run_cycle_raises(db, monkeypatch):
     permanently locked out of future cycles."""
     monkeypatch.setattr(settings, "cron_secret", "right")
     _users(db, 41)
-    with patch.object(options_api, "run_cycle", side_effect=RuntimeError("boom")):
-        with pytest.raises(RuntimeError):
-            options_api.cron_run(db)
+    with (
+        patch.object(options_api, "run_cycle", side_effect=RuntimeError("boom")),
+        pytest.raises(RuntimeError),
+    ):
+        options_api.cron_run(db)
     assert 41 not in options_api._cycles_in_progress

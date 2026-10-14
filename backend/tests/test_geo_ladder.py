@@ -256,7 +256,7 @@ def test_once_resolved_a_tier_never_read_is_unreadable_not_pending(db):
 
 def _resolved(db, finals):
     """A resolved signal whose legs ended as ``finals`` = {symbol: final_state}."""
-    signal_id = _signal(db, {symbol: "bearish" for symbol in finals}, age=timedelta(days=8))
+    signal_id = _signal(db, dict.fromkeys(finals, "bearish"), age=timedelta(days=8))
     for leg in db.query(GeoSignalTicker).filter(GeoSignalTicker.signal_id == signal_id):
         leg.final_state = finals[leg.symbol]
     db.get(GeoSignal, signal_id).status = GeoSignalStatus.RESOLVED.value

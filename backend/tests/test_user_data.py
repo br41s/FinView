@@ -129,7 +129,7 @@ def test_no_global_table_carries_a_user_column():
 
 def test_global_tables_all_exist():
     """A renamed table must not leave a stale name that matches nothing."""
-    assert user_data.GLOBAL_TABLES <= set(Base.metadata.tables)
+    assert set(Base.metadata.tables) >= user_data.GLOBAL_TABLES
 
 
 def test_the_ledger_is_owned_through_its_account():

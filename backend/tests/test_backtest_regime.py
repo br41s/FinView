@@ -83,10 +83,10 @@ def test_record_signal_no_regime_leaves_nulls(db):
 
 
 def _signal(**kw):
-    base = dict(
-        user_id=1, ticker="AAPL", signal_type="HIGH_IV", direction="BULLISH",
-        price_at_signal=100,
-    )
+    base = {
+        "user_id": 1, "ticker": "AAPL", "signal_type": "HIGH_IV", "direction": "BULLISH",
+        "price_at_signal": 100,
+    }
     base.update(kw)
     return BacktestSignal(**base)
 
@@ -236,8 +236,8 @@ from backend.services.backtest_service import get_calibration  # noqa: E402
 
 def _win_signal(days_old: int, **kw):
     from datetime import datetime, timedelta, timezone
-    base = dict(user_id=1, ticker="AAA", signal_type="IV_SKEW", direction="BEARISH",
-                price_at_signal=100)
+    base = {"user_id": 1, "ticker": "AAA", "signal_type": "IV_SKEW", "direction": "BEARISH",
+            "price_at_signal": 100}
     base.update(kw)
     return BacktestSignal(recorded_at=datetime.now(timezone.utc) - timedelta(days=days_old), **base)
 

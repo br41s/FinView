@@ -214,7 +214,7 @@ def _check_health(url: str, timeout: float, attempts: int) -> None:
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=timeout) as response:
                 payload = json.load(response)
             if (
                 payload.get("status") == "ready"

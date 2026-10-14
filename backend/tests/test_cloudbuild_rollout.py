@@ -109,7 +109,7 @@ def _run(tmp_path: Path, *, unservable=(), reject_before_write=False):
         "latest": REVISION,
         "unservable": list(unservable),
         "reject_before_write": reject_before_write,
-        "jobs": {job: "ENABLED" for job in JOBS},
+        "jobs": dict.fromkeys(JOBS, "ENABLED"),
         "calls": [],
     }
     bin_dir = tmp_path / "bin"

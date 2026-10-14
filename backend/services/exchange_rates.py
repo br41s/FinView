@@ -56,10 +56,10 @@ def _parse_ecb_rates(root: ET.Element) -> list[tuple[str, str, float]]:
         return rows
     for time_cube in cube.findall("ecb:Cube[@time]", _ECB_NS):
         date_str = time_cube.attrib["time"]
-        for rate_cube in time_cube.findall("ecb:Cube", _ECB_NS):
-            rows.append(
-                (date_str, rate_cube.attrib["currency"], float(rate_cube.attrib["rate"]))
-            )
+        rows.extend(
+            (date_str, rate_cube.attrib["currency"], float(rate_cube.attrib["rate"]))
+            for rate_cube in time_cube.findall("ecb:Cube", _ECB_NS)
+        )
     return rows
 
 

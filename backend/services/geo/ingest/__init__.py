@@ -78,7 +78,7 @@ async def fetch_all_sources() -> SourceBundle:
         "flights", "gdelt", "vessels", "ofac", "fedreg",
     )
     bundle = SourceBundle()
-    for key, result in zip(keys, results):
+    for key, result in zip(keys, results, strict=True):
         if isinstance(result, Exception):
             logger.warning("geo source %r failed: %s", key, result)
             continue

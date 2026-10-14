@@ -39,8 +39,8 @@ def _story(i, *, lat=50.4, lon=30.5, date="20260921120000"):
 
 
 def _ukraine(n):
-    return [e for e in sentinel.analyze_gdelt_events([_story(i) for i in range(n)])
-            if e.type == "armed_conflict" and e.region == "ukraine_black_sea"][0]
+    return next(e for e in sentinel.analyze_gdelt_events([_story(i) for i in range(n)])
+                if e.type == "armed_conflict" and e.region == "ukraine_black_sea")
 
 
 def _history(region, counts):
@@ -140,8 +140,8 @@ def test_a_region_at_its_baseline_is_not_novel_when_the_bridge_doubles_the_read(
     rows = [_story(i) for i in range(20)] + [
         _story(100 + i, date="20260921110000") for i in range(20)
     ]
-    ukraine = [e for e in sentinel.analyze_gdelt_events(rows)
-               if e.type == "armed_conflict" and e.region == "ukraine_black_sea"][0]
+    ukraine = next(e for e in sentinel.analyze_gdelt_events(rows)
+                   if e.type == "armed_conflict" and e.region == "ukraine_black_sea")
     assert ukraine.raw_data["novelty"] == {"stories": 20, "baseline": 20, "novel": False}
 
 
@@ -165,8 +165,8 @@ def test_a_row_without_a_usable_stamp_still_counts():
     """It cannot be placed in or out of the hour; dropping it would silently
     thin the feed if GDELT ever changed the column."""
     rows = [_story(1), _story(2, date=""), _story(3, date="garbage")]
-    ukraine = [e for e in sentinel.analyze_gdelt_events(rows)
-               if e.type == "armed_conflict" and e.region == "ukraine_black_sea"][0]
+    ukraine = next(e for e in sentinel.analyze_gdelt_events(rows)
+                   if e.type == "armed_conflict" and e.region == "ukraine_black_sea")
     assert ukraine.raw_data["storiesThisHour"] == 3
 
 

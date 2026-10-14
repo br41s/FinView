@@ -183,7 +183,7 @@ class TestHoldings:
 
     def test_holdings_in_eur(self, report):
         """Holdings values should be converted to EUR using year-end rate."""
-        adm = [h for h in report.holdings if h.name == "ADM"][0]
+        adm = next(h for h in report.holdings if h.name == "ADM")
         # ADM: 100 shares at $50.52 = $5052 USD
         # Year-end rate: 1 USD = 0.96586 EUR → ~$5052 * 0.96586 = ~€4879.53
         assert Decimal("4800") < adm.value_dec31_eur < Decimal("5000")
@@ -544,7 +544,7 @@ class TestRealizedGains2025:
     def test_fx_gains(self, report_2025):
         fx = [g for g in report_2025.realized_gains if g.name.startswith("[FX]")]
         assert len(fx) == 3  # GBP, SGD, USD
-        usd = [g for g in fx if "USD" in g.name][0]
+        usd = next(g for g in fx if "USD" in g.name)
         assert usd.realized_pl_eur == Decimal("-52.830669")
 
     def test_total_realized(self, report_2025):

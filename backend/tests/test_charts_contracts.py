@@ -65,20 +65,20 @@ def user(db):
 
 
 def _tx(account_id: int, **kw) -> Transaction:
-    defaults = dict(
-        account_id=account_id,
-        type=TransactionType.DIVIDEND.value,
-        trade_date=date(YEAR, 3, 14),
-        isin="ES0113900J37",
-        name="Banco Santander",
-        country="España",
-        quantity=Decimal("100"),
-        price=Decimal("4.21"),
-        gross_amount=Decimal("42.10"),
-        fees=Decimal("0"),
-        withholding_tax=Decimal("7.99"),
-        net_amount_eur=Decimal("34.11"),
-    )
+    defaults = {
+        "account_id": account_id,
+        "type": TransactionType.DIVIDEND.value,
+        "trade_date": date(YEAR, 3, 14),
+        "isin": "ES0113900J37",
+        "name": "Banco Santander",
+        "country": "España",
+        "quantity": Decimal("100"),
+        "price": Decimal("4.21"),
+        "gross_amount": Decimal("42.10"),
+        "fees": Decimal("0"),
+        "withholding_tax": Decimal("7.99"),
+        "net_amount_eur": Decimal("34.11"),
+    }
     defaults.update(kw)
     return Transaction(**defaults)
 

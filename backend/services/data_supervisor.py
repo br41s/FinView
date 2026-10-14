@@ -206,9 +206,8 @@ def _check_missing_cost_basis(
         q = q.filter(Transaction.import_id == import_id)
     q = _scope_tx_query(q, user_id)
 
-    issues: list[DataIssue] = []
-    for tx in q.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all():
-        issues.append(DataIssue(
+    return [
+        DataIssue(
             import_id=tx.import_id,
             issue_type="missing_cost_basis",
             severity="warning",
@@ -225,8 +224,9 @@ def _check_missing_cost_basis(
                 "trade_date": tx.trade_date.isoformat(),
                 "quantity": str(tx.quantity),
             }),
-        ))
-    return issues
+        )
+        for tx in q.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -297,17 +297,11 @@ def _check_missing_buys(db: Session, import_id: int | None, user_id: int | None 
         Transaction.isin != "",
     )
     dividend_q = _scope_tx_query(dividend_q, user_id)
-    dividend_isins = set(
-        row[0]
-        for row in dividend_q.distinct().all()
-    )
+    dividend_isins = {row[0] for row in dividend_q.distinct().all()}
 
     # Get all ISINs with holdings
     holdings_isin_q = _scope_holding_query(db.query(PortfolioHolding.isin), user_id)
-    holding_isins = set(
-        row[0]
-        for row in holdings_isin_q.distinct().all()
-    )
+    holding_isins = {row[0] for row in holdings_isin_q.distinct().all()}
 
     # Get all ISINs with BUY transactions for active stocks (exclude derivatives)
     buy_q = db.query(Transaction.isin).filter(
@@ -317,10 +311,7 @@ def _check_missing_buys(db: Session, import_id: int | None, user_id: int | None 
         ~Transaction.name.like("[FX]%"),
     )
     buy_q = _scope_tx_query(buy_q, user_id)
-    buy_isins = set(
-        row[0]
-        for row in buy_q.distinct().all()
-    )
+    buy_isins = {row[0] for row in buy_q.distinct().all()}
 
     # ISINs with dividends or holdings but no BUY
     missing = (dividend_isins | holding_isins) - buy_isins
@@ -478,10 +469,7 @@ def _check_missing_ticker(
         Transaction.isin.isnot(None),
     )
     buy_q = _scope_tx_query(buy_q, user_id)
-    buy_isins = set(
-        row[0]
-        for row in buy_q.distinct().all()
-    )
+    buy_isins = {row[0] for row in buy_q.distinct().all()}
     # ISINs with buys but possibly still open
     active_isins |= buy_isins
 
@@ -898,7 +886,7 @@ def _net_quantities_at_year_end(
 
 def _counts_by_isin(query, scope, user_id: int | None) -> dict[str, int]:
     """Run a `(isin, count)` grouped query through the caller's scoping helper."""
-    return {isin: count for isin, count in scope(query, user_id).all()}
+    return dict(scope(query, user_id).all())
 
 
 def _names_for_isins(
@@ -924,8 +912,7 @@ def _names_for_isins(
     tx_q = db.query(Transaction.isin, Transaction.name).filter(
         Transaction.isin.in_(isins), Transaction.name != ""
     )
-    for isin, name in _scope_tx_query(tx_q, user_id).all():
-        names[isin] = name
+    names.update(_scope_tx_query(tx_q, user_id).all())
 
     return {isin: names.get(isin) or isin for isin in isins}
 

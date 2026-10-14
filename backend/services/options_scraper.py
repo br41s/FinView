@@ -1,5 +1,6 @@
 """Options data scraper — Yahoo Finance + MEFF (Spanish exchange) + Eurex (European)."""
 
+import contextlib
 import io
 import logging
 import math
@@ -244,10 +245,8 @@ def _parse_eurex_rdf(content: bytes) -> tuple[dict, dict, dict]:
                     products[current_product]["underlying_isin"] = isin
                     products[current_product]["sym"] = sym
                     if prev_close_str:
-                        try:
+                        with contextlib.suppress(ValueError):
                             products[current_product]["prev_close"] = float(prev_close_str)
-                        except ValueError:
-                            pass
                     if isin:
                         isin_to_code[isin] = current_product
                     if sym:
@@ -495,14 +494,16 @@ def fetch_options_for_expiry(ticker: str, expiration: str) -> dict | None:
                           "calls_count": len(calls), "puts_count": len(puts)}
         else:
             result = _fetch_yahoo(ticker, expiration=expiration)
-            if result is None or (result.get("calls_count", 0) == 0 and result.get("puts_count", 0) == 0):
-                if any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
-                    eurex = _fetch_eurex(ticker)
-                    if eurex:
-                        calls = [c for c in eurex.get("calls", []) if c.get("expiration") == expiration]
-                        puts = [p for p in eurex.get("puts", []) if p.get("expiration") == expiration]
-                        result = {**eurex, "calls": calls, "puts": puts,
-                                  "calls_count": len(calls), "puts_count": len(puts)}
+            yahoo_empty = result is None or (
+                result.get("calls_count", 0) == 0 and result.get("puts_count", 0) == 0
+            )
+            if yahoo_empty and any(ticker.upper().endswith(s.upper()) for s in _EUREX_SUFFIXES):
+                eurex = _fetch_eurex(ticker)
+                if eurex:
+                    calls = [c for c in eurex.get("calls", []) if c.get("expiration") == expiration]
+                    puts = [p for p in eurex.get("puts", []) if p.get("expiration") == expiration]
+                    result = {**eurex, "calls": calls, "puts": puts,
+                              "calls_count": len(calls), "puts_count": len(puts)}
     except Exception:
         logger.exception("fetch_options_for_expiry failed for %s / %s", ticker, expiration)
 

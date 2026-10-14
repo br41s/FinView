@@ -41,9 +41,12 @@ def fresh_cache(monkeypatch):
 
 
 def _event(**kw) -> GeoEvent:
-    base = dict(id="gdelt-armed_conflict-libya", type="armed_conflict", title="Coup in Tripoli",
-                latitude=32.9, longitude=13.2, source="gdelt", timestamp=int(time.time() * 1000),
-                raw_data={"numMentions": 40, "novelty": {"novel": True}})
+    base = {
+        "id": "gdelt-armed_conflict-libya", "type": "armed_conflict", "title": "Coup in Tripoli",
+        "latitude": 32.9, "longitude": 13.2, "source": "gdelt",
+        "timestamp": int(time.time() * 1000),
+        "raw_data": {"numMentions": 40, "novelty": {"novel": True}},
+    }
     base.update(kw)
     return GeoEvent(**base)
 
@@ -478,7 +481,7 @@ def test_a_new_instance_remembers_the_answers_and_the_cap_moves_on(db, monkeypat
     new instance, so the in-memory cache was empty: the first three salient
     events were asked again every hour and the ones behind the cap never were."""
     sent = _answering(monkeypatch, NOT_ACTIONABLE)
-    events = [dict(id=f"e{i}", title=f"Coup {i}", region="libya") for i in range(5)]
+    events = [{"id": f"e{i}", "title": f"Coup {i}", "region": "libya"} for i in range(5)]
 
     _cycle(db, monkeypatch, events)
     assert _asked(sent) == ["Coup 0", "Coup 1", "Coup 2"]

@@ -342,7 +342,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
     numeric = [(t, _try_num(t)) for t in rest]
     # last column is always ganancia
     pl = None
-    for t, n in reversed(numeric):
+    for _, n in reversed(numeric):
         if n is not None:
             pl = n
             break
@@ -603,8 +603,7 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
     pages_text: list[str] = []
 
     with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            pages_text.append(page.extract_text() or "")
+        pages_text.extend(page.extract_text() or "" for page in pdf.pages)
 
         last_kind = "unknown"
         # Track Modelo 714 subsection (E / F1 / G1 / G2)

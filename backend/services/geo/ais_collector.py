@@ -116,19 +116,21 @@ async def _run_forever(api_key: str) -> None:
     }
     while True:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.ws_connect(_WS_URL, heartbeat=30) as ws:
-                    await ws.send_str(json.dumps(sub))
-                    _connected = True
-                    logger.info("AIS stream connected (%d chokepoint boxes)", len(CHOKEPOINTS))
-                    async for raw in ws:
-                        if raw.type == aiohttp.WSMsgType.TEXT:
-                            try:
-                                _process(json.loads(raw.data))
-                            except (ValueError, KeyError):
-                                continue
-                        elif raw.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                            break
+            async with (
+                aiohttp.ClientSession() as session,
+                session.ws_connect(_WS_URL, heartbeat=30) as ws,
+            ):
+                await ws.send_str(json.dumps(sub))
+                _connected = True
+                logger.info("AIS stream connected (%d chokepoint boxes)", len(CHOKEPOINTS))
+                async for raw in ws:
+                    if raw.type == aiohttp.WSMsgType.TEXT:
+                        try:
+                            _process(json.loads(raw.data))
+                        except (ValueError, KeyError):
+                            continue
+                    elif raw.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                        break
         except Exception:
             logger.warning("AIS stream connection failed", exc_info=True)
         finally:
