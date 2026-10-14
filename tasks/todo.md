@@ -1,5 +1,43 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Optimizar y factorizar — 2026-10-14 (rama `refactor/factorize-fiscal-imports`)
+
+Punto de partida (inventario con tres subagentes Haiku + ruff ampliado): `fiscal_summary`
+lanzaba ~15 consultas donde bastan 6 (la de ingresos manuales 4 veces, el barrido anual de
+transacciones 2 veces, porque llamaba al endpoint `list_casillas` por dentro); `yearly_comparison`
+hacía 3 consultas por ejercicio; cinco rutas de subida en `imports.py` eran copias; `_norm_cdf` /
+`_norm_pdf` estaban duplicadas en `options_scraper.py` y `greeks_calculator.py`; la página de
+registro llamaba a `fetch` directo saltándose `request()`; `LastAnalysis` estaba tipado dos veces.
+
+### Backend
+- [x] `fiscal.py`: cargar manuales, FIFO y retenciones una vez por (usuario, año) y pasarlos a
+      `list_casillas`/`fiscal_summary`/`savings_estimate`; un `GROUP BY` en vez de 5 `_sum_casilla`;
+      el barrido de retenciones proyecta columnas y filtra filas sin retención ni crédito;
+      `yearly_comparison` pasa de 3 consultas por año a 3 en total.
+- [x] Test que fije el número de consultas de `fiscal_summary` (que no vuelva a crecer en silencio).
+- [x] `imports.py`: una función para las cinco rutas de un solo fichero (sufijo → spool → import → unlink).
+- [x] `options_scraper.py`: importar `_norm_cdf`/`_norm_pdf` de `greeks_calculator.py`.
+
+### Frontend
+- [x] `register/page.tsx` pasa por `send()` de `src/lib/api.ts` (regla: nunca `fetch` directo a `/api/*`).
+- [x] `LastAnalysis` exportado desde `api.ts`, `AnalysisTab.tsx` lo importa; `macro` reutiliza `GeoMacro`.
+
+### Verificación
+- [x] `pytest` completo, `ruff`, `pnpm test`, `tsc`, `pnpm lint`, `pnpm build`.
+- [x] Docs: conteos de tests en `CLAUDE.md` / `README.md` / `ci.yml` si cambian.
+
+### Aplazado (medido, no tocado)
+- `portfolio_service.get_open_positions` rehace el FIFO completo en cada llamada (5 sitios): memoizar
+  exige decidir la clave de invalidación del ledger — decisión de diseño, no refactor.
+- `fifo_engine.recalculate_cross_broker_fifo`: ~4 consultas por ISIN multibroker y año. Fichero más
+  sensible del repo; fuera de alcance.
+- Ampliar `ruff` (B/SIM/C4/PERF/RUF100): 10 `B904`, 10 `noqa` huérfanos, 7 `B023` falsos positivos en
+  `sentinel.py` (los cierres se invocan en la misma iteración), 185 `UP017`. `pyproject.toml` pide que
+  vaya en su propio PR con el diff adjunto.
+- Frontend: 18 sitios `${fmt(x)} €` en vez de `formatEur` (cambia el espacio por NBSP), `Position`
+  duplicado en `options/types.ts` y `portfolio/types.ts` (difiere la nulabilidad del coste), tarjetas
+  de error con "Reintentar" en `MonitorTab`/`WatchlistTab` que podrían usar `ErrorState`.
+
 ## Ideas: país, más activos y escalera local → nacional → internacional — 2026-10-04 (rama `feat/geo-country-tier`)
 
 Punto de partida: 84 reglas escritas a mano sobre 54 símbolos (USO, GLD, LMT, ZIM, DAC y XLE
