@@ -1,4 +1,4 @@
-import { getSession } from "next-auth/react";
+import { getSession, signOut } from "next-auth/react";
 import { bestEffort } from "./bestEffort";
 
 import type { GeoAccuracy, GeoSignal } from "@/lib/geo";
@@ -313,6 +313,21 @@ export function clearAuthToken(): void {
   _tokenPromise = null;
 }
 
+// The backend token lives 90 days from login and is never refreshed, while the
+// NextAuth cookie rolls forward on activity, so a session can outlive its
+// token. Once a freshly resolved token is still refused, every section of the
+// app reads "no se pudieron cargar los datos" until the user guesses to sign
+// out (2026-10-14). End the session and land on /login instead. One-shot: the
+// dashboard fires ~16 requests at once and they all come back 401 together.
+let _endingSession = false;
+
+function endDeadSession(): void {
+  if (_endingSession || typeof window === "undefined") return;
+  _endingSession = true;
+  clearAuthToken();
+  void signOut({ callbackUrl: "/login" });
+}
+
 async function _resolveToken(): Promise<string | null> {
   const now = Date.now() / 1000;
   // Reuse cached token while it has >60s of life (exp unknown ⇒ treat as valid).
@@ -353,10 +368,14 @@ async function request(path: string, init?: RequestInit, _retried = false): Prom
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
   });
   // A 401 means the cached token is stale (rotated/expired/logged out elsewhere).
-  // Drop it and retry once with a freshly-resolved token.
-  if (res.status === 401 && !_retried) {
-    clearAuthToken();
-    return request(path, init, true);
+  // Drop it and retry once with a freshly-resolved token; if that one is refused
+  // too, the session itself is dead.
+  if (res.status === 401) {
+    if (!_retried) {
+      clearAuthToken();
+      return request(path, init, true);
+    }
+    endDeadSession();
   }
   if (!res.ok) throw await apiError(res);
   return res;

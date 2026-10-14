@@ -141,8 +141,12 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `test_error_copy.py`, which fails the suite on an unlisted English string.
 - Every frontend API call goes through `request()` in `src/lib/api.ts` (via `fetchJSON`,
   `send`, `postForm` or `download`). It owns the auth header, the single retry on a stale
-  401 and the `res.ok` check. Never call `fetch` directly for `/api/*`: four hand-written
-  deletes once reported success on a 4xx/5xx and the item came back on reload.
+  401, the sign-out when the retry is refused too, and the `res.ok` check. Never call
+  `fetch` directly for `/api/*`: four hand-written deletes once reported success on a
+  4xx/5xx and the item came back on reload. The backend token lives 90 days from login
+  and is never refreshed while the NextAuth cookie rolls forward on activity, so a session
+  outlives its token; before 2026-10-14 the app then sent the dead token forever and every
+  section read "no se pudieron cargar los datos" until the user guessed to sign out.
 - Never `.catch(() => {})` in the frontend. Use `bestEffort("label")` from
   `src/lib/bestEffort.ts` — it still swallows, but logs, so a persistent failure is
   findable. `bestEffort.test.ts` fails if a bare swallow comes back.
