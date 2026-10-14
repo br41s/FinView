@@ -2,12 +2,14 @@
 
 import csv
 import io
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import aliased
 
 from backend.api.auth import CurrentUser
@@ -76,18 +78,29 @@ def _fifo_casilla_deltas(adjustments: list[FIFOAdjustment]) -> dict[int, Decimal
     return {casilla: amount for casilla, amount in deltas.items() if amount}
 
 
-def _fifo_adjustments_by_casilla(
-    db: DbSession, user_id: int, fiscal_year: int
-) -> dict[int, Decimal]:
-    rows = (
-        db.query(FIFOAdjustment)
-        .filter(
-            FIFOAdjustment.user_id == user_id,
-            FIFOAdjustment.fiscal_year == fiscal_year,
-        )
-        .all()
+def _fifo_rows(db, user_id: int, year: int | None = None) -> list[FIFOAdjustment]:
+    """Versioned FIFO corrections for one year, or for every year when *year* is None."""
+    q = db.query(FIFOAdjustment).filter(
+        FIFOAdjustment.user_id == user_id,
+        FIFOAdjustment.calculation_version == FIFO_CALCULATION_VERSION,
     )
-    return _fifo_casilla_deltas(rows)
+    if year is not None:
+        q = q.filter(FIFOAdjustment.fiscal_year == year)
+    return q.all()
+
+
+def _casilla_sums(
+    db, user_id: int, year: int, casillas: tuple[int, ...], modelo: int | None = None
+) -> dict[int, Decimal]:
+    """Broker totals per box for one year: one GROUP BY instead of a query per box."""
+    q = db.query(TaxResult.casilla, func.sum(TaxResult.amount_eur)).filter(
+        TaxResult.user_id == user_id,
+        TaxResult.fiscal_year == year,
+        TaxResult.casilla.in_(casillas),
+    )
+    if modelo is not None:
+        q = q.filter(TaxResult.modelo == modelo)
+    return {c: (a or Decimal("0")) for c, a in q.group_by(TaxResult.casilla).all()}
 
 
 _CAPITAL_CASILLAS = (328, 332, 337, 380)
@@ -102,45 +115,69 @@ def _capital_totals(casillas: dict[int, Decimal]) -> tuple[Decimal, Decimal]:
     )
 
 
-def _withholding_totals(db, user_id: int, year: int) -> dict[str, Decimal | int | bool]:
+def _withholding_rows(db, user_id: int, year: int | None = None):
+    """Transactions that can move a withholding total, as bare columns.
+
+    A row with no withholding, no explicit domestic/foreign amount and no
+    double-taxation credit adds zero to every accumulator in
+    ``_fold_withholding``, so it is filtered out here instead of being loaded
+    as a full ORM object: BUY/SELL rows are most of the ledger and carry none.
+    """
+    q = (
+        db.query(
+            year_str(Transaction.trade_date).label("yr"),
+            Transaction.withholding_tax,
+            Transaction.domestic_withholding_tax,
+            Transaction.foreign_withholding_tax,
+            Transaction.double_taxation_amount,
+            Transaction.gross_amount,
+            Account.broker,
+        )
+        .join(Account, Account.id == Transaction.account_id)
+        .filter(
+            Account.user_id == user_id,
+            or_(
+                func.coalesce(Transaction.withholding_tax, 0) != 0,
+                func.coalesce(Transaction.domestic_withholding_tax, 0) != 0,
+                func.coalesce(Transaction.foreign_withholding_tax, 0) != 0,
+                func.coalesce(Transaction.double_taxation_amount, 0) != 0,
+            ),
+        )
+    )
+    if year is not None:
+        q = q.filter(year_range(Transaction.trade_date, year))
+    return q.all()
+
+
+def _fold_withholding(rows, manual_whg: dict[int, Decimal]) -> dict[str, Decimal | int | bool]:
     """Aggregate cash withheld and the two independently deductible amounts.
 
     Rows imported before the explicit domestic/foreign split stay visible in
     cash totals but do not reduce estimated tax unless their meaning is
     unambiguous (ING/BBVA Spanish withholding) or they carry an explicit
-    double-taxation credit.
+    double-taxation credit. Manual entries' withholding is Spanish by definition.
     """
-    rows = (
-        db.query(Transaction, Account.broker)
-        .join(Account, Account.id == Transaction.account_id)
-        .filter(
-            Account.user_id == user_id,
-            year_range(Transaction.trade_date, year),
-        )
-        .all()
-    )
     cash = domestic = foreign = credit = foreign_income = Decimal("0")
     incomplete = 0
-    for tx, broker in rows:
-        total = abs(tx.withholding_tax or Decimal("0"))
+    for row in rows:
+        total = abs(row.withholding_tax or Decimal("0"))
         explicit = (
-            tx.domestic_withholding_tax is not None
-            and tx.foreign_withholding_tax is not None
+            row.domestic_withholding_tax is not None
+            and row.foreign_withholding_tax is not None
         )
         cash += total
-        tx_credit = abs(tx.double_taxation_amount or Decimal("0"))
+        tx_credit = abs(row.double_taxation_amount or Decimal("0"))
         credit += tx_credit
         if tx_credit:
-            foreign_income += max(tx.gross_amount or Decimal("0"), Decimal("0"))
+            foreign_income += max(row.gross_amount or Decimal("0"), Decimal("0"))
         if explicit:
-            domestic += abs(tx.domestic_withholding_tax or Decimal("0"))
-            foreign += abs(tx.foreign_withholding_tax or Decimal("0"))
-        elif total and broker in (Broker.ING, Broker.BBVA):
+            domestic += abs(row.domestic_withholding_tax or Decimal("0"))
+            foreign += abs(row.foreign_withholding_tax or Decimal("0"))
+        elif total and row.broker in (Broker.ING, Broker.BBVA):
             domestic += total
         elif total:
             incomplete += 1
 
-    _, manual_whg = _manual_casillas(db, user_id, year)
     manual = sum(manual_whg.values(), Decimal("0"))
     cash += manual
     domestic += manual
@@ -156,10 +193,75 @@ def _withholding_totals(db, user_id: int, year: int) -> dict[str, Decimal | int 
     }
 
 
+@dataclass(frozen=True)
+class _YearInputs:
+    """Everything beyond TaxResult that a casilla-level view needs for one year.
+
+    Loaded once per request and handed down. ``fiscal_summary`` used to call
+    the ``list_casillas`` endpoint internally and every withholding total
+    re-ran the manual-income query, so one summary issued ~15 queries where 6
+    do, and the yearly comparison ran three more per year.
+    """
+
+    manual_cas: dict[int, Decimal]  # manual entries by box, LOSS negative
+    manual_whg: dict[int, Decimal]  # their withholding by box
+    fifo_cas: dict[int, Decimal]  # versioned FIFO deltas by box
+    withholding: dict[str, Decimal | int | bool]  # see _fold_withholding
+
+
+def _year_inputs(manual_rows, fifo_rows, withholding_rows) -> _YearInputs:
+    manual_cas, manual_whg = _fold_manual(manual_rows)
+    return _YearInputs(
+        manual_cas=manual_cas,
+        manual_whg=manual_whg,
+        fifo_cas=_fifo_casilla_deltas(fifo_rows),
+        withholding=_fold_withholding(withholding_rows, manual_whg),
+    )
+
+
+def _load_year_inputs(db, user_id: int, year: int) -> _YearInputs:
+    return _year_inputs(
+        _manual_rows(db, user_id, year),
+        _fifo_rows(db, user_id, year),
+        _withholding_rows(db, user_id, year),
+    )
+
+
+def _by_year(rows, year_of) -> dict[int, list]:
+    grouped: dict[int, list] = defaultdict(list)
+    for row in rows:
+        grouped[year_of(row)].append(row)
+    return grouped
+
+
+def _load_inputs_by_year(db, user_id: int) -> dict[int, _YearInputs]:
+    """Inputs for every year that has any: three queries instead of three per year."""
+    manual = _by_year(_manual_rows(db, user_id), lambda r: r.fiscal_year)
+    fifo = _by_year(_fifo_rows(db, user_id), lambda r: r.fiscal_year)
+    withholding = _by_year(_withholding_rows(db, user_id), lambda r: int(r.yr))
+    return {
+        year: _year_inputs(manual.get(year, []), fifo.get(year, []), withholding.get(year, []))
+        for year in set(manual) | set(fifo) | set(withholding)
+    }
+
+
 @router.get("/casillas", response_model=list[AggregatedCasillaOut])
 def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = None):
     """List tax casillas aggregated across all brokers."""
-    q = db.query(TaxResult).filter(TaxResult.user_id == user.id)
+    inputs = _load_year_inputs(db, user.id, fiscal_year) if fiscal_year else None
+    return _aggregate_casillas(db, user.id, fiscal_year, inputs)
+
+
+def _aggregate_casillas(
+    db, user_id: int, fiscal_year: int | None, inputs: _YearInputs | None
+) -> list[AggregatedCasillaOut]:
+    """Broker rows per (modelo, casilla) plus the manual, FIFO and derived boxes.
+
+    Manual entries, FIFO deltas and the withholding-derived boxes (588/597) are
+    folded in only for a single year (*inputs* given): across all years they
+    have no one box to land in.
+    """
+    q = db.query(TaxResult).filter(TaxResult.user_id == user_id)
     if fiscal_year:
         q = q.filter(TaxResult.fiscal_year == fiscal_year)
     rows = q.order_by(TaxResult.modelo, TaxResult.casilla).all()
@@ -170,21 +272,11 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
         key = (r.modelo, r.casilla)
         grouped.setdefault(key, []).append(r)
 
-    # Load FIFO adjustments for the fiscal year (if any)
-    fifo_adj_by_casilla = (
-        _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
-        if fiscal_year
-        else {}
-    )
-
-    # Manual savings entries (per-year) mapped to their casillas, folded in as a
-    # "MANUAL" source so the boxes match Mi declaración. Only when a year is set.
-    man_cas: dict[int, Decimal] = {}
-    if fiscal_year:
-        man_cas, _ = _manual_casillas(db, user.id, fiscal_year)
+    man_cas = inputs.manual_cas if inputs else {}
+    fifo_adj_by_casilla = inputs.fifo_cas if inputs else {}
     withholding_cas: dict[int, Decimal] = {}
-    if fiscal_year:
-        whg = _withholding_totals(db, user.id, fiscal_year)
+    if inputs:
+        whg = inputs.withholding
         withholding_cas = {
             box: amount
             for box, amount in {
@@ -250,25 +342,14 @@ def list_casillas(db: DbSession, user: CurrentUser, fiscal_year: int | None = No
 @router.get("/summary/{fiscal_year}", response_model=FiscalSummary)
 def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
     """Get complete fiscal summary for a year using TaxResult (broker truth)."""
-    # Helper to sum a casilla across all brokers
-    def _sum_casilla(casilla: int) -> Decimal:
-        val = (
-            db.query(func.coalesce(func.sum(TaxResult.amount_eur), 0))
-            .filter(
-                TaxResult.user_id == user.id,
-                TaxResult.fiscal_year == fiscal_year,
-                TaxResult.casilla == casilla,
-            )
-            .scalar()
-        )
-        return val or Decimal("0")
-
     # Manual savings entries mapped to casillas — folded into every total below
     # so the summary matches Casillas fiscales and Mi declaración.
-    man_cas, man_whg = _manual_casillas(db, user.id, fiscal_year)
+    inputs = _load_year_inputs(db, user.id, fiscal_year)
+    man_cas = inputs.manual_cas
+    sums = _casilla_sums(db, user.id, fiscal_year, (29, *_CAPITAL_CASILLAS))
 
     # Dividends — casilla 29 (broker + manual) for gross; Transaction for net/whg.
-    div_gross = _sum_casilla(29) + man_cas.get(29, Decimal("0"))
+    div_gross = sums.get(29, Decimal("0")) + man_cas.get(29, Decimal("0"))
     div_detail = (
         db.query(
             func.coalesce(func.sum(Transaction.net_amount_eur), 0).label("net"),
@@ -282,26 +363,24 @@ def fiscal_summary(db: DbSession, user: CurrentUser, fiscal_year: int):
         .one()
     )
     # Manual dividend net = manual dividend gross − its withholding.
-    manual_div_net = man_cas.get(29, Decimal("0")) - man_whg.get(29, Decimal("0"))
-    fifo_cas = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
+    manual_div_net = man_cas.get(29, Decimal("0")) - inputs.manual_whg.get(29, Decimal("0"))
     capital_cas = {
-        box: _sum_casilla(box) + man_cas.get(box, Decimal("0"))
+        box: sums.get(box, Decimal("0")) + man_cas.get(box, Decimal("0"))
         for box in _CAPITAL_CASILLAS
     }
-    for box, amount in fifo_cas.items():
+    for box, amount in inputs.fifo_cas.items():
         capital_cas[box] = capital_cas.get(box, Decimal("0")) + amount
     gains_total, losses_total = _capital_totals(capital_cas)
-    whg_totals = _withholding_totals(db, user.id, fiscal_year)
 
-    # Reuse list_casillas so the summary's casillas are byte-identical to the
-    # Casillas fiscales view (broker + manual, same sources, same boxes).
-    aggregated_casillas = list_casillas(db, user=user, fiscal_year=fiscal_year)
+    # Same aggregation as the Casillas fiscales view, from the same loaded
+    # inputs, so the summary's casillas are byte-identical to it.
+    aggregated_casillas = _aggregate_casillas(db, user.id, fiscal_year, inputs)
 
     return FiscalSummary(
         fiscal_year=fiscal_year,
         total_dividends_gross=div_gross,
         total_dividends_net=div_detail.net + manual_div_net,
-        total_withholdings=whg_totals["cash"],
+        total_withholdings=inputs.withholding["cash"],
         total_gains=gains_total,
         total_losses=losses_total,
         net_capital_gains=gains_total + losses_total,
@@ -343,14 +422,8 @@ def dashboard_stats(db: DbSession, user: CurrentUser, fiscal_year: int | None = 
 
     gains = _sum_realized_pl(positive=True)
     losses = _sum_realized_pl(positive=False)
-    if fiscal_year:
-        fifo_cas = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
-    else:
-        fifo_cas = _fifo_casilla_deltas(
-            db.query(FIFOAdjustment)
-            .filter(FIFOAdjustment.user_id == user.id)
-            .all()
-        )
+    # 0 reads as "all years" here, like _with_year above.
+    fifo_cas = _fifo_casilla_deltas(_fifo_rows(db, user.id, fiscal_year or None))
     gains += fifo_cas.get(332, Decimal("0"))
     losses += fifo_cas.get(337, Decimal("0"))
 
@@ -519,7 +592,7 @@ def cross_validation(db: DbSession, user: CurrentUser, fiscal_year: int):
         key = (r.modelo, r.casilla)
         grouped.setdefault(key, []).append(r)
 
-    fifo_adj = _fifo_adjustments_by_casilla(db, user.id, fiscal_year)
+    fifo_adj = _fifo_casilla_deltas(_fifo_rows(db, user.id, fiscal_year))
 
     result_rows: list[CrossValidationRow] = []
     no_ref_count = 0
@@ -590,48 +663,23 @@ def yearly_comparison(db: DbSession, user: CurrentUser):
     )
     positions_by_year = {int(row.yr): row.pos_count for row in tx_rows}
 
-    fifo_rows = (
-        db.query(FIFOAdjustment)
-        .filter(
-            FIFOAdjustment.user_id == user.id,
-            FIFOAdjustment.calculation_version == FIFO_CALCULATION_VERSION,
-        )
-        .all()
-    )
-    fifo_by_year: dict[int, list[FIFOAdjustment]] = {}
-    for adjustment in fifo_rows:
-        fifo_by_year.setdefault(adjustment.fiscal_year, []).append(adjustment)
-    fifo_map = {
-        year: _fifo_casilla_deltas(adjustments)
-        for year, adjustments in fifo_by_year.items()
-    }
-
-    manual_years = {
-        row[0]
-        for row in db.query(ManualSavingsIncome.fiscal_year)
-        .filter(ManualSavingsIncome.user_id == user.id)
-        .distinct()
-        .all()
-    }
+    inputs_by_year = _load_inputs_by_year(db, user.id)
     metrics = []
-    years = set(tax_by_year) | set(fifo_map) | set(positions_by_year) | manual_years
+    years = set(tax_by_year) | set(positions_by_year) | set(inputs_by_year)
     for year in sorted(years):
+        inputs = inputs_by_year.get(year) or _year_inputs([], [], [])
         cas = dict(tax_by_year.get(year, {}))
-        man_cas, _ = _manual_casillas(db, user.id, year)
-        for box, amount in man_cas.items():
-            cas[box] = cas.get(box, Decimal("0")) + amount
-        fifo = fifo_map.get(year, {})
-        for box, amount in fifo.items():
-            cas[box] = cas.get(box, Decimal("0")) + amount
+        for extra in (inputs.manual_cas, inputs.fifo_cas):
+            for box, amount in extra.items():
+                cas[box] = cas.get(box, Decimal("0")) + amount
         gains, losses = _capital_totals(cas)
-        whg = _withholding_totals(db, user.id, year)
         metrics.append(YearlyMetrics(
             fiscal_year=year,
             dividends_gross=cas.get(29, Decimal("0")),
             gains=gains,
             losses=losses,
             net_capital=gains + losses,
-            withholdings=whg["cash"],
+            withholdings=inputs.withholding["cash"],
             brokers=len(brokers_by_year.get(year, set())),
             positions=positions_by_year.get(year, 0),
         ))
@@ -663,21 +711,21 @@ _MANUAL_CASILLA_DESC = {
 }
 
 
-def _manual_casillas(db, user_id: int, year: int) -> tuple[dict[int, Decimal], dict[int, Decimal]]:
+def _manual_rows(db, user_id: int, year: int | None = None) -> list[ManualSavingsIncome]:
+    """Manual savings entries for one year, or for every year when *year* is None."""
+    q = db.query(ManualSavingsIncome).filter(ManualSavingsIncome.user_id == user_id)
+    if year is not None:
+        q = q.filter(ManualSavingsIncome.fiscal_year == year)
+    return q.all()
+
+
+def _fold_manual(rows) -> tuple[dict[int, Decimal], dict[int, Decimal]]:
     """Manual savings entries mapped to Modelo 100 casillas.
 
     Returns (amount_by_casilla {LOSS negative}, withholding_by_casilla). Single
-    source used by list_casillas, fiscal_summary and the estimate so the
+    source behind list_casillas, fiscal_summary and the estimate so the
     manually-entered income shows up identically everywhere.
     """
-    rows = (
-        db.query(ManualSavingsIncome)
-        .filter(
-            ManualSavingsIncome.user_id == user_id,
-            ManualSavingsIncome.fiscal_year == year,
-        )
-        .all()
-    )
     cas: dict[int, Decimal] = {}
     whg: dict[int, Decimal] = {}
     for m in rows:
@@ -690,31 +738,26 @@ def _manual_casillas(db, user_id: int, year: int) -> tuple[dict[int, Decimal], d
     return cas, whg
 
 
-def _aggregate_savings_inputs(db, user_id: int, year: int) -> tuple[SavingsInputs, dict]:
-    """Sum savings components from broker casillas + manual entries + withholdings."""
-    rows = (
-        db.query(TaxResult.casilla, func.sum(TaxResult.amount_eur))
-        .filter(
-            TaxResult.user_id == user_id,
-            TaxResult.fiscal_year == year,
-            TaxResult.modelo == 100,
-            TaxResult.casilla.in_(_SAVINGS_CASILLAS),
-        )
-        .group_by(TaxResult.casilla)
-        .all()
-    )
-    cas = {c: (a or Decimal("0")) for c, a in rows}
+def _aggregate_savings_inputs(
+    db, user_id: int, year: int, inputs: _YearInputs | None = None
+) -> tuple[SavingsInputs, dict]:
+    """Sum savings components from broker casillas + manual entries + withholdings.
 
-    # Fold in manual entries mapped to the same casillas (shared helper).
-    man_cas, _ = _manual_casillas(db, user_id, year)
-    for box, amt in man_cas.items():
-        cas[box] = cas.get(box, Decimal("0")) + amt
-    for box, amt in _fifo_adjustments_by_casilla(db, user_id, year).items():
-        cas[box] = cas.get(box, Decimal("0")) + amt
+    *inputs* is the year's loaded inputs when the caller already has them
+    (``savings_estimate`` reuses the withholding breakdown); loaded here otherwise.
+    """
+    if inputs is None:
+        inputs = _load_year_inputs(db, user_id, year)
+    cas = _casilla_sums(db, user_id, year, _SAVINGS_CASILLAS, modelo=100)
+
+    # Fold in manual entries and FIFO deltas mapped to the same casillas.
+    for extra in (inputs.manual_cas, inputs.fifo_cas):
+        for box, amt in extra.items():
+            cas[box] = cas.get(box, Decimal("0")) + amt
     rcm = cas.get(27, Decimal("0")) + cas.get(29, Decimal("0"))
     gains, losses = _capital_totals(cas)
 
-    whg = _withholding_totals(db, user_id, year)
+    whg = inputs.withholding
     casillas = {
         "rcm": rcm,
         "gains": gains,
@@ -859,7 +902,8 @@ def delete_manual_income(db: DbSession, user: CurrentUser, entry_id: int):
 @router.get("/estimate/{fiscal_year}", response_model=SavingsEstimateOut)
 def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
     """Estimated savings-base IRPF result (casillas + final number)."""
-    inputs, casillas = _aggregate_savings_inputs(db, user.id, fiscal_year)
+    year_inputs = _load_year_inputs(db, user.id, fiscal_year)
+    inputs, casillas = _aggregate_savings_inputs(db, user.id, fiscal_year, year_inputs)
 
     p = (
         db.query(FiscalProfile)
@@ -877,7 +921,7 @@ def savings_estimate(db: DbSession, user: CurrentUser, fiscal_year: int):
         inputs.prior_gp_loss = p.prior_gp_loss or Decimal("0")
 
     est = estimate_savings(inputs, profile, fiscal_year)
-    withholding = _withholding_totals(db, user.id, fiscal_year)
+    withholding = year_inputs.withholding
     return SavingsEstimateOut(
         fiscal_year=fiscal_year,
         rates_year_used=est.rates_year_used,

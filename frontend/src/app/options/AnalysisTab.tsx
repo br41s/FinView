@@ -3,32 +3,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api";
+import { api, type LastAnalysis } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { AiDisclaimer } from "@/components/AiDisclaimer";
 
-/**
- * The last agent report, moved out of page.tsx unchanged along with the badge
- * and parser only it used. Takes no props.
- */
-type LastAnalysis = {
-  timestamp: string | null;
-  cycle: number | null;
-  tickers_analyzed: number | null;
-  alerts: number | null;
-  unusual: number | null;
-  market_sentiment: string | null;
-  claude_analysis: string | null;
-  ai_configured: boolean;
-  macro: {
-    regime: string;
-    vix: number | null;
-    yield_spread: number | null;
-    financial_stress: number | null;
-    hy_spread: number | null;
-    as_of: string | null;
-  } | null;
-};
+// The last agent report, moved out of page.tsx unchanged along with the badge
+// and parser only it used. The tab takes no props; its response shape is
+// `LastAnalysis` from lib/api.
 
 /** Macro-regime annotation badge (FRED). Annotation only — does not affect signals. */
 function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {

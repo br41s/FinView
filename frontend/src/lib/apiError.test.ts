@@ -24,10 +24,15 @@ describe("errorFromBody", () => {
     );
   });
 
-  it("falls back to the raw body when the response is not JSON", () => {
-    expect(errorFromBody("<html>502 Bad Gateway</html>", 502).message).toBe(
-      "<html>502 Bad Gateway</html>",
+  it("falls back to the raw body when the response is plain text", () => {
+    expect(errorFromBody("upstream request timeout", 504).message).toBe(
+      "upstream request timeout",
     );
+  });
+
+  it("collapses an HTML error page to its status instead of showing markup", () => {
+    expect(errorFromBody("<html>502 Bad Gateway</html>", 502).message).toBe("Error 502");
+    expect(errorFromBody("<!DOCTYPE html><title>503</title>", 503).message).toBe("Error 503");
   });
 
   it("falls back to the status when the body is empty", () => {

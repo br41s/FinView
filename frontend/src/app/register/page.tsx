@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 import styles from "./register.module.css";
 
 function LogoMark() {
@@ -33,15 +34,10 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, password, accept_terms: acceptTerms }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setError(data?.detail || "Error al registrarse");
+    try {
+      await api.auth.register({ email, name, password, accept_terms: acceptTerms });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al registrarse");
       setLoading(false);
       return;
     }

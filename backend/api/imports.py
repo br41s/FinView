@@ -121,7 +121,41 @@ def _run_import(kind: str, parse: Callable[[], T], store: Callable[[T], dict]) -
         )
 
 
-@router.post("/tr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF o CSV"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el archivo"}})
+def _upload_responses(accepted: str, kind: str) -> dict[int, dict[str, str]]:
+    """OpenAPI ``responses`` of an upload route; the texts mirror the raised details."""
+    return {
+        403: {"description": "Límite de importaciones del plan alcanzado"},
+        400: {"description": f"Solo se aceptan archivos {accepted}"},
+        413: {"description": "Archivo demasiado grande"},
+        422: {"description": f"Error al procesar {kind}"},
+    }
+
+
+def _upload_single(file: UploadFile, db, user, suffix: str, kind: str, parse, store) -> dict:
+    """Body shared by the one-file broker uploads.
+
+    Suffix check, spool, parse, store, and the temp file removed whatever
+    happens. The route passes *parse* and *store* in at call time, so tests that
+    monkeypatch the module attribute keep working.
+    """
+    _require_suffix(file, suffix, f"Solo se aceptan archivos {suffix.lstrip('.').upper()}")
+    path = _spool(file, suffix)
+    try:
+        return _run_import(
+            kind,
+            lambda: parse(path),
+            lambda r: store(db, r, file_sha256(path), file.filename, user_id=user.id),
+        )
+    finally:
+        path.unlink(missing_ok=True)
+
+
+@router.post(
+    "/tr",
+    dependencies=[ImportQuota],
+    response_model=ImportResult,
+    responses=_upload_responses("PDF o CSV", "el archivo"),
+)
 def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a Trade Republic Tax Report PDF or Transaction export CSV.
 
@@ -154,53 +188,54 @@ def upload_tr_report(file: UploadFile, db: DbSession, user: CurrentUser):
         path.unlink(missing_ok=True)
 
 
-@router.post("/degiro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post(
+    "/degiro",
+    dependencies=[ImportQuota],
+    response_model=ImportResult,
+    responses=_upload_responses("PDF", "el PDF"),
+)
 def upload_dg_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload a DEGIRO Annual Report PDF."""
-    _require_suffix(file, ".pdf", "Solo se aceptan archivos PDF")
-    path = _spool(file, ".pdf")
-    try:
-        return _run_import(
-            "el PDF",
-            lambda: parse_dg_annual_report(path),
-            lambda r: import_dg_report(db, r, file_sha256(path), file.filename, user_id=user.id),
-        )
-    finally:
-        path.unlink(missing_ok=True)
+    return _upload_single(
+        file, db, user, ".pdf", "el PDF", parse_dg_annual_report, import_dg_report
+    )
 
 
-@router.post("/ibkr", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos CSV"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el CSV"}})
+@router.post(
+    "/ibkr",
+    dependencies=[ImportQuota],
+    response_model=ImportResult,
+    responses=_upload_responses("CSV", "el CSV"),
+)
 def upload_ibkr_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an IBKR Activity Statement CSV."""
-    _require_suffix(file, ".csv", "Solo se aceptan archivos CSV")
-    path = _spool(file, ".csv")
-    try:
-        return _run_import(
-            "el CSV",
-            lambda: parse_ibkr_activity_statement(path),
-            lambda r: import_ibkr_report(db, r, file_sha256(path), file.filename, user_id=user.id),
-        )
-    finally:
-        path.unlink(missing_ok=True)
+    return _upload_single(
+        file, db, user, ".csv", "el CSV", parse_ibkr_activity_statement, import_ibkr_report
+    )
 
 
-@router.post("/ing", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el PDF"}})
+@router.post(
+    "/ing",
+    dependencies=[ImportQuota],
+    response_model=ImportResult,
+    responses=_upload_responses("PDF", "el PDF"),
+)
 def upload_ing_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an ING Información Fiscal PDF."""
-    _require_suffix(file, ".pdf", "Solo se aceptan archivos PDF")
-    path = _spool(file, ".pdf")
-    try:
-        return _run_import(
-            "el PDF",
-            lambda: parse_ing_report(path),
-            lambda r: import_ing_report(db, r, file_sha256(path), file.filename, user_id=user.id),
-        )
-    finally:
-        path.unlink(missing_ok=True)
+    return _upload_single(file, db, user, ".pdf", "el PDF", parse_ing_report, import_ing_report)
 
 
-@router.post("/bbva", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos PDF"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar los PDFs"}})
-def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3 BBVA PDFs")], db: DbSession, user: CurrentUser):
+@router.post(
+    "/bbva",
+    dependencies=[ImportQuota],
+    response_model=ImportResult,
+    responses=_upload_responses("PDF", "los PDFs"),
+)
+def upload_bbva_reports(
+    files: Annotated[list[UploadFile], File(description="1-3 BBVA PDFs")],
+    db: DbSession,
+    user: CurrentUser,
+):
     """Upload 1-3 BBVA PDFs (operaciones, dividendos, patrimonio)."""
     if not files or len(files) > 3:
         raise HTTPException(status_code=400, detail="Se aceptan entre 1 y 3 archivos PDF de BBVA")
@@ -222,19 +257,17 @@ def upload_bbva_reports(files: Annotated[list[UploadFile], File(description="1-3
             p.unlink(missing_ok=True)
 
 
-@router.post("/etoro", dependencies=[ImportQuota], response_model=ImportResult, responses={403: {"description": "Límite de importaciones del plan alcanzado"}, 400: {"description": "Solo se aceptan archivos XLSX"}, 413: {"description": "Archivo demasiado grande"}, 422: {"description": "Error al procesar el XLSX"}})
+@router.post(
+    "/etoro",
+    dependencies=[ImportQuota],
+    response_model=ImportResult,
+    responses=_upload_responses("XLSX", "el XLSX"),
+)
 def upload_etoro_report(file: UploadFile, db: DbSession, user: CurrentUser):
     """Upload an eToro annual account statement XLSX."""
-    _require_suffix(file, ".xlsx", "Solo se aceptan archivos XLSX")
-    path = _spool(file, ".xlsx")
-    try:
-        return _run_import(
-            "el XLSX de eToro",
-            lambda: parse_etoro_statement(path),
-            lambda r: import_etoro_report(db, r, file_sha256(path), file.filename, user_id=user.id),
-        )
-    finally:
-        path.unlink(missing_ok=True)
+    return _upload_single(
+        file, db, user, ".xlsx", "el XLSX de eToro", parse_etoro_statement, import_etoro_report
+    )
 
 
 @router.get("", response_model=list[ImportRecordOut], include_in_schema=False)

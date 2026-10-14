@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -28,7 +27,7 @@ from backend.models import Base
 from backend.services.geo.owner import ensure_geo_owner
 from backend.services.geo.scheduler import shutdown_scheduler as shutdown_geo_scheduler
 from backend.services.options_scheduler import shutdown_scheduler
-from backend.services.rate_limit import limiter
+from backend.services.rate_limit import limiter, rate_limited
 from backend.services.zonas_clave_scheduler import shutdown_scheduler as shutdown_zc_scheduler
 
 # Without a root handler, module loggers fall back to Python's WARNING-level
@@ -142,7 +141,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limited)
 app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(

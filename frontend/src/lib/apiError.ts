@@ -33,5 +33,8 @@ export function errorFromBody(body: string, status: number): Error {
   } catch {
     // Not JSON (proxy error page, empty body) — fall through to the raw text.
   }
+  // A host or proxy error page is HTML; its markup is never a message. The
+  // register form rendered a 502 page's source until this guard.
+  if (/^\s*<(!doctype|html)/i.test(body)) return new Error(`Error ${status}`);
   return new Error(body.trim() || `Error ${status}`);
 }
