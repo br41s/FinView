@@ -13,10 +13,14 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from sqlalchemy.orm import Session
+
 from backend.config import settings
+from backend.models import OptionsAlertNotification
 
 logger = logging.getLogger(__name__)
 
@@ -196,16 +200,20 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
     return False
 
 
-# Cross-cycle dedup. An alert that stays true (HIGH_IV on TEF.MC for three hours)
-# is one alert, not one every 15 minutes. Keyed on identity — ticker + type, plus
-# the contract for per-contract spikes — never on the message, whose numbers drift
-# each cycle and would defeat the dedup. In-memory with a TTL, same tradeoff as
-# premium_spike's baseline: a deploy clears it and the next cycle re-notifies
-# once. That's cheaper than a DB column + migration for a notification nicety, and
-# the reset is rare in steady state.
-_NOTIFIED: dict[str, float] = {}
-_NOTIFY_TTL = 6 * 3600  # re-notify a still-true alert at most once per 6h
-_NOTIFY_CACHE_MAX = 2000
+# Cross-cycle dedup, by episode. An alert that stays true (HIGH_PUT_CALL_RATIO on
+# TEF.MC for three days) is one notification, sent when it appears; it is sent
+# again only after a cycle that analyzed its ticker without it (it cleared) and a
+# later one where it is back. A row in options_alert_notifications is an active
+# episode: inserted when notified, deleted when cleared.
+#
+# Keyed on identity — ticker + type, plus the contract for per-contract spikes —
+# never on the message, whose numbers drift each cycle and would defeat the dedup.
+# Persisted per user: prod scales to zero between cron ticks, so an in-memory
+# record was always empty and every still-true alert was re-pushed every cycle.
+#
+# Clearing is by cycle, not by clock: the cron does not run overnight or at
+# weekends, so "unseen for N hours" would end every episode each night. And only a
+# ticker that was analyzed can clear — a failed fetch says nothing about the alert.
 
 
 def _alert_key(a: dict) -> str:
@@ -215,43 +223,78 @@ def _alert_key(a: dict) -> str:
     return "|".join(parts)
 
 
-def filter_new_alerts(alerts: list[dict]) -> list[dict]:
-    """Return only the alerts not already notified within the TTL window."""
-    now = time.time()
-    if len(_NOTIFIED) > _NOTIFY_CACHE_MAX:
-        for k, ts in list(_NOTIFIED.items()):
-            if now - ts > _NOTIFY_TTL:
-                _NOTIFIED.pop(k, None)
-    fresh = []
+def filter_new_alerts(
+    db: Session, user_id: int, alerts: list[dict], analyzed_tickers: set[str]
+) -> tuple[list[dict], int]:
+    """Return the alerts that start an episode, and how many episodes cleared.
+
+    ``alerts`` is this cycle's full HIGH set; ``analyzed_tickers`` every ticker
+    the cycle got data for. Writes the episode changes to ``db``; the caller
+    commits.
+    """
+    current: dict[str, dict] = {}
     for a in alerts:
-        key = _alert_key(a)
-        last = _NOTIFIED.get(key)
-        if last is not None and now - last < _NOTIFY_TTL:
-            continue
-        _NOTIFIED[key] = now
+        current.setdefault(_alert_key(a), a)  # the same alert twice is one
+    active = {
+        r.alert_key: r
+        for r in db.query(OptionsAlertNotification).filter(
+            OptionsAlertNotification.user_id == user_id
+        )
+    }
+    cleared = 0
+    for key, row in active.items():
+        if key not in current and key.split("|", 1)[0] in analyzed_tickers:
+            db.delete(row)
+            cleared += 1
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    fresh = []
+    for key, a in current.items():
+        if key in active:
+            continue  # same episode, already notified
+        db.add(OptionsAlertNotification(user_id=user_id, alert_key=key, notified_at=now))
         fresh.append(a)
-    return fresh
+    return fresh, cleared
+
+
+# Telegram parses these as legacy Markdown, where an unbalanced * _ ` [ makes it
+# reject the whole message. The line used to carry the alert type outside any
+# entity, and HIGH_PUT_CALL_RATIO's three underscores opened an italic that never
+# closed: every message with a P/C alert came back 400 and went out on the plain
+# retry with its asterisks showing.
+_MD_SPECIALS = "*_`["
+
+
+def _md_escape(text: str) -> str:
+    for ch in _MD_SPECIALS:
+        text = text.replace(ch, f"\\{ch}")
+    return text
 
 
 def _telegram_line(a: dict) -> str:
-    if a.get("type") == "PREMIUM_SPIKE":
-        return f"⚡ *{a['ticker']}* — spike de prima\n`{a['message']}`"
-    return f"🔴 *{a['ticker']}* — {a['type']}\n`{a['message']}`"
+    """One line per alert. The type is left out: the message already names it."""
+    icon = "⚡" if a.get("type") == "PREMIUM_SPIKE" else "🔴"
+    return f"{icon} *{_md_escape(a['ticker'])}* · {_md_escape(a['message'])}"
 
 
-def notify_alerts(alerts: list[dict]) -> None:
-    """Notify on HIGH alerts only, and only those not already pushed.
+def notify_alerts(
+    db: Session, user_id: int, alerts: list[dict], analyzed_tickers: set[str]
+) -> None:
+    """Notify on HIGH alerts only, once per episode.
 
-    MEDIUM/LOW still persist to the Monitor tab — that's for browsing, not for
-    pushing. Gating to HIGH plus the cross-cycle dedup is what turns this from
-    ~64 emails a day of ~100 rows each into a message only when something new and
-    actionable actually fires. All channels agree now: what notifies is HIGH and
-    fresh, nothing else.
+    Called every cycle, alerts or not: a cycle without an alert is what ends its
+    episode. MEDIUM/LOW still persist to the Monitor tab — that's for browsing,
+    not for pushing. All channels agree: what notifies is HIGH and new.
     """
-    if not alerts:
-        return
     high = [a for a in alerts if a.get("severity") == "HIGH"]
-    fresh = filter_new_alerts(high)
+    fresh, cleared = filter_new_alerts(db, user_id, high, analyzed_tickers)
+    db.commit()
+    # One line per cycle, sends or not: without it, "no HIGH fired" and "sent at
+    # 07:00, held back at 07:30" read the same in the logs.
+    logger.info(
+        "options notify: user=%d high=%d sent=%d suppressed=%d cleared=%d %s",
+        user_id, len(high), len(fresh), len(high) - len(fresh), cleared,
+        [_alert_key(a) for a in fresh],
+    )
     if not fresh:
         return
 

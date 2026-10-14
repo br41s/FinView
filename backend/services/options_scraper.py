@@ -604,6 +604,8 @@ def _yahoo_row_to_dict(row, days_to_exp: int, expiration: str, opt_type: str) ->
         "bid": _safe_float(row.get("bid", 0)),
         "ask": _safe_float(row.get("ask", 0)),
         "lastPrice": _safe_float(row.get("lastPrice", 0)),
+        # The contract's own previous close; `change` is lastPrice minus it.
+        "prevClose": _safe_float(row.get("lastPrice", 0)) - _safe_float(row.get("change", 0)),
         "volume": _safe_int(row.get("volume", 0)),
         "openInterest": _safe_int(row.get("openInterest", 0)),
         "impliedVolatility": _safe_float(row.get("impliedVolatility", 0)),
@@ -750,6 +752,7 @@ def _parse_meff_row(
     ask = _meff_cell(cols[4])
     last = _meff_cell(cols[7])
     volume = int(_meff_cell(cols[8]))
+    prev = _meff_cell(cols[12])
     mid = (bid + ask) / 2 if bid and ask else bid or ask or last
     iv = _solve_iv(underlying_price, strike, days_to_exp / 365.0, mid, opt_type) if mid > 0 else 0.0
     return {
@@ -757,6 +760,7 @@ def _parse_meff_row(
         "bid": bid,
         "ask": ask,
         "lastPrice": last,
+        "prevClose": prev,
         "volume": volume,
         "openInterest": 0,
         "impliedVolatility": iv,

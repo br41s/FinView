@@ -97,35 +97,71 @@ Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
   buys reasoning. A truncated report is not logged — any non-empty text is a success.
 
 ### Premium spike detector
-Tracks (ticker, option_type, strike) EMA baseline per user in memory (resets on server restart).
-Fires `PREMIUM_SPIKE` severity=HIGH when `current_premium ≥ 2.5 × EMA` and `current_premium ≥ $0.10` and `samples ≥ 3`. EMA α = 0.3.
-- **Baseline per contract, alert per ticker.** A broad move spikes every strike at
-  once — IWDA.AS produced 17 alerts (K=136…148) for one event. `detect_spikes`
-  collapses a ticker's hits into ONE alert via `_aggregate_ticker_spikes`, keeping
-  the direction in the message ("6 calls + 11 puts, +151% a +195%"). The learning
-  stays per contract; only the output is aggregated. Don't un-aggregate it.
+Stateless: each contract's premium against **its own previous close**, as the source
+publishes it (`prevClose` on the contract — Yahoo `lastPrice − change`, MEFF's `Prev`
+column). Fires `PREMIUM_SPIKE` severity=HIGH when `lastPrice ≥ 2.5 × prevClose`, the
+contract traded this session (`volume > 0`) and `prevClose ≥ 0.10`.
+- **Why there is no baseline.** It used to learn an in-memory EMA keyed on (ticker,
+  type, strike) — **no expiration**. A chain holds several expiries (3 on Yahoo, every
+  listed one on Eurex), so one cycle fed a strike's near and far premiums into one EMA,
+  reached `samples ≥ 3` on its own, and read the far expiry's time value as a +150%
+  spike. Prod also scales to zero between cron ticks, so that mix was rebuilt on every
+  cycle. In the 7 days to 2026-10-05, 1,236 of 1,250 spike hits were Eurex London
+  tickers (DGE.L alone 620). Do not bring back a learned baseline without an
+  expiration in the key and a store that survives a cold start.
+- **Eurex never spikes**: the RDF has one daily settlement per contract (bid = ask =
+  last, volume 0) and no previous one, so nothing moves between two cycles of a day.
+- **Alert per ticker.** A broad move spikes every strike at once — IWDA.AS produced 17
+  alerts (K=136…148) for one event. `_aggregate_ticker_spikes` collapses a ticker's hits
+  into ONE alert, keeping the direction in the message ("6 calls + 11 puts, +151% a
+  +195% sobre el cierre anterior"). Don't un-aggregate it.
 - The aggregate carries **no `_strike`/`_option_type`** on purpose: that makes
   `notification_service._alert_key` collapse to `(ticker, PREMIUM_SPIKE)`, so dedup
   is one push per ticker per window instead of one per strike.
-- **Reset caveat**: the baseline is empty after every deploy, so the first cycle or two
-  post-deploy fire spikes off a cold baseline — noise, not signal. Discount them.
-- **The effective bar is higher than `SPIKE_MULTIPLIER`**: the EMA absorbs the current
-  premium *before* the spike check, so an isolated spike needs ≈7× the prior baseline,
-  not 2.5×. Pre-existing; worth revisiting if real spikes seem to be missed.
 
-### Notifications — HIGH only, deduplicated across cycles
+### Notifications — HIGH only, once per episode
 `notify_alerts()` is the **single entry point** for every channel (ntfy + Telegram +
 email). Two gates, both load-bearing:
 - **Only `severity == "HIGH"` notifies.** MEDIUM/LOW still persist and show in the
   Monitor tab — they're for browsing, not pushing. Without this, email carried ~100
   MEDIUM/LOW rows across 70 tickers every cycle.
-- **Cross-cycle dedup** (`filter_new_alerts`): an alert that stays true every 30-min
-  cycle is pushed once per 6h TTL, not every cycle. In-memory, keyed on
-  ticker+type (+contract for spikes), never on the message (its numbers drift).
-  Resets on deploy like the spike baseline — re-notifies once, accepted.
+- **One notification per episode** (`filter_new_alerts`): an alert is pushed when it
+  appears and not again while it stays true — for hours or days. It is pushed again
+  only after a cycle that **analyzed its ticker without it** (cleared) and a later one
+  where it is back. A row in `options_alert_notifications` is an open episode:
+  inserted when notified, deleted when cleared. Brais chose this over the earlier 6 h
+  re-send on 2026-10-06. Keyed on ticker+type (+contract for spikes), never on the
+  message (its numbers drift).
+  - **Clearing is by cycle, never by clock.** The cron runs `*/30 7-22` UTC on
+    weekdays, so any "unseen for N hours" rule would end every episode overnight and
+    at weekends and re-push them all at 07:00.
+  - **Only an analyzed ticker clears.** `run_cycle` passes `analyzed` — every ticker
+    it got data for, under **both** names an alert can carry: the watchlist entry
+    (spikes) and `options_data["ticker"]` (analyzer alerts). They differ for a row
+    stored by ISIN; with only one of them that row's episodes never close
+    (`test_options_agent_notify.py`). A failed fetch clears nothing.
+  - `notify_alerts` runs **every cycle, alerts or not** — a quiet cycle is what ends
+    an episode. Don't put it back behind `if all_alerts`.
+  - Known costs: a condition hovering at its threshold re-pushes each time it
+    crosses back (no hysteresis); a ticker removed from the watchlist leaves its
+    episode open, so re-adding it while the condition still holds sends nothing.
+  - **Persisted, never in memory**: prod scales to zero between cron ticks, so nearly
+    every cycle starts on a cold instance. The in-memory dict this used to be was
+    always empty there, and every still-true HIGH alert was re-pushed each cycle until
+    ntfy answered 429 (2026-10-05). Episode changes are committed *before* the
+    channels send: a failed commit sends nothing rather than sending without a record.
+- **Every cycle logs its decision**: `options notify: user=… high=N sent=K
+  suppressed=M cleared=C [keys sent]`, sends or not. Read that line to verify the
+  dedup after a deploy; a quiet log otherwise cannot tell "no HIGH fired" from "held
+  back".
 - The old split `notify_spike_telegram()` is **gone**: it double-sent spikes on
   Telegram and had no dedup. Spikes now flow through `notify_alerts` with their own
   Telegram label.
+- The Telegram line is `icon *TICKER* · message`, with ticker and message escaped by
+  `_md_escape` (same rule as geo). It used to carry the alert type unescaped, and
+  `HIGH_PUT_CALL_RATIO`'s three underscores opened an italic that never closed: every
+  message with a P/C alert came back 400 and arrived through the plain retry with its
+  asterisks showing. The type is not shown — the message already names the alert.
 - `send_telegram` retries once as plain text on a 400 (legacy Markdown rejects a whole
   message over one stray char), and logs Telegram's `description` — a bare 400 hid a
   wrong `chat_id` for a while.

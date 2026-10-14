@@ -4,6 +4,16 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Las llamadas a OpenRouter piden proveedores que no guardan ni entrenan con el prompt — 2026-10-09
+
+#### Changed
+- **`llm_envelope.chat()` envía siempre `provider.data_collection: "deny"`.** El asistente de
+  opciones reenvía texto libre de los usuarios, así que la política no es una elección de cada
+  llamada: se aplica la última y `params` no puede cambiarla. Sustituye al interruptor de Zero
+  Data Retention de la cuenta de OpenRouter, que dejaba algunos modelos sin ningún proveedor.
+  Probado contra la API real: `deepseek-v4-flash` y `deepseek-v4.1-flash` siguen teniendo
+  proveedor con `deny`. Cuatro tests nuevos fijan la petición (antes `chat()` no tenía ninguno).
+
 ### El auditor puntuaba mal: 0% de acierto por construcción — 2026-09-06
 
 #### Fixed

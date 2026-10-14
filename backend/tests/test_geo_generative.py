@@ -11,7 +11,12 @@ from backend.models import GeoGenerativeAnswer
 from backend.services import llm_envelope
 from backend.services.geo import analyst, orchestrator
 from backend.services.geo.advisor import _pageable
-from backend.services.geo.analyst import AnalystResult, _validate_generated, analyze_unmatched
+from backend.services.geo.analyst import (
+    AnalystResult,
+    MalformedAnswer,
+    _validate_generated,
+    analyze_unmatched,
+)
 from backend.services.geo.sentinel import GeoEvent
 
 
@@ -55,14 +60,59 @@ def test_validation_accepts_only_a_complete_answer_from_the_universe():
     assert _validate_generated(GOOD)["tickers"] == [
         {"symbol": "USO", "direction": "bullish", "rationale": "crude supply"}
     ]
-    assert _validate_generated({**GOOD, "actionable": False}) is None
-    assert _validate_generated({**GOOD, "tickers": [{"symbol": "NVDA", "direction": "bullish"}]}) is None
-    assert _validate_generated({**GOOD, "tickers": [{"symbol": "USO", "direction": "neutral"}]}) is None
-    assert _validate_generated({**GOOD, "confidence": "alto"}) is None
-    assert _validate_generated({**GOOD, "thesis": ""}) is None
-    assert _validate_generated("not a dict") is None
     capped = _validate_generated({**GOOD, "confidence": 140, "riskScore": 10})
     assert (capped["confidence"], capped["riskScore"]) == (85, 8)  # the model sets both factors
+    # A numeric string is still a number, as it has always been for the rules' risk.
+    assert _validate_generated({**GOOD, "confidence": "80.5", "riskScore": "7"})["confidence"] == 80
+
+
+def test_a_no_is_the_models_own_or_the_gates():
+    """None is the outcome worth six hours: the model said no, or it answered
+    in full and nothing it named is an instrument this event may reach."""
+    assert _validate_generated({**GOOD, "actionable": False}) is None
+    assert _validate_generated({"actionable": False}) is None
+    assert _validate_generated({**GOOD, "tickers": [{"symbol": "NVDA", "direction": "bullish"}]}) is None
+    # The gates decide before the rest is read: a complete version of this
+    # answer would be the same "no".
+    vetoed = {"actionable": True, "tickers": [{"symbol": "NVDA", "direction": "bearish"}]}
+    assert _validate_generated(vetoed) is None
+
+
+_NO_THESIS = {k: v for k, v in GOOD.items() if k != "thesis"}
+_NO_PICKS = {k: v for k, v in GOOD.items() if k != "tickers"}
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        ("not a dict", "not an object"),
+        ({}, "actionable"),
+        ({"error": {"message": "upstream timeout"}}, "actionable"),
+        ({**GOOD, "actionable": "true"}, "actionable"),
+        ({**GOOD, "actionable": None}, "actionable"),
+        (_NO_PICKS, "pick"),
+        ({**GOOD, "tickers": []}, "pick"),
+        ({**GOOD, "tickers": {"symbol": "USO", "direction": "bullish"}}, "pick"),
+        ({**GOOD, "tickers": 5}, "pick"),
+        ({**GOOD, "tickers": ["USO"]}, "pick"),
+        ({**GOOD, "tickers": [{"symbol": ["USO"], "direction": "bullish"}]}, "pick"),
+        ({**GOOD, "tickers": [{"symbol": "USO", "direction": "neutral"}]}, "pick"),
+        ({**GOOD, "tickers": [{"symbol": "USO"}]}, "pick"),
+        ({**GOOD, "confidence": "alto"}, "not a number"),
+        ({**GOOD, "confidence": None}, "not a number"),
+        ({**GOOD, "confidence": True}, "not a number"),
+        ({**GOOD, "riskScore": float("inf")}, "not a number"),
+        ({**GOOD, "riskScore": float("nan")}, "not a number"),
+        ({**GOOD, "riskScore": {}}, "not a number"),
+        (_NO_THESIS, "thesis"),
+        ({**GOOD, "thesis": ""}, "thesis"),
+        ({**GOOD, "thesis": ["Ports close", "Brent tightens"]}, "thesis"),
+        ({**GOOD, "thesis": {"effect": "", "flow": None, "instrument": 3}}, "thesis"),
+    ],
+)
+def test_an_object_that_does_not_answer_is_malformed_not_a_no(body, why):
+    with pytest.raises(MalformedAnswer, match=why):
+        _validate_generated(body)
 
 
 def test_at_most_three_tickers_and_they_are_filtered_not_rejected():
@@ -246,6 +296,90 @@ def test_an_answer_nobody_could_read_stores_nothing(db, monkeypatch):
     assert analyze_unmatched(_event()) is None
     assert orchestrator._persist_generative_cache(db, started) == 0
     assert db.query(GeoGenerativeAnswer).count() == 0
+
+
+# ── A JSON object that is still not an answer ─────────────────────────
+# Everything below parsed, was an object, and used to be remembered for six
+# hours as "not actionable" — in the cache and in geo_generative_answers —
+# without a line in the log. None of these shapes has been seen in prod: nothing
+# recorded them. They are the ways the format can be missed, not a transcript.
+MALFORMED = {
+    "empty object": ("{}", "actionable is neither true nor false"),
+    "error object": ('{"error": {"message": "upstream timeout", "code": 504}}',
+                     "actionable is neither true nor false"),
+    "yes as a string": (json.dumps({**GOOD, "actionable": "yes"}),
+                        "actionable is neither true nor false"),
+    "yes with no pick": (json.dumps({**GOOD, "tickers": []}),
+                         "actionable with no well-formed pick"),
+    "yes with a direction outside the format": (
+        json.dumps({**GOOD, "tickers": [{"symbol": "USO", "direction": "neutral"}]}),
+        "actionable with no well-formed pick"),
+    "confidence in words": (json.dumps({**GOOD, "confidence": "alto"}),
+                            "confidence or riskScore is not a number"),
+    "risk beyond a float": (json.dumps(GOOD).replace('"riskScore": 7', '"riskScore": 1e999'),
+                            "confidence or riskScore is not a number"),
+    "no thesis": (json.dumps(_NO_THESIS), "no thesis"),
+}
+
+
+@pytest.mark.parametrize(("answer", "why"), MALFORMED.values(), ids=MALFORMED.keys())
+def test_a_malformed_answer_is_logged_and_is_not_a_cached_no(db, monkeypatch, caplog, answer, why):
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    started = datetime.now(timezone.utc)
+    ev = _event()
+    with caplog.at_level(logging.WARNING):
+        assert analyze_unmatched(ev) is None
+    # One line, in the family of the two above it: which event, why, how long
+    # the answer was, and its beginning as a repr.
+    [line] = _warnings(caplog)
+    assert line.startswith(f"geo generative LLM: answer is not usable for {ev.id} ({why}; ")
+    assert f"{len(answer)} chars" in line and repr(answer[:200]) in line
+    assert "generated" not in ev.raw_data
+    # Not a "no": nothing in the cache, nothing in the table, asked again.
+    assert analyst.has_fresh_generative(ev.id) is False
+    assert orchestrator._persist_generative_cache(db, started) == 0
+    assert db.query(GeoGenerativeAnswer).count() == 0
+    assert analyze_unmatched(ev) is None and len(sent) == 2
+
+
+VETOED = {
+    "outside the universe": [{"symbol": "NVDA", "direction": "bullish"}],
+    "another country's market": [{"symbol": "EWZ", "direction": "bearish"}],
+    "wider than the event": [{"symbol": "GLD", "direction": "bullish"}],  # global, event local
+}
+
+
+@pytest.mark.parametrize("picks", VETOED.values(), ids=VETOED.keys())
+def test_a_complete_answer_the_gates_reject_is_a_no_worth_remembering(db, monkeypatch, caplog, picks):
+    """The model answered the question and named instruments this event may not
+    reach. Asked again in an hour it is the same event against the same gates."""
+    answer = json.dumps({**GOOD, "tickers": picks})
+    sent = _answering(monkeypatch, {"choices": [{"message": {"content": answer}}]})
+    started = datetime.now(timezone.utc)
+    ev = _event()
+    with caplog.at_level(logging.INFO):
+        assert analyze_unmatched(ev) is None
+        assert analyze_unmatched(ev) is None
+    assert len(sent) == 1 and analyst.has_fresh_generative(ev.id) is True
+    assert "generated" not in ev.raw_data
+    assert orchestrator._persist_generative_cache(db, started) == 1
+    assert json.loads(db.query(GeoGenerativeAnswer).one().proposal_json) == {}
+    # Not a warning, but not silent either: the call is accounted for once.
+    assert _warnings(caplog) == []
+    said = [r.getMessage() for r in caplog.records if r.name == analyst.logger.name]
+    assert said.count(f"geo generative: {ev.id} → not actionable") == 1
+
+
+def test_one_pick_that_survives_is_a_thesis_whatever_came_with_it(monkeypatch):
+    mixed = {**GOOD, "tickers": [
+        {"symbol": "NVDA", "direction": "bullish"},
+        {"symbol": "USO", "direction": " Bullish "},
+        {"symbol": "XLE", "direction": "neutral"},
+        "junk",
+    ]}
+    _answering(monkeypatch, {"choices": [{"message": {"content": json.dumps(mixed)}}]})
+    res = analyze_unmatched(_event())
+    assert [(t.symbol, t.direction) for t in res.tickers] == [("USO", "bullish")]
 
 
 def test_the_generative_call_turns_reasoning_off(monkeypatch):

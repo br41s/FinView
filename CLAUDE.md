@@ -26,13 +26,13 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | Backend | Python 3.12 · FastAPI · SQLAlchemy (create_all + ensure_columns, no Alembic) |
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
-| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, default `deepseek/deepseek-v4-flash`. One shared model for options analysis + geo analyst. |
+| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, code default `deepseek/deepseek-v4-flash`, overridden in production by `FINVIEW_OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash` since 2026-10-10. One shared model for options analysis + geo analyst. Every call goes through `llm_envelope.chat()`, which always sends `provider.data_collection: "deny"` (`PROVIDER_POLICY`; callers cannot override it). |
 | Frontend | Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1351 collected (all pass with files/; 127 skip without real broker PDFs/CSVs) · vitest · 148 frontend tests |
+| Tests | pytest · 1420 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 148 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -147,7 +147,9 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `src/lib/bestEffort.ts` — it still swallows, but logs, so a persistent failure is
   findable. `bestEffort.test.ts` fails if a bare swallow comes back.
 - options_scraper.py cache TTL (5 min) must not be removed — MEFF rate-limits scraping.
-- Premium spike baselines are in-memory only. Do not try to persist them to DB.
+- Premium spikes compare each contract with its own previous close, statelessly. No learned
+  baseline: the old in-memory EMA had no expiration in its key and was rebuilt on every cold
+  start, so 99% of its alerts were term structure, not spikes (see `.claude/rules/options.md`).
 - Claude analysis is fire-and-forget; non-availability must never break the agent cycle.
   Always guard: `if settings.openrouter_api_key and all_alerts`.
 - Blog/MDX: in `.mdx` prose always escape `<` as `&lt;` — MDX parses `<1` (e.g. "FCF <1,2x")
@@ -197,10 +199,12 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1351 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1351 pass in ~90s. Those files are not in the repo,
-so where `files/` is absent — CI, and worktrees unless you symlink it — 127 skip and the
-remaining 1224 run in ~60s. The geo suite is the largest block (`test_geo_*`): it pins the
+Backend: `pytest` — 1420 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1420 pass in ~95s. Those files are not in the repo,
+so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
+remaining 1272 run in ~65s. It is one number again: until 2026-10-05 it was 159 on CI and
+127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
+the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
 GDELT export parser, the v2 checkpoint scorer, and the country layer (template rules stay
 out of a signal's scoring, an event only reaches its own country's instruments, each rule
@@ -208,10 +212,13 @@ learns from its own legs, the ladder reads tiers without moving a confidence) �
 
 A skipped test reports as a pass, so a broken gate hides silently: the 35 tests in
 `test_tr_parser.py` were gated on a hardcoded `~/Downloads` path that no longer existed
-and ran nothing for months. Gate on a path built from `Path(__file__).resolve().parents[2]
-/ "files"`, and put the gate where the dependency is — a fixture that calls
-`pytest.skip()`, not a module-level `pytestmark` that also takes the pure unit tests down
-with it.
+and ran nothing for months. `test_ing.py` failed the other way round: its gate was an
+absolute path into the main clone, so all 32 ran on the owner's machine from any checkout
+and all 32 skipped in CI, the 11 that need no PDF included — and a tree without `files/`
+reported 127 skips here against 159 there. Gate on a path built from
+`Path(__file__).resolve().parents[2] / "files"`, and put the gate where the dependency
+is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
+the pure unit tests down with it.
 
 Frontend: `cd frontend && pnpm test` (vitest) — 148 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
@@ -229,4 +236,7 @@ If a test breaks, fix it before committing — no exceptions.
 **Anything that talks to an external service gets tests for the ugly paths, not just the
 happy one.** `zone_scorer.py` shipped with zero and spent its first prod cycle failing on
 every call: the LLM returned 200 with `content: null` and `json.loads(None)` raised. A 200
-means the server answered — nothing more. Validate the envelope before parsing.
+means the server answered — nothing more. Validate the envelope before parsing, and the
+fields after it: an object that parses can still carry `"estimatedImpact": null` or a
+confidence of `"alto"`, and a field read with `.get()` outside a try takes the cycle down
+on every warm instance that serves the cached copy (`.claude/rules/geo.md`).

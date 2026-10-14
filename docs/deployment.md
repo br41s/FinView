@@ -49,7 +49,7 @@ Configuradas via `gcloud run services update --set-env-vars`:
 
 | `FINVIEW_CRON_SECRET` | Secreto compartido con Cloud Scheduler | **Obligatorio para que los pipelines corran en prod** (ver "Cloud Scheduler"). Si está vacío, los tres endpoints `/cron` devuelven 403 y nada se ejecuta. |
 | `FINVIEW_OPENROUTER_API_KEY` | Clave de OpenRouter (análisis IA de opciones, analyst de geo, scorer de zonas) | Opcional. Sin ella, el ciclo corre igual pero sin análisis IA y las señales técnicas se guardan **sin puntuar** (`break_probability = NULL`). |
-| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido | Default `deepseek/deepseek-v4-flash`. Las dos llamadas de Ideas y las tres de opciones (informe del ciclo, informe por ticker, chat) piden `reasoning: {"effort": "none"}`: antes de cambiar el modelo, mira su objeto `reasoning` en `GET https://openrouter.ai/api/v1/models` — uno con `mandatory: true` rechaza esa petición y tanto Ideas como opciones se quedan sin análisis IA (los ciclos siguen; el chat responde 502). El scorer de zonas no la envía. |
+| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido | **En producción: `deepseek/deepseek-v4.1-flash` desde el 2026-10-10**, fijado en la variable de Cloud Run; el default del código sigue siendo `deepseek/deepseek-v4-flash` y la variable lo sobrescribe. Las dos llamadas de Ideas y las tres de opciones (informe del ciclo, informe por ticker, chat) piden `reasoning: {"effort": "none"}`: antes de cambiar el modelo, mira su objeto `reasoning` en `GET https://openrouter.ai/api/v1/models` — uno con `mandatory: true` rechaza esa petición y tanto Ideas como opciones se quedan sin análisis IA (los ciclos siguen; el chat responde 502). El scorer de zonas no la envía. |
 | `FINVIEW_FRED_API_KEY` | Clave FRED (tipo libre de riesgo + régimen macro) | Opcional y gratuita. Sin ella los Greeks usan constantes por divisa y el régimen macro se omite. |
 
 Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes geo) declaradas en [backend/config.py](../backend/config.py). `gcloud run deploy` preserva las env vars existentes si no se pasa `--set-env-vars` ni `--clear-env-vars`.
@@ -63,6 +63,31 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 > Tras un `gcloud run services update --update-env-vars`, **comprueba qué revisión sirve**:
 > el rollout fija el tráfico con `--to-revisions`, así que la revisión nueva puede quedarse
 > a 0 % y las claves no llegan a producción. `--to-latest` lo resuelve.
+
+> **Rotar `FINVIEW_OPENROUTER_API_KEY` (hecho el 2026-10-09: clave `finview` de la cuenta de OpenRouter de Biglobster LLC).**
+> El servicio tiene el tráfico fijado a una revisión con nombre, así que el orden seguro es:
+> 1. `gcloud run services update finview-api … --update-env-vars="FINVIEW_OPENROUTER_API_KEY=$K" --no-traffic`
+>    (la clave se lee con `read -rs`, nunca como texto en el comando; `gcloud` guarda los argumentos
+>    en `~/.config/gcloud/logs`, así que ese fichero conserva la clave).
+> 2. Comparar la revisión nueva con la que sirve (`gcloud run revisions describe … --format=json`):
+>    solo debe diferir esa variable, y debe estar `Ready`.
+> 3. `gcloud run services update-traffic finview-api --to-latest`; marcha atrás con
+>    `--to-revisions=<revisión anterior>=100`.
+> 4. Esperar al siguiente ciclo (`geo-intel-cycle` corre en el minuto :00): `/api/geo/cron` debe
+>    devolver 200 y no debe aparecer `User not found`. Los jobs del Scheduler no se pausan (no es un build).
+>
+> Cambiar el modelo (`FINVIEW_OPENROUTER_MODEL`) se hace en otra revisión: el scorer de zonas está
+> calibrado con resultados y un modelo distinto mueve sus puntuaciones.
+>
+> **Cambio a `deepseek/deepseek-v4.1-flash` (2026-10-10).** Mismo procedimiento (revisión `--no-traffic`,
+> comparar, `update-traffic --to-latest`). Antes de moverlo se comprobó, con una petición real, que acepta
+> `reasoning: {effort: "none"}` junto con `provider.data_collection: deny` (su objeto `reasoning` en
+> `GET /api/v1/models` dice `mandatory: false`). Primeros ciclos tras el cambio: `/api/geo/cron` 200 en 58 s y
+> `/api/geo/audit` 200 en 17 s, sin avisos del LLM. **Pendiente de observar:** la primera ejecución del scorer
+> de Zonas Clave con el modelo nuevo (22:15 UTC, lunes a viernes): sus puntuaciones pueden desplazarse y el
+> umbral que aprende de resultados mezclará los medidos con el modelo anterior y con este. Marcha atrás:
+> `gcloud run services update-traffic finview-api --to-revisions=<revisión anterior>=100` (la anterior fue
+> `finview-api-025014b`).
 
 | Clave de fuente | Qué desbloquea | Sin ella |
 |---|---|---|
@@ -247,9 +272,18 @@ Monitorizar builds: https://console.cloud.google.com/cloud-build/builds?project=
   vCPU-s por instancia recibieron €0.39 de descuento sobre €21.18. En agosto, ya con
   facturación por petición, €1.39 de uso bruto quedaron en €0.01 netos. No es solo
   "gastar menos": es el nivel de precio en el que esta carga es gratis.
-- **Artifact Registry acumula una imagen por commit.** Hay 123 revisiones y ninguna
-  política de limpieza; el almacenamiento se factura aunque el servicio esté parado.
-  Mantener una política que conserve las últimas 10 versiones.
+- **Artifact Registry conserva solo las 10 imágenes más recientes.** Cada commit deja una
+  imagen y el almacenamiento se factura aunque el servicio esté parado. Desde el
+  2026-10-08 el repositorio `cloud-run-source-deploy` (europe-west1) tiene dos políticas
+  de limpieza, fuera del modo de prueba: `keep-newest-10` (las 10 versiones más recientes
+  de cada paquete) y `delete-the-rest` (todo lo demás); si una imagen cumple las dos,
+  gana la de conservar. Google las aplica una vez al día, así que el tamaño baja con un
+  día de retraso. Antes había 55 imágenes de `finview-api` (~7 GB), un registro
+  abandonado de abril en `europe-west3` (1.4 GB) y el servicio antiguo `finview-backend`
+  con sus dos imágenes, sin tráfico; los tres se borraron ese día. No está comprobado si
+  Cloud Run puede arrancar instancias de una revisión cuya imagen ya se borró: para un
+  rollback manual, elegir una revisión de las 10 más recientes. Comprobar la política:
+  `gcloud artifacts repositories describe cloud-run-source-deploy --location=europe-west1 --format='yaml(cleanupPolicies,sizeBytes)'`.
 - **El trigger compila en `global`.** Empujar la imagen a un registro europeo desde
   ahí sale a internet: €2.13 de "Network Data Transfer Out ... within North America"
   en dos semanas. Mover el trigger a `europe-west1` lo elimina.

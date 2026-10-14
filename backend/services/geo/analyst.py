@@ -8,6 +8,7 @@ shared with the options agent.
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 
@@ -81,7 +82,7 @@ def correlate_with_rules(
 
 
 # The pipeline runs per user but events are global: cache LLM analyses by event id
-# so N users cost one call. In-memory only (resets on cold start, like premium_spike).
+# so N users cost one call. In-memory only (resets on cold start).
 _LLM_CACHE: dict[str, tuple[float, dict]] = {}
 _LLM_CACHE_TTL = 6 * 3600  # seconds
 
@@ -121,6 +122,110 @@ def _json_object(content: str, context: str, event_id: str) -> dict | None:
         )
         return None
     return body
+
+
+def _number(value: object) -> float | None:
+    """A finite number out of the model's JSON, or None.
+
+    `json.loads` reads `NaN`, `Infinity` and `1e999` as floats that `int()`
+    raises on, and `true` passes `float()` as 1.0. A numeric string is still a
+    number: `compute_risk` has always taken "8".
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _percent(value: object) -> float | None:
+    number = _number(value)
+    return None if number is None else max(0.0, min(100.0, number))
+
+
+def _text(value: object, limit: int) -> str:
+    """The model's text, trimmed and bounded. What is not text is no text."""
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _seen(name: str, value: object) -> str:
+    """A field as a log line names it: a short repr, like the answer's preview."""
+    return f"{name}={repr(value)[:80]}"
+
+
+# GeoDirection: the column a pick's direction is written to is an enum.
+_ENRICHMENT_DIRECTIONS = {"bullish", "bearish", "neutral"}
+
+
+def _enrichment_pick(entry: object) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    symbol = _text(entry.get("symbol"), 40)
+    direction = _text(entry.get("direction", "neutral"), 20).lower()
+    if not symbol or direction not in _ENRICHMENT_DIRECTIONS:
+        return None
+    return {"symbol": symbol, "direction": direction,
+            "rationale": _text(entry.get("rationale"), 200)}
+
+
+def _validate_enrichment(body: dict) -> tuple[dict, list[str]]:
+    """The enrichment's usable fields, and the ones that were there and were not.
+
+    The model's answer is data here too. `analyze_event` reads this object with
+    .get() outside any try, in the middle of a cycle, and a cached one is served
+    for six hours: `"estimatedImpact": null`, a confidence of "alto" and
+    `"affectedTickers": 5` each raised there. Field by field, not all or
+    nothing: the enrichment decorates an analysis the rules already made, so a
+    field that cannot be used costs that field and the rules' value stands.
+
+    What comes back is in the prompt's own format with only checked values in
+    it. Whether a pick is one the event may reach is still `analyze_event`'s
+    question (`allowed_symbols`); this one is about shape.
+    """
+    usable: dict = {}
+    ignored: list[str] = []
+
+    def take(source: dict, key: str, read, into: dict, label: str | None = None) -> None:
+        if key not in source:
+            return
+        value = read(source[key])
+        if value is None:
+            ignored.append(_seen(label or key, source[key]))
+        else:
+            into[key] = value
+
+    tickers = body.get("affectedTickers")
+    if isinstance(tickers, list):
+        picks = []
+        for i, entry in enumerate(tickers):
+            pick = _enrichment_pick(entry)
+            if pick is None:
+                ignored.append(_seen(f"affectedTickers[{i}]", entry))
+            else:
+                picks.append(pick)
+        if picks:
+            usable["affectedTickers"] = picks
+    elif "affectedTickers" in body:
+        ignored.append(_seen("affectedTickers", tickers))
+
+    take(body, "narrative", lambda v: _text(v, 600) or None, usable)
+    take(body, "confidence", _percent, usable)
+    take(body, "riskScore", _number, usable)  # compute_risk clamps it to 1–10
+
+    impact = body.get("estimatedImpact")
+    if isinstance(impact, dict):
+        checked: dict = {}
+        take(impact, "returnLow", _number, checked, "estimatedImpact.returnLow")
+        take(impact, "returnHigh", _number, checked, "estimatedImpact.returnHigh")
+        take(impact, "timeframe", lambda v: _text(v, 40) or None, checked,
+             "estimatedImpact.timeframe")
+        if checked:
+            usable["estimatedImpact"] = checked
+    elif "estimatedImpact" in body:
+        ignored.append(_seen("estimatedImpact", impact))
+    return usable, ignored
 
 
 def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
@@ -163,9 +268,24 @@ def _llm_analyze(event: GeoEvent, existing: list[str]) -> dict | None:
             return None
         # analyze_event reads this with .get() outside any try: an array or a
         # bare string must stop here, not there.
-        result = _json_object(content, "geo LLM", event.id)
-        if result is None:
+        body = _json_object(content, "geo LLM", event.id)
+        if body is None:
             return None
+        # Checked before the cache, not at the read: a field that raises in
+        # analyze_event would raise again on every cycle a warm instance serves.
+        result, ignored = _validate_enrichment(body)
+        if not result:
+            # `{}`, `{"error": …}`: nothing to enrich with, and not an answer
+            # to remember for six hours either.
+            logger.warning(
+                "geo LLM: answer is not usable for %s (no usable field; %d chars): %r",
+                event.id, len(content), content[:200],
+            )
+            return None
+        if ignored:
+            logger.warning(
+                "geo LLM: ignored fields for %s: %s", event.id, ", ".join(ignored)[:600]
+            )
         # Cache only successes so transient failures retry next cycle.
         if len(_LLM_CACHE) > 500:
             cutoff = time.time() - _LLM_CACHE_TTL
@@ -211,6 +331,10 @@ def _universe_block(allowed: frozenset[str]) -> str:
     return ", ".join(lines)
 
 
+class MalformedAnswer(ValueError):
+    """A JSON object that does not answer the question. The message says why."""
+
+
 def _validate_generated(
     body: object, reach: str = "regional", allowed: frozenset[str] | None = None
 ) -> dict | None:
@@ -221,51 +345,75 @@ def _validate_generated(
     invariant every hand-written rule is tested against. ``allowed`` is the
     event's slice of the universe (`rules.allowed_symbols`): another country's
     instrument is dropped whatever the prompt was told.
+
+    Three outcomes, and they differ in what is worth remembering:
+
+    - a proposal;
+    - None, a "no": the model said `actionable: false`, or it named
+      well-formed picks (a symbol and bullish/bearish) and none is an
+      instrument this event may reach. Asked again it is the same event against
+      the same gates, so the caller keeps it six hours;
+    - MalformedAnswer: the object is not an answer in the format asked for.
+      `{}`, `{"error": …}`, a yes with no well-formed pick, no numeric
+      confidence or risk, or no thesis. That says nothing about the event, and
+      kept as a "no" it would silence it for six hours without a line in the log.
     """
-    if not isinstance(body, dict) or body.get("actionable") is not True:
+    if not isinstance(body, dict):
+        raise MalformedAnswer("not an object")
+    actionable = body.get("actionable")
+    if actionable is False:
         return None
+    if actionable is not True:
+        raise MalformedAnswer("actionable is neither true nor false")
     universe = INSTRUMENT_BREADTH if allowed is None else allowed
     max_breadth = _MAX_BREADTH_FOR_SCOPE.get(reach, 1)
+    named: list[str] = []  # well-formed picks, whether or not the event may reach them
     tickers = []
-    for t in body.get("tickers") or []:
+    picks = body.get("tickers")
+    for t in picks if isinstance(picks, list) else []:
         if not isinstance(t, dict):
             continue
-        sym = str(t.get("symbol") or "").strip()
-        direction = str(t.get("direction") or "").strip().lower()
-        if sym not in universe or direction not in {"bullish", "bearish"}:
+        sym = _text(t.get("symbol"), 40)
+        direction = _text(t.get("direction"), 20).lower()
+        if not sym or direction not in {"bullish", "bearish"}:
+            continue
+        named.append(sym)
+        if sym not in universe:
             continue
         if BREADTH_RANK[INSTRUMENT_BREADTH[sym]] > max_breadth:
             logger.info("geo generative: %s is wider than a %s event — dropped", sym, reach)
             continue
         tickers.append({"symbol": sym, "direction": direction,
-                        "rationale": str(t.get("rationale") or "")[:200]})
+                        "rationale": _text(t.get("rationale"), 200)})
+    if not named:
+        raise MalformedAnswer("actionable with no well-formed pick")
     if not tickers:
+        logger.info("geo generative: none of %r is an instrument the event may reach", named[:5])
         return None
-    try:
-        confidence = max(0, min(_GENERATIVE_MAX_CONFIDENCE, int(body.get("confidence"))))
-        risk = max(1, min(_GENERATIVE_MAX_RISK, int(body.get("riskScore"))))
-    except (TypeError, ValueError):
-        return None
+    confidence, risk = _number(body.get("confidence")), _number(body.get("riskScore"))
+    if confidence is None or risk is None:
+        raise MalformedAnswer("confidence or riskScore is not a number")
     thesis = body.get("thesis")
     if isinstance(thesis, dict):
-        chain = tuple(str(thesis.get(k) or "").strip()[:160] for k in ("effect", "flow", "instrument"))
+        chain = tuple(_text(thesis.get(k), 160) for k in ("effect", "flow", "instrument"))
         thesis_text = " → ".join(c for c in chain if c)
     else:
-        thesis_text = str(thesis or "")[:400]
+        thesis_text = _text(thesis, 400)
     if not thesis_text:
-        return None
+        raise MalformedAnswer("no thesis")
     return {
         "tickers": tickers[:_GENERATIVE_MAX_TICKERS],
-        "confidence": confidence,
-        "riskScore": risk,
+        "confidence": int(max(0, min(_GENERATIVE_MAX_CONFIDENCE, confidence))),
+        "riskScore": int(max(1, min(_GENERATIVE_MAX_RISK, risk))),
         "thesis": thesis_text,
-        "narrative": str(body.get("narrative") or "")[:600],
+        "narrative": _text(body.get("narrative"), 600),
     }
 
 
 def _llm_generate(event: GeoEvent) -> dict | None:
     """One generative call for an event no rule covers. Cached per event id
-    (successes and "not actionable" alike — a no is worth remembering for 6 h).
+    (successes and "not actionable" alike — a no is worth remembering for 6 h;
+    an answer that could not be read or used is neither, and is asked again).
     Returns the validated proposal, or None."""
     if not settings.openrouter_api_key:
         return None
@@ -315,7 +463,16 @@ def _llm_generate(event: GeoEvent) -> dict | None:
         body = _json_object(content, "geo generative LLM", event.id)
         if body is None:
             return None
-        proposal = _validate_generated(body, region_reach(event.region), allowed)
+        try:
+            proposal = _validate_generated(body, region_reach(event.region), allowed)
+        except MalformedAnswer as exc:
+            # Like an answer that would not parse: logged with what it was,
+            # never cached.
+            logger.warning(
+                "geo generative LLM: answer is not usable for %s (%s; %d chars): %r",
+                event.id, exc, len(content), content[:200],
+            )
+            return None
     except Exception:
         logger.warning("geo generative LLM analysis failed", exc_info=True)
         return None
@@ -327,6 +484,8 @@ def _llm_generate(event: GeoEvent) -> dict | None:
     if proposal:
         logger.info("geo generative: %s → %s (conf %s)", event.id,
                     ",".join(t["symbol"] for t in proposal["tickers"]), proposal["confidence"])
+    else:
+        logger.info("geo generative: %s → not actionable", event.id)
     return proposal
 
 
@@ -358,6 +517,7 @@ def analyze_event(
 ) -> AnalystResult:
     rules, tickers, confidence, direction = correlate_with_rules(event, stats)
 
+    # Not a raw answer: what _validate_enrichment let through, in the same format.
     llm = _llm_analyze(event, [t.symbol for t in tickers]) if use_llm else None
 
     ticker_map = {t.symbol: t for t in tickers}

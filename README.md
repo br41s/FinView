@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1351 backend, 127 skipped sin ficheros reales) · vitest (148 frontend) · ESLint
+- **Tests:** pytest (1420 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (148 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -134,9 +134,9 @@ Módulo independiente accesible en `/options`. Funcionalidades implementadas:
 1. **Observe** — fetch options chain por ticker (caché 5 min TTL)
 2. **Greeks** — Delta, Gamma, Theta, Vega, Rho via Black-Scholes (`greeks_calculator.py`)
 3. **Analyze** — reglas IV/P·C ratio/skew/volumen inusual (`options_analyzer.py`)
-4. **Premium Spike** — comparación contra baseline EMA in-memory; multiplier ≥ 2.5× → alerta HIGH
+4. **Premium Spike** — prima de cada contrato contra su propio cierre anterior (Yahoo, MEFF; Eurex no publica cierre previo); ≥ 2.5× → alerta HIGH
 5. **Store** — snapshot a DB + alertas + actividad inusual + señal de backtest (HIGH/MEDIUM)
-6. **Análisis IA** — vía OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`), estructurado en 7 secciones (sólo si hay alertas y `FINVIEW_OPENROUTER_API_KEY` configurada)
+6. **Análisis IA** — vía OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`; en producción `deepseek/deepseek-v4.1-flash`), estructurado en 7 secciones (sólo si hay alertas y `FINVIEW_OPENROUTER_API_KEY` configurada)
 7. **Notify** — ntfy.sh (push) + Email SMTP + Telegram Bot (spikes premium)
 8. **Backtest** — `evaluate_pending()` llena outcomes a +1d/+3d/+7d en el siguiente ciclo
 
@@ -335,11 +335,12 @@ Base URL: `http://localhost:8000/api`
 ## Tests
 
 ```bash
-pytest tests/ backend/tests/ -v
+pytest
 ```
 
-**Backend:** 453 tests, 131 skipped (los skipped requieren PDFs/CSVs reales en `files/`,
-que no están en el repo).
+**Backend:** 1420 tests, todos en `backend/tests/` (lo fija `testpaths` en `pyproject.toml`).
+Con los PDFs/CSVs reales en `files/` pasan todos; esos ficheros no están en el repo, y donde
+faltan (CI, un worktree sin enlazar `files/`) los 148 tests que los requieren salen como skipped.
 
 **Frontend:**
 
@@ -347,8 +348,10 @@ que no están en el repo).
 cd frontend && pnpm test
 ```
 
-21 tests sobre la lógica pura de `src/lib/`. Requiere `pnpm install` — sin `vitest`
-instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
+148 tests sobre lógica pura: `src/lib/`, `src/app/blog/posts.test.ts`,
+`src/app/options/optionsData.test.ts` (el reducer de estado de la página de opciones) y
+`src/game/garden/` (las reglas del juego del jardín de la landing). Requiere `pnpm install` —
+sin `vitest` instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.
 
 ## Despliegue y CI/CD
 
@@ -367,7 +370,7 @@ Sin prefijo **no se leen** y el módulo degrada en silencio.
 |----------|-------------|
 | `FINVIEW_CRON_SECRET` | **Obligatoria en prod.** Secreto compartido con Cloud Scheduler. Sin ella los pipelines no corren — ver [docs/deployment.md](docs/deployment.md) |
 | `FINVIEW_OPENROUTER_API_KEY` | Habilita el análisis IA (opcional — sin ella el ciclo sigue, sin informe, y las señales técnicas se guardan sin puntuar) |
-| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido. Default `deepseek/deepseek-v4-flash` |
+| `FINVIEW_OPENROUTER_MODEL` | Modelo compartido. Default `deepseek/deepseek-v4-flash` (producción: `deepseek/deepseek-v4.1-flash`) |
 | `FINVIEW_FRED_API_KEY` | Tipo libre de riesgo por divisa + régimen macro (opcional, gratuita) |
 | `FINVIEW_TELEGRAM_BOT_TOKEN` | Token del bot de Telegram para notificaciones de spikes |
 | `FINVIEW_TELEGRAM_CHAT_ID` | Chat ID destino de las notificaciones Telegram |

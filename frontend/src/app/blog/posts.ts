@@ -44,6 +44,78 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'adr-fiscalidad-espana',
+    tag: 'Fiscalidad',
+    date: '13 oct 2026',
+    readTime: '11 min',
+    title: 'Fiscalidad de los ADR: el dividendo no sigue el convenio España-país (y no es valor homogéneo)',
+    excerpt:
+      'Un ADR no es la acción: es un certificado del banco depositario. Eso cambia la retención que sufre el dividendo, dónde va en tu Renta y hasta si puedes aflorar pérdidas sin esperar dos meses.',
+  },
+  {
+    slug: 'oro-fiscalidad-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '12 oct 2026',
+    readTime: '11 min',
+    title: 'Oro: lingotes, monedas, ETC y mineras — cómo tributa cada uno en el IRPF',
+    excerpt:
+      'Tu lingote, tu ETC del bróker y tus acciones de una minera van a casillas distintas. El ETC no es un ETF y eso lo mueve de bloque. Guía del IVA, el coste de adquisición y las trampas del oro en la Renta.',
+  },
+  {
+    slug: 'deducir-perdida-acciones-quiebra-irpf',
+    tag: 'Fiscalidad',
+    date: '12 oct 2026',
+    readTime: '12 min',
+    title: 'Cuando una empresa de tu cartera quiebra: la pérdida que Hacienda no te deja deducir todavía',
+    excerpt:
+      'Una empresa de tu cartera entra en concurso, la acción se hunde y Hacienda no te deja apuntar la pérdida todavía: solo cuenta cuando se disuelve y liquida. Los plazos, el artículo 37.1.e y lo que dice la DGT.',
+  },
+  {
+    slug: 'diferencias-cambio-divisa-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '11 oct 2026',
+    readTime: '11 min',
+    title: 'Diferencias de cambio en el IRPF: cómo tributa el dólar (y la libra) de tu cartera',
+    excerpt:
+      'Vender una acción en dólares son dos hechos imponibles: la venta y el cambio de divisa. Hacienda calcula la ganancia en la moneda original y cobra aparte la conversión a euros. Cómo se hace, con qué tipo y por qué el informe del bróker no basta.',
+  },
+  {
+    slug: 'directiva-faster-retenciones-dividendos',
+    tag: 'Fiscalidad',
+    date: '10 oct 2026',
+    readTime: '11 min',
+    title: 'Directiva FASTER: el fin de las retenciones que reclamabas a mano',
+    excerpt:
+      'La UE ya tiene aprobada la norma que promete acabar en 2030 con las devoluciones de retenciones a mano: un certificado digital único para toda tu cartera europea, ajuste en origen o devolución en 60 días, y el bróker haciendo el papeleo. Qué cambia para tus dividendos y qué no.',
+  },
+  {
+    slug: 'mlp-dividendos-espana',
+    tag: 'Fiscalidad',
+    date: '8 oct 2026',
+    readTime: '12 min',
+    title: 'MLPs de EEUU: el dividendo al que el fisco retiene el 37 % y España no te devuelve',
+    excerpt:
+      'Los MLP estadounidenses reparten rentabilidades altas, pero para el fisco de EEUU no eres un accionista: eres un socio. Te retienen el 37 % sobre la parte de negocio, el 15 % del convenio no te cubre y el papel que lo arregla no existe.',
+  },
+  {
+    slug: 'prestamo-de-valores-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '7 oct 2026',
+    readTime: '11 min',
+    title: 'Préstamo de valores: el «falso dividendo» que Hacienda no te deja deducir',
+    excerpt:
+      'Prestas tus acciones al bróker, cobras una comisión y sigues teniendo la posición. Pero si el dividendo llega con los títulos prestados, ya no es un dividendo: Hacienda lo trata como interés, cambia de casilla y pierdes la deducción por doble imposición.',
+  },
+  {
+    slug: 'certificado-residencia-fiscal-dividendos',
+    tag: 'Fiscalidad',
+    date: '5 oct 2026',
+    readTime: '10 min',
+    title: 'Certificado de residencia fiscal: el papel gratis que desbloquea tus convenios',
+    excerpt:
+      'Sin este papel, el pagador extranjero te aplica su retención máxima y el convenio se queda sin invocar. Lo expide la AEAT, es gratis y suele salir al momento, pero caduca a los 12 meses y tiene dos versiones. Cómo pedirlo bien y por qué te lo deniegan.',
+  },
+  {
     slug: 'inversiones-exteriores-d6-espana',
     tag: 'Fiscalidad',
     date: '4 oct 2026',

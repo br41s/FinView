@@ -2447,7 +2447,237 @@ function ImgMetodoFifo() {
   );
 }
 
+function ImgCertificadoResidenciaFiscal() {
+  return (
+    <div className={styles.postImgCertificadoResidenciaFiscal}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.08em">CERTIFICADO DE RESIDENCIA · AEAT</text>
+        {/* Certificate document */}
+        <rect x="30" y="28" width="70" height="76" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <line x1="40" y1="46" x2="90" y2="46" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="40" y1="57" x2="90" y2="57" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="40" y1="68" x2="78" y2="68" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <text x="40" y="38" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui">EN · ES</text>
+        {/* 12-month validity badge */}
+        <circle cx="138" cy="52" r="20" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="138" y="50" fontSize="9" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">12</text>
+        <text x="138" y="60" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">meses</text>
+        {/* CSV verification */}
+        <rect x="118" y="82" width="52" height="16" rx="3" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="144" y="93" fontSize="6.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">CSV ✓</text>
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">acredita que resides en España</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgPrestamoDeValores() {
+  return (
+    <div className={styles.postImgPrestamoDeValores}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ACCIÓN PRESTADA · DIVIDENDO → PAGO EN LUGAR</text>
+        {/* Share lent out */}
+        <rect x="16" y="40" width="40" height="26" rx="3" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <path d="M16 48h40" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <text x="36" y="62" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acción</text>
+        <text x="36" y="80" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">prestada</text>
+        {/* Arrow out */}
+        <path d="M62 53h18" stroke="var(--fv-ink-30)" strokeWidth="1.5" />
+        <polygon points="80,48 88,53 80,58" fill="var(--fv-ink-30)" />
+        {/* Issuer pays real dividend to borrower, not to you */}
+        <rect x="90" y="38" width="46" height="30" rx="4" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none" />
+        <text x="113" y="52" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">empresa</text>
+        <text x="113" y="62" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">paga al prestatario</text>
+        {/* Substitution payment back to you */}
+        <path d="M113 68v16h-77" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="4 2" />
+        <polygon points="42,80 36,84 42,88" fill="var(--fv-ochre)" />
+        {/* Tax boxes */}
+        <rect x="122" y="84" width="66" height="26" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="155" y="95" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">cesión capitales</text>
+        <text x="155" y="105" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">no es dividendo · sin 0588</text>
+        <text x="100" y="117" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">el bróker te compensa: base del ahorro, casilla 0027</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgMlp() {
+  return (
+    <div className={styles.postImgMlp}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">MLP EEUU · SOCIO, NO ACCIONISTA</text>
+        {/* MLP units */}
+        <rect x="16" y="44" width="20" height="14" rx="2" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <rect x="16" y="62" width="20" height="14" rx="2" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="26" y="84" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">unidades</text>
+        {/* Arrow to partnership */}
+        <path d="M40 58h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="54,54 61,58 54,62" fill="var(--fv-ink-30)" />
+        {/* Partnership block with pipeline */}
+        <rect x="63" y="38" width="54" height="42" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="90" y="52" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">partnership</text>
+        <path d="M72 66h36" stroke="var(--fv-ochre)" strokeWidth="1.6" strokeDasharray="5 3" />
+        <path d="M90 66v6" stroke="var(--fv-ochre)" strokeWidth="1.6" />
+        <text x="90" y="78" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">actividad en EEUU</text>
+        {/* Withholding badges */}
+        <rect x="128" y="34" width="60" height="26" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="158" y="46" fontSize="8" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">37 %</text>
+        <text x="158" y="55" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">retención ECI</text>
+        <rect x="128" y="66" width="60" height="22" rx="5" stroke="var(--fv-ink-20)" strokeWidth="1" fill="none" />
+        <text x="158" y="78" fontSize="7" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">15 %</text>
+        <text x="158" y="85" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">convenio: no aplica</text>
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">K-1 · ITIN · Form 1040-NR cada año</text>
+        <text x="100" y="117" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">en España: renta conectada + devolución de aportaciones</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgFaster() {
+  return (
+    <div className={styles.postImgFaster}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">DIRECTIVA FASTER (UE) 2025/50</text>
+        {/* Single digital certificate for the whole year */}
+        <rect x="24" y="30" width="52" height="66" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="50" y="44" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">eTRC · UE</text>
+        <line x1="32" y1="54" x2="68" y2="54" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="32" y1="64" x2="68" y2="64" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <line x1="32" y1="74" x2="58" y2="74" stroke="var(--fv-ochre)" strokeWidth="1.2" opacity="0.6" />
+        <text x="50" y="88" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">1 certificado</text>
+        {/* One certificate fans out to several countries */}
+        <path d="M80 60h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="94,56 101,60 94,64" fill="var(--fv-ink-30)" />
+        {/* Fast-track paths */}
+        <rect x="104" y="30" width="76" height="24" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="none" />
+        <text x="142" y="42" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">ajuste en origen</text>
+        <text x="142" y="50" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tipo correcto al pagar</text>
+        <rect x="104" y="60" width="76" height="24" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="142" y="72" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">devolución express</text>
+        <text x="142" y="80" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">60 días · tu bróker</text>
+        <text x="100" y="106" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">aplicable desde el 1 de enero de 2030</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgDiferenciasCambio() {
+  return (
+    <div className={styles.postImgDiferenciasCambio}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">VENTA + CAMBIO = DOS HECHOS</text>
+        {/* Event 1: sale of shares, priced in dollars */}
+        <rect x="16" y="26" width="46" height="34" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="39" y="40" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">1 · VENTA</text>
+        <text x="39" y="51" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">100 $</text>
+        {/* Event 2: conversion to euros */}
+        <rect x="138" y="26" width="46" height="34" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="161" y="40" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">2 · CAMBIO</text>
+        <text x="161" y="51" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">€</text>
+        {/* Conversion arrow carrying the official rate */}
+        <path d="M62 43h60" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="122,39 130,43 122,47" fill="var(--fv-ink-30)" />
+        <text x="92" y="37" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">tipo del día</text>
+        {/* FX rate line */}
+        <path d="M30 84 L60 74 L90 88 L120 72 L150 80 L172 66" stroke="var(--fv-ochre)" strokeWidth="1.4" fill="none" />
+        <line x1="24" y1="92" x2="176" y2="92" stroke="var(--fv-ink-30)" strokeWidth="1" />
+        <text x="100" y="106" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">el EUR/USD mueve tu ganancia en euros</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgAdr() {
+  return (
+    <div className={styles.postImgAdr}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ADR · UN CERTIFICADO, NO UNA ACCIÓN</text>
+        {/* Underlying foreign shares held by the depositary */}
+        <rect x="16" y="30" width="42" height="44" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="37" y="48" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acciones</text>
+        <text x="37" y="58" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">empresa</text>
+        <text x="37" y="67" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">no-EEUU</text>
+        {/* Depositary bank holds them */}
+        <path d="M58 52h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="72,48 79,52 72,56" fill="var(--fv-ink-30)" />
+        <rect x="80" y="30" width="52" height="44" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="106" y="48" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">depositario</text>
+        <path d="M90 58h32" stroke="var(--fv-ochre)" strokeWidth="1.5" strokeDasharray="4 3" />
+        <text x="106" y="68" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">comisión</text>
+        {/* ADR certificate to the investor */}
+        <path d="M132 52h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="146,48 153,52 146,56" fill="var(--fv-ink-30)" />
+        <rect x="154" y="34" width="32" height="36" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="170" y="52" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">ADR</text>
+        <text x="170" y="62" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">tú</text>
+        {/* Two facts */}
+        <text x="100" y="92" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">retención: ley interna / convenio con EE.UU.</text>
+        <text x="100" y="104" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">no son valores homogéneos (DGT V0082-17)</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgOro() {
+  return (
+    <div className={styles.postImgOro}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.07em">ORO: FÍSICO vs ETC</text>
+        {/* Physical gold bar (ownership) */}
+        <polygon points="16,32 80,32 73,56 23,56" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="48" y="49" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">999,9</text>
+        <text x="48" y="70" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">LINGOTE · MONEDA</text>
+        <text x="48" y="80" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">sin IVA · G/P patrimonial</text>
+        {/* Debt note (ETC) */}
+        <rect x="122" y="30" width="58" height="42" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.5" fill="none" />
+        <line x1="130" y1="42" x2="172" y2="42" stroke="var(--fv-ink-30)" strokeWidth="1.1" />
+        <line x1="130" y1="52" x2="172" y2="52" stroke="var(--fv-ink-30)" strokeWidth="1.1" />
+        <line x1="130" y1="62" x2="158" y2="62" stroke="var(--fv-ink-30)" strokeWidth="1.1" />
+        <text x="151" y="70" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">nota de deuda · ETC</text>
+        <text x="151" y="80" fontSize="5.3" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">RCM · casilla 0031</text>
+        {/* Divider */}
+        <line x1="100" y1="26" x2="100" y2="86" stroke="var(--fv-ink-30)" strokeWidth="1" opacity="0.5" strokeDasharray="3 3" />
+        <text x="100" y="106" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">mismo metal, distinta casilla</text>
+      </svg>
+    </div>
+  );
+}
+
+function ImgQuiebraEmpresa() {
+  return (
+    <div className={styles.postImgQuiebraEmpresa}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="13" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">EMPRESA EN CONCURSO · LA PÉRDIDA ESPERA</text>
+        {/* Price collapsing to zero */}
+        <path d="M18 30 L38 36 L58 46 L78 62 L96 78 L112 90" stroke="var(--fv-ink-30)" strokeWidth="1.4" fill="none" />
+        <line x1="14" y1="92" x2="116" y2="92" stroke="var(--fv-ink-30)" strokeWidth="1" />
+        <text x="20" y="26" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui">cotiza</text>
+        <text x="112" y="88" fontSize="5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="end">0 €</text>
+        <path d="M58 50v8" stroke="var(--fv-ink-20)" strokeWidth="1" strokeDasharray="2 2" />
+        <text x="58" y="64" fontSize="5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">concurso</text>
+        {/* Loss only recognised when the company is extinguished */}
+        <rect x="124" y="24" width="64" height="28" rx="5" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="156" y="36" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">pérdida</text>
+        <text x="156" y="46" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">al extinguirse</text>
+        <path d="M156 52v14" stroke="var(--fv-ochre)" strokeWidth="1.4" />
+        <polygon points="152,64 156,70 160,64" fill="var(--fv-ochre)" />
+        <rect x="124" y="72" width="64" height="22" rx="5" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none" />
+        <text x="156" y="86" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">base del ahorro</text>
+        <text x="156" y="112" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">hasta 25 % de los dividendos</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'adr-fiscalidad-espana': ImgAdr,
+  'oro-fiscalidad-irpf-espana': ImgOro,
+  'deducir-perdida-acciones-quiebra-irpf': ImgQuiebraEmpresa,
+  'diferencias-cambio-divisa-irpf-espana': ImgDiferenciasCambio,
+  'directiva-faster-retenciones-dividendos': ImgFaster,
+  'mlp-dividendos-espana': ImgMlp,
+  'prestamo-de-valores-irpf-espana': ImgPrestamoDeValores,
+  'certificado-residencia-fiscal-dividendos': ImgCertificadoResidenciaFiscal,
   'inversiones-exteriores-d6-espana': ImgInversionesExterioresD6,
   'metodo-fifo-irpf-espana': ImgMetodoFifo,
   'sucesiones-acciones-eeuu-espana': ImgSucesionesEeuu,

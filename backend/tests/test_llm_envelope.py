@@ -4,7 +4,10 @@ Anything that talks to an external service gets tests for the ugly paths, not
 just the happy one. A 200 means the server answered — nothing more.
 """
 
-from backend.services.llm_envelope import extract_content
+from unittest.mock import MagicMock, patch
+
+from backend.services import llm_envelope
+from backend.services.llm_envelope import chat, extract_content
 
 CTX = "test"
 
@@ -82,3 +85,43 @@ def test_non_string_content_is_rejected():
 
     assert content is None
     assert error is not None
+
+
+# --- the request itself -----------------------------------------------------
+
+
+def _ok_response():
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"choices": [{"message": {"content": "hola"}, "finish_reason": "stop"}]}
+    return resp
+
+
+def _sent_json(**params):
+    with patch.object(llm_envelope.settings, "openrouter_api_key", "test-key"), \
+         patch.object(llm_envelope.httpx, "post", return_value=_ok_response()) as post:
+        content, error = chat([{"role": "user", "content": "hi"}], context=CTX, **params)
+    assert (content, error) == ("hola", None)
+    return post.call_args.kwargs["json"]
+
+
+def test_every_request_asks_for_providers_that_do_not_keep_or_train_on_the_prompt():
+    assert _sent_json()["provider"] == {"data_collection": "deny"}
+    assert _sent_json(max_tokens=50, reasoning=llm_envelope.NO_REASONING)["provider"] == {
+        "data_collection": "deny"
+    }
+
+
+def test_a_caller_cannot_weaken_the_policy():
+    assert _sent_json(provider={"data_collection": "allow"})["provider"] == {"data_collection": "deny"}
+
+
+def test_the_other_params_still_go_through():
+    body = _sent_json(max_tokens=50, temperature=0.2)
+    assert body["model"] == llm_envelope.settings.openrouter_model
+    assert (body["max_tokens"], body["temperature"]) == (50, 0.2)
+
+
+def test_the_shared_policy_constant_is_not_mutated_by_a_call():
+    _sent_json()
+    assert llm_envelope.PROVIDER_POLICY == {"data_collection": "deny"}

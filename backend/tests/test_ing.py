@@ -20,12 +20,8 @@ from backend.importers.base import (
 
 _D = Decimal
 
-ING_PDF_PATH = Path("/Users/brais/VSCODE/FinView/files/ING-Fiscal-2024.pdf")
-
-pytestmark = pytest.mark.skipif(
-    not ING_PDF_PATH.exists(),
-    reason="ING Información Fiscal PDF not available",
-)
+# Path to real test data (same convention as test_import_service.py)
+ING_PDF_PATH = Path(__file__).resolve().parents[2] / "files" / "ING-Fiscal-2024.pdf"
 
 
 # -- Unit tests for helpers --
@@ -74,9 +70,22 @@ class TestCountryFromIsin:
 
 
 @pytest.fixture(scope="module")
-def report():
+def ing_pdf() -> Path:
+    """The real ING Información Fiscal 2024.
+
+    The PDF is not in the repo (`files/` is gitignored), so the tests that
+    need it skip here rather than at module level — the helper unit tests
+    above must run everywhere, including CI.
+    """
+    if not ING_PDF_PATH.exists():
+        pytest.skip("ING Información Fiscal PDF not available")
+    return ING_PDF_PATH
+
+
+@pytest.fixture(scope="module")
+def report(ing_pdf):
     """Parse the real ING Información Fiscal once for all tests."""
-    return parse_ing_report(ING_PDF_PATH)
+    return parse_ing_report(ing_pdf)
 
 
 class TestFiscalYear:
@@ -199,8 +208,8 @@ class TestHoldings:
 
 
 class TestFileHash:
-    def test_hash_deterministic(self):
-        h1 = compute_file_hash(ING_PDF_PATH)
-        h2 = compute_file_hash(ING_PDF_PATH)
+    def test_hash_deterministic(self, ing_pdf):
+        h1 = compute_file_hash(ing_pdf)
+        h2 = compute_file_hash(ing_pdf)
         assert h1 == h2
         assert len(h1) == 64  # SHA-256 hex

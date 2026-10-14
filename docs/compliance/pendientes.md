@@ -56,12 +56,18 @@ con lo que implican para que quien revise el cumplimiento sepa que fueron elecci
 ## Proveedores
 
 - [ ] Aceptar o descargar el DPA de **Neon** y de **Vercel** y guardar constancia.
-- [ ] **OpenRouter y el modelo.** El modelo por defecto es `deepseek/deepseek-v4-flash`.
+- [ ] **OpenRouter y el modelo.** El modelo por defecto del código es `deepseek/deepseek-v4-flash`; producción usa `deepseek/deepseek-v4.1-flash` desde el 2026-10-10.
       OpenRouter decide qué proveedor lo sirve, que puede estar fuera del EEE y de EE. UU.
       Los prompts no llevan identidad, pero el asistente envía texto libre del usuario.
       Opciones: restringir el enrutado a proveedores sin retención de datos
       (`provider.data_collection: "deny"` en la petición), o cambiar de modelo. No se ha
       tocado porque puede dejar el modelo sin proveedor; hay que probarlo contra la API real.
+      2026-10-09: la clave pasó a la cuenta de OpenRouter de Biglobster LLC. El punto único de
+      llamada es `backend/services/llm_envelope.py`, que desde este cambio envía siempre
+      `provider.data_collection: "deny"` (`PROVIDER_POLICY`; probado antes contra la API real con
+      `tasks/openrouter_deny_probe.py` del workspace: `deepseek-v4-flash` y `-v4.1-flash` siguen
+      teniendo proveedor). Eso restringe el enrutado, pero **el DPA de OpenRouter sigue sin
+      descargarse ni guardarse**: este punto permanece abierto hasta entonces.
 - [ ] Confirmar la retención de copias de **Neon**. La política de privacidad dice "máximo
       30 días".
 

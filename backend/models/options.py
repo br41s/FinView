@@ -124,6 +124,25 @@ class OptionsAlert(Base):
     )
 
 
+class OptionsAlertNotification(Base):
+    """When an alert identity was last pushed, so a still-true alert is not re-sent.
+
+    In the DB, not in memory: prod scales to zero between cron ticks, so every
+    cycle starts on a fresh instance and an in-process dict is always empty.
+    """
+
+    __tablename__ = "options_alert_notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    alert_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    notified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "alert_key", name="uq_opt_alert_notif_user_key"),
+    )
+
+
 class UnusualActivity(Base):
     """Smart money / unusual volume detection."""
 

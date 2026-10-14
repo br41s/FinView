@@ -83,6 +83,10 @@ def run_cycle(user_id: int) -> dict:
         regime = macro["regime"] if macro else None
 
         all_alerts: list[dict] = []
+        # Every name an alert can carry for a ticker the cycle got data for: the
+        # watchlist entry (spikes) and the resolved symbol (analyzer alerts) — they
+        # differ for a row stored by ISIN. Only these can clear an alert episode.
+        analyzed: set[str] = set()
         all_unusual: list[dict] = []
         all_sentiments: list[str] = []
         snapshots_saved = 0
@@ -93,6 +97,7 @@ def run_cycle(user_id: int) -> dict:
             if not options_data:
                 logger.warning("No data for %s", ticker)
                 continue
+            analyzed.update({ticker, options_data.get("ticker") or ticker})
 
             # Phase 2: Greeks (risk-free rate resolved per ticker currency,
             # FRED-backed with a per-currency constant fallback)
@@ -109,8 +114,8 @@ def run_cycle(user_id: int) -> dict:
             all_unusual.extend(unusual)
             all_sentiments.append(summary["market_sentiment"])
 
-            # Premium spike detection (in-memory EMA baseline, no DB needed)
-            spike_alerts = detect_spikes(user_id, ticker, options_data)
+            # Premium spikes: each contract against its own previous close
+            spike_alerts = detect_spikes(ticker, options_data)
             if spike_alerts:
                 all_alerts.extend(spike_alerts)
                 logger.info("%d premium spike(s) detected for %s", len(spike_alerts), ticker)
@@ -209,15 +214,14 @@ def run_cycle(user_id: int) -> dict:
         db.add(log_entry)
         db.commit()
 
-        # Phase 6: Notify. One entry point: notify_alerts gates to HIGH, dedups
-        # across cycles, and fans out to every channel (spikes included, with
-        # their own format). The old split — a second notify_spike_telegram pass —
-        # double-sent spikes on Telegram and had no dedup at all.
-        if all_alerts:
-            try:
-                notify_alerts(all_alerts)
-            except Exception:
-                logger.exception("Notification failed")
+        # Phase 6: Notify. One entry point: notify_alerts gates to HIGH, sends
+        # once per alert episode, and fans out to every channel (spikes included,
+        # with their own format). Called even with no alerts: a quiet cycle is
+        # what ends an episode.
+        try:
+            notify_alerts(db, user_id, all_alerts, analyzed)
+        except Exception:
+            logger.exception("Notification failed")
 
         return {
             "status": "ok",

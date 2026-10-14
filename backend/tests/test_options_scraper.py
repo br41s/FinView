@@ -119,3 +119,26 @@ def test_a_ticker_is_passed_through_without_a_lookup(monkeypatch):
     for ticker in ("AAPL", "TEF.MC", "BRK-B", "IWDA.AS"):
         assert scraper._as_ticker(ticker) == ticker
 
+
+
+# ── previous close, the premium-spike reference ──────────────────────
+
+
+def test_a_yahoo_row_carries_the_contracts_previous_close():
+    row = {"strike": 150.0, "lastPrice": 12.80, "change": 1.38, "volume": 5}
+    out = scraper._yahoo_row_to_dict(row, 10, "2026-10-16", "call")
+    assert out["prevClose"] == pytest.approx(11.42)
+
+
+def test_a_yahoo_row_without_a_change_has_no_move():
+    row = {"strike": 150.0, "lastPrice": 12.80, "change": float("nan"), "volume": 5}
+    out = scraper._yahoo_row_to_dict(row, 10, "2026-10-16", "call")
+    assert out["prevClose"] == out["lastPrice"]
+
+
+def test_a_meff_row_carries_the_prev_column():
+    # Strike | BidOrd BidVol BidPrice | AskPrice AskVol AskOrd | Last | Vol | Open | High | Low | Prev
+    cols = ["12,00", "1", "10", "0,40", "0,45", "10", "1", "0,42", "25", "0,30", "0,45", "0,30", "0,15"]
+    out = scraper._parse_meff_row(cols, 12.5, "CALL", "2026-10-16", 10)
+    assert out["lastPrice"] == pytest.approx(0.42)
+    assert out["prevClose"] == pytest.approx(0.15)
