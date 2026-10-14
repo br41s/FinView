@@ -110,7 +110,7 @@ def _run_import(kind: str, parse: Callable[[], T], store: Callable[[T], dict]) -
         report = parse()
     except Exception as e:
         logger.warning("Upload rejected: %s could not be parsed: %s", kind, e)
-        raise HTTPException(status_code=422, detail=f"Error al procesar {kind}: {e}")
+        raise HTTPException(status_code=422, detail=f"Error al procesar {kind}: {e}") from e
     try:
         return store(report)
     except Exception:
@@ -118,7 +118,7 @@ def _run_import(kind: str, parse: Callable[[], T], store: Callable[[T], dict]) -
         raise HTTPException(
             status_code=500,
             detail="Error interno al guardar la importación. Inténtalo de nuevo más tarde.",
-        )
+        ) from None
 
 
 def _upload_responses(accepted: str, kind: str) -> dict[int, dict[str, str]]:
@@ -391,7 +391,7 @@ def resolve_issue(issue_id: int, body: ResolveIssueRequest, db: DbSession, user:
     except HTTPException:
         raise
     except (ValueError, KeyError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     db.commit()
     return issue

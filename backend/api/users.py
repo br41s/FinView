@@ -80,7 +80,7 @@ def delete_my_account(request: Request, body: DeleteAccountRequest, user: Curren
         raise HTTPException(
             status_code=502,
             detail="No se pudo cancelar tu suscripción. Tu cuenta no se ha eliminado; inténtalo de nuevo en unos minutos.",
-        )
+        ) from None
     user_id = user.id
     delete_user(db, user)
     db.commit()

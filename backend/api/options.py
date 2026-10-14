@@ -120,7 +120,7 @@ def add_watchlist_item(body: WatchlistItemIn, db: DbSession, user: CurrentUser):
         # auto-sync and a manual add firing together. Same outcome as the
         # pre-check: it's already followed.
         db.rollback()
-        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist")
+        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist") from None
     db.refresh(item)
     return _to_watchlist_out(item)
 

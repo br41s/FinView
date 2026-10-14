@@ -67,7 +67,7 @@ def checkout(body: CheckoutRequest, user: CurrentUser, db: DbSession):
         return {"url": url}
     except Exception as e:
         logger.exception("Stripe checkout error")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post(
@@ -82,7 +82,7 @@ def portal(user: CurrentUser, db: DbSession):
         return {"url": url}
     except Exception as e:
         logger.exception("Stripe portal error")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/webhook", include_in_schema=False)
@@ -104,7 +104,7 @@ async def stripe_webhook(request: Request):
         return result
     except ValueError:
         logger.warning("Stripe webhook signature validation failed")
-        raise HTTPException(status_code=400, detail="Invalid payload")
+        raise HTTPException(status_code=400, detail="Invalid payload") from None
     except Exception as e:
         logger.exception("Webhook processing error")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e

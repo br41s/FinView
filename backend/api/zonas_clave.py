@@ -134,7 +134,9 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
         # e.g. the options auto-sync following the same new ticker. Treat as
         # already-followed, same as the pre-check.
         db.rollback()
-        raise HTTPException(status_code=409, detail="El ticker ya está en la watchlist de Zonas Clave")
+        raise HTTPException(
+            status_code=409, detail="El ticker ya está en la watchlist de Zonas Clave"
+        ) from None
     db.refresh(item)
 
     if settings.request_scoped_runtime:
