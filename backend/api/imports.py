@@ -78,23 +78,22 @@ def _require_suffix(upload: UploadFile, suffix: str, detail: str) -> None:
 
 def _spool(upload: UploadFile, suffix: str) -> Path:
     """Copy the upload to a temp file in chunks, refusing anything over MAX_UPLOAD_BYTES."""
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    path = Path(tmp.name)
-    copied = 0
-    try:
-        while chunk := upload.file.read(1 << 20):
-            copied += len(chunk)
-            if copied > MAX_UPLOAD_BYTES:
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"El archivo supera el tamaño máximo de {MAX_UPLOAD_BYTES >> 20} MB",
-                )
-            tmp.write(chunk)
-    except BaseException:
-        tmp.close()
-        path.unlink(missing_ok=True)
-        raise
-    tmp.close()
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        path = Path(tmp.name)
+        copied = 0
+        try:
+            while chunk := upload.file.read(1 << 20):
+                copied += len(chunk)
+                if copied > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"El archivo supera el tamaño máximo de {MAX_UPLOAD_BYTES >> 20} MB",
+                    )
+                tmp.write(chunk)
+        except BaseException:
+            tmp.close()  # before the unlink; the with block only closes after this handler
+            path.unlink(missing_ok=True)
+            raise
     return path
 
 
@@ -245,7 +244,9 @@ def upload_bbva_reports(
     paths: list[Path] = []
     try:
         for f in files:
-            paths.append(_spool(f, ".pdf"))
+            # A loop, not extend(): if a later _spool raises, `paths` must still hold
+            # the files already spooled so the finally below unlinks them.
+            paths.append(_spool(f, ".pdf"))  # noqa: PERF401
         filenames = ", ".join(f.filename or "unknown" for f in files)
         return _run_import(
             "los PDFs de BBVA",

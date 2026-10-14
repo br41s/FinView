@@ -1418,9 +1418,8 @@ def match_rules(event) -> list[FastRule]:
                 continue
 
         m = _RE_SEVERITY.search(cond)
-        if m:
-            if getattr(event, "severity", None) != m.group(1):
-                continue
+        if m and getattr(event, "severity", None) != m.group(1):
+            continue
 
         m = _RE_CLUSTER.search(cond)
         if m:

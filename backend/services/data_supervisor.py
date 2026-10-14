@@ -206,9 +206,8 @@ def _check_missing_cost_basis(
         q = q.filter(Transaction.import_id == import_id)
     q = _scope_tx_query(q, user_id)
 
-    issues: list[DataIssue] = []
-    for tx in q.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all():
-        issues.append(DataIssue(
+    return [
+        DataIssue(
             import_id=tx.import_id,
             issue_type="missing_cost_basis",
             severity="warning",
@@ -225,8 +224,9 @@ def _check_missing_cost_basis(
                 "trade_date": tx.trade_date.isoformat(),
                 "quantity": str(tx.quantity),
             }),
-        ))
-    return issues
+        )
+        for tx in q.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -912,8 +912,7 @@ def _names_for_isins(
     tx_q = db.query(Transaction.isin, Transaction.name).filter(
         Transaction.isin.in_(isins), Transaction.name != ""
     )
-    for isin, name in _scope_tx_query(tx_q, user_id).all():
-        names[isin] = name
+    names.update(_scope_tx_query(tx_q, user_id).all())
 
     return {isin: names.get(isin) or isin for isin in isins}
 

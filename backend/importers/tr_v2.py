@@ -603,8 +603,7 @@ def parse_tr_tax_report_v2(pdf_path: str | Path) -> TRTaxReport:
     pages_text: list[str] = []
 
     with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            pages_text.append(page.extract_text() or "")
+        pages_text.extend(page.extract_text() or "" for page in pdf.pages)
 
         last_kind = "unknown"
         # Track Modelo 714 subsection (E / F1 / G1 / G2)

@@ -1,5 +1,6 @@
 """APScheduler wrapper for periodic geo-intel pipeline cycles (per user)."""
 
+import contextlib
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -44,10 +45,8 @@ def stop_user_schedule(user_id: int) -> None:
     """Stop the geo pipeline job for a user."""
     job_id = _active_jobs.pop(user_id, None)
     if job_id:
-        try:
+        with contextlib.suppress(Exception):
             _scheduler.remove_job(job_id)
-        except Exception:
-            pass
         logger.info("Stopped geo monitor for user %d", user_id)
 
 

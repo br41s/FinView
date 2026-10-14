@@ -161,9 +161,7 @@ async def fetch_meteo() -> list[MeteoPoint]:
             *(_fetch_point(lat, lon, key) for lat, lon in batch),
             return_exceptions=True,
         )
-        for r in settled:
-            if isinstance(r, MeteoPoint):
-                results.append(r)
+        results.extend(r for r in settled if isinstance(r, MeteoPoint))
 
     if not results and _cache.stale is not None:
         return _cache.stale

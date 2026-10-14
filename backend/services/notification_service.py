@@ -6,6 +6,7 @@ Channels:
 - Telegram → Bot API text messages (premium spikes + HIGH alerts)
 """
 
+import contextlib
 import json
 import logging
 import smtplib
@@ -172,10 +173,8 @@ def send_telegram(text: str, parse_mode: str | None = "Markdown", include_thread
             # to guess at — which is exactly what happened in prod: spikes silently
             # never arrived and the logs couldn't say why.
             detail = ""
-            try:
+            with contextlib.suppress(Exception):
                 detail = e.read().decode("utf-8", "replace")[:300]
-            except Exception:
-                pass
             logger.error("Telegram send failed: HTTP %s — %s", e.code, detail)
             # A 400 is almost always one of the two optional extras: Markdown
             # formatting (a stray `*`/`_` in alert text) or forum-topic routing (a
