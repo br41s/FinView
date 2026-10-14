@@ -15,6 +15,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 
 from backend.services import ticker_map
+from backend.services.greeks_calculator import _norm_cdf, _norm_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,6 @@ _MEFF_SLUGS: dict[str, str] = {
 # data-tipo codes: O{C=Call|P=Put}A{YYYYMMDD}
 _TIPO_RE = re.compile(r"^O(C|P)A(\d{8})$")
 
-_SQRT_2PI = math.sqrt(2 * math.pi)
-
 _ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')
 _ISIN_CACHE: dict[str, str] = {}  # ISIN → resolved ticker symbol
 
@@ -89,14 +88,6 @@ _EUREX_SUFFIXES = {".DE", ".PA", ".AS", ".L", ".MI", ".SW", ".ZU", ".BR",
 
 
 # ── Math helpers ─────────────────────────────────────────────────────
-
-
-def _norm_cdf(x: float) -> float:
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2)))
-
-
-def _norm_pdf(x: float) -> float:
-    return math.exp(-0.5 * x * x) / _SQRT_2PI
 
 
 def _safe_int(val, default: int = 0) -> int:
