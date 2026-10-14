@@ -55,9 +55,27 @@ target-version = "py312"
 # is what the tree is verified clean against. Widening it is welcome, but as its
 # own PR with the diff attached: of what 0.16.8 would add, 797 findings are
 # FURB157 on Decimal constructors — churn in a fiscal engine, and worth reading
-# rather than auto-fixing — while ~34 DTZ (naive datetime) and 7 B023 (closure
-# over a loop variable) look like genuine bugs worth triaging on their own.
-select = ["E4", "E7", "E9", "F"]
+# rather than auto-fixing — while ~34 DTZ (naive datetime) look like genuine bugs
+# worth triaging on their own.
+#
+# Widened on 2026-10-14 with the families that catch real bugs or dead weight and
+# whose fixes leave fiscal arithmetic alone: B (flake8-bugbear: exception chaining, zip
+# strictness, loop-variable closures), C4 (comprehensions), SIM (simplify), PERF
+# (perflint), RUF015 and RUF100 (an unused `noqa` is a lie about the line). The
+# tree is clean against them; the 7 B023 hits were triaged and are false positives
+# (each closure is only called in the iteration that defines it), kept as `noqa`.
+# FURB and DTZ stay out, for the reasons above.
+select = ["E4", "E7", "E9", "F", "B", "C4", "SIM", "PERF", "RUF015", "RUF100"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's parameter defaults are calls by design, not shared mutable defaults.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.File",
+    "fastapi.Header",
+    "fastapi.Body",
+]
 
 [tool.setuptools.packages.find]
 include = ["backend*"]
