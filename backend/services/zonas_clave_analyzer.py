@@ -204,7 +204,7 @@ def cluster_pivots(
     cluster_prices = [prices[0]]
     cluster_vols = [volumes[0]]
 
-    for p, v in zip(prices[1:], volumes[1:]):
+    for p, v in zip(prices[1:], volumes[1:], strict=True):
         centroid = float(np.mean(cluster_prices))
         if abs(p - centroid) / centroid <= threshold:
             cluster_prices.append(p)
@@ -422,6 +422,7 @@ def analyze_ticker(ticker: str) -> dict | None:
                 _safe_series(chart_df, "Low"),
                 _safe_series(chart_df, "Close"),
                 _safe_series(chart_df, "Volume"),
+                strict=True,
             )
         ]
 

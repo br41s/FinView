@@ -342,7 +342,7 @@ def _parse_capital_gain_row(line: str) -> ParsedCapitalGain | None:
     numeric = [(t, _try_num(t)) for t in rest]
     # last column is always ganancia
     pl = None
-    for t, n in reversed(numeric):
+    for _, n in reversed(numeric):
         if n is not None:
             pl = n
             break

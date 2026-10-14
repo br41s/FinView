@@ -360,7 +360,7 @@ def get_stats(db: Session, user_id: int, ticker: str | None = None) -> dict:
         by_signal[st]["total"] += 1
         if _outcome_value(s.outcome_7d) == BacktestOutcome.CORRECT.value:
             by_signal[st]["correct"] += 1
-    for st, v in by_signal.items():
+    for v in by_signal.values():
         v["accuracy_pct"] = round(v["correct"] / v["total"] * 100, 1) if v["total"] else None
 
     # Aligned-vs-counter breakdown (Phase 2b): does macro-regime alignment

@@ -221,6 +221,8 @@ def test_ensure_constraints_adds_the_active_only_geo_dedup_index(monkeypatch):
     here has no table-level constraint, which is the shape production is left in
     once `_DROP_UNIQUE_CONSTRAINTS` has removed the obsolete one.
     """
+    from sqlalchemy.exc import IntegrityError
+
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as connection:
         connection.execute(text(
@@ -249,7 +251,7 @@ def test_ensure_constraints_adds_the_active_only_geo_dedup_index(monkeypatch):
         connection.execute(text(
             "INSERT INTO geo_signals VALUES (2, 1, 'eonet', 'evt-1', 'active')"
         ))
-    with pytest.raises(Exception), engine.begin() as connection:
+    with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(text(
             "INSERT INTO geo_signals VALUES (3, 1, 'eonet', 'evt-1', 'active')"
         ))
