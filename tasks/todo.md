@@ -26,6 +26,14 @@ registro llamaba a `fetch` directo saltándose `request()`; `LastAnalysis` estab
 - [x] `pytest` completo, `ruff`, `pnpm test`, `tsc`, `pnpm lint`, `pnpm build`.
 - [x] Docs: conteos de tests en `CLAUDE.md` / `README.md` / `ci.yml` si cambian.
 
+### Revisión adversarial (subagente Sonnet, fuzz diferencial viejo/nuevo: 0 diferencias)
+- [x] `fix(api)`: un 429 de slowapi devolvía `{"error": ...}` en inglés y el formulario de registro lo
+      mostraba tal cual; ahora `services/rate_limit.rate_limited` responde `detail` en castellano.
+      `apiError` colapsa una página HTML de error a `Error <status>`.
+- [x] `fix(fiscal)`: el dashboard con `fiscal_year=0` volvía a leerse como "todos los años"; test que
+      fija cada rama del filtro SQL de retenciones (crédito, desglose nacional, desglose extranjero).
+- `main` se fusionó en la rama; conteos medidos: 1428 backend (148 skip sin `files/`), 149 frontend.
+
 ### Aplazado (medido, no tocado)
 - `portfolio_service.get_open_positions` rehace el FIFO completo en cada llamada (5 sitios): memoizar
   exige decidir la clave de invalidación del ledger — decisión de diseño, no refactor.
