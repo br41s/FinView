@@ -7,10 +7,9 @@ import { api, type LastAnalysis } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { AiDisclaimer } from "@/components/AiDisclaimer";
 
-/**
- * The last agent report, moved out of page.tsx unchanged along with the badge
- * and parser only it used. Takes no props.
- */
+// The last agent report, moved out of page.tsx unchanged along with the badge
+// and parser only it used. The tab takes no props; its response shape is
+// `LastAnalysis` from lib/api.
 
 /** Macro-regime annotation badge (FRED). Annotation only — does not affect signals. */
 function MacroBadge({ macro }: { macro: LastAnalysis["macro"] }) {

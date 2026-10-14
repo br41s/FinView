@@ -27,7 +27,9 @@ is acceptable; if traffic grows, swap to a Redis-backed limiter.
 from __future__ import annotations
 
 from fastapi import Request
+from fastapi.responses import JSONResponse
 from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 
@@ -46,3 +48,17 @@ def client_ip(request: Request) -> str:
 
 
 limiter = Limiter(key_func=client_ip)
+
+
+def rate_limited(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Answer a spent limit with a Spanish ``detail``, like every other user-reachable error.
+
+    slowapi's default handler returns ``{"error": "Rate limit exceeded: 3 per 1 minute"}``.
+    That has no ``detail`` key, so the frontend's apiError fell through to the raw
+    JSON and the registration form showed it verbatim. Same headers as the default.
+    """
+    response = JSONResponse(
+        status_code=429,
+        content={"detail": "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos."},
+    )
+    return request.app.state.limiter._inject_headers(response, request.state.view_rate_limit)
