@@ -258,7 +258,7 @@ def yahoo(monkeypatch):
     import yfinance
 
     monkeypatch.setattr(yfinance, "download", _download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, group: {t: 1.0 for t in group})
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, group: dict.fromkeys(group, 1.0))
     return calls
 
 
@@ -295,7 +295,7 @@ def test_chunks_stop_once_the_budget_is_spent(clock, monkeypatch):
         return object()
 
     monkeypatch.setattr(yfinance, "download", _stalled_download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
 
     out = prices._fetch_yahoo_prices(
         [f"S{i}" for i in range(21)], budget=Budget(GEO_CYCLE_SECONDS, "test")
@@ -316,7 +316,7 @@ def test_a_failing_chunk_does_not_drop_the_others(clock, monkeypatch):
         return object()
 
     monkeypatch.setattr(yfinance, "download", _download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
 
     out = prices._fetch_yahoo_prices(
         [f"S{i}" for i in range(6)], budget=Budget(GEO_CYCLE_SECONDS, "test")
@@ -350,7 +350,7 @@ def test_the_portfolio_fetch_is_bounded_and_chunked(clock, monkeypatch):
         return object()
 
     monkeypatch.setattr(yfinance, "download", _stalled_download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: {t: 1.0 for t in g})
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
     monkeypatch.setattr(prices, "_resolve_ticker", lambda isin, _db: isin)
     monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("1"))
 

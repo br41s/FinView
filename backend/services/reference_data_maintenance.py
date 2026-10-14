@@ -13,21 +13,21 @@ def run_reference_data_maintenance() -> None:
         from backend.services.exchange_rates import sync_rates
 
         sync_rates()
-    except Exception as exc:  # noqa: BLE001 - independent best-effort source
+    except Exception as exc:  # independent best-effort source
         logger.warning("[ecb-sync] skipped: %s", exc.__class__.__name__)
 
     try:
         from backend.services.fred_rates import sync_rates as sync_fred
 
         sync_fred()
-    except Exception as exc:  # noqa: BLE001 - independent best-effort source
+    except Exception as exc:  # independent best-effort source
         logger.warning("[fred-sync] skipped: %s", exc.__class__.__name__)
 
     try:
         from backend.services.macro_context import sync_macro
 
         sync_macro()
-    except Exception as exc:  # noqa: BLE001 - independent best-effort source
+    except Exception as exc:  # independent best-effort source
         logger.warning("[macro-sync] skipped: %s", exc.__class__.__name__)
 
     try:
@@ -37,5 +37,5 @@ def run_reference_data_maintenance() -> None:
             stale = catalog_is_stale(db)
         if stale:
             refresh_iic_catalog()
-    except Exception as exc:  # noqa: BLE001 - independent best-effort source
+    except Exception as exc:  # independent best-effort source
         logger.warning("[cnmv-catalog] skipped: %s", exc.__class__.__name__)

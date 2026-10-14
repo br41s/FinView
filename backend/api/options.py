@@ -692,7 +692,7 @@ def test_telegram(user: CurrentUser):
 
 
 @router.post("/ask", response_model=AskOut)
-def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):  # noqa: C901
+def ask_agent(body: AskIn, db: DbSession, user: CurrentUser):
     """Stateless Q&A with the options agent.
 
     Provides the model with: last agent cycle log + latest snapshots (top 8 by

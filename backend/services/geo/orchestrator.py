@@ -344,7 +344,7 @@ def _compound_analyses(
     regime: str | None = None,
 ) -> list[AnalystResult]:
     """Tally matched-event baskets into compound buckets; emit compound analyses for count ≥ 2."""
-    counts = {rid: 0 for rid in _COMPOUND_BUCKETS}
+    counts = dict.fromkeys(_COMPOUND_BUCKETS, 0)
     seen_events: set[str] = set()
     for a in analyses:
         # "Simultaneous events" counts events, not analyses: a feed that emits

@@ -184,15 +184,19 @@ INSTRUMENT_TRADABILITY: dict[str, tuple[str, str]] = {
     "LIT": ("options_only", "VOLT (WisdomTree Battery Solutions)"),
     "GDX": ("options_only", "VanEck Gold Miners UCITS"),
     # EU-listed cash names: buyable as cash at TR / DEGIRO / IBKR / ING
-    **{s: ("cash_eu", "") for s in (
-        "ANTO.L", "GLEN.L", "IAG.MC", "ITX.MC", "RYA.IR", "RWE.DE", "MUV2.DE", "ALV.DE",
-    )},
+    **dict.fromkeys(
+        ("ANTO.L", "GLEN.L", "IAG.MC", "ITX.MC", "RYA.IR", "RWE.DE", "MUV2.DE", "ALV.DE"),
+        ("cash_eu", ""),
+    ),
     "FMG.AX": ("not_tradable", "no EU line; ASX access is IBKR-only"),
     # US single stocks: cash at every broker
-    **{s: ("cash_eu", "") for s in (
-        "AAL", "ALB", "ALL", "CCJ", "CCL", "DAC", "DAL", "HIG", "LMT", "PCG", "RCL",
-        "RTX", "SCCO", "SQM", "TM", "TRV", "TSM", "UAL", "WY", "ZIM",
-    )},
+    **dict.fromkeys(
+        (
+            "AAL", "ALB", "ALL", "CCJ", "CCL", "DAC", "DAL", "HIG", "LMT", "PCG", "RCL",
+            "RTX", "SCCO", "SQM", "TM", "TRV", "TSM", "UAL", "WY", "ZIM",
+        ),
+        ("cash_eu", ""),
+    ),
 }
 
 # The country ETFs the country layer brought in (countries.py): national by

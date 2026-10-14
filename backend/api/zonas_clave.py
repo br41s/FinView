@@ -140,7 +140,7 @@ def add_ticker(body: ZonasClaveWatchlistItemIn, db: DbSession, user: CurrentUser
     if settings.request_scoped_runtime:
         try:
             _analyze_single(item.id, item.ticker)
-        except Exception as exc:  # noqa: BLE001 - resource was already committed
+        except Exception as exc:  # resource was already committed
             logger.warning(
                 "single ticker analysis failed after create: %s",
                 exc.__class__.__name__,

@@ -72,7 +72,7 @@ def _owned_rows(table: Table, user_id: int) -> ColumnElement[bool]:
     if "user_id" in table.c:
         clauses.append(table.c.user_id == user_id)
     for fk_column, parent in _owned_parents(table):
-        parent_pk = list(parent.primary_key.columns)[0]
+        parent_pk = next(iter(parent.primary_key.columns))
         clauses.append(fk_column.in_(select(parent_pk).where(_owned_rows(parent, user_id))))
     return or_(*clauses) if clauses else false()
 

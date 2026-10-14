@@ -44,5 +44,5 @@ def verify_turnstile(token: str | None, remote_ip: str | None = None) -> bool:
         resp = httpx.post(_VERIFY_URL, data=data, timeout=5.0)
         resp.raise_for_status()
         return bool(resp.json().get("success"))
-    except Exception:  # noqa: BLE001 - fail closed on any verification error
+    except Exception:  # fail closed on any verification error
         return False

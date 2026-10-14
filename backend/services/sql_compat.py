@@ -37,13 +37,13 @@ class year_str(expression.FunctionElement):
 
 @compiles(year_str, "sqlite")
 def _year_str_sqlite(element, compiler, **kw):
-    col = list(element.clauses)[0]
+    col = next(iter(element.clauses))
     return f"STRFTIME('%Y', {compiler.process(col, **kw)})"
 
 
 @compiles(year_str)
 def _year_str_default(element, compiler, **kw):
-    col = list(element.clauses)[0]
+    col = next(iter(element.clauses))
     return f"TO_CHAR({compiler.process(col, **kw)}, 'YYYY')"
 
 
@@ -55,11 +55,11 @@ class year_month_str(expression.FunctionElement):
 
 @compiles(year_month_str, "sqlite")
 def _year_month_str_sqlite(element, compiler, **kw):
-    col = list(element.clauses)[0]
+    col = next(iter(element.clauses))
     return f"STRFTIME('%Y-%m', {compiler.process(col, **kw)})"
 
 
 @compiles(year_month_str)
 def _year_month_str_default(element, compiler, **kw):
-    col = list(element.clauses)[0]
+    col = next(iter(element.clauses))
     return f"TO_CHAR({compiler.process(col, **kw)}, 'YYYY-MM')"

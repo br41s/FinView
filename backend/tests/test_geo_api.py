@@ -39,22 +39,22 @@ def db():
 
 
 def _signal(**overrides) -> GeoSignal:
-    defaults = dict(
-        user_id=1,
-        event_type="earthquake",
-        display_category="earthquake",
-        source="usgs",
-        external_id="ev-1",
-        headline="M6.4 quake near Antofagasta",
-        location="chile",
-        lat=-23.0,
-        lng=-70.0,
-        importance=78,
-        confidence=0.82,
-        risk_score=7.6,
-        direction="bearish",
-        status="active",
-    )
+    defaults = {
+        "user_id": 1,
+        "event_type": "earthquake",
+        "display_category": "earthquake",
+        "source": "usgs",
+        "external_id": "ev-1",
+        "headline": "M6.4 quake near Antofagasta",
+        "location": "chile",
+        "lat": -23.0,
+        "lng": -70.0,
+        "importance": 78,
+        "confidence": 0.82,
+        "risk_score": 7.6,
+        "direction": "bearish",
+        "status": "active",
+    }
     defaults.update(overrides)
     return GeoSignal(**defaults)
 
@@ -180,9 +180,9 @@ def test_balance_surfaces_every_live_category_under_prod_distribution():
 
 def test_balance_caps_each_category_fairly():
     # 7 equal-priority categories share a 70-slot window → 10 each, none starved.
-    rows = _rows({c: 50 for c in "abcdefg"})
+    rows = _rows(dict.fromkeys("abcdefg", 50))
     chosen = set(_balance_ids_by_category(rows, 70))
-    by_cat = {c: 0 for c in "abcdefg"}
+    by_cat = dict.fromkeys("abcdefg", 0)
     for sig_id, cat in rows:
         if sig_id in chosen:
             by_cat[cat] += 1

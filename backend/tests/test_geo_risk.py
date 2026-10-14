@@ -24,15 +24,15 @@ from backend.services.geo.sentinel import GeoEvent
 
 
 def _event(**kw) -> GeoEvent:
-    base = dict(
-        id="evt-1",
-        type="earthquake",
-        title="test",
-        latitude=-27.0,  # chile_mining box
-        longitude=-70.0,
-        source="usgs",
-        timestamp=int(time.time() * 1000),
-    )
+    base = {
+        "id": "evt-1",
+        "type": "earthquake",
+        "title": "test",
+        "latitude": -27.0,  # chile_mining box
+        "longitude": -70.0,
+        "source": "usgs",
+        "timestamp": int(time.time() * 1000),
+    }
     base.update(kw)
     return GeoEvent(**base)
 

@@ -250,7 +250,7 @@ def parse_bbva_pdfs(pdf_paths: list[Path]) -> BBVAAnnualReport:
         texts[doc_type] = (text, fiscal_year)
 
     # Determine fiscal year (should be same across all PDFs)
-    years = set(fy for _, fy in texts.values())
+    years = {fy for _, fy in texts.values()}
     if len(years) > 1:
         raise ValueError(f"Los PDFs de BBVA son de años diferentes: {years}")
     fiscal_year = years.pop()
