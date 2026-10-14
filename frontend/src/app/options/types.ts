@@ -16,8 +16,10 @@ export interface Position {
   country: string | null;
   broker: string;
   quantity: number;
-  avg_cost_eur: number;
-  total_cost_eur: number;
+  // null when the cost basis is unknown (fail-closed portfolio); the backend
+  // serializer sends null, so the type must say so.
+  avg_cost_eur: number | null;
+  total_cost_eur: number | null;
   current_price_eur: number | null;
   market_value_eur: number | null;
   unrealized_pl_eur: number | null;
