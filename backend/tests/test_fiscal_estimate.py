@@ -5,18 +5,19 @@ entries and withholdings into the estimator inputs. The pure tax math is
 covered separately in test_tax_estimator.
 """
 
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from types import SimpleNamespace
 
 from backend.api.fiscal import (
     _aggregate_savings_inputs,
-    _manual_casillas,
+    _load_year_inputs,
     _savings_estimate_csv,
     cross_validation,
     dashboard_stats,
@@ -287,7 +288,8 @@ def test_manual_casillas_maps_categories_to_boxes(db):
                             amount_eur=D("200")),
     ])
     db.commit()
-    cas, whg = _manual_casillas(db, 1, 2024)
+    inputs = _load_year_inputs(db, 1, 2024)
+    cas, whg = inputs.manual_cas, inputs.manual_whg
     assert cas[27] == D("500")               # interest → 27
     assert cas[29] == D("400")               # 300 dividend + 100 legacy RCM → 29
     assert cas[332] == D("800")
@@ -497,3 +499,69 @@ def test_dashboard_applies_fifo_adjustment(db):
 
     assert stats.total_gains_eur == D("600")
     assert stats.net_pl_eur == D("600")
+
+
+# ── Query budget: each per-year input is loaded once per request ─────────────
+@contextmanager
+def _counting_statements(db):
+    """Collect every statement the session sends while the block runs."""
+    engine = db.get_bind()
+    seen: list[str] = []
+
+    def _record(_conn, _cursor, statement, *_args, **_kwargs):
+        seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", _record)
+    try:
+        yield seen
+    finally:
+        event.remove(engine, "before_cursor_execute", _record)
+
+
+def test_fiscal_summary_loads_each_input_once(db):
+    """One summary used to issue ~15 statements: the manual-income query ran four
+    times and the full-year transaction scan twice, because it called the casillas
+    endpoint internally and every withholding total re-ran the manual query. Six
+    is the floor — manual, FIFO, withholding, box sums, dividend net, broker rows —
+    and it is pinned so the duplication cannot creep back unnoticed.
+    """
+    db.add_all([
+        _casilla(1, 2024, 29, "1500"),
+        _casilla(1, 2024, 332, "800"),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="DIVIDEND",
+                            amount_eur=D("300"), withholding_eur=D("30")),
+        _fifo_adjustment(1, 2024, "100", "150"),
+    ])
+    db.commit()
+
+    with _counting_statements(db) as statements:
+        summary = fiscal_summary(db, user=_user(1), fiscal_year=2024)
+
+    assert len(statements) == 6, "\n".join(statements)
+    assert summary.total_dividends_gross == D("1800")
+    assert summary.total_gains == D("850")  # 800 broker + 50 FIFO delta
+    assert summary.total_withholdings == D("30")
+
+
+def test_yearly_comparison_query_count_does_not_grow_with_years(db):
+    """Three statements per year became three in total, so two years cost the same
+    five statements as one: broker rows, positions per year, manual, FIFO, withholding.
+    """
+    db.add_all([
+        _casilla(1, 2023, 29, "100"),
+        _casilla(1, 2024, 29, "200"),
+        ManualSavingsIncome(user_id=1, fiscal_year=2023, category="DIVIDEND",
+                            amount_eur=D("10"), withholding_eur=D("1")),
+        ManualSavingsIncome(user_id=1, fiscal_year=2024, category="GAIN", amount_eur=D("20")),
+        _fifo_adjustment(1, 2024, "100", "150"),
+    ])
+    db.commit()
+
+    with _counting_statements(db) as statements:
+        result = yearly_comparison(db, user=_user(1))
+
+    assert len(statements) == 5, "\n".join(statements)
+    by_year = {m.fiscal_year: m for m in result.years}
+    assert by_year[2023].dividends_gross == D("110")
+    assert by_year[2023].withholdings == D("1")
+    assert by_year[2024].gains == D("70")  # 20 manual + 50 FIFO delta
