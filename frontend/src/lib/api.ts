@@ -1,5 +1,6 @@
 import { getSession, signOut } from "next-auth/react";
 import { bestEffort } from "./bestEffort";
+import { decodeExp } from "./tokenExpiry";
 
 import type { GeoAccuracy, GeoSignal } from "@/lib/geo";
 import type {
@@ -298,15 +299,6 @@ let _cachedToken: string | null = null;
 let _tokenExp = 0; // epoch seconds; 0 = unknown
 let _tokenPromise: Promise<string | null> | null = null;
 
-function _decodeExp(token: string): number {
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return typeof payload.exp === "number" ? payload.exp : 0;
-  } catch {
-    return 0;
-  }
-}
-
 export function clearAuthToken(): void {
   _cachedToken = null;
   _tokenExp = 0;
@@ -340,7 +332,7 @@ async function _resolveToken(): Promise<string | null> {
     .then((session) => {
       const token = session?.accessToken ?? null;
       _cachedToken = token;
-      _tokenExp = token ? _decodeExp(token) : 0;
+      _tokenExp = token ? decodeExp(token) : 0;
       return token;
     })
     .finally(() => {

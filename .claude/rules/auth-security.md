@@ -18,7 +18,12 @@ paths:
 - Frontend `NextAuth` (Credentials provider, `frontend/src/auth.ts`) → backend `/api/auth/login`.
   Backend issues an HS256 JWT signed with `FINVIEW_SECRET_KEY`; NextAuth stores it as
   `accessToken` and the API client (`src/lib/api.ts`) sends it as `Authorization: Bearer`.
-- Passwords: bcrypt (`auth_service.py`). JWT + NextAuth session both last **90 days**.
+- Passwords: bcrypt (`auth_service.py`). JWT + NextAuth session both last **90 days**, and
+  both slide: the cookie rolls forward on activity, and `auth.ts`'s `jwt` callback swaps the
+  token for a fresh one via `POST /api/auth/refresh` once fewer than 7 days remain
+  (`src/lib/tokenExpiry.ts`). Refresh needs a still-valid token and an active user, so it can
+  extend a live session but never revive one; a failed refresh is retried an hour later. Before
+  2026-10-14 the token was only minted at login and a daily-used session still died on day 90.
 - `FINVIEW_AUTH_SECRET` (backend) **must equal** `AUTH_SECRET` (frontend) or every request
   fails with "Invalid token".
 

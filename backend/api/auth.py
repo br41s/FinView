@@ -152,3 +152,22 @@ def login(request: Request, body: LoginRequest, db: DbSession):
 @router.get("/me", response_model=UserResponse)
 def me(user: CurrentUser):
     return _user_dict(user)
+
+
+class TokenResponse(BaseModel):
+    token: str
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(user: CurrentUser):
+    """Issue a fresh 90-day token to a session that is still valid.
+
+    The token is only ever minted at login, so until now a session could
+    outlive it: the NextAuth cookie rolls forward on activity while the token
+    kept its original expiry, and on day 90 every request failed with 401
+    (production, 2026-10-14). The frontend calls this when fewer than seven
+    days remain, which makes the session sliding like the cookie. A token
+    that is already expired or belongs to a deactivated user is refused by
+    the dependency, so this can extend a live session but never revive one.
+    """
+    return {"token": create_access_token(user.id, user.email)}

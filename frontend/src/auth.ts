@@ -1,7 +1,31 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
+import { decodeExp, shouldRefresh } from "@/lib/tokenExpiry";
+
 const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+
+// Keep the backend token alive while the session is in use. It is only minted
+// at login and lived exactly 90 days, while this cookie rolls forward on
+// activity, so a session used daily still went dark on day 90 with a 401 on
+// every call (production, 2026-10-14). Runs server-side in the jwt callback;
+// a failed refresh keeps the old token and waits an hour before trying again,
+// so a backend outage costs one call per hour, not one per request.
+const REFRESH_RETRY_SECONDS = 60 * 60;
+
+async function refreshAccessToken(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${backendUrl}/api/auth/refresh`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { token?: unknown };
+    return typeof data.token === "string" && data.token ? data.token : null;
+  } catch {
+    return null;
+  }
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -48,6 +72,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.subscriptionTier = (
           user as { subscriptionTier: string }
         ).subscriptionTier;
+        return token;
+      }
+      const now = Math.floor(Date.now() / 1000);
+      const current = token.accessToken as string | undefined;
+      const retryAfter = (token.refreshAfter as number | undefined) ?? 0;
+      if (current && shouldRefresh(decodeExp(current), now) && retryAfter <= now) {
+        const fresh = await refreshAccessToken(current);
+        if (fresh) {
+          token.accessToken = fresh;
+          delete token.refreshAfter;
+        } else {
+          token.refreshAfter = now + REFRESH_RETRY_SECONDS;
+        }
       }
       return token;
     },
