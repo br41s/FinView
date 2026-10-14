@@ -22,5 +22,7 @@ declare module "next-auth/jwt" {
     accessToken?: string;
     userId?: string;
     subscriptionTier?: string;
+    // Epoch seconds before which a failed token refresh is not retried.
+    refreshAfter?: number;
   }
 }

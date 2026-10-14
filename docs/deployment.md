@@ -168,7 +168,7 @@ instancia puede reclamarse tras la respuesta.
 | Job | Endpoint | Horario | Por qué ese horario |
 |---|---|---|---|
 | `geo-intel-cycle` | `/api/geo/cron` | `0 * * * *` | Los eventos geopolíticos no cierran de noche. Horario desde el 2026-10-01 (antes `*/30`, y antes `*/10`). GDELT lee las 2 últimas horas, así que un ciclo perdido no pierde noticias |
-| `options-agent-cycle` | `/api/options/agent/cron` | `*/30 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer. Cada 30 min desde el 2026-10-01 (antes `*/15`) |
+| `options-agent-cycle` | `/api/options/agent/cron` | `5,35 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer. Cada 30 min desde el 2026-10-01 (antes `*/15`). En el minuto 5, no en el 0, desde el 2026-10-14: con una sola instancia, el tick de las :00 coincidía con el ciclo geo y Cloud Run lo rechazaba con 429 "no available instance" (3 veces en un mes); es además el único job con reintentos (2, backoff 60–120 s), porque el 500 de los jobs geo es una señal a propósito |
 | `geo-intel-audit` | `/api/geo/audit` | `0 */4 * * *` | Checkpoints y aprendizaje de reglas; sus horizontes (+1h…+7d) no necesitan más frecuencia |
 | `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de geo y opciones |
 

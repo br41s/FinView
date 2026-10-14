@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1428 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 149 frontend tests |
+| Tests | pytest · 1432 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 156 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -143,10 +143,11 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `send`, `postForm` or `download`). It owns the auth header, the single retry on a stale
   401, the sign-out when the retry is refused too, and the `res.ok` check. Never call
   `fetch` directly for `/api/*`: four hand-written deletes once reported success on a
-  4xx/5xx and the item came back on reload. The backend token lives 90 days from login
-  and is never refreshed while the NextAuth cookie rolls forward on activity, so a session
-  outlives its token; before 2026-10-14 the app then sent the dead token forever and every
-  section read "no se pudieron cargar los datos" until the user guessed to sign out.
+  4xx/5xx and the item came back on reload. The backend token lives 90 days and the
+  NextAuth `jwt` callback renews it through `POST /auth/refresh` once fewer than 7 days
+  remain (`src/lib/tokenExpiry.ts`); before 2026-10-14 it was only minted at login, the
+  cookie outlived it, and the app sent the dead token forever until the user guessed to
+  sign out. The sign-out on a refused retry stays as the backstop.
 - Never `.catch(() => {})` in the frontend. Use `bestEffort("label")` from
   `src/lib/bestEffort.ts` — it still swallows, but logs, so a persistent failure is
   findable. `bestEffort.test.ts` fails if a bare swallow comes back.
@@ -203,10 +204,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1428 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1428 pass in ~95s. Those files are not in the repo,
+Backend: `pytest` — 1432 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1432 pass in ~95s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1280 run in ~65s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1284 run in ~65s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
@@ -224,7 +225,7 @@ reported 127 skips here against 159 there. Gate on a path built from
 is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
 the pure unit tests down with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 149 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 156 tests over pure logic: `src/lib/`
 (`optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis, tier grouping, ladder badge)
 plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options

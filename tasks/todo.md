@@ -1,5 +1,38 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Seguimientos del 2026-10-14 (token caducado, cron perdido, ruff)
+
+Origen: tras desplegar el PR #342 todas las secciones fallaban con 401. No era el deploy: el JWT
+del backend caduca a los 90 días del login y nunca se renovaba, mientras la cookie de NextAuth se
+prorroga sola; el PR #343 cierra sesión cuando el reintento sigue en 401. Al leer los logs salió
+además que el cron de opciones de las :00 se perdía cuando coincidía con el ciclo geo (429 "no
+available instance", 3 veces en un mes) y que los jobs no tenían reintentos.
+
+### Renovar el token antes del día 90 (rama `feat/token-refresh`)
+- [x] `POST /api/auth/refresh`: con un token válido y usuario activo devuelve uno nuevo de 90 días.
+      Sesión deslizante, como la cookie; tests para token caducado y usuario inactivo.
+- [x] `src/lib/tokenExpiry.ts` (puro, con vitest): `decodeExp` y `shouldRefresh`; `api.ts` lo reutiliza.
+- [x] `auth.ts` (callback `jwt`): si quedan < 7 días, pide un token nuevo al backend y lo guarda en la
+      cookie; si falla, conserva el viejo y no reintenta durante una hora.
+- [x] Docs: `CLAUDE.md` (bullet de `request()`), `.claude/rules/auth-security.md`.
+
+### Cron de opciones (config de Cloud Scheduler, sin código)
+- [x] `options-agent-cycle` pasa a `5,35 7-22 * * 1-5` (fuera del minuto :00 del ciclo geo) con 2
+      reintentos (60–120 s). Los jobs geo se quedan como están: su 500 es una señal a propósito.
+- [x] Docs: `.claude/rules/options.md`, `docs/deployment.md`.
+
+### Ampliar ruff (rama `chore/ruff-widen-rules`, subagente Sonnet en worktree)
+- [x] `B`, `C4`, `SIM`, `PERF`, `RUF015`, `RUF100` en `pyproject.toml`, árbol limpio, suite en verde.
+
+### Tipo `Position` de opciones
+- [x] `avg_cost_eur`/`total_cost_eur` pasan a `number | null`, que es lo que devuelve el backend
+      (el único consumidor ya comprueba null).
+
+### No se hace, y por qué
+- `fifo_engine` (~4 consultas por ISIN multibroker y año): fichero más sensible; regla explícita.
+- Memoizar `get_open_positions`: hace falta una huella del ledger como clave; es una decisión de
+  diseño sobre números fiscales, y para el tamaño actual del ledger el replay cuesta milisegundos.
+
 ## Optimizar y factorizar — 2026-10-14 (rama `refactor/factorize-fiscal-imports`)
 
 Punto de partida (inventario con tres subagentes Haiku + ruff ampliado): `fiscal_summary`
