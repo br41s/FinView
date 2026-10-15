@@ -30,6 +30,8 @@ No hemos designado un delegado de protección de datos. Cualquier consulta sobre
 
 **Datos financieros que tú importas.** Operaciones, dividendos, intereses, retenciones, posiciones y valoraciones extraídas de los informes de tu bróker, junto con el identificador de tu cuenta en el bróker, el nombre del archivo y una huella digital del mismo para detectar duplicados. **El archivo original no se conserva:** se procesa en memoria temporal del servidor y se elimina al terminar la importación.
 
+**Conexión directa con IBKR (opcional).** Si conectas tu cuenta de Interactive Brokers, guardamos el token Flex y el número de consulta que nos facilitas, y con ellos descargamos de IBKR, cuando tú lo pides, los mismos extractos que podrías subir como archivo; de ellos guardamos los mismos datos que de una importación. El token es de solo lectura: no permite operar ni mover dinero. Se guarda cifrado, no se vuelve a mostrar y no se incluye en la exportación de tus datos. Al desconectar, el token se borra; los datos ya importados se conservan como los de cualquier importación.
+
 **Perfil fiscal.** Los datos que introduces para estimar tu declaración: edad, número de descendientes, base general, pérdidas pendientes de ejercicios anteriores y otros rendimientos del ahorro. Si lo indicas, también el **grado de discapacidad**, que es un dato de salud y solo se trata con tu consentimiento explícito (apartado 3).
 
 **Datos de uso del producto.** Inversiones alternativas que registras, listas de seguimiento, alertas, y las preguntas que escribes al asistente de opciones.
@@ -46,7 +48,7 @@ No compramos datos a terceros, no usamos herramientas de analítica ni de public
 
 | Finalidad | Base jurídica |
 |---|---|
-| Crear y mantener tu cuenta, importar tus informes, calcular tu cartera, el FIFO y las casillas del IRPF | Ejecución del contrato (art. 6.1.b RGPD) |
+| Crear y mantener tu cuenta, importar tus informes (subidos por ti o descargados de tu bróker si lo conectas), calcular tu cartera, el FIFO y las casillas del IRPF | Ejecución del contrato (art. 6.1.b RGPD) |
 | Generar los análisis automáticos que solicitas (opciones, zonas clave) | Ejecución del contrato (art. 6.1.b RGPD) |
 | Aplicar mínimos personales por discapacidad en la estimación fiscal | Tu consentimiento explícito (arts. 6.1.a y 9.2.a RGPD), que puedes retirar en cualquier momento |
 | Proteger el servicio: verificación anti-robots, limitación de peticiones, detección de accesos indebidos | Interés legítimo en la seguridad del servicio (art. 6.1.f RGPD) |
@@ -79,6 +81,8 @@ No vendemos ni cedemos tus datos. Solo acceden a ellos los proveedores que neces
 
 Para obtener cotizaciones consultamos fuentes públicas de mercado (por ejemplo, Yahoo Finance) enviando únicamente el ticker o el ISIN del valor, sin ningún dato que te identifique.
 
+Si conectas IBKR, a Interactive Brokers solo le enviamos el token y el número de consulta que nos diste, para que nos entregue tus extractos. IBKR ya dispone de esos datos como tu bróker y no actúa por nuestra cuenta.
+
 También podremos comunicar datos a autoridades públicas, jueces y tribunales cuando una norma nos obligue.
 
 ## 7. Transferencias internacionales
@@ -102,7 +106,7 @@ Respondemos en el plazo máximo de un mes. Si consideras que no hemos atendido c
 
 ## 9. Seguridad
 
-Aplicamos medidas técnicas y organizativas proporcionadas al riesgo: cifrado de las comunicaciones, contraseñas almacenadas mediante resumen irreversible, acceso a los datos restringido por usuario, verificación anti-robots, limitación de intentos de acceso y cabeceras de seguridad en todas las respuestas. Si se produjera una brecha de seguridad que suponga un riesgo para tus derechos, la notificaremos a la autoridad de control competente y, cuando proceda, a ti, en los plazos legales.
+Aplicamos medidas técnicas y organizativas proporcionadas al riesgo: cifrado de las comunicaciones, contraseñas almacenadas mediante resumen irreversible, credenciales de bróker cifradas, acceso a los datos restringido por usuario, verificación anti-robots, limitación de intentos de acceso y cabeceras de seguridad en todas las respuestas. Si se produjera una brecha de seguridad que suponga un riesgo para tus derechos, la notificaremos a la autoridad de control competente y, cuando proceda, a ti, en los plazos legales.
 
 ## 10. Menores de edad
 
@@ -116,5 +120,6 @@ Si cambiamos esta política de forma relevante te lo comunicaremos dentro de la 
 
 | Versión | Cambios |
 |---|---|
+| 15/10/2026 | Se añade la conexión directa opcional con IBKR: qué se guarda (token Flex cifrado y número de consulta), qué se envía a Interactive Brokers y que el token no se exporta. |
 | 02/10/2026 | Se declara el acceso del personal autorizado del responsable desde Tailandia como transferencia internacional, con su garantía, en la tabla de destinatarios y en el apartado 7. Se añade la autoridad de control de Tailandia. Se incorpora este registro de versiones. |
 | 30/09/2026 | Primera versión: responsable {LEGAL.owner}, aplicación del RGPD conforme al artículo 3.2, datos tratados, bases jurídicas, plazos, destinatarios y derechos. |

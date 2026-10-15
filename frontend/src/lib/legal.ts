@@ -34,7 +34,7 @@ export const LEGAL = {
  * a user's acceptance is recorded against: bump both together when a document
  * changes in a way users must re-accept.
  */
-export const LEGAL_UPDATED = "2 de octubre de 2026";
+export const LEGAL_UPDATED = "15 de octubre de 2026";
 
 /**
  * The product's position on advice, in one place so every surface says the same
