@@ -45,6 +45,8 @@ logging.getLogger("httpx").addFilter(_RedactFlexToken())
 
 USER_AGENT = "FinView/1.0 (+https://finview.app)"
 HTTP_TIMEOUT = 20.0
+# IBKR's ceiling per token; above it every call answers 1018 until the minute passes.
+REQUESTS_PER_MINUTE = 10
 
 # The statement is not ready, or IBKR is momentarily unable to serve it.
 TRANSIENT_CODES = frozenset(
@@ -92,6 +94,51 @@ class FlexError(Exception):
     @property
     def stale_reference(self) -> bool:
         return self.code in STALE_REFERENCE_CODES
+
+
+class _Paced(httpx.BaseTransport):
+    """At most REQUESTS_PER_MINUTE requests in any 60 s through this transport.
+
+    One instance per token. It waits instead of letting IBKR answer 1018: the sync
+    treats 1018 as transient and asks again, which keeps the token over the limit.
+    """
+
+    def __init__(
+        self,
+        inner: httpx.BaseTransport,
+        *,
+        sleep: Callable[[float], None],
+        clock: Callable[[], float],
+    ):
+        self._inner = inner
+        self._sleep = sleep
+        self._clock = clock
+        self._sent: list[float] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        now = self._clock()
+        self._sent = [t for t in self._sent if now - t < 60.0]
+        if len(self._sent) >= REQUESTS_PER_MINUTE:
+            self._sleep(60.0 - (now - self._sent[0]))
+        self._sent.append(self._clock())
+        return self._inner.handle_request(request)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+def paced_client(
+    transport: httpx.BaseTransport | None = None,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> httpx.Client:
+    """A client for one token that never exceeds IBKR's per-minute limit."""
+    return httpx.Client(
+        transport=_Paced(transport or httpx.HTTPTransport(), sleep=sleep, clock=clock),
+        timeout=HTTP_TIMEOUT,
+        headers={"User-Agent": USER_AGENT},
+    )
 
 
 def _error_from_code(code: str) -> FlexError:

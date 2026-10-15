@@ -90,7 +90,13 @@ def test_rollout_resumes_every_periodic_caller_it_pauses():
     # Both loops read the same list, so a fourth pipeline cannot be paused
     # without also being resumed.
     assert rollout.count("for JOB in $$SCHEDULER_JOBS; do") == 2
-    for job in ("geo-intel-cycle", "options-agent-cycle", "zonas-clave-cycle"):
+    for job in (
+        "geo-intel-cycle",
+        "geo-intel-audit",
+        "options-agent-cycle",
+        "zonas-clave-cycle",
+        "ibkr-sync-daily",
+    ):
         assert job in rollout
 
     # An EXIT trap, not a trailing command: the rollback path exits non-zero and

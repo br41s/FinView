@@ -28,9 +28,13 @@ from sqlalchemy.orm import Session
 
 from backend.importers.ibkr_flex import FlexQueryError, parse_ibkr_flex, read_date_opened
 from backend.models import Broker, BrokerConnection, User
-from backend.services.credentials_crypto import decrypt_secret, encrypt_secret
+from backend.services.credentials_crypto import (
+    CredentialsUnavailable,
+    decrypt_secret,
+    encrypt_secret,
+)
 from backend.services.db_locks import advisory_xact_lock
-from backend.services.ibkr_flex import FlexError, poll_statement, send_request
+from backend.services.ibkr_flex import FlexError, paced_client, poll_statement, send_request
 from backend.services.import_service import import_ibkr_report
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,10 @@ ORIGIN = "ibkr_flex"
 # Leaves room for parsing, the import and FIFO inside one request.
 POLL_BUDGET_SECONDS = 20.0
 RETRY_AFTER_SECONDS = 5
+# The daily cron's allowance for every connection together. A step may run past it
+# by one poll and one import; whatever is left resumes from the row the next day.
+# Cloud Run allows the request 1800 s and bills it by the second, so stay far below.
+CRON_BUDGET_SECONDS = 300.0
 # Until the end of March the previous year is refreshed too: IBKR posts
 # corrections and reclassified dividends during the first quarter.
 PREVIOUS_YEAR_REFRESH_UNTIL_MONTH = 3
@@ -171,6 +179,16 @@ def _stop_run(conn: BrokerConnection, message: str) -> None:
     conn.last_error = message
 
 
+def needs_user(conn: BrokerConnection) -> bool:
+    """A run `_stop_run` ended: an error and nothing left to do.
+
+    Only the user can fix it (a new token, a corrected Flex Query), and until then
+    every request fails the same way. A reconnect or a manual sync clears it. An
+    unreachable IBKR also leaves `last_error`, but keeps the queue to resume.
+    """
+    return bool(conn.last_error) and not conn.queue and conn.pending_reference is None
+
+
 def _state_after(conn: BrokerConnection) -> str:
     return "running" if conn.queue else "done"
 
@@ -248,6 +266,7 @@ def sync_step(
     today: date | None = None,
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict:
     """Advance the user's IBKR sync by at most one year. See the module docstring."""
     today = today or _utcnow().date()
@@ -259,7 +278,9 @@ def sync_step(
         conn.queue = routine_years(today)
         conn.run_total = len(conn.queue)
         conn.gaps = {}
-        conn.last_error = None
+    # The error of the previous step, not of the run: one that resumes after an
+    # unreachable IBKR must not keep the message once it gets through (see `needs_user`).
+    conn.last_error = None
     if conn.pending_reference is None:
         nxt = _next_year(conn, today)
         if nxt is None:
@@ -278,7 +299,12 @@ def sync_step(
     # 2. Without the lock: wait for IBKR, bounded.
     try:
         polled = poll_statement(
-            token, reference, budget_seconds=POLL_BUDGET_SECONDS, client=client, sleep=sleep
+            token,
+            reference,
+            budget_seconds=POLL_BUDGET_SECONDS,
+            client=client,
+            sleep=sleep,
+            clock=clock,
         )
     except FlexError as exc:
         conn = _require(db, user.id)
@@ -351,6 +377,80 @@ def sync_step(
         "IBKR Flex %s imported for user %s: %s", year, user.id, result.get("status")
     )
     return progress(conn, state, None)
+
+
+def _cron_step(
+    db: Session,
+    user: User,
+    today: date | None,
+    client: httpx.Client,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> str:
+    """One step for the cron: its state, or "failed" when it raised."""
+    user_id = user.id  # read before a rollback expires the object
+    try:
+        return sync_step(db, user, today=today, client=client, sleep=sleep, clock=clock)["state"]
+    except NotConnected:
+        db.rollback()  # disconnected since the cron listed it: nothing left to do
+        return "done"
+    except CredentialsUnavailable:
+        db.rollback()  # the key rotated; the card asks the user to reconnect
+        return "error"
+    except Exception:
+        db.rollback()
+        logger.exception("IBKR cron sync failed for user %s", user_id)
+        return "failed"
+
+
+def sync_all(
+    db: Session,
+    *,
+    budget_seconds: float = CRON_BUDGET_SECONDS,
+    today: date | None = None,
+    transport: httpx.BaseTransport | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict:
+    """Advance every IBKR connection until each is idle or the budget is spent.
+
+    Round-robin, one step per connection per round: a statement IBKR keeps
+    generating costs its owner a step each round and never holds the others back.
+    Each connection gets its own paced client, because IBKR's limit is per token.
+    A connection `needs_user` is skipped; asking again would only fail again.
+    """
+    deadline = clock() + budget_seconds
+    rows = (
+        db.query(BrokerConnection, User)
+        .join(User, User.id == BrokerConnection.user_id)
+        .filter(BrokerConnection.broker == Broker.IBKR, User.is_active.is_(True))
+        .order_by(BrokerConnection.id)
+        .all()
+    )
+    summary = {"connections": len(rows), "skipped": 0, "done": 0, "error": 0, "failed": 0}
+    active = [
+        (user, paced_client(transport, sleep=sleep, clock=clock))
+        for conn, user in rows
+        if not needs_user(conn)
+    ]
+    summary["skipped"] = len(rows) - len(active)
+    clients = [client for _, client in active]
+    try:
+        while active and clock() < deadline:
+            for entry in list(active):
+                if clock() >= deadline:
+                    break
+                user, client = entry
+                state = _cron_step(db, user, today, client, sleep, clock)
+                if state != "running":
+                    summary[state] += 1
+                    active.remove(entry)
+    finally:
+        for client in clients:
+            client.close()
+    # Still running when the budget ran out: the next cron resumes them.
+    summary["unfinished"] = len(active)
+    return summary
 
 
 def _as_utc(value: datetime | None) -> datetime | None:

@@ -145,7 +145,7 @@ steps:
         # covers the supersession short-circuit, the rollback path and any
         # unexpected failure of this step; a job that does not come back ENABLED
         # fails the build instead of leaving a silent outage behind.
-        SCHEDULER_JOBS="geo-intel-cycle geo-intel-audit options-agent-cycle zonas-clave-cycle"
+        SCHEDULER_JOBS="geo-intel-cycle geo-intel-audit options-agent-cycle zonas-clave-cycle ibkr-sync-daily"
 
         resume_periodic_callers() {
           NOT_RUNNING=""
