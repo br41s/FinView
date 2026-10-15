@@ -388,6 +388,7 @@ def _cron_step(
     clock: Callable[[], float],
 ) -> str:
     """One step for the cron: its state, or "failed" when it raised."""
+    user_id = user.id  # read before a rollback expires the object
     try:
         return sync_step(db, user, today=today, client=client, sleep=sleep, clock=clock)["state"]
     except NotConnected:
@@ -398,7 +399,7 @@ def _cron_step(
         return "error"
     except Exception:
         db.rollback()
-        logger.exception("IBKR cron sync failed for user %s", user.id)
+        logger.exception("IBKR cron sync failed for user %s", user_id)
         return "failed"
 
 
