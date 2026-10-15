@@ -3,6 +3,8 @@ paths:
   - "backend/importers/**"
   - "backend/services/fifo_engine.py"
   - "backend/services/import_service.py"
+  - "backend/services/broker_sync.py"
+  - "backend/services/ibkr_flex.py"
   - "backend/services/exchange_rates.py"
   - "backend/api/fiscal.py"
   - "backend/api/imports.py"
@@ -31,6 +33,56 @@ replace each other:
   broker+year). Upload each PDF separately — both persist and combine.
 - tr_csv.py imports the TR transaction-export CSV (multi-year ledger, dedups by
   date/isin/type/qty, never year-replaces).
+
+---
+
+## IBKR direct connection — Flex Web Service
+
+`importers/ibkr_flex.py` parses an Activity Flex Query XML into the **same**
+`IBKRAnnualReport` as the CSV parser, so a synced year goes through `import_ibkr_report`
+unchanged. One source per broker and year: a synced year replaces an uploaded CSV for that
+year and vice versa (no `source_variant`, on purpose — two variants would double-count).
+- **Only EUR-base accounts.** "In Base" figures in another base would be imported as euros;
+  the parser refuses them. Amounts convert with each row's `fxRateToBase`.
+- **Required sections, levels and fields are checked up front** (`REQUIRED_SECTIONS`,
+  `_REQUIRED_FIELDS`) and named in the error. Flex lets the user untick a field, and a
+  missing attribute reads as 0: a year with no `proceeds` or `totalRealizedPnl` would
+  replace a correct import silently. A non-EUR row without `fxRateToBase` is refused for
+  the same reason, and so is a statement whose period is not the year asked for (IBKR
+  falling back to the query's saved period) or that is not XML.
+  Query-layout problems raise `FlexQueryError` (stops the run); a per-year problem such as
+  an ambiguous assignment raises a plain `ValueError` (that year becomes a gap).
+- **Payments in lieu are dividends**, as in the CSV (its Dividends section carries them;
+  the owner's 2024 and 2025 files have five). Flex types them separately
+  (`_DIVIDEND_TYPES`). Withholding is matched by (currency, day, symbol) like the CSV, and
+  when several payouts share that key it is split by amount — looked up per payout, it
+  would be counted once per row.
+- **Trades: one level only** — executions, or orders when the query has none. Closed lots
+  and orders beside executions would count the same trade twice.
+- **Holdings are not stored for IBKR** (CSV or Flex), so `portfolio_snapshot_complete`
+  stays NULL. Setting it true would be an empty complete snapshot and close every position.
+- **The sync is a run of steps, one year per HTTP request** (`services/broker_sync.py`):
+  `queue` and `pending_reference` live on `broker_connections`, so a timed-out request or a
+  closed tab resumes. The advisory lock covers the row changes and the SendRequest, never
+  the polling; a step that re-locks and finds its reference gone imports nothing.
+  Each year recalculates FIFO from that year through `import_ibkr_report` — kept per step
+  so every request leaves the ledger consistent.
+- **Full history** queues the current year first (its `dateOpened` is the only way to know
+  where the account starts), then every older year oldest first. The opening date is read
+  from any statement that arrives (`read_date_opened`), so a first year that fails to parse
+  or import still queues the rest. `last_synced_at` moves only when a year was imported. Routine sync: the current
+  year, plus the previous one until 31 March (`routine_years`). Statements end yesterday.
+- **Error codes act by kind** (`services/ibkr_flex.py`): transient (1019 generating, 1018
+  rate limit…) keeps the reference; connection (1012 expired, 1015 invalid…) stops the run
+  with `last_error`; anything else is a gap for that year; 1017 asks again.
+- **The token is in IBKR's query string.** It never reaches a log (a filter redacts `t=` in
+  httpx's request line) or an exception message (httpx errors are re-raised without
+  their text). `test_ibkr_flex.py` pins both.
+- Synced imports carry `import_records.origin = "ibkr_flex"` and do not count against the
+  monthly upload allowance.
+- **Not yet checked against a real IBKR file**: the XML attribute names follow IBKR's Flex
+  reference, and parity with an uploaded Activity Statement for the same year is the open
+  check in `tasks/todo.md`.
 
 ---
 

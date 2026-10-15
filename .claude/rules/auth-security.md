@@ -8,6 +8,8 @@ paths:
   - "backend/services/user_data.py"
   - "backend/services/billing_service.py"
   - "backend/config.py"
+  - "backend/services/credentials_crypto.py"
+  - "backend/api/brokers.py"
   - "frontend/src/auth.ts"
   - "frontend/next.config.ts"
 ---
@@ -59,8 +61,21 @@ paths:
   already-imported file does not consume allowance — the `(file_hash, broker)` unique
   constraint means it never created a second row.
 - **An unreadable tier falls back to Free, never to unlimited.** A quota must not fail open.
+- Imports made by a broker sync (`import_records.origin` set) are not uploads and are not
+  counted: a full-history backfill alone would spend a Free month several times over.
+  `/pricing` and `/legal/condiciones` say "importaciones de archivos" for that reason.
 - `/billing/subscription` reports `imports_this_month` alongside the limit, so the 403 is
   explicable. Enforcing a quota nobody can see is worse than not enforcing it.
+
+### Broker credentials (IBKR Flex token)
+- Encrypted at rest with Fernet under `FINVIEW_CREDENTIALS_KEY` (`services/credentials_crypto.py`).
+  **Unset closes the feature** — `/api/brokers/*` answers 503 and the card hides — instead
+  of storing tokens in clear. A rotated key makes stored tokens unreadable: sync answers 409
+  and the user reconnects.
+- Write-only from the client: accepted on `PUT /api/brokers/ibkr`, never returned (only the
+  last four characters), and excluded from the data export (`user_data._NEVER_EXPORTED`).
+- Set the key once on Cloud Run from Secret Manager (`--update-secrets`); `cloudbuild.yaml`
+  only touches `FINVIEW_ENV` and `FINVIEW_REQUEST_SCOPED_RUNTIME`, so it persists across deploys.
 
 ### HTTP security headers
 - Set on every response in `frontend/next.config.ts` (`headers()`): `X-Frame-Options: DENY`,

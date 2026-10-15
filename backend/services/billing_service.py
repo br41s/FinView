@@ -325,6 +325,7 @@ def count_imports_this_month(db: Session, user: User) -> int:
     Counted from ImportRecord, which is the row an import actually creates, so
     a re-upload of a file already imported does not add to the total — the
     (file_hash, broker) unique constraint means it never produced a second row.
+    Imports made by a broker sync (`origin` set) are not uploads and do not count.
     """
     from sqlalchemy import func
 
@@ -335,7 +336,13 @@ def count_imports_this_month(db: Session, user: User) -> int:
     return (
         db.query(func.count(ImportRecord.id))
         .join(Account, ImportRecord.account_id == Account.id)
-        .filter(Account.user_id == user.id, ImportRecord.imported_at >= month_start)
+        .filter(
+            Account.user_id == user.id,
+            ImportRecord.imported_at >= month_start,
+            # A broker sync is not an upload: a full-history backfill alone
+            # would spend a Free month's allowance several times over.
+            ImportRecord.origin.is_(None),
+        )
         .scalar()
         or 0
     )

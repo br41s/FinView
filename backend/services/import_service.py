@@ -637,6 +637,7 @@ def _run_annual_import(
     source_variant: str | None = None,
     portfolio_snapshot_complete: bool | None = None,
     duplicate_message: str = "Este archivo ya fue importado el {when}",
+    origin: str | None = None,
 ) -> dict:
     """The sequence every annual broker import runs; `store` is the broker-specific part.
 
@@ -680,6 +681,8 @@ def _run_annual_import(
         import_rec.source_variant = source_variant
     if portfolio_snapshot_complete is not None:
         import_rec.portfolio_snapshot_complete = portfolio_snapshot_complete
+    if origin is not None:
+        import_rec.origin = origin
     db.add(import_rec)
     db.flush()
 
@@ -1279,9 +1282,15 @@ def _create_ibkr_tax_lots(
 
 
 def import_ibkr_report(
-    db: Session, report: IBKRAnnualReport, file_hash: str, filename: str, user_id: int | None = None
+    db: Session,
+    report: IBKRAnnualReport,
+    file_hash: str,
+    filename: str,
+    user_id: int | None = None,
+    *,
+    origin: str | None = None,
 ) -> dict:
-    """Import a parsed IBKR Activity Statement into the database."""
+    """Import a parsed IBKR Activity Statement (CSV upload or Flex sync) into the database."""
     def store(account: Account, import_rec: ImportRecord) -> dict:
         div_count = 0
         for div in report.dividends:
@@ -1337,6 +1346,7 @@ def import_ibkr_report(
         user_id=user_id,
         record_count=len(report.trades) + len(report.dividends) + len(report.interest),
         store=store,
+        origin=origin,
     )
     if result["status"] == "duplicate":
         return result

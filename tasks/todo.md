@@ -1,5 +1,33 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Conexión directa con IBKR (Flex Web Service) — rama `feat/ibkr-flex-sync`
+
+Origen: 2026-10-15, Brais pide que FinView lea los datos de los brokers directamente, empezando por IBKR,
+con la opción de traer todo el historial de la cuenta.
+
+- [x] `broker_connections`: token Flex cifrado (Fernet, `FINVIEW_CREDENTIALS_KEY`), query ID, cursor de años.
+      Sin clave configurada la función queda cerrada (503), no se arranca sin ella.
+- [x] Cliente Flex (`SendRequest` + `GetStatement`, v=3): errores 1012/1015/1018/1019 tratados; el token
+      nunca aparece en logs ni en mensajes de error.
+- [x] Parser Flex XML → `IBKRAnnualReport` (reutiliza `import_ibkr_report`); divisa base EUR obligatoria;
+      secciones obligatorias validadas con mensaje en español.
+- [x] Sincronización por pasos: un año por petición, cursor persistente, sondeo acotado (20 s);
+      "todo el historial" desde `dateOpened`; rutina = año en curso (+ anterior hasta el 31 de marzo).
+- [x] Las importaciones sincronizadas no cuentan en el límite mensual de subidas (`import_records.origin`).
+- [x] Exportación RGPD sin el token cifrado; borrado de cuenta lo cubre por `user_id`.
+- [x] Frontend: tarjeta "Conectar IBKR" en Importar (formulario, sincronizar, progreso, desconectar).
+- [x] Docs y legal: privacidad + registro de actividades, `/pricing` y condiciones (sync fuera del límite),
+      CLAUDE.md/README (conteos), `.claude/rules/fiscal-importers.md`.
+- [x] Verificación: pytest + ruff, vitest + typecheck + build, prueba en local con Flex simulado.
+- [ ] Pendiente con datos reales: paridad Flex 2025 vs CSV 2025 casilla a casilla (XML en `files/`).
+- [ ] Producción: crear `FINVIEW_CREDENTIALS_KEY` en Secret Manager y montarla en Cloud Run (hasta entonces
+      la tarjeta no aparece). Comprobar el host `ndcdyn` con la primera sincronización real.
+- [ ] Decidir si el cambio de la política de privacidad exige volver a aceptar (`TERMS_VERSION`); se ha
+      actualizado `LEGAL_UPDATED` y el registro de versiones, no la versión.
+- [x] Pagos en lugar de dividendo (PIL) importados como dividendos en Flex, como ya hace el CSV; la retención
+      se reparte por importe si coinciden día y símbolo con otro dividendo.
+- [ ] Fuera de este PR: sincronización diaria por cron (`/cron/brokers`).
+
 ## Seguimientos del 2026-10-14 (token caducado, cron perdido, ruff)
 
 Origen: tras desplegar el PR #342 todas las secciones fallaban con 401. No era el deploy: el JWT

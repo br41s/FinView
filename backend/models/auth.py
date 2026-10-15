@@ -1,15 +1,19 @@
 """Users, billing tier and broker accounts."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    JSON,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -78,3 +82,40 @@ class Account(Base):
     imports: Mapped[list["ImportRecord"]] = relationship(back_populates="account")
 
     __table_args__ = (UniqueConstraint("broker", "account_id", "user_id"),)
+
+
+class BrokerConnection(Base):
+    """A user's live link to a broker API (today: IBKR Flex Web Service).
+
+    The token is stored encrypted (`services/credentials_crypto.py`) and never
+    leaves the backend: not in API responses, not in the data export.
+
+    A sync is a run of steps, one calendar year per HTTP request, because
+    production work must finish inside a request. `queue` holds the years still
+    to import; `pending_reference` is a statement IBKR is generating for
+    `pending_year`, kept so the next step collects it instead of asking again.
+    """
+
+    __tablename__ = "broker_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    broker: Mapped[str] = mapped_column(Enum(Broker), nullable=False)
+    query_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    token_hint: Mapped[str] = mapped_column(String(8), default="")
+    # True until the first statement reveals the opening date and the older
+    # years are queued ("todo el historial").
+    history_pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    account_opened_on: Mapped[date | None] = mapped_column(Date)
+    queue: Mapped[list] = mapped_column(JSON, default=list)
+    run_total: Mapped[int] = mapped_column(Integer, default=0)
+    # Years of the current run that could not be imported: {"2019": "motivo"}.
+    gaps: Mapped[dict] = mapped_column(JSON, default=dict)
+    pending_reference: Mapped[str | None] = mapped_column(String(40))
+    pending_year: Mapped[int | None] = mapped_column(Integer)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (UniqueConstraint("user_id", "broker"),)

@@ -21,6 +21,7 @@ from backend.api.geo import router as geo_router
 from backend.api.zonas_clave import router as zonas_clave_router
 from backend.api.alt_investments import router as alt_investments_router
 from backend.api.users import router as users_router
+from backend.api.brokers import router as brokers_router
 from backend.config import PRODUCTION_LIKE_ENVS, settings
 from backend.database import engine, ensure_columns, ensure_constraints
 from backend.models import Base
@@ -165,6 +166,7 @@ app.include_router(zonas_clave_router, prefix="/api")
 app.include_router(geo_router, prefix="/api")
 app.include_router(alt_investments_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
+app.include_router(brokers_router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -38,8 +38,9 @@ GLOBAL_TABLES = frozenset({
 _USERS = User.__table__
 
 # Never leaves the database, not even to its owner: a hash is only useful to
-# someone trying to crack it.
-_NEVER_EXPORTED = frozenset({"password_hash"})
+# someone trying to crack it, and a broker token in an export file is a live
+# credential sitting in someone's downloads folder.
+_NEVER_EXPORTED = frozenset({"password_hash", "token_encrypted"})
 
 
 def _owned_parents(table: Table) -> list[tuple[ColumnElement, Table]]:
@@ -87,7 +88,12 @@ def iter_user_export(db: Session, user: User) -> Iterator[tuple[str, Iterator[di
     profile = {c.name: getattr(user, c.name) for c in _USERS.c if c.name not in _NEVER_EXPORTED}
     yield "users", iter([profile])
     for table in owned_tables():
-        query = select(table).where(_owned_rows(table, user.id)).execution_options(yield_per=1000)
+        columns = [c for c in table.c if c.name not in _NEVER_EXPORTED]
+        query = (
+            select(*columns)
+            .where(_owned_rows(table, user.id))
+            .execution_options(yield_per=1000)
+        )
         yield table.name, (dict(row) for row in db.execute(query).mappings())
 
 

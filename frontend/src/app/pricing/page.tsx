@@ -22,7 +22,7 @@ const PLANS = [
     desc: 'Para empezar a organizar tus dividendos sin compromiso.',
     features: [
       'Hasta 2 cuentas de bróker',
-      'Hasta 5 importaciones al mes',
+      'Hasta 5 importaciones de archivos al mes',
       'Todas las funciones de la aplicación',
       'FIFO cross-broker automático',
       'Casillas IRPF y exportación CSV',
@@ -40,7 +40,7 @@ const PLANS = [
     desc: 'Para el inversor serio que quiere control total sobre su cartera.',
     features: [
       'Hasta 10 cuentas de bróker',
-      'Hasta 50 importaciones al mes',
+      'Hasta 50 importaciones de archivos al mes',
       'Todas las funciones de la aplicación',
       'FIFO cross-broker automático',
       'Casillas IRPF y exportación CSV',

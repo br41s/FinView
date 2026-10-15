@@ -205,6 +205,9 @@ class ImportRecord(Base):
     # True when this import is an authoritative year-end portfolio snapshot,
     # including the valid case where the snapshot contains zero holdings.
     portfolio_snapshot_complete: Mapped[bool | None] = mapped_column(Boolean)
+    # How the data arrived: NULL for an uploaded file, "ibkr_flex" for a broker
+    # sync. Synced imports do not spend the monthly upload allowance.
+    origin: Mapped[str | None] = mapped_column(String(20))
 
     account: Mapped["Account"] = relationship(back_populates="imports")
 

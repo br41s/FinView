@@ -11,6 +11,7 @@ Sin establecimiento en la UE; el RGPD se aplica por el art. 3.2.
 |---|---|---|---|---|---|---|
 | 1 | Gestión de cuentas de usuario | Alta, acceso y mantenimiento de la cuenta | Contrato (6.1.b) | Usuarios | Email, nombre, hash de contraseña, versión y fecha de aceptación de condiciones | Hasta la eliminación de la cuenta |
 | 2 | Importación y cálculo de cartera y fiscalidad | Prestar el servicio principal | Contrato (6.1.b) | Usuarios | Operaciones, dividendos, retenciones, posiciones, identificador de cuenta en el bróker, nombre y huella del archivo importado, resultados fiscales, lotes FIFO | Hasta que el usuario borre la importación, la cuenta de bróker o su cuenta |
+| 2b | Conexión directa con IBKR (opcional) | Descargar los extractos del usuario a petición suya | Contrato (6.1.b) | Usuarios que la activan | Token Flex de IBKR (cifrado, Fernet) y número de consulta; los datos descargados son los de la actividad 2 | Token: hasta que el usuario desconecte o borre su cuenta; no se exporta. Datos: igual que 2 |
 | 3 | Perfil fiscal | Estimar la base del ahorro | Contrato (6.1.b); **discapacidad: consentimiento explícito (9.2.a)** | Usuarios | Edad, descendientes, base general, pérdidas pendientes, grado de discapacidad | Igual que 2; el consentimiento se retira poniendo el campo a "Ninguna" |
 | 4 | Inversiones alternativas | Seguimiento de posiciones no cotizadas | Contrato (6.1.b) | Usuarios | Posiciones, importes, gestora, notas libres | Igual que 2 |
 | 5 | Señales y análisis automáticos | Alertas de opciones, zonas clave, ideas | Contrato (6.1.b) | Usuarios | Listas de seguimiento, alertas, preguntas al asistente, salida del modelo | Igual que 2 |
@@ -59,6 +60,8 @@ TLS en todo el tráfico · contraseñas con bcrypt · JWT firmado, 90 días · a
 `user_id` en cada consulta · Turnstile en el acceso · límite de peticiones en acceso, registro
 y borrado de cuenta · cabeceras de seguridad en todas las respuestas · secretos en variables
 de entorno con arranque bloqueado si faltan en producción · borrado de cuenta con
-confirmación por contraseña.
+confirmación por contraseña · token de bróker cifrado en reposo con una clave fuera de la base
+de datos (`FINVIEW_CREDENTIALS_KEY`), nunca devuelto por la API, excluido de la exportación y
+redactado de los registros de peticiones.
 
 Detalle en `.claude/rules/auth-security.md`.

@@ -26,6 +26,8 @@ dependencies = [
     "aiohttp>=3.9",
     "slowapi>=0.1.9",
     "httpx>=0.28",
+    # Fernet: broker credentials (IBKR Flex token) encrypted at rest
+    "cryptography>=44",
 ]
 
 [project.optional-dependencies]
