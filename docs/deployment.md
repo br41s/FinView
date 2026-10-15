@@ -47,7 +47,7 @@ Configuradas via `gcloud run services update --set-env-vars`:
 | `FINVIEW_RATE_LIMIT_REGISTER` | Límite de intentos de registro por IP | Opcional. Default: `3/minute`. |
 | `FINVIEW_TURNSTILE_SECRET` | Secret key de Cloudflare Turnstile (protección anti-bot en login) | Opcional. **Si está vacío, la verificación se omite** (dev/sin configurar). Empareja con `NEXT_PUBLIC_TURNSTILE_SITE_KEY` del frontend. Obtén el par de claves en Cloudflare → Turnstile. |
 
-| `FINVIEW_CRON_SECRET` | Secreto compartido con Cloud Scheduler | **Obligatorio para que los pipelines corran en prod** (ver "Cloud Scheduler"). Si está vacío, los tres endpoints `/cron` devuelven 403 y nada se ejecuta. |
+| `FINVIEW_CRON_SECRET` | Secreto compartido con Cloud Scheduler | **Obligatorio para que los pipelines corran en prod** (ver "Cloud Scheduler"). Si está vacío, todos los endpoints `/cron` devuelven 403 y nada se ejecuta. |
 | `FINVIEW_CREDENTIALS_KEY` | Clave Fernet que cifra los tokens de bróker (conexión directa con IBKR) | Opcional. **Vacía, la conexión con IBKR queda cerrada** (503 y la tarjeta no se muestra); nunca se guarda un token sin cifrar. Generar con `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`, guardarla en Secret Manager y montarla con `gcloud run services update finview-api --region=europe-west1 --update-secrets=FINVIEW_CREDENTIALS_KEY=<secreto>:latest`. Cambiarla deja ilegibles los tokens guardados: cada usuario tendría que reconectar. |
 | `FINVIEW_IBKR_FLEX_URL` | Base del Flex Web Service de IBKR | Opcional. Default `https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService`. |
 | `FINVIEW_OPENROUTER_API_KEY` | Clave de OpenRouter (análisis IA de opciones, analyst de geo, scorer de zonas) | Opcional. Sin ella, el ciclo corre igual pero sin análisis IA y las señales técnicas se guardan **sin puntuar** (`break_probability = NULL`). |
@@ -134,7 +134,7 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 > Cloud Run) y `--max-retry-attempts=0`.
 
 ```bash
-for J in geo-intel-cycle geo-intel-audit options-agent-cycle zonas-clave-cycle; do
+for J in geo-intel-cycle geo-intel-audit options-agent-cycle zonas-clave-cycle ibkr-sync-daily; do
   gcloud scheduler jobs update http $J --location=europe-west1 \
     --attempt-deadline=1800s --max-retry-attempts=0
 done
@@ -155,6 +155,28 @@ done
 > Está en la lista `SCHEDULER_JOBS` de `cloudbuild.yaml`: el rollout lo pausa y lo reanuda,
 > y el build falla si no vuelve a `ENABLED`.
 
+> **`ibkr-sync-daily` (2026-10-15).** Sincroniza cada día todas las conexiones directas con
+> IBKR contra `POST /api/brokers/cron` (`broker_sync.sync_all`): el año en curso, más el
+> anterior hasta el 31 de marzo, y continúa cualquier carga de historial a medias. Presupuesto
+> de **300 s** para todas las conexiones juntas (`CRON_BUDGET_SECONDS`); lo que no termina
+> se reanuda al día siguiente desde la fila. Omite las conexiones con el token caducado o la
+> Flex Query mal configurada (solo el usuario puede arreglarlo) y nunca pasa de 10 peticiones
+> por minuto y token. Responde **500** solo si el paso de algún usuario lanzó una excepción;
+> un error de IBKR de un usuario es su estado y se ve en su tarjeta.
+>
+> **Créalo pausado antes de desplegar el código.** Está en `SCHEDULER_JOBS`, y el bucle de
+> pausa del rollout corre con `bash -e`: si el job no existe, `describe` falla y el
+> despliegue se aborta (antes de mover tráfico, pero abortado). Creado y pausado, el rollout
+> lo reanuda en cuanto la revisión que tiene el endpoint sirve el 100 %:
+>
+> ```bash
+> gcloud scheduler jobs create http ibkr-sync-daily --location=europe-west1 \
+>   --schedule='20 6 * * *' --time-zone=Etc/UTC --http-method=POST \
+>   --uri="$SERVICE_URL/api/brokers/cron" --headers="X-Cron-Key=$FINVIEW_CRON_SECRET" \
+>   --attempt-deadline=1800s --max-retry-attempts=0
+> gcloud scheduler jobs pause ibkr-sync-daily --location=europe-west1
+> ```
+
 **La lección más cara del proyecto.** Los tres pipelines (geo, options, zonas-clave) tienen
 un `APScheduler` en proceso con botones de start/stop en la UI. **Eso es una comodidad de
 desarrollo, no el mecanismo de producción**: con `--min-instances=0` la instancia muere al
@@ -173,6 +195,7 @@ instancia puede reclamarse tras la respuesta.
 | `options-agent-cycle` | `/api/options/agent/cron` | `5,35 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer. Cada 30 min desde el 2026-10-01 (antes `*/15`). En el minuto 5, no en el 0, desde el 2026-10-14: con una sola instancia, el tick de las :00 coincidía con el ciclo geo y Cloud Run lo rechazaba con 429 "no available instance" (3 veces en un mes); es además el único job con reintentos (2, backoff 60–120 s), porque el 500 de los jobs geo es una señal a propósito |
 | `geo-intel-audit` | `/api/geo/audit` | `0 */4 * * *` | Checkpoints y aprendizaje de reglas; sus horizontes (+1h…+7d) no necesitan más frecuencia |
 | `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de geo y opciones |
+| `ibkr-sync-daily` | `/api/brokers/cron` | `20 6 * * *` | Los informes Flex terminan ayer (fecha UTC), así que basta una vez al día. A las 06:20 UTC no coincide con geo (minuto 0) ni con opciones (desde las 7). No está comprobado contra el horario de cierre de IBKR: si un día llega incompleto, el del día siguiente lo reemplaza entero |
 
 > **Por qué esa cadencia (2026-10-01).** `finview-api` factura **por petición**
 > (`--cpu-throttling`), y la capa gratuita de ese modo es **180.000 vCPU-s/mes**
@@ -200,14 +223,14 @@ gcloud logging read 'resource.labels.service_name="finview-api" AND httpRequest.
 
 ### Rotar `FINVIEW_CRON_SECRET`
 
-**Cloud Run primero, luego los tres jobs.** Al revés, los jobs dan 403 hasta que el
+**Cloud Run primero, luego todos los jobs.** Al revés, los jobs dan 403 hasta que el
 servicio recargue. Y si te dejas uno, **falla en silencio**: el job sigue en ENABLED y
 solo lo delata un 403 en los logs.
 
 ```bash
 NEW=$(openssl rand -hex 24)
 gcloud run services update finview-api --region=europe-west1 --update-env-vars="FINVIEW_CRON_SECRET=${NEW}"
-for J in geo-intel-cycle options-agent-cycle zonas-clave-cycle; do
+for J in geo-intel-cycle geo-intel-audit options-agent-cycle zonas-clave-cycle ibkr-sync-daily; do
   gcloud scheduler jobs update http $J --location=europe-west1 --update-headers="X-Cron-Key=${NEW}"
 done
 ```
@@ -216,7 +239,7 @@ done
 > `--format` acotado a los campos que necesitas; no pegues la salida completa en ningún
 > sitio. (Ya pasó una vez: hubo que rotar.)
 
-**Si añades un cuarto pipeline programado, necesita su propio job.** El APScheduler solo
+**Si añades otro pipeline programado, necesita su propio job** (y entrar en `SCHEDULER_JOBS`, creado antes del despliegue). El APScheduler solo
 nunca es suficiente.
 
 ### Vercel (frontend)
@@ -241,7 +264,7 @@ Configuradas en Vercel → Project Settings → Environment Variables:
 ### Backend
 - **Cómo:** Cloud Build trigger `finview-api-deploy` escucha GitHub via Cloud Build GitHub App (1ª gen, región `global`).
 - **Disparadores:** push a `main` que toque `backend/**`, `scripts/**`, `Dockerfile`, `pyproject.toml` o `cloudbuild.yaml`.
-- **Build + despliegue seguro:** [cloudbuild.yaml](../cloudbuild.yaml) construye la imagen, demuestra localmente que escucha en `PORT=8080`, crea una revisión candidata privada con **0% de tráfico**, valida configuración y startup, cancela rollouts anteriores del mismo trigger, pausa los tres jobs antes de cambiar tráfico, promueve al 100% y comprueba `/api/health/ready` en la URL pública. Solo el build activo más nuevo puede mutar tráfico; un rollback automático tras fallar el check público exige que su revisión siga siendo simultáneamente la última creada y la que sirve el 100%. Los callers se reanudan al salir del paso (trap `EXIT`, ver "Cloud Scheduler").
+- **Build + despliegue seguro:** [cloudbuild.yaml](../cloudbuild.yaml) construye la imagen, demuestra localmente que escucha en `PORT=8080`, crea una revisión candidata privada con **0% de tráfico**, valida configuración y startup, cancela rollouts anteriores del mismo trigger, pausa los jobs de `SCHEDULER_JOBS` antes de cambiar tráfico, promueve al 100% y comprueba `/api/health/ready` en la URL pública. Solo el build activo más nuevo puede mutar tráfico; un rollback automático tras fallar el check público exige que su revisión siga siendo simultáneamente la última creada y la que sirve el 100%. Los callers se reanudan al salir del paso (trap `EXIT`, ver "Cloud Scheduler").
 - **Promoción fallida (2026-09-30):** `update-traffic` escribe `spec.traffic` *antes* de que la revisión demuestre que arranca. Si falla el startup probe, el comando sale con error, `status.traffic` sigue en la revisión anterior pero `spec.traffic` queda apuntando a la fallida, con el servicio `Ready=False`, y todo `gcloud run deploy` posterior falla con *"Revision ... is not ready and cannot serve traffic"*. El rollback del check público no lo cubría: `bash -e` salía en esa línea y su condición mira `status.traffic`, que nunca se movió. Ahora el paso captura la revisión que sirve (`status.traffic`) antes de promover y, si la promoción falla **y `spec.traffic` sigue conteniendo la escritura de este build**, vuelve a `--to-revisions=<anterior>=100`. Si `spec` apunta a otra cosa no restaura nada: no es suyo. Los callers solo se reanudan si el servicio vuelve a `Ready=True` sirviendo el 100% en la anterior; si no converge, el build falla y los jobs **se quedan pausados** a propósito. Probado con un `gcloud` falso en `backend/tests/test_cloudbuild_rollout.py`.
 - **Flags de runtime (críticos):** `--cpu-throttling` (facturación por petición), `--min-instances=0`, `--max-instances=1`, `--memory=1Gi`, `FINVIEW_ENV=production` y `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Producción falla al arrancar si falta ese modo, si los secretos de auth son inseguros o si la base de datos cae al SQLite efímero por defecto. No sustituir `--cpu-throttling` por `--no-cpu-throttling`: con jobs cada 30–60 minutos y hasta 15 minutos de retención ociosa, cada ciclo dejaría además hasta un cuarto de hora de instancia facturando aunque `min=0`.
 - **Trabajo periódico:** Cloud Scheduler llama endpoints síncronos. Cloud Run no inicia AIS, ECB, FRED, CNMV ni preload Eurex como hilos de instancia. Eurex se carga bajo demanda; el job diario de zonas refresca ECB/FRED/CNMV una sola vez y AIS degrada a las fuentes HTTP disponibles.
@@ -370,7 +393,7 @@ Ver revisiones: `gcloud run revisions list --service finview-api --region europe
 | `min=0` pero hay una instancia facturable constante | Facturación por instancia más peticiones más frecuentes que la ventana de retención ociosa | Pausar jobs, fijar `--cpu-throttling`, verificar `max=1` y reanudar solo tras el guard |
 | **Una sección lee vacía sin ningún error** (Monitor de opciones, Técnico, Ideas) | El job de Cloud Scheduler no existe, está paused, o su secreto no coincide con Cloud Run → el pipeline no corre. El APScheduler de la UI no cuenta: muere con `--min-instances=0` | `gcloud scheduler jobs list --location=europe-west1` y comparar con los endpoints `/cron` que existen en el código. Ver "Cloud Scheduler" |
 | **Ideas no produce señales nuevas** | Empezar por la cabecera de `/geo-intel`: la línea de estado dice cuándo corrió el último ciclo, si falló y qué ingirió. Sin ejecuciones o muy antiguas → es el job de Scheduler; ejecuciones recientes con **todas las fuentes a cero** → salida de red o claves de ingesta; ejecución fallida → el error va en la propia línea | `GET /api/geo/scheduler/status` devuelve lo mismo (`last_run`) sin abrir la UI. `POST /api/geo/cron` responde **500** si ningún ciclo termina, así que un job en rojo es diagnóstico, no ruido |
-| Cron devuelve **403** | `FINVIEW_CRON_SECRET` de Cloud Run ≠ cabecera `X-Cron-Key` del job (típico: se rotó uno y no los otros) | Rotar de nuevo siguiendo el orden Cloud Run → los tres jobs |
+| Cron devuelve **403** | `FINVIEW_CRON_SECRET` de Cloud Run ≠ cabecera `X-Cron-Key` del job (típico: se rotó uno y no los otros) | Rotar de nuevo siguiendo el orden Cloud Run → todos los jobs |
 | Cron devuelve **404** | El endpoint aún no está desplegado (PR mergeado pero Cloud Build sin terminar) | Esperar al build; comprobar `gcloud builds list --limit=1` |
 | Señales técnicas todas "sin puntuar" | El scorer LLM falla: sin `FINVIEW_OPENROUTER_API_KEY`, o el modelo devolvió 200 con cuerpo vacío | `gcloud logging read '... textPayload:"zone scoring failed"'`. El log incluye `finish_reason` y `usage`. **`break_probability = NULL` es correcto en ese caso** — nunca se coerciona a 0, que leería como "seguro que no rompe" |
 | El ciclo de zonas corre pero emite 0 señales | Normal si ningún precio está a <2% de una zona. Ojo: `_already_open()` bloquea duplicados del mismo ticker+nivel durante 20h, así que relanzarlo a mano el mismo día no emite nada | Comprobar la línea `N signals (M alerting)` en los logs |

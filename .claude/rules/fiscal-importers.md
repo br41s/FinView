@@ -80,6 +80,19 @@ year and vice versa (no `source_variant`, on purpose — two variants would doub
   their text). `test_ibkr_flex.py` pins both.
 - Synced imports carry `import_records.origin = "ibkr_flex"` and do not count against the
   monthly upload allowance.
+- **Daily cron** (`POST /api/brokers/cron` → `broker_sync.sync_all`, Scheduler job
+  `ibkr-sync-daily`): every active user's connection, round-robin, one step each per round,
+  so a statement IBKR keeps generating costs its owner a step a round and never starves the
+  others. The whole loop has one wall-clock budget (`CRON_BUDGET_SECONDS`, 300 s); a run it
+  does not finish resumes the next day from the row, before any routine refresh starts.
+  Each connection gets its own `paced_client` (`ibkr_flex.py`): at most 10 requests in any
+  60 s per token, waiting rather than earning 1018s. `needs_user` (an error and an empty
+  queue — only `_stop_run` leaves that) is skipped: an expired token or a broken query fails
+  the same way every day until the user reconnects or syncs by hand. That predicate only
+  holds because **every step clears `last_error`**: an unreachable IBKR sets it but keeps
+  the queue, and once the resumed run finished it used to leave a stale message behind that
+  looked exactly like an expired token. A step that raises is logged and rolled back, the
+  others continue, and the endpoint answers 500 so the job shows red.
 - **Not yet checked against a real IBKR file**: the XML attribute names follow IBKR's Flex
   reference, and parity with an uploaded Activity Statement for the same year is the open
   check in `tasks/todo.md`.

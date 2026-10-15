@@ -44,10 +44,11 @@ paths:
 - Login only (not register) — register Turnstile is a deferred follow-up.
 
 ### Machine auth: the cron shared secret
-- The three `/cron` endpoints (geo, options, zonas-clave) are gated by `require_cron_key`
-  in `api/auth.py`, applied as a **route dependency** (`dependencies=[CronKey]`) rather
-  than a line in each handler. It was copy-pasted into all three bodies; one definition
-  beats three chances to get `hmac.compare_digest` or the empty-secret case wrong.
+- The `/cron` endpoints (geo cycle and audit, options, zonas-clave, brokers) are gated by
+  `require_cron_key` in `api/auth.py`, applied as a **route dependency**
+  (`dependencies=[CronKey]`) rather than a line in each handler. It was once copy-pasted
+  into three bodies; one definition beats three chances to get `hmac.compare_digest` or
+  the empty-secret case wrong.
 - **An unset `FINVIEW_CRON_SECRET` closes these endpoints, not opens them.**
 - A new cron endpoint must carry `dependencies=[CronKey]`. `test_cron_auth.py` asserts
   every cron route has it *and* that no other route does — a human-facing endpoint behind
