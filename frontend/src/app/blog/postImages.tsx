@@ -2669,7 +2669,34 @@ function ImgQuiebraEmpresa() {
   );
 }
 
+function ImgPromocionesBrokers() {
+  return (
+    <div className={styles.postImgPromocionesBrokers}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">PROMOCIÓN DEL BRÓKER · DOS MOMENTOS</text>
+        {/* Promo ticket */}
+        <rect x="16" y="30" width="56" height="40" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <line x1="16" y1="42" x2="72" y2="42" stroke="var(--fv-ochre)" strokeWidth="1" strokeDasharray="3 3" />
+        <text x="44" y="54" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle" fontWeight="600">GRATIS</text>
+        <text x="44" y="64" fontSize="5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">acción · ETF · cashback</text>
+        {/* Arrow */}
+        <path d="M74 50h18" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="92,46 99,50 92,54" fill="var(--fv-ink-30)" />
+        {/* Two facts */}
+        <rect x="102" y="26" width="84" height="22" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.4" fill="none" />
+        <text x="144" y="40" fontSize="6" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">al recibir: RCM 19 %</text>
+        <rect x="102" y="52" width="84" height="22" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none" />
+        <text x="144" y="66" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">al vender: G/P · base ahorro</text>
+        {/* Footer */}
+        <text x="100" y="94" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">el valor de entrega es tu coste al vender</text>
+        <text x="100" y="106" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">DGT V2109-25 · sin mínimo exento</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'promociones-brokers-irpf-espana': ImgPromocionesBrokers,
   'adr-fiscalidad-espana': ImgAdr,
   'oro-fiscalidad-irpf-espana': ImgOro,
   'deducir-perdida-acciones-quiebra-irpf': ImgQuiebraEmpresa,

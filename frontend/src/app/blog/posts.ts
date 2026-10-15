@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'promociones-brokers-irpf-espana',
+    tag: 'Fiscalidad',
+    date: '15 oct 2026',
+    readTime: '11 min',
+    title: 'Acciones gratis y regalos de los brokers: cómo tributan en el IRPF',
+    excerpt:
+      'Esa acción de regalo por abrir cuenta, ese ETF por invitar a un amigo o ese cashback son renta para Hacienda. La DGT los califica como rendimiento del capital mobiliario: qué declarar, dónde, y qué pagas cuando vendes el activo.',
+  },
+  {
     slug: 'adr-fiscalidad-espana',
     tag: 'Fiscalidad',
     date: '13 oct 2026',
