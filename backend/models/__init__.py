@@ -14,6 +14,7 @@ from .auth import (
     SubscriptionStatus,
     User,
     Account,
+    BrokerConnection,
 )
 from .ledger import (
     Transaction,
@@ -85,6 +86,7 @@ __all__ = [
     "SubscriptionStatus",
     "User",
     "Account",
+    "BrokerConnection",
     "Transaction",
     "TaxLot",
     "TaxResult",

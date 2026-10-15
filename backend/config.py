@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # Empty disables the endpoint entirely.
     cron_secret: str = ""
 
+    # Fernet key that encrypts broker credentials at rest (the IBKR Flex token).
+    # Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    # Empty closes broker connections (503) instead of storing tokens in clear.
+    credentials_key: str = ""
+    # IBKR Flex Web Service base; SendRequest and GetStatement hang off it.
+    ibkr_flex_url: str = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService"
+
     # Cloudflare Turnstile (bot protection on login). When empty, verification
     # is skipped so local dev / unconfigured deploys keep working. Set
     # FINVIEW_TURNSTILE_SECRET in prod; the frontend uses NEXT_PUBLIC_TURNSTILE_SITE_KEY.

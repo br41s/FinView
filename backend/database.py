@@ -55,6 +55,7 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("alt_investment_catalog", "data_date", "DATE"),
     ("import_records", "source_variant", "VARCHAR(20)"),
     ("import_records", "portfolio_snapshot_complete", "BOOLEAN"),
+    ("import_records", "origin", "VARCHAR(20)"),
     ("tax_results", "import_id", "INTEGER"),
     ("transactions", "domestic_withholding_tax", "NUMERIC(18, 6)"),
     ("transactions", "foreign_withholding_tax", "NUMERIC(18, 6)"),
