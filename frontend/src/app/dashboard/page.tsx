@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingDots } from "@/components/loading-dots";
 import { FileUpload } from "@/components/FileUpload";
+import { IBKRConnection } from "@/components/IBKRConnection";
 import { ImportedFilesList } from "@/components/ImportedFilesList";
 import { StatsCards } from "@/components/StatsCards";
 import { CasillasTable } from "@/components/CasillasTable";
@@ -436,6 +437,12 @@ function DashboardContent() {
           {/* Import view */}
           {view === "importar" && (
             <div className="max-w-3xl mx-auto space-y-6">
+              <IBKRConnection
+                onSynced={() => {
+                  reload();
+                  setImportRefreshKey((k) => k + 1);
+                }}
+              />
               <FileUpload
                 onImported={() => {
                   reload();

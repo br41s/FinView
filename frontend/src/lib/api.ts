@@ -29,6 +29,7 @@ import type {
 } from "@/lib/types";
 import { apiError } from "@/lib/apiError";
 import type { GeoCycleRun } from "@/lib/geoHealth";
+import type { BrokerConnection, SyncProgress } from "@/lib/brokerSync";
 
 const BASE = "/api";
 
@@ -646,6 +647,21 @@ export const api = {
     // work without it, so a failure only costs a slower first price load.
     warmPrices: () =>
       send("POST", "/portfolio/warm-prices").catch(bestEffort("portfolio price cache warm")),
+  },
+
+  // Direct broker connection (IBKR Flex). The token is write-only: it goes in
+  // on connect and only its last four characters ever come back.
+  ibkr: {
+    get: () => fetchJSON<BrokerConnection>("/brokers/ibkr"),
+    connect: (data: { token: string; query_id: string; full_history: boolean }) =>
+      send<BrokerConnection>("PUT", "/brokers/ibkr", data),
+    /** One step: imports at most one year. Call again while state is "running". */
+    sync: async () => {
+      const progress = await send<SyncProgress>("POST", "/brokers/ibkr/sync");
+      invalidateCache();
+      return progress;
+    },
+    disconnect: () => send("DELETE", "/brokers/ibkr"),
   },
 
   // Accounts
