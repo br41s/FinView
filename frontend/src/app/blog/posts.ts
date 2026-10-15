@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'itf-impuesto-transacciones-financieras-espana',
+    tag: 'Fiscalidad',
+    date: '16 oct 2026',
+    readTime: '10 min',
+    title: 'ITF: el 0,2 % oculto al comprar acciones españolas (y cómo va a tu IRPF)',
+    excerpt:
+      'Cada compra de Santander, Iberdrola o Telefónica lleva un 0,2 % de Impuesto sobre las Transacciones Financieras que casi nadie identifica en el recibo. Qué sociedades entran en la lista, cómo se calcula y por qué suma a tu valor de adquisición.',
+  },
+  {
     slug: 'promociones-brokers-irpf-espana',
     tag: 'Fiscalidad',
     date: '15 oct 2026',
