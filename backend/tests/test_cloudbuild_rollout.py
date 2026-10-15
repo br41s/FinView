@@ -19,7 +19,13 @@ import yaml
 ROOT = Path(__file__).parents[2]
 PREVIOUS = "finview-api-d935ddc"
 REVISION = "finview-api-1c929ab"
-JOBS = ("geo-intel-cycle", "geo-intel-audit", "options-agent-cycle", "zonas-clave-cycle")
+JOBS = (
+    "geo-intel-cycle",
+    "geo-intel-audit",
+    "options-agent-cycle",
+    "zonas-clave-cycle",
+    "ibkr-sync-daily",
+)
 
 # Mirrors the parts of Cloud Run and Cloud Scheduler the rollout reads and writes.
 # `update-traffic` writes spec.traffic before the revision proves it can start,

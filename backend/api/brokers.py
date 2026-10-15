@@ -11,7 +11,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.auth import CurrentUser
+from backend.api.auth import CronKey, CurrentUser
 from backend.database import DbSession
 from backend.services import broker_sync
 from backend.services.credentials_crypto import CredentialsUnavailable, credentials_enabled
@@ -109,3 +109,21 @@ def sync_ibkr(db: DbSession, user: CurrentUser):
 @router.delete("/ibkr", status_code=204)
 def disconnect_ibkr(db: DbSession, user: CurrentUser):
     broker_sync.disconnect(db, user)
+
+
+@router.post("/cron", include_in_schema=False, dependencies=[CronKey])
+def cron_sync(db: DbSession):
+    """External-cron entry (Cloud Scheduler, daily): every IBKR connection.
+
+    Synchronous and bounded by `broker_sync.CRON_BUDGET_SECONDS`; what it does not
+    finish resumes the next day from the row. A user's IBKR problem (an expired
+    token, a year IBKR cannot serve) is that user's state, shown on their card, not
+    a failed job. A step that raised is: answering 200 would let it fail every day
+    with Scheduler showing green.
+    """
+    if not credentials_enabled():
+        return {"status": "disabled"}
+    summary = broker_sync.sync_all(db)
+    if summary["failed"]:
+        raise HTTPException(status_code=500, detail="The IBKR sync failed; see logs")
+    return {"status": "done", **summary}

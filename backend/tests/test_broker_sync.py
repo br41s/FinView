@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 from backend.api.brokers import router as brokers_router
 from backend.config import settings
 from backend.database import get_db
-from backend.models import Base, BrokerConnection, ImportRecord, User
+from backend.models import Account, Base, BrokerConnection, ImportRecord, User
 from backend.services import billing_service, broker_sync, data_supervisor, split_history
 from backend.services import user_data
 from backend.services.auth_service import create_access_token
@@ -435,3 +435,206 @@ def test_api_disconnect_keeps_imported_data(api, db, user):
     assert api.delete("/api/brokers/ibkr").status_code == 204
     assert db.query(BrokerConnection).count() == 0
     assert imported_years(db) == [2026]
+
+
+# ── daily cron ───────────────────────────────────────────────────────
+
+OTHER_TOKEN = "987654321098765432109876"
+
+
+class Clock:
+    """Fake time: only sleeping (the poll's or the pacer's) moves it."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += max(seconds, 0.0)
+
+
+class Tokens:
+    """One fake IBKR per token, recording when each token was called."""
+
+    def __init__(self, clock: Clock, ibkrs: dict[str, FakeIBKR]):
+        self.clock = clock
+        self.ibkrs = ibkrs
+        self.at: dict[str, list[float]] = {token: [] for token in ibkrs}
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        token = request.url.params["t"]
+        self.at[token].append(self.clock())
+        return self.ibkrs[token].handler(request)
+
+    @property
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self.handler)
+
+
+def cron(db, ibkrs: dict[str, FakeIBKR], today=TODAY, **kwargs) -> tuple[dict, Tokens]:
+    clock = Clock()
+    tokens = Tokens(clock, ibkrs)
+    summary = broker_sync.sync_all(
+        db, today=today, transport=tokens.transport, sleep=clock.sleep, clock=clock, **kwargs
+    )
+    return summary, tokens
+
+
+def busiest_minute(times: list[float]) -> int:
+    return max((sum(1 for t in times if start <= t < start + 60) for start in times), default=0)
+
+
+@pytest.fixture
+def other(db) -> User:
+    u = User(email="o@example.com", name="O", password_hash="x")
+    db.add(u)
+    db.commit()
+    return u
+
+
+def years_of(db, u: User) -> list[int]:
+    rows = db.query(ImportRecord).join(Account).filter(Account.user_id == u.id)
+    return sorted(r.fiscal_year for r in rows)
+
+
+def opened_2024(year: int) -> str:
+    return year_statement(year, date_opened='dateOpened="20240102"')
+
+
+def test_cron_spends_its_budget_and_resumes_the_next_day(db, user):
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=True)
+
+    first, tokens = cron(db, {TOKEN: FakeIBKR()}, budget_seconds=30)
+    assert first["unfinished"] == 1 and first["done"] == 0
+    day_one = imported_years(db)
+    assert 0 < len(day_one) < 8
+    assert busiest_minute(tokens.at[TOKEN]) <= 10  # the pacer waited instead
+
+    ibkr = FakeIBKR()
+    second, _ = cron(db, {TOKEN: ibkr}, today=date(2026, 10, 16))
+    assert second["done"] == 1 and second["unfinished"] == 0
+    assert imported_years(db) == list(range(2019, 2027))
+    # The run resumed where it stopped: no year imported yesterday was asked again.
+    assert {int(fd[:4]) for fd, _ in ibkr.sent}.isdisjoint(day_one)
+
+
+def test_cron_routine_run_refreshes_only_the_current_year(db, user):
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=False)
+    run_to_end(db, user, FakeIBKR())
+    ibkr = FakeIBKR()
+    summary, _ = cron(db, {TOKEN: ibkr}, today=date(2026, 10, 16))
+    assert summary["done"] == 1
+    assert ibkr.sent == [("20260101", "20261015")]
+
+
+def test_cron_leaves_an_expired_token_alone_until_the_user_reconnects(db, user):
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=False)
+    expired = FakeIBKR()
+    expired.send_error[2026] = "1012"
+    summary, _ = cron(db, {TOKEN: expired})
+    assert summary["error"] == 1
+    assert "caducado" in broker_sync.get_connection(db, user).last_error
+
+    summary, tokens = cron(db, {TOKEN: FakeIBKR()}, today=date(2026, 10, 16))
+    assert summary["skipped"] == 1
+    assert tokens.at[TOKEN] == []  # not one request to IBKR
+
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=False)
+    summary, _ = cron(db, {TOKEN: FakeIBKR()}, today=date(2026, 10, 17))
+    assert summary["done"] == 1
+    assert imported_years(db) == [2026]
+
+
+def test_cron_retries_an_unreachable_ibkr_the_next_day(db, user):
+    """Unreachable is not expired: the run keeps its queue and its error clears."""
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=True)
+    ibkr = FakeIBKR()
+
+    def down_for_2021(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("fd", "").startswith("2021"):
+            raise httpx.ConnectError("down", request=request)
+        return ibkr.handler(request)
+
+    clock = Clock()
+    summary = broker_sync.sync_all(
+        db, today=TODAY, transport=httpx.MockTransport(down_for_2021),
+        sleep=clock.sleep, clock=clock,
+    )
+    assert summary["error"] == 1
+    conn = broker_sync.get_connection(db, user)
+    assert conn.last_error and conn.queue
+    assert not broker_sync.needs_user(conn)
+
+    summary, _ = cron(db, {TOKEN: FakeIBKR()}, today=date(2026, 10, 16))
+    assert summary["done"] == 1
+    assert imported_years(db) == list(range(2019, 2027))
+    conn = broker_sync.get_connection(db, user)
+    assert conn.last_error is None  # resolved, not a stale message on the card
+    assert not broker_sync.needs_user(conn)
+
+
+def test_cron_a_stuck_statement_does_not_starve_another_user(db, user, other):
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=False)
+    broker_sync.connect(db, other, token=OTHER_TOKEN, query_id="2", full_history=True)
+    stuck = FakeIBKR()
+    stuck.fetch_error[2026] = "1019"  # IBKR never finishes generating it
+
+    summary, tokens = cron(db, {TOKEN: stuck, OTHER_TOKEN: FakeIBKR(opened_2024)})
+
+    assert summary == {"connections": 2, "skipped": 0, "done": 1, "error": 0, "failed": 0,
+                       "unfinished": 1}
+    assert broker_sync.get_connection(db, other).queue == []
+    assert years_of(db, other) == [2024, 2025, 2026]
+    assert broker_sync.get_connection(db, user).pending_reference == "ref-2026"
+    for times in tokens.at.values():
+        assert busiest_minute(times) <= 10
+
+
+def test_cron_one_users_failure_does_not_stop_the_others(db, user, other, monkeypatch):
+    real_import = broker_sync.import_ibkr_report
+
+    def broken_for_user(db_, report, digest, label, user_id, **kwargs):
+        if user_id == user.id:
+            raise RuntimeError("bug")
+        return real_import(db_, report, digest, label, user_id, **kwargs)
+
+    monkeypatch.setattr(broker_sync, "import_ibkr_report", broken_for_user)
+    broker_sync.connect(db, user, token=TOKEN, query_id="1", full_history=False)
+    broker_sync.connect(db, other, token=OTHER_TOKEN, query_id="2", full_history=False)
+
+    summary, _ = cron(db, {TOKEN: FakeIBKR(), OTHER_TOKEN: FakeIBKR()})
+
+    assert summary["failed"] == 1 and summary["done"] == 1
+    assert years_of(db, user) == []
+    assert years_of(db, other) == [2026]
+
+
+@pytest.fixture
+def cron_api(db, monkeypatch):
+    monkeypatch.setattr(settings, "cron_secret", "s3cret")
+    app = FastAPI()
+    app.include_router(brokers_router, prefix="/api")
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+    client.headers["X-Cron-Key"] = "s3cret"
+    return client
+
+
+def test_cron_api_reports_a_failed_step_as_a_failed_job(cron_api, monkeypatch):
+    summary = {"connections": 2, "skipped": 0, "done": 1, "error": 0, "failed": 1,
+               "unfinished": 0}
+    monkeypatch.setattr(broker_sync, "sync_all", lambda _db: summary)
+    assert cron_api.post("/api/brokers/cron").status_code == 500
+
+    monkeypatch.setattr(broker_sync, "sync_all", lambda _db: {**summary, "failed": 0})
+    response = cron_api.post("/api/brokers/cron")
+    assert response.status_code == 200
+    assert response.json()["done"] == 1
+
+
+def test_cron_api_does_nothing_without_an_encryption_key(cron_api, monkeypatch):
+    monkeypatch.setattr(settings, "credentials_key", "")
+    monkeypatch.setattr(broker_sync, "sync_all", lambda _db: pytest.fail("must not sync"))
+    assert cron_api.post("/api/brokers/cron").json() == {"status": "disabled"}
