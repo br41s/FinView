@@ -2722,7 +2722,37 @@ function ImgItfTransacciones() {
   );
 }
 
+function ImgRectificarDeclaracionRenta() {
+  return (
+    <div className={styles.postImgRectificarDeclaracionRenta}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">CORREGIR LA DECLARACIÓN · CASILLA [103]</text>
+        {/* Original declaration */}
+        <rect x="18" y="28" width="72" height="50" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.3" fill="none" />
+        <text x="54" y="41" fontSize="5.5" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">DECLARACIÓN</text>
+        <text x="54" y="54" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">0029 · 1.200 €</text>
+        <text x="54" y="66" fontSize="5.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle">0588 sin aplicar</text>
+        {/* Correction mark */}
+        <path d="M30 71 L96 71" stroke="var(--fv-ochre)" strokeWidth="2" strokeDasharray="4 3" />
+        {/* Arrow */}
+        <path d="M92 53h14" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="106,49 113,53 106,57" fill="var(--fv-ink-30)" />
+        {/* Rectificativa result */}
+        <rect x="116" y="26" width="70" height="54" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <text x="151" y="39" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">RECTIFICATIVA</text>
+        <text x="151" y="52" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">0029 · 1.200 €</text>
+        <text x="151" y="63" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">0588 · 120 €</text>
+        <text x="151" y="74" fontSize="5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">a devolver +120 €</text>
+        {/* Footer */}
+        <text x="100" y="96" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">un solo trámite, en las dos direcciones</text>
+        <text x="100" y="108" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">RD 117/2024 · art. 120.3 LGT · 4 años</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'rectificar-declaracion-renta-irpf': ImgRectificarDeclaracionRenta,
   'itf-impuesto-transacciones-financieras-espana': ImgItfTransacciones,
   'promociones-brokers-irpf-espana': ImgPromocionesBrokers,
   'adr-fiscalidad-espana': ImgAdr,
