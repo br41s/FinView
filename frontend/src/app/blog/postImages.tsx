@@ -2695,7 +2695,35 @@ function ImgPromocionesBrokers() {
   );
 }
 
+function ImgItfTransacciones() {
+  return (
+    <div className={styles.postImgItfTransacciones}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="14" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">COMPRA DE ACCIÓN ESPAÑOLA · 0,2 % ITF</text>
+        {/* Order ticket */}
+        <rect x="20" y="28" width="70" height="48" rx="4" stroke="var(--fv-ochre)" strokeWidth="1.5" fill="var(--fv-ochre-ghost)" />
+        <line x1="20" y1="40" x2="90" y2="40" stroke="var(--fv-ochre)" strokeWidth="1" strokeDasharray="3 3" />
+        <text x="55" y="36" fontSize="5.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">CONFIRMACIÓN</text>
+        <text x="55" y="54" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">100 acc · 600 €</text>
+        <text x="55" y="66" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">ITF 0,2 % = 1,20 €</text>
+        {/* Arrow */}
+        <path d="M92 52h18" stroke="var(--fv-ink-30)" strokeWidth="1.3" />
+        <polygon points="110,48 117,52 110,56" fill="var(--fv-ink-30)" />
+        {/* Cost basis box */}
+        <rect x="120" y="30" width="66" height="44" rx="4" stroke="var(--fv-ink-30)" strokeWidth="1.2" fill="none" />
+        <text x="153" y="46" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">valor de</text>
+        <text x="153" y="56" fontSize="6" fill="var(--fv-ink-60)" fontFamily="system-ui" textAnchor="middle">adquisición</text>
+        <text x="153" y="68" fontSize="6.5" fill="var(--fv-ochre)" fontFamily="system-ui" textAnchor="middle">601,20 €</text>
+        {/* Footer */}
+        <text x="100" y="94" fontSize="6" fill="var(--fv-ink)" fontFamily="system-ui" textAnchor="middle">el impuesto engorda tu coste, no lo pierdes</text>
+        <text x="100" y="106" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">Ley 5/2020 · art. 35.1.b LIRPF</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'itf-impuesto-transacciones-financieras-espana': ImgItfTransacciones,
   'promociones-brokers-irpf-espana': ImgPromocionesBrokers,
   'adr-fiscalidad-espana': ImgAdr,
   'oro-fiscalidad-irpf-espana': ImgOro,
