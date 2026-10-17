@@ -674,6 +674,39 @@ def test_a_breakdown_that_did_not_add_up_is_read_again_at_the_recheck(db, no_htt
     assert refresh.refresh(db, HOLDING, 30)["checked"] == 0  # but only once per recheck
 
 
+def test_an_answer_from_an_older_reader_is_due_at_once_and_read_again(db, no_http, monkeypatch):
+    """A fix must reach yesterday's cached `no_revenue`, not wait out RECHECK_DAYS."""
+    calls = _esef_source(monkeypatch)
+    refresh.refresh(db, HOLDING, 30)
+    assert calls["extract"] == 1 and refresh.due_isins(db, HOLDING) == []
+
+    db.query(SegmentCheck).one().reader = None  # written before readers were versioned
+    db.commit()
+    assert refresh.due_isins(db, HOLDING) == ["ES0000000001"]
+    refresh.refresh(db, HOLDING, 30)
+    assert calls["extract"] == 2  # same filing id, read again
+    assert db.query(SegmentCheck).one().reader == refresh.READERS[SegmentCheck]
+    assert refresh.due_isins(db, HOLDING) == []
+
+
+def test_a_row_stored_under_the_listings_wrong_year_is_replaced(db, no_http, monkeypatch):
+    """Carrefour's FY2025 was listed as 2026: the 2026 row would win as the latest."""
+    _esef_source(monkeypatch)
+    db.add(SegmentReport(
+        isin="ES0000000001", fiscal_year=2026, period_end=date(2026, 3, 2), source="esef",
+        filing_id="F-2024", source_url="https://example.org", currency="EUR",
+        total_revenue=Decimal(1), lines="[]", axis_status="{}",
+    ))
+    db.add(SegmentReport(  # another filing's year is kept
+        isin="ES0000000001", fiscal_year=2023, period_end=date(2023, 12, 31), source="esef",
+        filing_id="F-2023", source_url="https://example.org", currency="EUR",
+        total_revenue=Decimal(1), lines="[]", axis_status="{}",
+    ))
+    db.commit()
+    refresh.refresh(db, HOLDING, 30)
+    assert sorted(r.fiscal_year for r in db.query(SegmentReport)) == [2023, 2024]
+
+
 def test_a_cell_split_into_divs_stays_on_its_row():
     """PDF-converted reports wrap each figure in <div>s (Naturgy, Endesa, Enagás...)."""
     fragment = (
@@ -706,8 +739,10 @@ def test_the_budget_stops_the_loop(db, no_http, monkeypatch):
 
 def test_never_checked_isins_come_before_stale_ones(db):
     old = datetime.now(timezone.utc) - timedelta(days=30)
-    db.add(SegmentCheck(isin="ES0000000002", outcome="ok", checked_at=old))
-    db.add(SegmentCheck(isin="ES0000000003", outcome="ok", checked_at=datetime.now(timezone.utc)))
+    reader = refresh.READERS[SegmentCheck]
+    db.add(SegmentCheck(isin="ES0000000002", outcome="ok", checked_at=old, reader=reader))
+    db.add(SegmentCheck(isin="ES0000000003", outcome="ok", checked_at=datetime.now(timezone.utc),
+                        reader=reader))
     db.commit()
     assert refresh.due_isins(db, ["ES0000000003", "ES0000000002", "ES0000000001"]) == [
         "ES0000000001",

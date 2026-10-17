@@ -30,6 +30,8 @@ class SegmentCheck(Base):
     isin: Mapped[str] = mapped_column(String(12), nullable=False, unique=True, index=True)
     outcome: Mapped[str] = mapped_column(String(30), nullable=False)
     filing_id: Mapped[str | None] = mapped_column(String(120))
+    # The reader version that wrote it (`refresh.READERS`); NULL before 2026-10-17.
+    reader: Mapped[str | None] = mapped_column(String(20))
     checked_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
@@ -91,6 +93,7 @@ class AiMentionCheck(Base):
     isin: Mapped[str] = mapped_column(String(12), nullable=False, unique=True, index=True)
     outcome: Mapped[str] = mapped_column(String(30), nullable=False)
     filing_id: Mapped[str | None] = mapped_column(String(120))
+    reader: Mapped[str | None] = mapped_column(String(20))  # as in SegmentCheck
     checked_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )

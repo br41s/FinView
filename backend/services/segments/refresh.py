@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.models import SegmentCheck, SegmentReport
+from backend.models import AiMentionCheck, SegmentCheck, SegmentReport
 from backend.services.segments import esef, sec
 from backend.services.segments.classify import REGIONS, SECTORS, ClassificationError, classify
 from backend.services.segments.numbers import pick_partition
@@ -48,10 +48,18 @@ OUTCOME_DETAIL = {
 }
 
 
+# Which version of each reader wrote a check. A check written by an older one is due at
+# once, whatever its age, and its filing is read again: otherwise a reader fix reaches
+# an answer cached the day before only after RECHECK_DAYS (the fallback totals of
+# 2026-10-17 were live and invisible for a week). Bump the reader you change.
+READERS = {SegmentCheck: "2026-10-17", AiMentionCheck: "2026-10-17"}
+
+
 def due_isins(
     db: Session, isins: Iterable[str], now: datetime | None = None, model=SegmentCheck
 ) -> list[str]:
-    """ISINs never checked first, then those whose last check is older than RECHECK_DAYS.
+    """ISINs never checked or checked by an older reader first, then those whose last
+    check is older than RECHECK_DAYS.
 
     `model` is the check table: `SegmentCheck` here, `AiMentionCheck` for the AI reader.
     """
@@ -59,9 +67,9 @@ def due_isins(
     wanted = sorted(set(isins))
     checks = {c.isin: c for c in db.query(model).filter(model.isin.in_(wanted)).all()}
     cutoff = (now - timedelta(days=RECHECK_DAYS)).replace(tzinfo=None)
-    never = [i for i in wanted if i not in checks]
+    never = [i for i in wanted if i not in checks or checks[i].reader != READERS[model]]
     stale = sorted(
-        (i for i in wanted if i in checks and _naive(checks[i].checked_at) < cutoff),
+        (i for i in wanted if i not in never and _naive(checks[i].checked_at) < cutoff),
         key=lambda i: _naive(checks[i].checked_at),
     )
     return never + stale
@@ -118,6 +126,7 @@ def _record(
         db.add(row)
     row.outcome = outcome
     row.filing_id = filing_id
+    row.reader = READERS[model]
     row.checked_at = datetime.now(timezone.utc)
 
 
@@ -133,6 +142,8 @@ def _already_read(db: Session, isin: str, filing_id: str, model=SegmentCheck) ->
     """Same filing as the last check: refresh the timestamp, keep the answer."""
     row = db.query(model).filter(model.isin == isin).one_or_none()
     if row is None or row.filing_id != filing_id or row.outcome in REREAD_OUTCOMES:
+        return False
+    if row.reader != READERS[model]:
         return False
     row.checked_at = datetime.now(timezone.utc)
     return True
@@ -251,6 +262,7 @@ def _store(
         failed = {s for s in status.values() if s != "absent"}
         return _record(db, isin, "unreconciled" if failed else "no_segments", filing_id)
 
+    _drop_misdated(db, SegmentReport, isin, filing_id, period_end.year)
     row = (
         db.query(SegmentReport)
         .filter(SegmentReport.isin == isin, SegmentReport.fiscal_year == period_end.year)
@@ -269,6 +281,14 @@ def _store(
     row.lines = json.dumps(stored, ensure_ascii=False)
     row.axis_status = json.dumps(status)
     _record(db, isin, "ok", filing_id)
+
+
+def _drop_misdated(db: Session, model, isin: str, filing_id: str, year: int) -> None:
+    """One filing is one year: a row for the same filing under another year was stored
+    with the listing's wrong date (`esef.fiscal_year_end`) and would win as the latest."""
+    db.query(model).filter(
+        model.isin == isin, model.filing_id == filing_id, model.fiscal_year != year
+    ).delete(synchronize_session=False)
 
 
 def _unassigned_share(lines: list[tuple[str, Decimal]], categories: dict[str, str]) -> Decimal:

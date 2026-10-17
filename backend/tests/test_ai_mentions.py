@@ -310,6 +310,18 @@ def test_a_mislisted_esef_report_is_stored_under_its_own_year(db, source):
     assert (row.fiscal_year, row.period_end) == (2025, date(2025, 12, 31))
 
 
+def test_the_misdated_row_of_the_same_filing_is_replaced(db, source):
+    source["filing"] = esef.Filing("F-2025", date(2026, 12, 31), "/f.json", "/v.html", "/r.xhtml")
+    am.refresh(db, HOLDING, 30)  # no periods in the report: the listing's 2026 is stored
+    assert db.query(AiMentionReport).one().fiscal_year == 2026
+
+    source["periods"] = [(date(2025, 1, 1), date(2025, 12, 31))]
+    db.query(AiMentionCheck).one().reader = None  # an older reader wrote it
+    db.commit()
+    am.refresh(db, HOLDING, 30)
+    assert [r.fiscal_year for r in db.query(AiMentionReport)] == [2025]
+
+
 def test_an_unchanged_filing_is_not_read_again(db, source):
     am.refresh(db, HOLDING, 30)
     db.query(AiMentionCheck).one().checked_at = date(2000, 1, 1)
