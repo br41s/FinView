@@ -123,6 +123,12 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `segment_reports` | Ingresos por segmento y por región de cada informe anual leído (una fila por ISIN y ejercicio), con enlace al filing |
 | `ai_mention_checks` | Última lectura del informe anual por ISIN buscando la IA (resultado + id del filing), se repite cada 7 días; un fallo de red o del modelo no se guarda |
 | `ai_mention_reports` | Menciones de IA, palabras leídas y citas literales verificadas de cada informe (una fila por ISIN y ejercicio), con enlace al filing |
+
+El índice de exposición a la IA por industria no está en la base de datos: es
+`backend/services/segments/data/ai_industry_exposure.json`, generado por
+`scripts/build_ai_industry_exposure.py` (Eloundou et al. 2024 + BLS OEWS, versiones fijadas
+dentro del fichero). La industria de cada segmento se guarda como clave `industry` en las
+líneas de `segment_reports`.
 | `data_issues` | Avisos del supervisor de datos por importación |
 | `watchlist_items` | Tickers en watchlist por usuario (monitor de opciones) |
 | `options_snapshots` | Snapshots de cadena de opciones por ciclo |

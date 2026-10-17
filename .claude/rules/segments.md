@@ -7,6 +7,7 @@ paths:
   - "frontend/src/lib/exposure.ts"
   - "frontend/src/app/portfolio/AiExposureCard.tsx"
   - "frontend/src/lib/aiExposure.ts"
+  - "scripts/build_ai_industry_exposure.py"
 ---
 
 ## Sector and region exposure — from annual reports
@@ -107,6 +108,31 @@ read as a sell signal (not-advice rule). What is shown is the issuer's own words
   mentions needs no model call.
 - **Refresh**: `POST /portfolio/ai-exposure/refresh` (40s) and the daily cron through
   `run_reference_data_maintenance` (120s), after the segment reader.
-- **Industry exposure index** (published AI-exposure scores by industry, weighted by
-  segment revenue) is not built: the Felten-Raj-Seamans AIIE table on GitHub carries no
-  licence, so republishing its scores needs a decision first.
+
+## AI exposure index by industry — FinView's own calculation (`industry_index.py`)
+
+The published Felten-Raj-Seamans AIIE table (github.com/AIOE-Data/AIOE) carries **no
+licence**, so its scores are not republished. FinView computes the same kind of index
+with their method from two sources that may be republished (owner's decision, 2026-10-17):
+
+- **Occupations**: Eloundou et al., "GPTs are GPTs", Science 2024 — `occ_level.csv`,
+  column `human_rating_beta`, MIT. Pinned to a commit; the licence text is committed as
+  `data/LICENSE-GPTs-are-GPTs.txt` (MIT requires it).
+- **Employment**: BLS OEWS national industry-specific estimates, 4-digit NAICS, one
+  release (public domain). OEWS aggregate codes ending in 0 take the mean of the detailed
+  codes under them; an occupation with no score is left out and lowers `coverage`.
+- `scripts/build_ai_industry_exposure.py` downloads both at the pinned versions and writes
+  `data/ai_industry_exposure.json` with the versions inside (`sources`). Nothing is
+  downloaded at runtime. To move to a new OEWS release, bump the constants, rerun, commit
+  both. The UI reads the citations, commit and release from `sources`, never hardcoded.
+- **Company score** = its segments' industry scores weighted by the revenue each business
+  line reports (positive lines only). The model maps business-line labels to the table's
+  codes (`map_industries`), held to those keys; anything else is `unassigned` and lowers
+  `revenue_pct` instead of the score. Mapping writes an `industry` key into the segment
+  report's `lines` JSON (no schema change), runs first in the AI refresh for any latest
+  report with unmapped business lines — so reports read before this existed, or by a new
+  filing, get mapped without waiting a year. A model failure writes nothing.
+- A company with only a regional breakdown, or no segment report, has no industry score;
+  the UI says why (`INDUSTRY_DETAIL`). There is no company-level fallback on purpose.
+- The UI says "cálculo de FinView", names the method, both sources with links, the commit
+  and the OEWS release, and that it describes US work in those industries, not the company.

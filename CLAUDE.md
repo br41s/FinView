@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1615 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 178 frontend tests |
+| Tests | pytest · 1632 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -91,7 +91,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   AI (10-K Item 1A for US ISINs, the whole ESEF report for the rest): a mention count done
   in code and up to three quotes the model picks, published only if every quote is in the
   filing verbatim. No score or "risk of closure": no verifiable dataset exists for one, and
-  it would read as advice. Same rules file.
+  it would read as advice. Next to it, an industry index FinView computes itself
+  (Eloundou et al. 2024 occupation scores × BLS OEWS staffing, weighted by segment revenue)
+  because the published AIIE table has no licence. The table is a committed JSON built by
+  `scripts/build_ai_industry_exposure.py` from pinned versions. Same rules file.
 - Portfolio price resolution is one ticker to many ISINs. Corporate-action ISINs that
   share a Yahoo ticker must all receive the fetched price and cache row.
 - ISIN→ticker resolution lives in `services/ticker_map.py`, not in `prices.py`. Precedence
@@ -214,10 +217,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1615 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1615 pass in ~110s. Those files are not in the repo,
+Backend: `pytest` — 1632 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1632 pass in ~110s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1467 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1484 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
@@ -235,7 +238,7 @@ reported 127 skips here against 159 there. Gate on a path built from
 is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
 the pure unit tests down with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 178 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 181 tests over pure logic: `src/lib/`
 (`aiExposure`, `brokerSync`, `exposure`, `optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis, tier grouping, ladder badge)
 plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options
