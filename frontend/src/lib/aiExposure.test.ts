@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mentionsText, quotesNote } from "./aiExposure";
+import { betaPct, mentionsText, quotesNote, releaseEs } from "./aiExposure";
 
 describe("mentionsText", () => {
   it("is null until the report is read", () => {
@@ -33,5 +33,21 @@ describe("quotesNote", () => {
 
   it("is null when there are quotes to show", () => {
     expect(quotesNote({ mentions: 3, quotes_status: "ok" })).toBeNull();
+  });
+});
+
+describe("releaseEs", () => {
+  it("names the BLS release in Spanish", () => {
+    expect(releaseEs("May 2025")).toBe("mayo de 2025");
+  });
+
+  it("leaves a format it does not know as it is", () => {
+    expect(releaseEs("2025Q2")).toBe("2025Q2");
+  });
+});
+
+describe("betaPct", () => {
+  it("shows the share of tasks as a whole percentage", () => {
+    expect(betaPct(0.3412)).toBe("34 %");
   });
 });
