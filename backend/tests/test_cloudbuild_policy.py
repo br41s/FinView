@@ -39,25 +39,41 @@ def test_suite_gates_the_build_before_the_image_is_published():
 
 
 def test_deploy_is_request_billed_bounded_and_fail_closed():
-    deploy_args = _step("--revision-suffix=$SHORT_SHA")["args"]
+    deploy_args = _step("--revision-suffix=$SHORT_SHA-$BUILD_ID")["args"]
 
     assert "--cpu-throttling" in deploy_args
     assert "--no-cpu-throttling" not in deploy_args
     assert "--min-instances=0" in deploy_args
     assert "--max-instances=1" in deploy_args
     assert "--no-traffic" in deploy_args
-    assert "--revision-suffix=$SHORT_SHA" in deploy_args
+    assert "--revision-suffix=$SHORT_SHA-$BUILD_ID" in deploy_args
     assert (
         "--update-env-vars=FINVIEW_ENV=production,"
         "FINVIEW_REQUEST_SCOPED_RUNTIME=true"
     ) in deploy_args
 
 
+def test_each_build_gets_its_own_revision_name():
+    """A re-run of the same commit must not land on the revision a failed build left.
+
+    Cloud Run will not delete the latest created revision, so a name derived from
+    the commit alone stayed taken by the dead candidate and every retry failed with
+    its old error. The rollout step must look for the same name the deploy created.
+    """
+    deploy_args = _step("--revision-suffix=$SHORT_SHA-$BUILD_ID")["args"]
+    rollout = json.dumps(_step("REVISION="))
+
+    assert "--revision-suffix=$SHORT_SHA-$BUILD_ID" in deploy_args
+    assert 'REVISION=\\"finview-api-$SHORT_SHA-$BUILD_ID\\"' in rollout
+    # Cloud Run names are DNS labels of at most 63 characters; a build id is a UUID.
+    assert len("finview-api-") + 7 + 1 + 36 <= 63
+
+
 def test_deploy_pins_both_service_and_revision_scaling_scopes():
     """`--min`/`--max` are service-level; `--min-instances`/`--max-instances` are
     revision-level. They are not aliases -- the effective cap is the lower of the
     two, so leaving either scope unpinned lets that scope drift."""
-    deploy_args = _step("--revision-suffix=$SHORT_SHA")["args"]
+    deploy_args = _step("--revision-suffix=$SHORT_SHA-$BUILD_ID")["args"]
 
     assert "--min=0" in deploy_args
     assert "--max=1" in deploy_args

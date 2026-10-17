@@ -54,6 +54,11 @@ steps:
 
   # Create a candidate revision with no production traffic. Request-based
   # billing is mandatory: scheduled work executes synchronously in HTTP.
+  # The revision is named per build, not per commit. With $SHORT_SHA alone a
+  # failed candidate kept its commit's name forever (Cloud Run refuses to delete
+  # the latest created revision), so re-running the same commit "deployed" onto
+  # the dead revision and reported its old failure: 93b303c, 2026-10-17, after
+  # the secret permission that had failed it was already fixed.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -62,7 +67,7 @@ steps:
       - finview-api
       - --region=europe-west1
       - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/finview-api:$COMMIT_SHA
-      - --revision-suffix=$SHORT_SHA
+      - --revision-suffix=$SHORT_SHA-$BUILD_ID
       - --allow-unauthenticated
       - --no-traffic
       - --cpu-throttling
@@ -118,7 +123,7 @@ steps:
           fi
         done
 
-        REVISION="finview-api-$SHORT_SHA"
+        REVISION="finview-api-$SHORT_SHA-$BUILD_ID"
         PREVIOUS="$$(gcloud run services describe finview-api \
           --project=$PROJECT_ID --region=europe-west1 \
           --format='json(status.traffic)' | python3 -c \
