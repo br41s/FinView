@@ -42,9 +42,9 @@ OUTCOME_DETAIL = {
     "ok": "Informe anual leído",
     "no_issuer": "Sin emisor identificable en GLEIF ni en la SEC (ETF, fondo u otro producto)",
     "no_filing": "Sin informe anual estructurado publicado (ETF, fondo o emisor no cotizado en la UE/EE. UU.)",
-    "no_revenue": "El informe no etiqueta una cifra de ingresos comparable (banca y seguros incluidos)",
+    "no_revenue": "El informe no etiqueta un total con el que cuadrar el desglose (ingresos, margen bruto, ingresos de seguros o por alquiler)",
     "no_segments": "El informe no desglosa los ingresos por segmento ni por región",
-    "unreconciled": "El desglose no cuadra con los ingresos totales del informe",
+    "unreconciled": "El desglose no cuadra con el total del informe",
 }
 
 
@@ -123,9 +123,10 @@ def _record(
 
 # Answers that say how well FinView read the filing, not what the filing says. They
 # are re-read at each weekly recheck: an improvement to the reader (the table fix of
-# 2026-10-17 turned unreadable notes into readable rows) must reach a report already
+# 2026-10-17 turned unreadable notes into readable rows; the bank, insurance and rental
+# totals the same day gave `no_revenue` filings a total) must reach a report already
 # checked, not wait a year for the issuer's next one.
-REREAD_OUTCOMES = frozenset({"unreconciled", "no_segments"})
+REREAD_OUTCOMES = frozenset({"unreconciled", "no_segments", "no_revenue"})
 
 
 def _already_read(db: Session, isin: str, filing_id: str, model=SegmentCheck) -> bool:
@@ -174,6 +175,7 @@ def _check_sec(db, isin, ticker, name, http, cik_by_ticker) -> None:
         filing.period_end,
         instance.currency,
         instance.total,
+        "revenue",
         candidates,
         {"business": "absent", "geography": "absent"},
     )
@@ -194,7 +196,7 @@ def _check_esef(db, isin, name, http) -> None:
     if not report.note:
         return _record(db, isin, "no_segments", filing.filing_id)
 
-    rows = esef.extract(name, report, filing.period_end)
+    rows = esef.extract(name, report, report.period_end)
     candidates: dict[str, list[list[tuple[str, Decimal]]]] = {"business": [], "geography": []}
     status: dict[str, str] = {}
     for axis in ("business", "geography"):
@@ -209,16 +211,17 @@ def _check_esef(db, isin, name, http) -> None:
         "esef",
         filing.filing_id,
         filing.url,
-        filing.period_end,
+        report.period_end,
         report.currency,
         report.total,
+        report.measure,
         candidates,
         status,
     )
 
 
 def _store(
-    db, isin, name, source, filing_id, url, period_end, currency, total, candidates, status
+    db, isin, name, source, filing_id, url, period_end, currency, total, measure, candidates, status
 ) -> None:
     """Classify the candidate breakdowns, keep the best per axis, write the report."""
     labels = {
@@ -262,6 +265,7 @@ def _store(
     row.source_url = url
     row.currency = currency
     row.total_revenue = total
+    row.measure = measure
     row.lines = json.dumps(stored, ensure_ascii=False)
     row.axis_status = json.dumps(status)
     _record(db, isin, "ok", filing_id)

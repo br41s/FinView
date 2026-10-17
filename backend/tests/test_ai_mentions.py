@@ -85,6 +85,24 @@ def test_embedded_images_and_tags_are_dropped_across_chunk_boundaries():
     assert stream.close() == "Before\nOur AI & data\nAfter"
 
 
+def test_inline_xbrl_periods_are_kept_across_chunk_boundaries():
+    doc = (
+        b"<html><body><ix:header><xbrli:context id='c1'><xbrli:period>"
+        b"<xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate>"
+        b"</xbrli:period></xbrli:context><xbrli:context id='c2'><xbrli:period>"
+        b"<xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context>"
+        b"<xbrli:context id='c3'><xbrli:period><xbrli:startDate>soon</xbrli:startDate>"
+        b"<xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period></xbrli:context>"
+        b"</ix:header><p>Our AI</p></body></html>"
+    )
+    for size in (7, len(doc)):  # 7 splits every date and tag
+        stream = am.TextStream()
+        for i in range(0, len(doc), size):
+            stream.feed(doc[i : i + size])
+        stream.close()
+        assert stream.periods == [(date(2025, 1, 1), date(2025, 12, 31))]
+
+
 def _ten_k(*headings: str) -> str:
     return "\n".join(headings)
 
@@ -243,6 +261,7 @@ def source(monkeypatch):
         "filing": esef.Filing("F-2024", date(2024, 12, 31), "/f.json", "/v.html", "/r.xhtml"),
         "reads": 0,
         "asks": 0,
+        "periods": [],
     }
 
     def _isin_to_lei(http, isin):
@@ -252,7 +271,7 @@ def source(monkeypatch):
 
     def _read_text(http, url, seconds):
         state["reads"] += 1
-        return state["text"]
+        return am.Document(state["text"], state["periods"])
 
     def _ask(company, text):
         state["asks"] += 1
@@ -279,6 +298,16 @@ def test_a_report_is_stored_with_its_count_quotes_and_link(db, source):
     assert json.loads(row.quotes) == [{"text": QUOTE, "theme": "regulation"}]
     assert row.source_url == "https://filings.xbrl.org/v.html"
     assert db.query(AiMentionCheck).one().filing_id == "F-2024"
+
+
+def test_a_mislisted_esef_report_is_stored_under_its_own_year(db, source):
+    """Carrefour's FY2025 report is listed at 2026-12-31; its contexts say 2025."""
+    source["filing"] = esef.Filing("F-2025", date(2026, 12, 31), "/f.json", "/v.html", "/r.xhtml")
+    fy25, fy24 = (date(2025, 1, 1), date(2025, 12, 31)), (date(2024, 1, 1), date(2024, 12, 31))
+    source["periods"] = [fy25, fy25, fy24]
+    am.refresh(db, HOLDING, 30)
+    row = db.query(AiMentionReport).one()
+    assert (row.fiscal_year, row.period_end) == (2025, date(2025, 12, 31))
 
 
 def test_an_unchanged_filing_is_not_read_again(db, source):

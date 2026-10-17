@@ -4,6 +4,8 @@ import {
   type ExposureBucket,
   coveredPct,
   isUnknownBucket,
+  measureName,
+  shareOf,
   shouldRefreshAgain,
   sourceName,
 } from "./exposure";
@@ -51,5 +53,18 @@ describe("labels", () => {
     expect(sourceName("sec")).toBe("SEC 10-K");
     expect(sourceName("esef")).toBe("Informe anual ESEF");
     expect(sourceName(null)).toBe("—");
+  });
+
+  it("names the measure a bank, insurer or property company is split by", () => {
+    expect(measureName("bank_gross_income")).toBe("margen bruto");
+    expect(measureName("insurance_revenue")).toBe("ingresos de seguros");
+    expect(measureName("rental_income")).toBe("ingresos por alquiler");
+  });
+
+  it("says what a segment's share is a share of", () => {
+    expect(shareOf("revenue")).toBe("de sus ingresos");
+    expect(shareOf("bank_gross_income")).toBe("de su margen bruto");
+    expect(shareOf("insurance_revenue")).toBe("de sus ingresos de seguros");
+    expect(shareOf(null)).toBe("de sus ingresos");
   });
 });

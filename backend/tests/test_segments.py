@@ -289,6 +289,137 @@ def test_one_line_is_not_a_breakdown():
     assert esef.verify([("Total", "44.291")], report) == (None, "absent")
 
 
+# ── totals for issuers that tag no revenue ───────────────────────────
+
+
+def _facts(*facts, period="2024-01-01T00:00:00/2025-01-01T00:00:00"):
+    """An xBRL-JSON report from (concept, value) pairs, plus an optional dimension."""
+    out = {}
+    for i, (concept, value, *dims) in enumerate(facts):
+        out[f"t{i}"] = {
+            "value": value,
+            "dimensions": {
+                "concept": concept, "entity": "scheme:LEI", "unit": "iso4217:EUR",
+                "period": period, **(dims[0] if dims else {}),
+            },
+        }
+    return {"facts": out}
+
+
+def _total(data):
+    report = esef.parse_report(data, date(2024, 12, 31))
+    return None if report is None else (report.measure, report.total)
+
+
+def test_a_bank_is_checked_against_its_margen_bruto():
+    """Sabadell and BBVA tag margen bruto as GrossProfit, next to net interest income."""
+    data = _facts(("ifrs-full:GrossProfit", 6337362000.0),
+                  ("ifrs-full:InterestRevenueExpense", 5021335000.0))
+    assert _total(data) == ("bank_gross_income", Decimal("6337362000.0"))
+
+
+def test_gross_profit_without_net_interest_income_is_not_a_total():
+    """Outside a bank's income statement GrossProfit is revenue minus cost of sales."""
+    assert _total(_facts(("ifrs-full:GrossProfit", 1000.0))) is None
+
+
+def test_net_interest_income_from_another_year_does_not_make_a_bank():
+    data = _facts(("ifrs-full:GrossProfit", 1000.0))
+    data["facts"].update(_facts(("ifrs-full:InterestRevenueExpense", 800.0),
+                                period="2023-01-01T00:00:00/2024-01-01T00:00:00")["facts"])
+    assert _total(data) is None
+
+
+def test_revenue_wins_over_every_fallback():
+    data = _facts(("ifrs-full:InsuranceRevenue", 3.0), ("ifrs-full:GrossProfit", 2.0),
+                  ("ifrs-full:InterestRevenueExpense", 1.0), ("ifrs-full:Revenue", 10.0))
+    assert _total(data) == ("revenue", Decimal("10.0"))
+
+
+def test_an_insurer_with_rental_income_is_checked_against_insurance_revenue():
+    """Línea Directa tags both; its segment note breaks down insurance revenue."""
+    data = _facts(("ifrs-full:RentalIncomeFromInvestmentProperty", 4293000.0),
+                  ("ifrs-full:InsuranceRevenue", 991329000.0))
+    assert _total(data) == ("insurance_revenue", Decimal("991329000.0"))
+
+
+@pytest.mark.parametrize("concept", [
+    "ifrs-full:RentalIncomeFromInvestmentProperty", "ifrs-full:RentalIncome",
+])
+def test_a_property_company_is_checked_against_rental_income(concept):
+    assert _total(_facts((concept, 395577000.0))) == ("rental_income", Decimal("395577000.0"))
+
+
+def test_a_fallback_tagged_only_by_segment_is_not_a_total():
+    data = _facts(("ifrs-full:InsuranceRevenue", 5.0, {"ifrs-full:SegmentsAxis": "x:Member"}))
+    assert _total(data) is None
+
+
+def test_a_proportionate_breakdown_does_not_add_up_to_the_ifrs_rental_total():
+    """URW prints gross rental income twice: proportionate (2,817.0) just above IFRS (2,328.2)."""
+    note = (
+        "Gross Rental Income by segments on a proportionate basis | 2025\n"
+        "Shopping Centres | 2,526.4\nOffices & Others | 86.6\nConvention & Exhibition | 203.9\n"
+        "Total | 2,817.0\n"
+        "Gross Rental Income by segments on an IFRS basis | 2025\n"
+        "Shopping Centres | 2,052.9\nOffices & Others | 74.4\nConvention & Exhibition | 201.0\n"
+        "Total | 2,328.2"
+    )
+    report = esef.Report(currency="EUR", total=Decimal("2328200000"), note=note,
+                         period_end=date(2025, 12, 31), measure="rental_income")
+    wrong = [("Shopping Centres", "2,526.4"), ("Offices & Others", "86.6"),
+             ("Convention & Exhibition", "203.9")]
+    right = [("Shopping Centres", "2,052.9"), ("Offices & Others", "74.4"),
+             ("Convention & Exhibition", "201.0")]
+    assert esef.verify(wrong, report) == (None, "unreconciled")
+    assert esef.verify(right, report)[1] == "ok"
+
+
+# ── the report's own year, not the listing's ─────────────────────────
+
+FY24 = (date(2024, 1, 1), date(2024, 12, 31))
+FY23 = (date(2023, 1, 1), date(2023, 12, 31))
+
+
+def test_the_year_is_the_most_common_full_year_in_the_report():
+    """Aviva's FY2025 report is listed at 2026-03-02; its facts say 2025."""
+    periods = [FY24] * 5 + [FY23] * 3 + [(date(2024, 7, 1), date(2024, 12, 31))] * 9
+    assert esef.fiscal_year_end(periods, date(2026, 3, 2)) == date(2024, 12, 31)
+
+
+def test_on_a_tie_the_later_year_wins():
+    assert esef.fiscal_year_end([FY24, FY23], date(2026, 3, 2)) == date(2024, 12, 31)
+
+
+def test_without_a_full_year_period_the_listing_stands():
+    half = [(date(2024, 7, 1), date(2024, 12, 31))]
+    assert esef.fiscal_year_end(half, date(2024, 12, 31)) == date(2024, 12, 31)
+    assert esef.fiscal_year_end([], date(2024, 12, 31)) == date(2024, 12, 31)
+
+
+def test_a_52_week_year_counts_as_a_full_year():
+    week52 = (date(2025, 3, 30), date(2026, 3, 28))
+    assert esef.fiscal_year_end([week52], date(2026, 3, 28)) == date(2026, 3, 28)
+
+
+def test_a_mislisted_report_keeps_its_total_and_its_own_year():
+    """Every fact failed the period check against a wrong listing: `no_revenue`."""
+    report = esef.parse_report(_esef_json(), date(2026, 3, 2))
+    assert report.period_end == date(2024, 12, 31)
+    assert report.total == Decimal("44291000000.0")
+
+
+def test_a_correct_listing_is_unchanged():
+    assert esef.parse_report(_esef_json(), date(2024, 12, 31)).period_end == date(2024, 12, 31)
+
+
+def test_malformed_periods_are_skipped():
+    data = _esef_json()
+    data["facts"]["bad"] = {"value": 1.0, "dimensions": {"concept": "x", "period": "soon/later"}}
+    data["facts"]["instant"] = {"value": 1.0, "dimensions": {"concept": "y", "period": "2024-12-31"}}
+    assert esef.parse_report(data, date(2026, 3, 2)).period_end == date(2024, 12, 31)
+
+
 # ── model answers ────────────────────────────────────────────────────
 
 
@@ -335,9 +466,25 @@ def test_the_reader_keeps_only_well_formed_rows(monkeypatch):
         })
         + "\n```",
     )
-    report = esef.Report(currency="EUR", total=Decimal(1), note="x")
+    report = esef.Report(currency="EUR", total=Decimal(1), note="x", period_end=date(2024, 12, 31))
     out = esef.extract("Iberdrola", report, date(2024, 12, 31))
     assert out == {"business": [("Redes", "1.000")], "geography": []}
+
+
+@pytest.mark.parametrize("measure, words", [
+    ("revenue", "importe neto de la cifra de negocios"),
+    ("bank_gross_income", "margen bruto"),
+    ("insurance_revenue", "ingresos de las actividades ordinarias de seguros"),
+    ("rental_income", "not a proportionate basis"),
+])
+def test_the_reader_is_told_which_figure_to_copy(monkeypatch, measure, words):
+    calls = _model_says(monkeypatch, json.dumps({"business": [], "geography": []}))
+    report = esef.Report(currency="EUR", total=Decimal(1), note="x",
+                         period_end=date(2024, 12, 31), measure=measure)
+    esef.extract("X", report, date(2024, 12, 31))
+    system = calls[0][0]["content"]
+    assert words in system
+    assert '{"business": [{"label": "...", "amount": "..."}]' in system
 
 
 # ── refresh ──────────────────────────────────────────────────────────
@@ -408,6 +555,44 @@ def test_a_report_that_adds_up_is_stored_with_its_source(db, no_http, monkeypatc
     assert db.query(SegmentCheck).one().outcome == "ok"
 
 
+def test_a_mislisted_filing_is_stored_under_the_reports_own_year(db, no_http, monkeypatch):
+    _esef_source(monkeypatch)
+    listed = esef.Filing("F-2024", date(2026, 3, 2), "/f.json", "/viewer.html")
+    monkeypatch.setattr(esef, "latest_filing", lambda http, lei: listed)
+    monkeypatch.setattr(
+        esef, "fetch_report", lambda http, f: esef.parse_report(_esef_json(), f.period_end)
+    )
+    refresh.refresh(db, HOLDING, 30)
+    row = db.query(SegmentReport).one()
+    assert (row.fiscal_year, row.period_end) == (2024, date(2024, 12, 31))
+
+
+def test_the_measure_is_stored_with_the_report(db, no_http, monkeypatch):
+    _esef_source(monkeypatch)
+    report = esef.parse_report(_esef_json(), date(2024, 12, 31))
+    report.measure = "bank_gross_income"
+    monkeypatch.setattr(esef, "fetch_report", lambda http, f: report)
+    refresh.refresh(db, HOLDING, 30)
+    assert db.query(SegmentReport).one().measure == "bank_gross_income"
+
+
+def test_a_filing_without_a_total_is_read_again_at_the_recheck(db, no_http, monkeypatch):
+    """`no_revenue` says what FinView could read: a new fallback total must reach it."""
+    calls = _esef_source(monkeypatch)
+    monkeypatch.setattr(esef, "fetch_report", lambda http, f: None)
+    refresh.refresh(db, HOLDING, 30)
+    assert db.query(SegmentCheck).one().outcome == "no_revenue"
+    db.query(SegmentCheck).one().checked_at = datetime(2020, 1, 1)
+    db.commit()
+
+    monkeypatch.setattr(
+        esef, "fetch_report", lambda http, f: esef.parse_report(_esef_json(), date(2024, 12, 31))
+    )
+    refresh.refresh(db, HOLDING, 30)
+    assert calls["extract"] == 1
+    assert db.query(SegmentCheck).one().outcome == "ok"
+
+
 def test_an_unchanged_filing_is_not_read_again(db, no_http, monkeypatch):
     calls = _esef_source(monkeypatch)
     refresh.refresh(db, HOLDING, 30)
@@ -427,7 +612,12 @@ def test_a_new_filing_adds_a_year(db, no_http, monkeypatch):
     db.commit()
 
     newer = esef.Filing("F-2025", date(2025, 12, 31), "/f.json", "/viewer.html")
+    fy2025 = json.loads(
+        json.dumps(_esef_json()).replace("2025-01-01T00:00:00", "2026-01-01T00:00:00")
+        .replace("2024-01-01T00:00:00", "2025-01-01T00:00:00")
+    )
     monkeypatch.setattr(esef, "latest_filing", lambda http, lei: newer)
+    monkeypatch.setattr(esef, "fetch_report", lambda http, f: esef.parse_report(fy2025, f.period_end))
     refresh.refresh(db, HOLDING, 30)
     assert sorted(r.fiscal_year for r in db.query(SegmentReport)) == [2024, 2025]
 
@@ -577,6 +767,20 @@ def test_value_is_spread_by_revenue_share_and_adjustments_are_left_out(db):
     assert geo["spain"]["holdings"][0]["segments"] == [{"label": "España", "pct": 75.0}]
 
 
+def test_the_measure_reaches_the_holding_and_the_source(db):
+    _report(db, "ES1", 2024, [("geography", "España", 60, "spain"),
+                              ("geography", "México", 40, "latin_america")])
+    db.query(SegmentReport).one().measure = "bank_gross_income"
+    _report(db, "ES2", 2024, [("geography", "España", 100, "spain")])  # written before: NULL
+    db.commit()
+    out = exposure.build(db, [_position("ES1", "100"), _position("ES2", "100")])
+
+    spain = {h["isin"]: h for h in next(r for r in out["geography"] if r["key"] == "spain")["holdings"]}
+    assert spain["ES1"]["measure"] == "bank_gross_income"
+    assert spain["ES2"]["measure"] == "revenue"
+    assert [s["measure"] for s in out["sources"]] == ["bank_gross_income", "revenue"]
+
+
 def test_the_latest_year_is_used(db):
     _report(db, "ES1", 2023, [("geography", "España", 100, "spain")])
     db.query(SegmentCheck).delete()
@@ -593,7 +797,7 @@ def test_an_unpriced_position_is_listed_apart_and_not_spread(db):
     assert out["geography"] == [
         {"key": "no_data", "label": "Sin datos", "value_eur": 200.0, "pct": 100.0,
          "holdings": [{"isin": "ES2", "name": "Co", "ticker": None, "value_eur": 200.0,
-                       "segments": []}]},
+                       "measure": None, "segments": []}]},
     ]
     assert out["pending"] == 2
 
@@ -612,7 +816,7 @@ def test_sources_are_reported_per_position(db):
     assert out["sources"] == [{
         "isin": "ES2", "name": "Co", "status": "no_filing",
         "detail": refresh.OUTCOME_DETAIL["no_filing"],
-        "fiscal_year": None, "source": None, "url": None, "axis_status": None,
+        "fiscal_year": None, "source": None, "measure": None, "url": None, "axis_status": None,
     }]
     assert out["pending"] == 0
 

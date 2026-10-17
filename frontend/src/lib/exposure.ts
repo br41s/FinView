@@ -2,8 +2,30 @@
  * Portfolio exposure by sector and region, from each issuer's own annual report
  * (`GET /portfolio/exposure`). The backend reads SEC 10-K filings and ESEF
  * segment notes and publishes a breakdown only when its lines add up to the
- * report's total revenue; everything it cannot vouch for is the "no_data" bucket.
+ * report's tagged total; everything it cannot vouch for is the "no_data" bucket.
  */
+
+/** What a report's segment figures are. Revenue for almost every issuer; banks,
+ *  insurers and property companies tag no revenue line, so their breakdown is of
+ *  margen bruto, insurance revenue or rental income, and the UI says which. */
+export type Measure = "revenue" | "bank_gross_income" | "insurance_revenue" | "rental_income";
+
+const MEASURE_NAME: Record<Measure, string> = {
+  revenue: "ingresos",
+  bank_gross_income: "margen bruto",
+  insurance_revenue: "ingresos de seguros",
+  rental_income: "ingresos por alquiler",
+};
+
+export function measureName(measure: Measure): string {
+  return MEASURE_NAME[measure];
+}
+
+/** "40 % de sus ingresos", "40 % de su margen bruto": the possessive agrees with it. */
+export function shareOf(measure: Measure | null): string {
+  const m = measure ?? "revenue";
+  return `de ${m === "bank_gross_income" ? "su" : "sus"} ${MEASURE_NAME[m]}`;
+}
 
 export interface ExposureSegment {
   label: string;
@@ -15,6 +37,7 @@ export interface ExposureHolding {
   name: string;
   ticker: string | null;
   value_eur: number;
+  measure: Measure | null;
   segments: ExposureSegment[];
 }
 
@@ -42,6 +65,7 @@ export interface ExposureSource {
   detail: string;
   fiscal_year: number | null;
   source: "sec" | "esef" | null;
+  measure: Measure | null;
   url: string | null;
   axis_status: Record<string, string> | null;
 }
