@@ -22,6 +22,8 @@ import {
   type ExposureBucket,
   coveredPct,
   isUnknownBucket,
+  measureName,
+  shareOf,
   sourceName,
 } from "@/lib/exposure";
 
@@ -69,7 +71,7 @@ function BucketDetail({ bucket }: { bucket: ExposureBucket }) {
               {h.segments.length > 0 && (
                 <span className="text-muted-foreground">
                   {" — "}
-                  {h.segments.map((s) => `${s.label} (${pct(s.pct)} de sus ingresos)`).join(", ")}
+                  {h.segments.map((s) => `${s.label} (${pct(s.pct)} ${shareOf(h.measure)})`).join(", ")}
                 </span>
               )}
             </span>
@@ -175,6 +177,7 @@ function Sources({ exposure }: { exposure: Exposure }) {
                 className="inline-flex items-center gap-1 text-muted-foreground underline-offset-2 hover:underline"
               >
                 {sourceName(s.source)} {s.fiscal_year}
+                {s.measure && s.measure !== "revenue" && ` · ${measureName(s.measure)}`}
                 <ExternalLink className="h-3 w-3" />
               </a>
             ) : (
@@ -199,9 +202,11 @@ export function ExposureCharts({ ready }: { ready: boolean }) {
         <CardDescription>
           Valor de mercado repartido según los ingresos que cada empresa declara por segmento y
           por región en su último informe anual (10-K en la SEC, ESEF en la UE). Solo se usa un
-          desglose si suma lo mismo que los ingresos totales del informe. La asignación de cada
-          segmento a un sector o región la hace un modelo de IA; el nombre original aparece al
-          pulsar una barra.
+          desglose si suma lo mismo que el total del informe. Si el informe no etiqueta una cifra
+          de ingresos (bancos, aseguradoras, inmobiliarias), se reparte la que sí etiqueta y
+          desglosa: margen bruto, ingresos de seguros o ingresos por alquiler, y la fuente lo
+          indica. La asignación de cada segmento a un sector o región la hace un modelo de IA; el
+          nombre original aparece al pulsar una barra.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

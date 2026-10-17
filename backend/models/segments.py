@@ -46,6 +46,11 @@ class SegmentReport(Base):
     add up to `total_revenue` are stored; `axis_status` records why the others
     are missing.
 
+    `measure` is what `total_revenue` and the line values are: "revenue", or, for
+    issuers that tag no revenue line, "bank_gross_income" (margen bruto),
+    "insurance_revenue" or "rental_income" (`esef.TOTAL_CONCEPTS`). NULL on rows
+    written before 2026-10-17, all of which are revenue.
+
     Not user-scoped.
     """
 
@@ -60,6 +65,7 @@ class SegmentReport(Base):
     source_url: Mapped[str] = mapped_column(String(500), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     total_revenue: Mapped[Decimal] = mapped_column(Numeric(22, 2), nullable=False)
+    measure: Mapped[str | None] = mapped_column(String(30))
     lines: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     axis_status: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(

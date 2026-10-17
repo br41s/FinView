@@ -34,7 +34,22 @@ _GLEIF_URL = "https://api.gleif.org/api/v1/lei-records"
 _FILINGS_URL = "https://filings.xbrl.org/api/entities/{lei}/filings"
 _BASE = "https://filings.xbrl.org"
 
-REVENUE_CONCEPTS = ("ifrs-full:Revenue", "ifrs-full:RevenueFromContractsWithCustomers")
+# The total a segment breakdown must add up to, with the measure it is. The first one
+# tagged for the year wins, so revenue always comes first. Banks, insurers and
+# property companies tag no revenue line: their segment note breaks down margen
+# bruto, insurance revenue or rental income instead, and the UI names which.
+TOTAL_CONCEPTS = (
+    ("ifrs-full:Revenue", "revenue"),
+    ("ifrs-full:RevenueFromContractsWithCustomers", "revenue"),
+    ("ifrs-full:GrossProfit", "bank_gross_income"),
+    ("ifrs-full:InsuranceRevenue", "insurance_revenue"),
+    ("ifrs-full:RentalIncomeFromInvestmentProperty", "rental_income"),
+    ("ifrs-full:RentalIncome", "rental_income"),
+)
+# Spanish banks tag margen bruto as GrossProfit. Anywhere else GrossProfit is revenue
+# minus cost of sales, so it counts only in an income statement that also tags net
+# interest income: a bank's.
+BANK_MARKER = "ifrs-full:InterestRevenueExpense"
 SEGMENT_NOTES = (
     "ifrs-full:DisclosureOfEntitysReportableSegmentsExplanatory",
     "ifrs-full:DisclosureOfOperatingSegmentsExplanatory",
@@ -65,6 +80,7 @@ class Report:
     currency: str
     total: Decimal
     note: str
+    measure: str = "revenue"  # a TOTAL_CONCEPTS measure
 
 
 def client() -> httpx.Client:
@@ -113,7 +129,7 @@ def latest_filing(http: httpx.Client, lei: str) -> Filing | None:
 
 
 def fetch_report(http: httpx.Client, filing: Filing) -> Report | None:
-    """Total revenue for the filing's year plus the segment note as table text."""
+    """The tagged total for the filing's year (`TOTAL_CONCEPTS`) plus the segment note."""
     data = _get_json(http, _BASE + filing.json_url)
     if not data:
         return None
@@ -121,23 +137,18 @@ def fetch_report(http: httpx.Client, filing: Filing) -> Report | None:
 
 
 def parse_report(data: dict, period_end: date) -> Report | None:
-    facts = (data.get("facts") or {}).values()
-    total = currency = None
-    for concept in REVENUE_CONCEPTS:
-        for fact in facts:
-            dims = fact.get("dimensions") or {}
-            if dims.get("concept") != concept or set(dims) - _CORE_DIMENSIONS:
-                continue
-            if not _covers_year(dims.get("period", ""), period_end):
-                continue
-            unit = dims.get("unit", "")
-            if unit.startswith("iso4217:") and fact.get("value") is not None:
-                total, currency = Decimal(str(fact["value"])), unit.split(":", 1)[1]
-                break
+    facts = list((data.get("facts") or {}).values())
+    found = None
+    for concept, measure in TOTAL_CONCEPTS:
+        if measure == "bank_gross_income" and _year_total(facts, BANK_MARKER, period_end) is None:
+            continue
+        total = _year_total(facts, concept, period_end)
         if total is not None:
+            found = (*total, measure)
             break
-    if total is None:
+    if found is None:
         return None
+    total, currency, measure = found
 
     blocks: list[str] = []
     for fact in facts:
@@ -146,7 +157,22 @@ def parse_report(data: dict, period_end: date) -> Report | None:
             text = note_text(str(fact.get("value") or ""))
             if text and text not in blocks:
                 blocks.append(text)
-    return Report(currency=currency, total=total, note="\n\n".join(blocks)[:MAX_NOTE_CHARS])
+    note = "\n\n".join(blocks)[:MAX_NOTE_CHARS]
+    return Report(currency=currency, total=total, note=note, measure=measure)
+
+
+def _year_total(facts: list[dict], concept: str, period_end: date) -> tuple[Decimal, str] | None:
+    """The undimensioned monetary fact for `concept` over the fiscal year, and its currency."""
+    for fact in facts:
+        dims = fact.get("dimensions") or {}
+        if dims.get("concept") != concept or set(dims) - _CORE_DIMENSIONS:
+            continue
+        if not _covers_year(dims.get("period", ""), period_end):
+            continue
+        unit = dims.get("unit", "")
+        if unit.startswith("iso4217:") and fact.get("value") is not None:
+            return Decimal(str(fact["value"])), unit.split(":", 1)[1]
+    return None
 
 
 def _covers_year(period: str, period_end: date) -> bool:
@@ -184,12 +210,12 @@ def note_text(fragment: str) -> str:
 
 _SYSTEM = (
     "You read the operating-segment note of a company's annual report and copy out "
-    "revenue for one fiscal year. Answer with one JSON object and nothing else: "
-    '{"business": [{"label": "...", "amount": "..."}], '
-    '"geography": [{"label": "...", "amount": "..."}]}. '
-    "business = revenue by line of business; geography = revenue by country or area. "
-    "Use external revenue (importe neto de la cifra de negocios, ventas, revenue from "
-    "external customers). Include adjustment, corporate or elimination lines with their "
+    "one figure per segment for one fiscal year: {measure}. Answer with one JSON object "
+    "and nothing else: "
+    '{{"business": [{{"label": "...", "amount": "..."}}], '
+    '"geography": [{{"label": "...", "amount": "..."}}]}}. '
+    "business = that figure by line of business; geography = by country or area. "
+    "Include adjustment, corporate or elimination lines with their "
     "sign. Never include a total or subtotal line. Copy each amount exactly as printed, "
     "with its separators and parentheses, without converting units. Copy each label as "
     "printed. Leave a list empty if the note does not give that breakdown for the year. "
@@ -197,6 +223,20 @@ _SYSTEM = (
     "some reports each cell is on its own line, the column headers first and then each "
     "row's figures in the same order. Match figures to columns by that order."
 )
+
+# What the figure is called in the notes, per measure. The add-up check holds the
+# model to it: lines of any other figure do not add up to the tagged total.
+MEASURE_PROMPT = {
+    "revenue": "external revenue (importe neto de la cifra de negocios, ventas, revenue "
+    "from external customers)",
+    "bank_gross_income": "gross income, the bank's total income (margen bruto, gross "
+    "income, total income)",
+    "insurance_revenue": "insurance revenue (ingresos de las actividades ordinarias de "
+    "seguros, insurance revenue, insurance income)",
+    "rental_income": "gross rental income on the IFRS basis, not a proportionate basis "
+    "(ingresos por arrendamientos, cifra de negocios de inversiones inmobiliarias, gross "
+    "rental income)",
+}
 
 
 class ExtractionError(Exception):
@@ -210,7 +250,10 @@ def extract(company: str, report: Report, period_end: date) -> dict[str, list[tu
         f"Currency: {report.currency}\n\nSegment note:\n{report.note}"
     )
     content, error = llm_envelope.chat(
-        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
+        [
+            {"role": "system", "content": _SYSTEM.format(measure=MEASURE_PROMPT[report.measure])},
+            {"role": "user", "content": user},
+        ],
         context=f"segment note {company}",
         timeout=45.0,
         temperature=0,

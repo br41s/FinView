@@ -80,6 +80,7 @@ def build(db: Session, positions: list[Position]) -> dict:
                         "name": p.name,
                         "ticker": p.ticker,
                         "value_eur": _money(p.market_value_eur),
+                        "measure": None,
                         "segments": [],
                     }
                 )
@@ -98,6 +99,7 @@ def build(db: Session, positions: list[Position]) -> dict:
                         "name": p.name,
                         "ticker": p.ticker,
                         "value_eur": _money(value),
+                        "measure": report.measure or "revenue",
                         "segments": [
                             {"label": label, "pct": float((s * 100).quantize(_CENT))}
                             for label, s in parts
@@ -138,6 +140,7 @@ def build(db: Session, positions: list[Position]) -> dict:
                 "detail": OUTCOME_DETAIL[check.outcome] if check else "Pendiente de consultar",
                 "fiscal_year": report.fiscal_year if report else None,
                 "source": report.source if report else None,
+                "measure": (report.measure or "revenue") if report else None,
                 "url": report.source_url if report else None,
                 "axis_status": json.loads(report.axis_status) if report else None,
             }

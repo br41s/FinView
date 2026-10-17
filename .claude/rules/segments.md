@@ -28,7 +28,7 @@ listing sector, not its domicile: what the report says it sells, and where.
   SEC returns 403 on `/Archives` and `company_tickers.json` without a contact in the
   User-Agent: `settings.sec_user_agent` (`FINVIEW_SEC_USER_AGENT`).
 - **Everything else → ESEF** (`esef.py`). ISIN → LEI via GLEIF, latest filing from
-  filings.xbrl.org, total revenue is the tagged `ifrs-full:Revenue` for the year, the
+  filings.xbrl.org, the total is the first `TOTAL_CONCEPTS` fact tagged for the year, the
   segment note is a tagged HTML **block** (ESEF does not require the numbers in notes
   to be tagged; none of 25 Spanish FY2024 reports did). The model copies the amounts
   out of that block. filings.xbrl.org runs months behind some registers (no Spanish
@@ -42,15 +42,29 @@ listing sector, not its domicile: what the report says it sells, and where.
 - German issuers are absent from filings.xbrl.org (Unternehmensregister is not mirrored),
   so they end as `no_filing`.
 - ETFs and funds need no special case: they end as `no_issuer` / `no_filing`.
-- Banks and insurers tag no `Revenue`, so they end as `no_revenue`. Supporting them
-  means choosing their equivalent (gross margin) — not done.
+- **Issuers that tag no revenue** (owner's decision, 2026-10-17). `TOTAL_CONCEPTS` is an
+  ordered list, each concept with its `measure`: `Revenue` / `RevenueFromContractsWithCustomers`
+  (revenue) first, then `GrossProfit` as a bank's **margen bruto** (`bank_gross_income`),
+  `InsuranceRevenue` (`insurance_revenue`), `RentalIncomeFromInvestmentProperty` /
+  `RentalIncome` (`rental_income`). `GrossProfit` counts only when `BANK_MARKER`
+  (`InterestRevenueExpense`, net interest income) is tagged for the same year: Spanish
+  banks tag margen bruto as `GrossProfit`, but anywhere else it is revenue minus cost of
+  sales. The prompt names the measure (`MEASURE_PROMPT`); the stored report carries it
+  (`segment_reports.measure`, NULL = revenue) and the UI names it in the source list and in
+  each "x % de su margen bruto". Gates unchanged. Checked by hand against the FY2024/25
+  filings: BBVA, Sabadell, NN, Línea Directa, URW (IFRS basis; the proportionate table above
+  it does not add up) and Colonial add up. Still out: Santander (segments add up to
+  "underlying" income, 6% above the statutory total: `unreconciled`), Unicaja (no income by
+  segment, 100% Spain), Aviva (no segment note block). Repsol and REN tag no single total —
+  theirs is two tags summed (sale of goods + services), and a summed total is deliberately
+  not done: nothing says those two are all of the revenue.
 
 ### What gets published (`numbers.py`) — keep these gates
 
 - **Add-up check**: a breakdown is stored only if its lines sum to the report's tagged
-  total revenue within `TOLERANCE` (0.5%). For SEC, `pick_partition` takes the largest
-  set of members that adds up, because an axis mixes levels (Apple: Product+Service
-  *and* iPhone/Mac/iPad/Wearables+Service). For ESEF, `scale_to_total` finds the
+  total (revenue, or the measure above) within `TOLERANCE` (0.5%). For SEC,
+  `pick_partition` takes the largest set of members that adds up, because an axis mixes
+  levels (Apple: Product+Service *and* iPhone/Mac/iPad/Wearables+Service). For ESEF, `scale_to_total` finds the
   presentation scale (units/thousands/millions) under which the lines add up.
 - **Verbatim check** (ESEF): every amount the model returns must appear in the note
   exactly as printed (`appears_in`); one invented or "corrected" figure drops the
@@ -70,9 +84,9 @@ listing sector, not its domicile: what the report says it sells, and where.
   report for a week.
 - `segment_reports`: one row per ISIN **and fiscal year**, so a new report adds a year.
   A recheck that finds the same filing id costs one or two small requests and no
-  model call — **except** for `REREAD_OUTCOMES` (`unreconciled`, `no_segments`): those say
-  how well FinView read the filing, not what it says, so they are read again at every
-  weekly recheck. Otherwise a reader fix would only reach a report a year later.
+  model call — **except** for `REREAD_OUTCOMES` (`unreconciled`, `no_segments`,
+  `no_revenue`): those say how well FinView read the filing, not what it says, so they
+  are read again at every weekly recheck. Otherwise a reader fix would only reach a report a year later.
 - Status text is `OUTCOME_DETAIL[outcome]`, looked up at read time — never stored.
 - Runs inside requests: `POST /portfolio/exposure/refresh` (40s budget, the frontend
   calls it again while `checked > 0 && pending > 0`) and the daily zonas cron through
