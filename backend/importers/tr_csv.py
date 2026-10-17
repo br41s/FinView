@@ -16,6 +16,7 @@ Scope (per user decision):
 """
 
 import csv
+import dataclasses
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -137,8 +138,9 @@ def _build_interest(row: dict) -> ParsedTransaction | None:
 def _build_spinoff(row: dict) -> ParsedTransaction | None:
     """Corporate action that adds shares at zero tracked cost.
 
-    Covers SPIN_OFF, INTERMEDIATE_SECURITIES_DISTRIBUTION (rights allocation)
-    and DIVIDEND_REINVESTMENT (DRIP). For DRIP the true cost is the matching
+    Covers SPIN_OFF, INTERMEDIATE_SECURITIES_DISTRIBUTION (rights allocation,
+    netted against its liquidation in `_net_liquidated_rights`) and
+    DIVIDEND_REINVESTMENT (DRIP). For DRIP the true cost is the matching
     CASH/DIVIDEND earlier in the file, but TR doesn't link them in the CSV
     and we keep PDF as source of truth for tax figures — so zero-cost is
     the safe default; the supervisor will surface it.
@@ -165,29 +167,77 @@ def _build_spinoff(row: dict) -> ParsedTransaction | None:
     )
 
 
+_RIGHTS_DISTRIBUTION = ("CORPORATE_ACTION", "INTERMEDIATE_SECURITIES_DISTRIBUTION")
+_RIGHTS_LIQUIDATION = ("CORPORATE_ACTION", "LIQUIDATION_DIVIDEND")
+
 _BUILDERS = {
     ("TRADING", "BUY"): lambda r: _build_trading(r, is_buy=True),
     ("TRADING", "SELL"): lambda r: _build_trading(r, is_buy=False),
     ("CASH", "DIVIDEND"): _build_dividend,
     ("CASH", "INTEREST_PAYMENT"): _build_interest,
     ("CORPORATE_ACTION", "SPIN_OFF"): _build_spinoff,
-    ("CORPORATE_ACTION", "INTERMEDIATE_SECURITIES_DISTRIBUTION"): _build_spinoff,
+    _RIGHTS_DISTRIBUTION: _build_spinoff,
     ("CORPORATE_ACTION", "DIVIDEND_REINVESTMENT"): _build_spinoff,
 }
 
 
 def _iter_rows(path: Path) -> list[ParsedTransaction]:
     out: list[ParsedTransaction] = []
+    rights: dict[str, list[int]] = {}       # rights ISIN → its distributions in `out`
+    liquidated: dict[str, Decimal] = {}     # rights ISIN → quantity cashed out
     with path.open(newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             key = ((row.get("category") or "").strip(), (row.get("type") or "").strip())
+            if key == _RIGHTS_LIQUIDATION:
+                isin = (row.get("symbol") or "").strip()
+                if isin:
+                    qty = abs(_dec(row.get("shares")))
+                    liquidated[isin] = liquidated.get(isin, Decimal("0")) + qty
+                continue
             builder = _BUILDERS.get(key)
             if builder is None:
                 continue
             tx = builder(row)
             if tx is not None:
+                if key == _RIGHTS_DISTRIBUTION:
+                    rights.setdefault(tx.isin, []).append(len(out))
                 out.append(tx)
-    return out
+    return _net_liquidated_rights(out, rights, liquidated)
+
+
+def _net_liquidated_rights(
+    txs: list[ParsedTransaction],
+    rights: dict[str, list[int]],
+    liquidated: dict[str, Decimal],
+) -> list[ParsedTransaction]:
+    """Drop the rights a liquidation in the same file cashed out.
+
+    A scrip dividend arrives as an INTERMEDIATE_SECURITIES_DISTRIBUTION of rights
+    (a "-ANR-" line with its own ISIN), and TR ends it with a LIQUIDATION_DIVIDEND
+    of the same ISIN once the rights are paid in cash. Imported as a SPINOFF and
+    never closed, the rights stayed an open position forever: no price, unknown
+    cost, a `missing_cost_basis` warning. The cash itself is a dividend the PDF
+    reports, so the liquidation is not a sale either — the same rule
+    `data_supervisor._check_rights_as_sells` applies to rights booked as a SELL.
+
+    Distributions are reduced oldest first by the liquidated quantity; whatever a
+    liquidation does not cover (rights still open at export time) stays a SPINOFF.
+    A liquidation whose distribution is in an earlier file has nothing to net here.
+    """
+    if not liquidated:
+        return txs
+    drop: set[int] = set()
+    for isin, remaining in liquidated.items():
+        for i in rights.get(isin, []):
+            if remaining <= 0:
+                break
+            qty = txs[i].quantity
+            if remaining >= qty:
+                drop.add(i)
+            else:
+                txs[i] = dataclasses.replace(txs[i], quantity=qty - remaining)
+            remaining -= qty
+    return [tx for i, tx in enumerate(txs) if i not in drop]
 
 
 def parse_tr_csv(path: str | Path) -> TRTaxReport:
