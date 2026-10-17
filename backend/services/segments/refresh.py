@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.models import AiMentionCheck, SegmentCheck, SegmentReport
-from backend.services.segments import esef, sec
+from backend.services.segments import esef, listing, sec
 from backend.services.segments.classify import REGIONS, SECTORS, ClassificationError, classify
 from backend.services.segments.numbers import pick_partition
 from backend.services.segments.sec import SourceUnavailable
@@ -83,38 +83,45 @@ def refresh(
     Returns {"checked": n, "pending": m}; `pending` is what is still due.
     """
     due = due_isins(db, holdings)
-    if not settings.openrouter_api_key:
-        # Every report needs the classifier, so without a key each attempt would
-        # download a filing only to fail at the last step, on every page load.
-        return {"checked": 0, "pending": len(due)}
     deadline = time.monotonic() + budget_seconds
     checked = 0
-    cik_by_ticker: dict[str, int] | None = None
-    with sec.client() as sec_http, esef.client() as esef_http:
-        for isin in due:
-            if time.monotonic() >= deadline:
-                break
-            ticker, name = holdings[isin]
-            try:
-                if isin.startswith("US"):
-                    if cik_by_ticker is None:
-                        cik_by_ticker = sec.ticker_to_cik(sec_http)
-                    _check_sec(db, isin, ticker, name, sec_http, cik_by_ticker)
-                else:
-                    _check_esef(db, isin, name, esef_http)
-                db.commit()
-                checked += 1
-            except (SourceUnavailable, ClassificationError, esef.ExtractionError) as exc:
-                # Not a fact about the issuer: leave no trace, retry next run.
-                db.rollback()
-                logger.warning("[segments] %s skipped: %s", isin, exc)
-            except IntegrityError:
-                # A concurrent refresh wrote the same row first; its answer stands.
-                db.rollback()
-            except Exception:
-                db.rollback()
-                logger.exception("[segments] %s failed", isin)
-    return {"checked": checked, "pending": len(due_isins(db, holdings))}
+    # Without a model key every report would be downloaded only to fail at the
+    # classifier, on every page load; the listing fallback needs no model.
+    if settings.openrouter_api_key:
+        cik_by_ticker: dict[str, int] | None = None
+        with sec.client() as sec_http, esef.client() as esef_http:
+            for isin in due:
+                if time.monotonic() >= deadline:
+                    break
+                ticker, name = holdings[isin]
+                try:
+                    if isin.startswith("US"):
+                        if cik_by_ticker is None:
+                            cik_by_ticker = sec.ticker_to_cik(sec_http)
+                        _check_sec(db, isin, ticker, name, sec_http, cik_by_ticker)
+                    else:
+                        _check_esef(db, isin, name, esef_http)
+                    db.commit()
+                    checked += 1
+                except (SourceUnavailable, ClassificationError, esef.ExtractionError) as exc:
+                    # Not a fact about the issuer: leave no trace, retry next run.
+                    db.rollback()
+                    logger.warning("[segments] %s skipped: %s", isin, exc)
+                except IntegrityError:
+                    # A concurrent refresh wrote the same row first; its answer stands.
+                    db.rollback()
+                except Exception:
+                    db.rollback()
+                    logger.exception("[segments] %s failed", isin)
+    # What the reports leave uncovered falls back to the listing (`listing.py`), on
+    # whatever time the reports left.
+    listed, listing_pending = listing.refresh(
+        db, holdings, min(listing.SECONDS, max(0.0, deadline - time.monotonic()))
+    )
+    return {
+        "checked": checked + listed,
+        "pending": len(due_isins(db, holdings)) + listing_pending,
+    }
 
 
 def _record(

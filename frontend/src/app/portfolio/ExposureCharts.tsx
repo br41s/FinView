@@ -20,7 +20,11 @@ import { formatEur } from "@/lib/format";
 import {
   type Exposure,
   type ExposureBucket,
+  type Axis,
   coveredPct,
+  estimateNote,
+  estimatedPct,
+  estimatedSourceNote,
   isUnknownBucket,
   measureName,
   shareOf,
@@ -57,7 +61,7 @@ function BucketTooltip({ active, payload }: { active?: boolean; payload?: { payl
   );
 }
 
-function BucketDetail({ bucket }: { bucket: ExposureBucket }) {
+function BucketDetail({ bucket, axis }: { bucket: ExposureBucket; axis: Axis }) {
   return (
     <div className="mt-3 rounded-lg border border-border p-3 text-sm">
       <div className="mb-2 font-medium">
@@ -71,7 +75,11 @@ function BucketDetail({ bucket }: { bucket: ExposureBucket }) {
               {h.segments.length > 0 && (
                 <span className="text-muted-foreground">
                   {" — "}
-                  {h.segments.map((s) => `${s.label} (${pct(s.pct)} ${shareOf(h.measure)})`).join(", ")}
+                  {h.basis === "listing"
+                    ? h.segments.map((s) => `${s.label}: ${estimateNote(axis)}`).join(", ")
+                    : h.segments
+                        .map((s) => `${s.label} (${pct(s.pct)} ${shareOf(h.measure)})`)
+                        .join(", ")}
                 </span>
               )}
             </span>
@@ -85,7 +93,15 @@ function BucketDetail({ bucket }: { bucket: ExposureBucket }) {
   );
 }
 
-function ExposureChart({ title, buckets }: { title: string; buckets: ExposureBucket[] }) {
+function ExposureChart({
+  title,
+  axis,
+  buckets,
+}: {
+  title: string;
+  axis: Axis;
+  buckets: ExposureBucket[];
+}) {
   const [selected, setSelected] = useState<string | null>(null);
   const bucket = buckets.find((b) => b.key === selected) ?? null;
 
@@ -95,6 +111,7 @@ function ExposureChart({ title, buckets }: { title: string; buckets: ExposureBuc
         <h3 className="text-sm font-medium">{title}</h3>
         <span className="text-xs text-muted-foreground">
           {pct(coveredPct(buckets))} del valor con datos
+          {estimatedPct(buckets) > 0 && ` (${pct(estimatedPct(buckets))} estimado)`}
         </span>
       </div>
       <ResponsiveContainer width="100%" height={Math.max(2, buckets.length) * ROW_HEIGHT + 8}>
@@ -153,7 +170,7 @@ function ExposureChart({ title, buckets }: { title: string; buckets: ExposureBuc
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      {bucket && <BucketDetail bucket={bucket} />}
+      {bucket && <BucketDetail bucket={bucket} axis={axis} />}
     </div>
   );
 }
@@ -183,6 +200,12 @@ function Sources({ exposure }: { exposure: Exposure }) {
             ) : (
               <span className="text-muted-foreground">{s.detail}</span>
             )}
+            {estimatedSourceNote(s.estimated) && (
+              <span className="w-full text-right text-xs text-muted-foreground">
+                {estimatedSourceNote(s.estimated)}
+                {s.listing_sector && ` · ${s.listing_sector}`}
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -206,7 +229,9 @@ export function ExposureCharts({ ready }: { ready: boolean }) {
           de ingresos (bancos, aseguradoras, inmobiliarias), se reparte la que sí etiqueta y
           desglosa: margen bruto, ingresos de seguros o ingresos por alquiler, y la fuente lo
           indica. La asignación de cada segmento a un sector o región la hace un modelo de IA; el
-          nombre original aparece al pulsar una barra.
+          nombre original aparece al pulsar una barra. Una acción sin desglose en su informe se
+          cuenta entera en el país de su ISIN y en el sector con el que cotiza en Yahoo Finance,
+          marcado como estimado; los ETF y fondos quedan como «Sin datos».
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -229,8 +254,8 @@ export function ExposureCharts({ ready }: { ready: boolean }) {
               </div>
             )}
             <div className="grid gap-8 lg:grid-cols-2">
-              <ExposureChart title="Sector" buckets={exposure.sector} />
-              <ExposureChart title="Región" buckets={exposure.geography} />
+              <ExposureChart title="Sector" axis="sector" buckets={exposure.sector} />
+              <ExposureChart title="Región" axis="geography" buckets={exposure.geography} />
             </div>
             <Sources exposure={exposure} />
           </>

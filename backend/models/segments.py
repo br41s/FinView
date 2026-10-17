@@ -77,6 +77,28 @@ class SegmentReport(Base):
     __table_args__ = (UniqueConstraint("isin", "fiscal_year"),)
 
 
+class ListingProfile(Base):
+    """What Yahoo Finance says a held listing is: its quote type and sector.
+
+    The last resort of the exposure split (`segments/listing.py`): a stock no annual
+    report breaks down is counted in its ISIN's country and this sector, labelled as
+    an estimate. `quote_type` NULL means Yahoo gave nothing usable at `checked_at`;
+    it is asked again a day later. `sector` is Yahoo's own name, mapped to FinView's
+    sectors when read. Not user-scoped: a listing is the same for everybody.
+    """
+
+    __tablename__ = "listing_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    isin: Mapped[str] = mapped_column(String(12), nullable=False, unique=True, index=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False)
+    quote_type: Mapped[str | None] = mapped_column(String(20))
+    sector: Mapped[str | None] = mapped_column(String(60))
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
 class AiMentionCheck(Base):
     """When an ISIN's annual report was last read for what it says about AI.
 
