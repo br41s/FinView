@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'rectificar-declaracion-renta-irpf',
+    tag: 'Fiscalidad',
+    date: '16 oct 2026',
+    readTime: '10 min',
+    title: 'Rectificar la Renta: la autoliquidación rectificativa y los errores que arregla',
+    excerpt:
+      'La complementaria ya no existe: desde 2025 una declaración del IRPF se corrige con una autoliquidación rectificativa, tanto si te perjudicó Hacienda como si te perjudicaste tú. Cómo se presenta en Renta Web, los cuatro años de plazo y los errores del inversor que más se rectifican.',
+  },
+  {
     slug: 'itf-impuesto-transacciones-financieras-espana',
     tag: 'Fiscalidad',
     date: '16 oct 2026',
