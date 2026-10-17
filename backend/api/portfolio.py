@@ -13,6 +13,7 @@ from backend.services.portfolio_service import (
     get_position_detail,
 )
 from backend.services.prices import fetch_and_cache_prices
+from backend.services.segments import exposure, refresh
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
@@ -87,6 +88,24 @@ def list_positions(db: DbSession, user: CurrentUser, skip_prices: bool = False):
 def portfolio_summary(db: DbSession, user: CurrentUser, skip_prices: bool = False):
     """Aggregated portfolio statistics."""
     return get_portfolio_summary(db, user.id, skip_prices=skip_prices)
+
+
+@router.get("/exposure")
+def portfolio_exposure(db: DbSession, user: CurrentUser):
+    """Market value by sector and by region, from each issuer's latest annual report."""
+    return exposure.build(db, get_open_positions(db, user.id))
+
+
+@router.post("/exposure/refresh")
+def refresh_exposure(db: DbSession, user: CurrentUser):
+    """Read the annual reports of this user's holdings that are due, within a budget.
+
+    Synchronous on purpose (request-scoped runtime). Call again while `pending` > 0
+    and `checked` > 0; a run that checks nothing is waiting on a failing source.
+    """
+    positions = get_open_positions(db, user.id, skip_prices=True)
+    holdings = {p.isin: (p.ticker, p.name) for p in positions}
+    return refresh.refresh(db, holdings, refresh.REQUEST_SECONDS)
 
 
 @router.get("/positions/{isin}")

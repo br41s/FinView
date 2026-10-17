@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # LLM — single OpenRouter model for all FinView use cases (options + geo-intel).
     openrouter_api_key: str = ""
     openrouter_model: str = "deepseek/deepseek-v4-flash"
+
+    # SEC EDGAR refuses requests without a contact in the User-Agent (403 on
+    # /Archives and company_tickers.json). The address is the operator's published one.
+    sec_user_agent: str = "FinView hola@biglobster.top"
     ntfy_topic: str = ""
     notify_email_to: str = ""
     notify_email_from: str = ""
