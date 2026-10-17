@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { bestEffort } from "@/lib/bestEffort";
 import type { GeoSignal } from "@/lib/geo";
+import { AiDisclaimer } from "@/components/AiDisclaimer";
 import { ErrorState } from "@/components/ErrorState";
 import {
   Card,
@@ -22,6 +23,7 @@ import { LoadingDots } from "@/components/loading-dots";
 import { PageHeader } from "@/components/PageHeader";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
+import { AiExposureCard } from "./AiExposureCard";
 import { ExposureCharts } from "./ExposureCharts";
 import { PortfolioSummaryCards } from "./PortfolioSummaryCards";
 import { PositionsMobileList } from "./PositionsMobileList";
@@ -193,6 +195,12 @@ function PortfolioContent() {
       )}
 
       {positions.length > 0 && <ExposureCharts ready={pricesLoaded} />}
+      {positions.length > 0 && <AiExposureCard ready={pricesLoaded} />}
+      {positions.length > 0 && (
+        <footer>
+          <AiDisclaimer />
+        </footer>
+      )}
     </div>
   );
 }

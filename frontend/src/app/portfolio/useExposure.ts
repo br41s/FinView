@@ -3,30 +3,36 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { type Exposure, shouldRefreshAgain } from "@/lib/exposure";
+import { type ExposureRefresh, shouldRefreshAgain } from "@/lib/exposure";
 
 /**
- * Load the exposure once prices are in, then read any annual reports still
- * pending, one bounded backend step at a time, and reload after each step so
- * the charts fill in as reports are read.
+ * Load a report-derived view once prices are in, then read any annual reports
+ * still pending, one bounded backend step at a time, and reload after each step
+ * so the view fills in as reports are read.
  *
  * Waits for `ready` (prices loaded) so the backend's own position valuation hits
  * the price cache the positions call just filled instead of fetching in parallel.
+ * Shared by the sector/region exposure and the AI exposure: same refresh contract.
  */
-export function useExposure(ready: boolean) {
-  const [exposure, setExposure] = useState<Exposure | null>(null);
+export function useAnnualReports<T>(
+  ready: boolean,
+  fetchView: () => Promise<T>,
+  refreshStep: () => Promise<ExposureRefresh>,
+  errorMessage: string,
+) {
+  const [view, setView] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [stalled, setStalled] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setExposure(await api.portfolio.exposure());
+      setView(await fetchView());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar la exposición por sector y región");
+      setError(e instanceof Error ? e.message : errorMessage);
     }
-  }, []);
+  }, [fetchView, errorMessage]);
 
   useEffect(() => {
     if (!ready) return;
@@ -37,7 +43,7 @@ export function useExposure(ready: boolean) {
       try {
         for (;;) {
           if (cancelled) return;
-          const step = await api.portfolio.refreshExposure();
+          const step = await refreshStep();
           if (cancelled) return;
           if (step.checked > 0) await load();
           if (!shouldRefreshAgain(step)) {
@@ -55,7 +61,17 @@ export function useExposure(ready: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [ready, load]);
+  }, [ready, load, refreshStep]);
 
-  return { exposure, error, reading, stalled, retry: load };
+  return { view, error, reading, stalled, retry: load };
+}
+
+export function useExposure(ready: boolean) {
+  const { view, ...rest } = useAnnualReports(
+    ready,
+    api.portfolio.exposure,
+    api.portfolio.refreshExposure,
+    "No se pudo cargar la exposición por sector y región",
+  );
+  return { exposure: view, ...rest };
 }
