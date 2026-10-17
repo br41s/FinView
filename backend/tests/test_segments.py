@@ -468,6 +468,39 @@ def test_a_breakdown_that_does_not_add_up_is_recorded_not_stored(db, no_http, mo
     assert db.query(SegmentCheck).one().outcome == "unreconciled"
 
 
+def test_a_breakdown_that_did_not_add_up_is_read_again_at_the_recheck(db, no_http, monkeypatch):
+    """A failed read says how FinView read the note, not what the note says."""
+    calls = _esef_source(
+        monkeypatch,
+        rows={"business": [], "geography": [("España", "16.982"), ("Brasil", "27.757")]},
+    )
+    refresh.refresh(db, HOLDING, 30)
+    check = db.query(SegmentCheck).one()
+    check.checked_at = datetime.now(timezone.utc) - timedelta(days=refresh.RECHECK_DAYS + 1)
+    db.commit()
+
+    refresh.refresh(db, HOLDING, 30)
+    assert calls["extract"] == 2  # same filing id, read again
+    assert refresh.refresh(db, HOLDING, 30)["checked"] == 0  # but only once per recheck
+
+
+def test_a_cell_split_into_divs_stays_on_its_row():
+    """PDF-converted reports wrap each figure in <div>s (Naturgy, Endesa, Enagás...)."""
+    fragment = (
+        "<div>Información por segmentos</div><p>Millones de euros</p>"
+        "<table><tr><td><div><div>INCN consolidado</div></div></td>"
+        "<td><div><span>903</span></div></td><td><p>671</p><br/></td>"
+        "<td><div>1.574</div></td></tr>"
+        "<tr><td><div>INCN entre segmentos</div></td><td><div>84</div></td>"
+        "<td>—</td><td><div>84</div></td></tr></table>"
+    )
+    assert esef.note_text(fragment) == (
+        "Información por segmentos\nMillones de euros\n"
+        "INCN consolidado | 903 | 671 | 1.574\n"
+        "INCN entre segmentos | 84 | — | 84"
+    )
+
+
 def test_without_a_model_key_nothing_is_fetched(db, no_http, monkeypatch):
     monkeypatch.setattr(refresh.settings, "openrouter_api_key", "")
     _esef_source(monkeypatch, fail=AssertionError("must not fetch"))

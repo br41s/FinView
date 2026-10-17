@@ -121,10 +121,17 @@ def _record(
     row.checked_at = datetime.now(timezone.utc)
 
 
+# Answers that say how well FinView read the filing, not what the filing says. They
+# are re-read at each weekly recheck: an improvement to the reader (the table fix of
+# 2026-10-17 turned unreadable notes into readable rows) must reach a report already
+# checked, not wait a year for the issuer's next one.
+REREAD_OUTCOMES = frozenset({"unreconciled", "no_segments"})
+
+
 def _already_read(db: Session, isin: str, filing_id: str, model=SegmentCheck) -> bool:
     """Same filing as the last check: refresh the timestamp, keep the answer."""
     row = db.query(model).filter(model.isin == isin).one_or_none()
-    if row is None or row.filing_id != filing_id:
+    if row is None or row.filing_id != filing_id or row.outcome in REREAD_OUTCOMES:
         return False
     row.checked_at = datetime.now(timezone.utc)
     return True
