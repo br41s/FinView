@@ -33,11 +33,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.models import AiMentionCheck, AiMentionReport
+from backend.models import AiMentionCheck, AiMentionReport, SegmentReport
 from backend.services import llm_envelope
 from backend.services.llm_rules import NOT_ADVICE_RULE_ES
 from backend.services.portfolio_service import Position
-from backend.services.segments import esef, sec
+from backend.services.segments import esef, industry_index, sec
+from backend.services.segments.classify import UNASSIGNED, ClassificationError
+from backend.services.segments.exposure import latest_reports
 from backend.services.segments.refresh import _already_read, _record, due_isins
 from backend.services.segments.sec import SourceUnavailable
 
@@ -357,12 +359,30 @@ def verify(content: str, text: str) -> tuple[list[dict], str | None, str]:
 def refresh(
     db: Session, holdings: dict[str, tuple[str | None, str]], budget_seconds: float
 ) -> dict:
-    """Read the due ISINs in `holdings` ({isin: (ticker, name)}) until the budget is spent."""
+    """Read the due ISINs in `holdings` ({isin: (ticker, name)}) until the budget is spent.
+
+    First maps any segment report's business lines that have no industry yet (one
+    model call each, no download), then reads the due annual reports.
+    """
     due = due_isins(db, holdings, model=AiMentionCheck)
+    unmapped = unmapped_reports(db, holdings)
     if not settings.openrouter_api_key:
-        return {"checked": 0, "pending": len(due)}
+        return {"checked": 0, "pending": len(due) + len(unmapped)}
     deadline = time.monotonic() + budget_seconds
     checked = 0
+    for report in unmapped:
+        if time.monotonic() >= deadline:
+            break
+        try:
+            _map_industries(report, holdings[report.isin][1])
+            db.commit()
+            checked += 1
+        except ClassificationError as exc:
+            db.rollback()
+            logger.warning("[ai-industries] %s skipped: %s", report.isin, exc)
+        except Exception:
+            db.rollback()
+            logger.exception("[ai-industries] %s failed", report.isin)
     cik_by_ticker: dict[str, int] | None = None
     with sec.client() as sec_http, esef.client() as esef_http:
         for isin in due:
@@ -387,7 +407,36 @@ def refresh(
             except Exception:
                 db.rollback()
                 logger.exception("[ai-mentions] %s failed", isin)
-    return {"checked": checked, "pending": len(due_isins(db, holdings, model=AiMentionCheck))}
+    pending = len(due_isins(db, holdings, model=AiMentionCheck)) + len(
+        unmapped_reports(db, holdings)
+    )
+    return {"checked": checked, "pending": pending}
+
+
+def _business(lines: list[dict]) -> list[dict]:
+    return [ln for ln in lines if ln["axis"] == "business"]
+
+
+def unmapped_reports(db: Session, isins) -> list[SegmentReport]:
+    """Latest segment reports whose business lines have not been given an industry.
+
+    The segment reader writes lines without one, so a new annual report (or one read
+    before this existed) is picked up here instead of waiting a year for the next.
+    """
+    return [
+        report
+        for report in latest_reports(db, sorted(set(isins))).values()
+        if any("industry" not in ln for ln in _business(json.loads(report.lines)))
+    ]
+
+
+def _map_industries(report: SegmentReport, company: str) -> None:
+    lines = json.loads(report.lines)
+    labels = sorted({ln["label"] for ln in _business(lines)})
+    mapping = industry_index.map_industries(company, labels)
+    for ln in _business(lines):
+        ln["industry"] = mapping.get(ln["label"], UNASSIGNED)
+    report.lines = json.dumps(lines, ensure_ascii=False)
 
 
 def _note(db: Session, isin: str, outcome: str, filing_id: str | None = None) -> None:
@@ -510,11 +559,26 @@ def build(db: Session, positions: list[Position]) -> dict:
         (p.market_value_eur for p in positions if p.market_value_eur is not None), Decimal(0)
     )
 
+    segments = latest_reports(db, isins)
+    table = industry_index.industries()
     holdings, read_value, mention_value = [], Decimal(0), Decimal(0)
     theme_value: dict[str, Decimal] = {}
+    index_value, index_weighted = Decimal(0), Decimal(0)
+    industry_value: dict[str, Decimal] = {}
     for p in positions:
         report, check = reports.get(p.isin), checks.get(p.isin)
         value = p.market_value_eur
+        industry, industry_detail = _industry(segments.get(p.isin))
+        if industry and industry["score"] is not None and value is not None:
+            covered = value * industry["revenue_share"]
+            index_value += covered
+            index_weighted += covered * industry["score"]
+            for part in industry["parts"]:
+                if part["score"] is not None:
+                    code = part["industry"]
+                    industry_value[code] = (
+                        industry_value.get(code, Decimal(0)) + value * part["share"]
+                    )
         quotes = json.loads(report.quotes) if report else []
         if report and value is not None:
             read_value += value
@@ -542,6 +606,8 @@ def build(db: Session, positions: list[Position]) -> dict:
                 "quotes": [{**q, "theme_label": THEMES[q["theme"]]} for q in quotes],
                 "quotes_status": report.quotes_status if report else None,
                 "summary": report.summary if report else None,
+                "industry": _industry_out(industry, segments.get(p.isin)),
+                "industry_detail": industry_detail,
             }
         )
     holdings.sort(key=lambda h: (h["mentions"] is None, -(h["value_eur"] or 0)))
@@ -558,4 +624,65 @@ def build(db: Session, positions: list[Position]) -> dict:
         ),
         "holdings": holdings,
         "pending": sum(1 for h in holdings if h["status"] == "pending"),
+        "industry_index": {
+            "score": float(round(index_weighted / index_value, 4)) if index_value > 0 else None,
+            "value_pct": _pct(index_value, known_value),
+            "industries": sorted(
+                (
+                    {
+                        "code": code,
+                        "title": table[code]["title"],
+                        "score": table[code]["score"],
+                        "value_pct": _pct(v, known_value),
+                    }
+                    for code, v in industry_value.items()
+                ),
+                key=lambda r: -r["value_pct"],
+            ),
+            "sources": industry_index.load()["sources"],
+        },
+    }
+
+
+INDUSTRY_DETAIL = {
+    "no_report": "Sin desglose de ingresos por negocio en su informe anual",
+    "no_business": "El informe desglosa los ingresos por región, no por negocio",
+    "unmapped": "Pendiente de asignar sus segmentos a una industria",
+    "unassigned": "Ningún segmento se pudo asignar a una industria",
+}
+
+
+def _industry(report: SegmentReport | None) -> tuple[dict | None, str | None]:
+    """(company_exposure or None, why it is missing)."""
+    if report is None:
+        return None, INDUSTRY_DETAIL["no_report"]
+    lines = json.loads(report.lines)
+    if not [ln for ln in _business(lines) if Decimal(ln["value"]) > 0]:
+        return None, INDUSTRY_DETAIL["no_business"]
+    out = industry_index.company_exposure(lines)
+    if out is None:
+        return None, INDUSTRY_DETAIL["unmapped"]
+    if out["score"] is None:
+        return out, INDUSTRY_DETAIL["unassigned"]
+    return out, None
+
+
+def _industry_out(industry: dict | None, report: SegmentReport | None) -> dict | None:
+    if industry is None or industry["score"] is None:
+        return None
+    return {
+        "score": float(round(industry["score"], 4)),
+        "revenue_pct": _pct(industry["revenue_share"], Decimal(1)),
+        "fiscal_year": report.fiscal_year,
+        "url": report.source_url,
+        "parts": [
+            {
+                "label": part["label"],
+                "industry": part["industry"],
+                "title": part["title"],
+                "score": part["score"],
+                "pct": _pct(part["share"], Decimal(1)),
+            }
+            for part in sorted(industry["parts"], key=lambda part: -part["share"])
+        ],
     }
