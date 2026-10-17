@@ -22,6 +22,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.models import ListingProfile, SegmentReport
@@ -92,7 +93,8 @@ def fetch(ticker: str) -> tuple[str, str | None] | None:
     """(quoteType, sector) for a Yahoo ticker, or None when Yahoo does not answer usably.
 
     One network call with no usable timeout (see yahoo_budget): `refresh` loops
-    under a Budget. A None is not stored, so the next run asks again.
+    under a Budget. A None never overwrites a stored answer: `refresh` keeps the
+    listing it had and only moves the check date.
     """
     try:
         import yfinance as yf
@@ -168,12 +170,23 @@ def refresh(
             logger.warning("[listing] %s (%s): no usable answer from Yahoo", isin, ticker)
         row = db.query(ListingProfile).filter(ListingProfile.isin == isin).one_or_none()
         if row is None:
-            row = ListingProfile(isin=isin)
+            # Nothing usable yet is stored as unknown (quote_type NULL), asked again
+            # after RETRY_HOURS.
+            row = ListingProfile(isin=isin, quote_type=None, sector=None)
             db.add(row)
+        if answer is not None:
+            row.quote_type, row.sector = answer
+        # else: a Yahoo hiccup at a 30-day recheck keeps the sector it had, rather than
+        # dropping a known stock to "Sin datos" for a day.
         row.ticker = ticker
-        row.quote_type, row.sector = answer or (None, None)
         row.checked_at = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent refresh (the daily cron, another tab) inserted it first; its
+            # answer stands.
+            db.rollback()
+            continue
         checked += 1
     return checked, len(due(db, holdings))
 

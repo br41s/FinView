@@ -128,7 +128,9 @@ in the subtitle ("x % estimado") and in the source list. Only Yahoo `quoteType`
 `no_data`; offshore prefixes (XS, KY…) and sector names outside the table give nothing
 for that axis. `listing_profiles` (global) caches quote type and sector for 30 days; a
 Yahoo answer with nothing usable is stored as `quote_type` NULL and asked again after
-24 h, not on every page load (each stalled call costs ~30 s). Lookups run at the end of
+24 h, not on every page load (each stalled call costs ~30 s); at a recheck it keeps the
+sector already stored instead of dropping the stock to `no_data`. A concurrent refresh
+that inserts the same listing first wins (`IntegrityError` → rollback, not a 500). Lookups run at the end of
 the segment refresh on the time the reports left, under a `yahoo_budget.Budget` (15 s),
 and without a model key too. The AI industry index does **not** use it: it stays
 report-only on purpose.

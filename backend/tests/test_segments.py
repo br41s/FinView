@@ -995,3 +995,34 @@ def test_the_listing_runs_without_a_model_key(db, monkeypatch):
     out = refresh.refresh(db, holdings, 30)
     assert out["checked"] == 1
     assert db.query(ListingProfile).count() == 1
+
+
+def test_a_failed_recheck_keeps_the_sector_it_had(db, monkeypatch):
+    old = datetime.now(timezone.utc) - timedelta(days=listing.RECHECK_DAYS + 1)
+    _profile(db, "ES2", ticker="B.MC", sector="Energy", checked_at=old)
+    asked = _yahoo(monkeypatch, {})  # Yahoo hiccups
+    listing.refresh(db, {"ES2": ("B.MC", "Stock")}, 30)
+    row = db.query(ListingProfile).one()
+    assert asked == ["B.MC"]
+    assert (row.quote_type, row.sector) == ("EQUITY", "Energy")
+    assert listing.due(db, {"ES2": ("B.MC", "Stock")}) == []  # not asked on every load
+
+
+def test_a_concurrent_insert_of_the_same_listing_is_not_an_error(db, monkeypatch):
+    """The cron and a page load both see no row; the second insert loses on isin."""
+    from sqlalchemy.exc import IntegrityError
+
+    _yahoo(monkeypatch, {"B.MC": ("EQUITY", "Energy"), "C.MC": ("EQUITY", "Utilities")})
+    real_commit, calls = db.commit, []
+
+    def _commit():
+        calls.append(1)
+        if len(calls) == 1:
+            raise IntegrityError("INSERT", {}, Exception("UNIQUE constraint failed"))
+        real_commit()
+
+    monkeypatch.setattr(db, "commit", _commit)
+    holdings = {"ES2": ("B.MC", "Stock"), "ES3": ("C.MC", "Other")}
+    checked, _ = listing.refresh(db, holdings, 30)
+    assert checked == 1  # the lost race is not counted, and nothing raised
+    assert [p.isin for p in db.query(ListingProfile)] == ["ES3"]
