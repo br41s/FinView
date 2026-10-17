@@ -41,7 +41,7 @@ from backend.services.portfolio_service import Position
 from backend.services.segments import esef, industry_index, sec
 from backend.services.segments.classify import UNASSIGNED, ClassificationError
 from backend.services.segments.exposure import latest_reports
-from backend.services.segments.refresh import _already_read, _record, due_isins
+from backend.services.segments.refresh import _already_read, _drop_misdated, _record, due_isins
 from backend.services.segments.sec import SourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -549,6 +549,7 @@ def _store(db, isin, name, source, scope, filing_id, url, period_end: date, text
     if mentions:
         quotes, summary, status = verify(ask(name, text), text)
 
+    _drop_misdated(db, AiMentionReport, isin, filing_id, period_end.year)
     row = (
         db.query(AiMentionReport)
         .filter(AiMentionReport.isin == isin, AiMentionReport.fiscal_year == period_end.year)

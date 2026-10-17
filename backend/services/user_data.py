@@ -32,6 +32,7 @@ GLOBAL_TABLES = frozenset({
     "geo_generative_answers",
     "geo_region_samples",
     "geo_rule_stats",
+    "listing_profiles",
     "price_cache",
     "segment_checks",
     "segment_reports",

@@ -6,8 +6,10 @@ corporate adjustments and eliminations are negative and have no sector or
 region, so they are left out of the split (they still count for the add-up
 check when the report is read).
 
-Nothing is spread over positions it does not cover. A position without segment
-data is its own "Sin datos" bucket at its full market value, and a position
+An axis the report does not break down falls back, for a stock, to its listing
+(`listing.py`): 100% in its ISIN's country, 100% in its sector on Yahoo Finance,
+marked `basis: "listing"` so the UI can say it is an estimate. A position with
+neither is its own "Sin datos" bucket at its full market value, and a position
 without a price is listed apart and left out, since its value is unknown.
 """
 
@@ -19,8 +21,10 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
-from backend.models import SegmentCheck, SegmentReport
+from backend.importers.base import country_from_isin
+from backend.models import ListingProfile, SegmentCheck, SegmentReport
 from backend.services.portfolio_service import Position
+from backend.services.segments import listing
 from backend.services.segments.classify import REGIONS, SECTORS
 from backend.services.segments.refresh import OUTCOME_DETAIL
 
@@ -53,10 +57,25 @@ def shares(report: SegmentReport, axis: str) -> list[tuple[str, str, Decimal]]:
     return [(label, cat, v / total) for label, cat, v in lines] if total > 0 else []
 
 
+def listing_shares(
+    isin: str, profile: ListingProfile | None, axis: str
+) -> list[tuple[str, str, Decimal]]:
+    """The listing's estimate for one axis: one line at 100%, or nothing."""
+    if axis == "business":
+        sector = listing.sector_of(profile)
+        return [(profile.sector, sector, Decimal(1))] if sector else []
+    region = listing.region_of(isin) if listing.is_stock(profile) else None
+    return [(country_from_isin(isin), region, Decimal(1))] if region else []
+
+
 def build(db: Session, positions: list[Position]) -> dict:
     isins = [p.isin for p in positions]
     reports = latest_reports(db, isins)
     checks = {c.isin: c for c in db.query(SegmentCheck).filter(SegmentCheck.isin.in_(isins)).all()}
+    profiles = {
+        p.isin: p for p in db.query(ListingProfile).filter(ListingProfile.isin.in_(isins)).all()
+    }
+    estimated: dict[str, list[str]] = defaultdict(list)  # isin → axes from the listing
     priced = [p for p in positions if p.market_value_eur is not None]
     known_value = sum((p.market_value_eur for p in priced), Decimal(0))
 
@@ -71,6 +90,11 @@ def build(db: Session, positions: list[Position]) -> dict:
         for p in priced:
             report = reports.get(p.isin)
             split = shares(report, axis) if report else []
+            basis = "report"
+            if not split:
+                split, basis = listing_shares(p.isin, profiles.get(p.isin), axis), "listing"
+                if split:
+                    estimated[p.isin].append(out_key)
             if not split:
                 bucket = buckets[NO_DATA]
                 bucket["value"] += p.market_value_eur
@@ -80,6 +104,7 @@ def build(db: Session, positions: list[Position]) -> dict:
                         "name": p.name,
                         "ticker": p.ticker,
                         "value_eur": _money(p.market_value_eur),
+                        "basis": None,
                         "measure": None,
                         "segments": [],
                     }
@@ -99,7 +124,8 @@ def build(db: Session, positions: list[Position]) -> dict:
                         "name": p.name,
                         "ticker": p.ticker,
                         "value_eur": _money(value),
-                        "measure": report.measure or "revenue",
+                        "basis": basis,
+                        "measure": (report.measure or "revenue") if basis == "report" else None,
                         "segments": [
                             {"label": label, "pct": float((s * 100).quantize(_CENT))}
                             for label, s in parts
@@ -132,6 +158,7 @@ def build(db: Session, positions: list[Position]) -> dict:
 
     for p in positions:
         report, check = reports.get(p.isin), checks.get(p.isin)
+        axes = estimated.get(p.isin, [])
         result["sources"].append(
             {
                 "isin": p.isin,
@@ -143,6 +170,8 @@ def build(db: Session, positions: list[Position]) -> dict:
                 "measure": (report.measure or "revenue") if report else None,
                 "url": report.source_url if report else None,
                 "axis_status": json.loads(report.axis_status) if report else None,
+                "estimated": axes,
+                "listing_sector": profiles[p.isin].sector if "sector" in axes else None,
             }
         )
     result["pending"] = sum(1 for s in result["sources"] if s["status"] == "pending")

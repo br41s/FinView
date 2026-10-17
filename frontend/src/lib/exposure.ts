@@ -32,11 +32,18 @@ export interface ExposureSegment {
   pct: number;
 }
 
+/** Where a holding's split on one axis comes from: its annual report, or, for a stock
+ *  no report breaks down, its listing (100% in its ISIN's country and in its sector on
+ *  Yahoo Finance). The listing is an estimate and every place that shows it says so. */
+export type Basis = "report" | "listing";
+export type Axis = "sector" | "geography";
+
 export interface ExposureHolding {
   isin: string;
   name: string;
   ticker: string | null;
   value_eur: number;
+  basis: Basis | null;
   measure: Measure | null;
   segments: ExposureSegment[];
 }
@@ -68,6 +75,8 @@ export interface ExposureSource {
   measure: Measure | null;
   url: string | null;
   axis_status: Record<string, string> | null;
+  estimated: Axis[];
+  listing_sector: string | null;
 }
 
 export interface Exposure {
@@ -96,6 +105,34 @@ export function isUnknownBucket(key: string): boolean {
  *  nothing is waiting on a failing source, and asking again would just repeat it. */
 export function shouldRefreshAgain(step: ExposureRefresh): boolean {
   return step.pending > 0 && step.checked > 0;
+}
+
+/** What a listing-based line is, after its label. */
+export function estimateNote(axis: Axis): string {
+  return axis === "sector"
+    ? "sector de cotización en Yahoo Finance (estimado)"
+    : "país del ISIN (estimado)";
+}
+
+/** The source-list note for a position whose split is partly or wholly estimated. */
+export function estimatedSourceNote(estimated: Axis[]): string | null {
+  const sector = estimated.includes("sector");
+  const region = estimated.includes("geography");
+  if (sector && region) return "Sector y región estimados: sector de cotización (Yahoo Finance) y país del ISIN";
+  if (sector) return "Sector estimado por su cotización (Yahoo Finance)";
+  if (region) return "Región estimada por el país del ISIN";
+  return null;
+}
+
+/** Share of the charted value whose split is an estimate from the listing. */
+export function estimatedPct(buckets: ExposureBucket[]): number {
+  const total = buckets.reduce((sum, b) => sum + b.value_eur, 0);
+  if (total <= 0) return 0;
+  const listed = buckets
+    .flatMap((b) => b.holdings)
+    .filter((h) => h.basis === "listing")
+    .reduce((sum, h) => sum + h.value_eur, 0);
+  return Math.round((listed / total) * 1000) / 10;
 }
 
 export function sourceName(source: ExposureSource["source"]): string {

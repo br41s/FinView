@@ -16,11 +16,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.models import Base, SegmentCheck, SegmentReport
+from backend.models import Base, ListingProfile, SegmentCheck, SegmentReport
 from backend.services import llm_envelope
 from backend.services.portfolio_service import Position
 from backend.services.segments import classify as classify_mod
-from backend.services.segments import esef, exposure, refresh, sec
+from backend.services.segments import esef, exposure, listing, refresh, sec
 from backend.services.segments.numbers import (
     appears_in,
     parse_amount,
@@ -503,6 +503,7 @@ def no_http(monkeypatch):
     monkeypatch.setattr(sec, "client", _NullClient)
     monkeypatch.setattr(esef, "client", _NullClient)
     monkeypatch.setattr(refresh.settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(listing, "refresh", lambda db, holdings, seconds: (0, 0))
 
 
 def _esef_source(monkeypatch, *, lei="LEI", filing_id="F-2024", rows=None, fail=None):
@@ -674,6 +675,39 @@ def test_a_breakdown_that_did_not_add_up_is_read_again_at_the_recheck(db, no_htt
     assert refresh.refresh(db, HOLDING, 30)["checked"] == 0  # but only once per recheck
 
 
+def test_an_answer_from_an_older_reader_is_due_at_once_and_read_again(db, no_http, monkeypatch):
+    """A fix must reach yesterday's cached `no_revenue`, not wait out RECHECK_DAYS."""
+    calls = _esef_source(monkeypatch)
+    refresh.refresh(db, HOLDING, 30)
+    assert calls["extract"] == 1 and refresh.due_isins(db, HOLDING) == []
+
+    db.query(SegmentCheck).one().reader = None  # written before readers were versioned
+    db.commit()
+    assert refresh.due_isins(db, HOLDING) == ["ES0000000001"]
+    refresh.refresh(db, HOLDING, 30)
+    assert calls["extract"] == 2  # same filing id, read again
+    assert db.query(SegmentCheck).one().reader == refresh.READERS[SegmentCheck]
+    assert refresh.due_isins(db, HOLDING) == []
+
+
+def test_a_row_stored_under_the_listings_wrong_year_is_replaced(db, no_http, monkeypatch):
+    """Carrefour's FY2025 was listed as 2026: the 2026 row would win as the latest."""
+    _esef_source(monkeypatch)
+    db.add(SegmentReport(
+        isin="ES0000000001", fiscal_year=2026, period_end=date(2026, 3, 2), source="esef",
+        filing_id="F-2024", source_url="https://example.org", currency="EUR",
+        total_revenue=Decimal(1), lines="[]", axis_status="{}",
+    ))
+    db.add(SegmentReport(  # another filing's year is kept
+        isin="ES0000000001", fiscal_year=2023, period_end=date(2023, 12, 31), source="esef",
+        filing_id="F-2023", source_url="https://example.org", currency="EUR",
+        total_revenue=Decimal(1), lines="[]", axis_status="{}",
+    ))
+    db.commit()
+    refresh.refresh(db, HOLDING, 30)
+    assert sorted(r.fiscal_year for r in db.query(SegmentReport)) == [2023, 2024]
+
+
 def test_a_cell_split_into_divs_stays_on_its_row():
     """PDF-converted reports wrap each figure in <div>s (Naturgy, Endesa, Enagás...)."""
     fragment = (
@@ -706,8 +740,10 @@ def test_the_budget_stops_the_loop(db, no_http, monkeypatch):
 
 def test_never_checked_isins_come_before_stale_ones(db):
     old = datetime.now(timezone.utc) - timedelta(days=30)
-    db.add(SegmentCheck(isin="ES0000000002", outcome="ok", checked_at=old))
-    db.add(SegmentCheck(isin="ES0000000003", outcome="ok", checked_at=datetime.now(timezone.utc)))
+    reader = refresh.READERS[SegmentCheck]
+    db.add(SegmentCheck(isin="ES0000000002", outcome="ok", checked_at=old, reader=reader))
+    db.add(SegmentCheck(isin="ES0000000003", outcome="ok", checked_at=datetime.now(timezone.utc),
+                        reader=reader))
     db.commit()
     assert refresh.due_isins(db, ["ES0000000003", "ES0000000002", "ES0000000001"]) == [
         "ES0000000001",
@@ -797,7 +833,7 @@ def test_an_unpriced_position_is_listed_apart_and_not_spread(db):
     assert out["geography"] == [
         {"key": "no_data", "label": "Sin datos", "value_eur": 200.0, "pct": 100.0,
          "holdings": [{"isin": "ES2", "name": "Co", "ticker": None, "value_eur": 200.0,
-                       "measure": None, "segments": []}]},
+                       "basis": None, "measure": None, "segments": []}]},
     ]
     assert out["pending"] == 2
 
@@ -817,6 +853,176 @@ def test_sources_are_reported_per_position(db):
         "isin": "ES2", "name": "Co", "status": "no_filing",
         "detail": refresh.OUTCOME_DETAIL["no_filing"],
         "fiscal_year": None, "source": None, "measure": None, "url": None, "axis_status": None,
+        "estimated": [], "listing_sector": None,
     }]
     assert out["pending"] == 0
 
+
+
+# ── listing fallback: ISIN country and Yahoo sector ──────────────────
+
+
+def _profile(db, isin, quote_type="EQUITY", sector="Financial Services", ticker="T",
+             checked_at=None):
+    db.add(ListingProfile(isin=isin, ticker=ticker, quote_type=quote_type, sector=sector,
+                          checked_at=checked_at or datetime.now(timezone.utc)))
+    db.commit()
+
+
+class _Ticker:
+    def __init__(self, info=None, error=None):
+        self._info, self._error = info, error
+
+    @property
+    def info(self):
+        if self._error:
+            raise self._error
+        return self._info
+
+
+@pytest.mark.parametrize("info, error, expected", [
+    ({"quoteType": "EQUITY", "sector": "Healthcare"}, None, ("EQUITY", "Healthcare")),
+    ({"quoteType": "ETF"}, None, ("ETF", None)),
+    ({"trailingPegRatio": None}, None, None),  # what Yahoo returns for an unknown ticker
+    (None, ValueError("no data"), None),
+    ("not a dict", None, None),
+])
+def test_yahoo_answers_are_read_or_refused(monkeypatch, info, error, expected):
+    import yfinance as yf
+
+    monkeypatch.setattr(yf, "Ticker", lambda t: _Ticker(info, error))
+    assert listing.fetch("X") == expected
+
+
+def test_a_stock_without_a_report_is_its_isin_country_and_listed_sector(db):
+    _profile(db, "ES1234567890")
+    out = exposure.build(db, [_position("ES1234567890", "100")])
+    sector, region = out["sector"][0], out["geography"][0]
+    assert (sector["key"], sector["value_eur"]) == ("financials", 100.0)
+    assert (region["key"], region["value_eur"]) == ("spain", 100.0)
+    holding = region["holdings"][0]
+    assert holding["basis"] == "listing" and holding["measure"] is None
+    assert holding["segments"] == [{"label": "España", "pct": 100.0}]
+    assert sector["holdings"][0]["segments"] == [{"label": "Financial Services", "pct": 100.0}]
+    assert out["sources"][0]["estimated"] == ["sector", "geography"]
+    assert out["sources"][0]["listing_sector"] == "Financial Services"
+
+
+def test_an_etf_stays_without_data_in_both_axes(db):
+    """Its ISIN country is the fund's domicile, not what it holds."""
+    _profile(db, "IE00B4L5Y983", quote_type="ETF", sector=None)
+    out = exposure.build(db, [_position("IE00B4L5Y983", "100")])
+    assert [r["key"] for r in out["sector"]] == ["no_data"]
+    assert [r["key"] for r in out["geography"]] == ["no_data"]
+    assert out["sources"][0]["estimated"] == []
+
+
+def test_the_report_wins_axis_by_axis(db):
+    """BBVA's report gives regions only: only its sector comes from the listing."""
+    _report(db, "ES0113211835", 2024, [("geography", "España", 30, "spain"),
+                                       ("geography", "México", 70, "latin_america")])
+    _profile(db, "ES0113211835")
+    out = exposure.build(db, [_position("ES0113211835", "100")])
+    assert {r["key"]: r["value_eur"] for r in out["geography"]} == {
+        "spain": 30.0, "latin_america": 70.0,
+    }
+    assert out["geography"][0]["holdings"][0]["basis"] == "report"
+    assert out["sector"][0]["key"] == "financials"
+    assert out["sector"][0]["holdings"][0]["basis"] == "listing"
+    assert out["sources"][0]["estimated"] == ["sector"]
+
+
+def test_an_unknown_sector_or_an_offshore_prefix_gives_nothing_for_that_axis(db):
+    _profile(db, "XS0000000001", sector="Conglomerates")
+    out = exposure.build(db, [_position("XS0000000001", "100")])
+    assert [r["key"] for r in out["sector"]] == ["no_data"]
+    assert [r["key"] for r in out["geography"]] == ["no_data"]
+
+
+def _yahoo(monkeypatch, answers):
+    asked = []
+
+    def _fetch(ticker):
+        asked.append(ticker)
+        return answers.get(ticker)
+
+    monkeypatch.setattr(listing, "fetch", _fetch)
+    return asked
+
+
+def test_only_uncovered_isins_with_a_ticker_are_looked_up(db, monkeypatch):
+    _report(db, "ES1", 2024, [("geography", "España", 100, "spain"),
+                              ("business", "Redes", 100, "utilities")])
+    asked = _yahoo(monkeypatch, {"B.MC": ("EQUITY", "Utilities")})
+    holdings = {"ES1": ("A.MC", "Covered"), "ES2": ("B.MC", "Stock"), "ES3": (None, "No ticker")}
+    assert listing.refresh(db, holdings, 30) == (1, 0)
+    assert asked == ["B.MC"]
+    assert db.query(ListingProfile).one().sector == "Utilities"
+    assert listing.refresh(db, holdings, 30) == (0, 0)  # cached for RECHECK_DAYS
+
+
+def test_no_answer_from_yahoo_is_asked_again_a_day_later_not_on_every_load(db, monkeypatch):
+    asked = _yahoo(monkeypatch, {})
+    holdings = {"ES2": ("B.MC", "Stock")}
+    listing.refresh(db, holdings, 30)
+    listing.refresh(db, holdings, 30)
+    assert asked == ["B.MC"]
+    assert db.query(ListingProfile).one().quote_type is None
+    db.query(ListingProfile).one().checked_at = datetime.now(timezone.utc) - timedelta(hours=25)
+    db.commit()
+    listing.refresh(db, holdings, 30)
+    assert asked == ["B.MC", "B.MC"]
+
+
+def test_a_new_ticker_is_looked_up_again(db, monkeypatch):
+    _profile(db, "ES2", ticker="OLD.MC")
+    asked = _yahoo(monkeypatch, {"NEW.MC": ("EQUITY", "Energy")})
+    listing.refresh(db, {"ES2": ("NEW.MC", "Stock")}, 30)
+    assert asked == ["NEW.MC"]
+    assert db.query(ListingProfile).one().sector == "Energy"
+
+
+def test_the_yahoo_budget_stops_the_listing_loop(db, monkeypatch):
+    asked = _yahoo(monkeypatch, {"B.MC": ("EQUITY", "Energy")})
+    assert listing.refresh(db, {"ES2": ("B.MC", "Stock")}, 0) == (0, 1)
+    assert asked == []
+
+
+def test_the_listing_runs_without_a_model_key(db, monkeypatch):
+    monkeypatch.setattr(refresh.settings, "openrouter_api_key", "")
+    _yahoo(monkeypatch, {"B.MC": ("EQUITY", "Energy")})
+    holdings = {"ES2": ("B.MC", "Stock")}
+    out = refresh.refresh(db, holdings, 30)
+    assert out["checked"] == 1
+    assert db.query(ListingProfile).count() == 1
+
+
+def test_a_failed_recheck_keeps_the_sector_it_had(db, monkeypatch):
+    old = datetime.now(timezone.utc) - timedelta(days=listing.RECHECK_DAYS + 1)
+    _profile(db, "ES2", ticker="B.MC", sector="Energy", checked_at=old)
+    asked = _yahoo(monkeypatch, {})  # Yahoo hiccups
+    listing.refresh(db, {"ES2": ("B.MC", "Stock")}, 30)
+    row = db.query(ListingProfile).one()
+    assert asked == ["B.MC"]
+    assert (row.quote_type, row.sector) == ("EQUITY", "Energy")
+    assert listing.due(db, {"ES2": ("B.MC", "Stock")}) == []  # not asked on every load
+
+
+def test_a_concurrent_insert_of_the_same_listing_is_not_an_error(db, monkeypatch):
+    """The cron and a page load both see no row; the second insert loses on isin."""
+    from sqlalchemy.exc import IntegrityError
+
+    _yahoo(monkeypatch, {"B.MC": ("EQUITY", "Energy"), "C.MC": ("EQUITY", "Utilities")})
+    real_commit, calls = db.commit, []
+
+    def _commit():
+        calls.append(1)
+        if len(calls) == 1:
+            raise IntegrityError("INSERT", {}, Exception("UNIQUE constraint failed"))
+        real_commit()
+
+    monkeypatch.setattr(db, "commit", _commit)
+    holdings = {"ES2": ("B.MC", "Stock"), "ES3": ("C.MC", "Other")}
+    checked, _ = listing.refresh(db, holdings, 30)
+    assert checked == 1  # the lost race is not counted, and nothing raised
+    assert [p.isin for p in db.query(ListingProfile)] == ["ES3"]

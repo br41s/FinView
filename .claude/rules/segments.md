@@ -14,7 +14,9 @@ paths:
 
 `/portfolio` spreads each position's market value over the sectors and regions its
 issuer's **own latest annual report** attributes revenue to. Not the company's
-listing sector, not its domicile: what the report says it sells, and where.
+listing sector, not its domicile: what the report says it sells, and where. Only
+when no report gives an axis does a stock fall back to its listing (below), and
+that line is labelled as an estimate.
 
 ### Sources (`backend/services/segments/`)
 
@@ -97,7 +99,15 @@ listing sector, not its domicile: what the report says it sells, and where.
   A recheck that finds the same filing id costs one or two small requests and no
   model call — **except** for `REREAD_OUTCOMES` (`unreconciled`, `no_segments`,
   `no_revenue`): those say how well FinView read the filing, not what it says, so they
-  are read again at every weekly recheck. Otherwise a reader fix would only reach a report a year later.
+  are read again at every weekly recheck. Otherwise a reader fix would only reach a
+  report a year later.
+- **Reader versions** (`refresh.READERS`, one per check table): every check stores the
+  version that wrote it (`segment_checks.reader`, `ai_mention_checks.reader`). A check
+  from an older reader is due at once and its filing is read again, whatever its age.
+  Bump the version of the reader you change: the fallback totals and the year fix
+  (#356) were live and invisible because every answer they change had been cached that
+  morning for `RECHECK_DAYS`. Storing a report also drops the row the same filing left
+  under another year (`_drop_misdated`), which a wrong listing date had created.
 - Status text is `OUTCOME_DETAIL[outcome]`, looked up at read time — never stored.
 - Runs inside requests: `POST /portfolio/exposure/refresh` (40s budget, the frontend
   calls it again while `checked > 0 && pending > 0`) and the daily zonas cron through
@@ -106,11 +116,29 @@ listing sector, not its domicile: what the report says it sells, and where.
 ### Exposure (`exposure.py`)
 
 Shares are over a report's **positive** lines; corporate adjustments and eliminations
-count for the add-up check but have no sector or region. A position without data is
-the `no_data` bucket at full value; a position without a price is listed in
-`unpriced` and left out, never spread. The latest fiscal year with stored lines is used.
+count for the add-up check but have no sector or region.
 
-Both tables are global (`GLOBAL_TABLES`): an issuer's annual report is the same for
+**Listing fallback** (`listing.py`, owner's decision 2026-10-17): an axis no report
+breaks down is, for a stock, 100% in its ISIN's country (`REGION_BY_PREFIX`) and 100% in
+its sector on Yahoo Finance (`YAHOO_SECTORS`, a fixed table onto `SECTORS`: no model).
+Report data wins axis by axis (BBVA's report gives regions, so only its sector is
+estimated). Each such line carries `basis: "listing"` and the UI says "estimado" on it,
+in the subtitle ("x % estimado") and in the source list. Only Yahoo `quoteType`
+`EQUITY` gets it: an ETF's ISIN country is the fund's domicile, so ETFs and funds stay
+`no_data`; offshore prefixes (XS, KY…) and sector names outside the table give nothing
+for that axis. `listing_profiles` (global) caches quote type and sector for 30 days; a
+Yahoo answer with nothing usable is stored as `quote_type` NULL and asked again after
+24 h, not on every page load (each stalled call costs ~30 s); at a recheck it keeps the
+sector already stored instead of dropping the stock to `no_data`. A concurrent refresh
+that inserts the same listing first wins (`IntegrityError` → rollback, not a 500). Lookups run at the end of
+the segment refresh on the time the reports left, under a `yahoo_budget.Budget` (15 s),
+and without a model key too. The AI industry index does **not** use it: it stays
+report-only on purpose.
+
+A position with neither is the `no_data` bucket at full value; a position without a
+price is listed in `unpriced` and left out, never spread. The latest fiscal year with stored lines is used.
+
+All three tables are global (`GLOBAL_TABLES`): an issuer's annual report is the same for
 everybody. Only public report text reaches OpenRouter — no user data.
 
 ## AI exposure — what each report says about AI (`ai_mentions.py`)

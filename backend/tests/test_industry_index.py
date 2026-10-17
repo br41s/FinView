@@ -16,6 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.models import AiMentionCheck, Base, SegmentCheck, SegmentReport
+from backend.services.segments.refresh import READERS
 from backend.services import llm_envelope
 from backend.services.portfolio_service import Position
 from backend.services.segments import ai_mentions as am
@@ -170,7 +171,8 @@ def _segment_report(db, isin, lines):
         filing_id=isin, source_url="https://filings.xbrl.org/v.html", currency="EUR",
         total_revenue=Decimal(100), axis_status="{}", lines=json.dumps(lines),
     ))
-    db.add(SegmentCheck(isin=isin, outcome="ok", filing_id=isin))
+    db.add(SegmentCheck(isin=isin, outcome="ok", filing_id=isin,
+                        reader=READERS[SegmentCheck]))
     db.commit()
 
 
@@ -179,7 +181,7 @@ def nothing_due(db, monkeypatch):
     """Annual-report reading is out of the way: only the industry step runs."""
     monkeypatch.setattr(am.settings, "openrouter_api_key", "test-key")
     for isin in ("ES1", "ES2"):
-        db.add(AiMentionCheck(isin=isin, outcome="no_filing"))
+        db.add(AiMentionCheck(isin=isin, outcome="no_filing", reader=READERS[AiMentionCheck]))
     db.commit()
 
 
