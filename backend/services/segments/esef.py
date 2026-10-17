@@ -20,6 +20,8 @@ from __future__ import annotations
 import html
 import json
 import re
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -64,7 +66,7 @@ _CORE_DIMENSIONS = {"concept", "entity", "period", "unit", "language"}
 @dataclass
 class Filing:
     filing_id: str
-    period_end: date
+    period_end: date  # as listed: may not be the report's own (`fiscal_year_end`)
     json_url: str
     viewer_url: str
     # The full inline-XBRL report, prose included. Read for what it says about AI.
@@ -80,6 +82,7 @@ class Report:
     currency: str
     total: Decimal
     note: str
+    period_end: date  # the report's own fiscal year end
     measure: str = "revenue"  # a TOTAL_CONCEPTS measure
 
 
@@ -136,8 +139,9 @@ def fetch_report(http: httpx.Client, filing: Filing) -> Report | None:
     return parse_report(data, filing.period_end)
 
 
-def parse_report(data: dict, period_end: date) -> Report | None:
+def parse_report(data: dict, listed_end: date) -> Report | None:
     facts = list((data.get("facts") or {}).values())
+    period_end = fiscal_year_end(_json_periods(facts), listed_end)
     found = None
     for concept, measure in TOTAL_CONCEPTS:
         if measure == "bank_gross_income" and _year_total(facts, BANK_MARKER, period_end) is None:
@@ -158,7 +162,36 @@ def parse_report(data: dict, period_end: date) -> Report | None:
             if text and text not in blocks:
                 blocks.append(text)
     note = "\n\n".join(blocks)[:MAX_NOTE_CHARS]
-    return Report(currency=currency, total=total, note=note, measure=measure)
+    return Report(currency=currency, total=total, note=note, period_end=period_end, measure=measure)
+
+
+def fiscal_year_end(periods: Iterable[tuple[date, date]], listed_end: date) -> date:
+    """The year a report covers, read from its own (start, last day) periods.
+
+    filings.xbrl.org's `period_end` is not always the report's: Aviva's FY2025 report
+    is listed at 2026-03-02 and Carrefour's at 2026-12-31, so every fact for the year
+    failed the period check and the year shown would have been 2026. A report tags
+    more facts for its own year than for the comparative one (Carrefour 312 vs 161),
+    so the most common full-year end is its year; on a tie, the later one. Without a
+    full-year period at all, the listing is all there is.
+    """
+    ends = Counter(end for start, end in periods if (end - start).days >= 350)
+    if not ends:
+        return listed_end
+    return max(ends, key=lambda end: (ends[end], end))
+
+
+def _json_periods(facts: list[dict]) -> Iterable[tuple[date, date]]:
+    """xBRL-JSON durations end at midnight after the last day: '…/2025-01-01T00:00:00'."""
+    for fact in facts:
+        period = (fact.get("dimensions") or {}).get("period", "")
+        if "/" not in period:
+            continue
+        start, end = period.split("/", 1)
+        try:
+            yield date.fromisoformat(start[:10]), date.fromisoformat(end[:10]) - timedelta(days=1)
+        except ValueError:
+            continue
 
 
 def _year_total(facts: list[dict], concept: str, period_end: date) -> tuple[Decimal, str] | None:

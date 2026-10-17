@@ -196,7 +196,7 @@ def _check_esef(db, isin, name, http) -> None:
     if not report.note:
         return _record(db, isin, "no_segments", filing.filing_id)
 
-    rows = esef.extract(name, report, filing.period_end)
+    rows = esef.extract(name, report, report.period_end)
     candidates: dict[str, list[list[tuple[str, Decimal]]]] = {"business": [], "geography": []}
     status: dict[str, str] = {}
     for axis in ("business", "geography"):
@@ -211,7 +211,7 @@ def _check_esef(db, isin, name, http) -> None:
         "esef",
         filing.filing_id,
         filing.url,
-        filing.period_end,
+        report.period_end,
         report.currency,
         report.total,
         report.measure,

@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import time
+from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -107,6 +108,9 @@ _TAG = re.compile(r"<[^<>]*>")
 _BLOCK = re.compile(r"(?i)^</?(?:p|div|tr|br|li|h[1-6]|table|section)\b")
 _SKIP_OPEN = re.compile(r"(?i)^<(script|style)\b")
 _SKIP_CLOSE = re.compile(r"(?i)^</(script|style)\b")
+# Inline XBRL contexts: <xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>…
+_DATE_OPEN = re.compile(r"(?i)^<(?:[\w-]+:)?(startdate|enddate)\s*>")
+_DATE_CLOSE = re.compile(r"(?i)^</(?:[\w-]+:)?(?:startdate|enddate)\s*>")
 _DATA_URI = re.compile(rb"[\"']data:")
 
 
@@ -116,6 +120,10 @@ class TextStream:
     Fed chunk by chunk so an 85 MB report never sits in memory whole. Quoted
     `data:` URIs (embedded images) are dropped at byte level before decoding;
     tags are dropped as they complete, and a tag split between chunks is carried.
+
+    It also keeps the inline-XBRL context periods it passes (`periods`, as (start, last
+    day)), so an ESEF report says which year it covers: the listing is not always right
+    (`esef.fiscal_year_end`).
     """
 
     def __init__(self) -> None:
@@ -125,6 +133,10 @@ class TextStream:
         self._carry = ""  # an unfinished tag
         self._skip = False  # inside <script> or <style>
         self._parts: list[str] = []
+        self._date_tag: str | None = None  # just inside <startDate> or <endDate>
+        self._date_text = ""  # its text so far, when a chunk ends inside it
+        self._start: date | None = None
+        self.periods: list[tuple[date, date]] = []
 
     def feed(self, chunk: bytes) -> None:
         self._text(self._decoder.decode(self._strip_data_uris(chunk)))
@@ -159,6 +171,11 @@ class TextStream:
             if not self._skip:
                 self._parts.append(s[i : m.start()])
             tag = m.group()
+            if self._date_tag and _DATE_CLOSE.match(tag):
+                self._period(self._date_tag, self._date_text + s[i : m.start()])
+            opened = _DATE_OPEN.match(tag)
+            self._date_tag = opened.group(1).lower() if opened else None
+            self._date_text = ""
             if _SKIP_OPEN.match(tag) and not tag.endswith("/>"):
                 self._skip = True
             elif _SKIP_CLOSE.match(tag):
@@ -169,11 +186,31 @@ class TextStream:
         cut = rest.find("<")
         if cut >= 0:
             self._carry, rest = rest[cut:], rest[:cut]
+        if self._date_tag:
+            self._date_text += rest
         if not self._skip:
             self._parts.append(rest)
 
+    def _period(self, which: str, value: str) -> None:
+        try:
+            day = date.fromisoformat(value.strip())
+        except ValueError:
+            self._start = None
+            return
+        if which == "startdate":
+            self._start = day
+        elif self._start is not None:
+            self.periods.append((self._start, day))
+            self._start = None
 
-def read_text(http: httpx.Client, url: str, seconds: float) -> str | None:
+
+@dataclass
+class Document:
+    text: str
+    periods: list[tuple[date, date]]  # inline-XBRL context periods, (start, last day)
+
+
+def read_text(http: httpx.Client, url: str, seconds: float) -> Document | None:
     """The document at `url` as text; None on 404. Bounded in bytes and in time.
 
     filings.xbrl.org serves an 85 MB report in 6 to 12 s most of the time and past
@@ -197,7 +234,7 @@ def read_text(http: httpx.Client, url: str, seconds: float) -> str | None:
                 stream.feed(chunk)
     except httpx.HTTPError as exc:
         raise SourceUnavailable(f"{type(exc).__name__} on {host}") from exc
-    return stream.close()
+    return Document(stream.close(), stream.periods)
 
 
 def _key(line: str) -> str:
@@ -443,7 +480,7 @@ def _note(db: Session, isin: str, outcome: str, filing_id: str | None = None) ->
     _record(db, isin, outcome, filing_id, model=AiMentionCheck)
 
 
-def _read(db, isin, http, url, filing_id, seconds) -> str | None:
+def _read(db, isin, http, url, filing_id, seconds) -> Document | None:
     try:
         return read_text(http, url, seconds)
     except TooLarge:
@@ -460,10 +497,10 @@ def _check_sec(db, isin, ticker, name, http, cik_by_ticker, seconds) -> None:
         return _note(db, isin, "no_filing")
     if _already_read(db, isin, filing.filing_id, model=AiMentionCheck):
         return None
-    text = _read(db, isin, http, filing.url, filing.filing_id, seconds)
-    if text is None:
+    doc = _read(db, isin, http, filing.url, filing.filing_id, seconds)
+    if doc is None:
         return None
-    section = risk_factors(text)
+    section = risk_factors(doc.text)
     if section is None:
         return _note(db, isin, "no_section", filing.filing_id)
     _store(
@@ -490,8 +527,8 @@ def _check_esef(db, isin, name, http, seconds) -> None:
         return _note(db, isin, "no_section", filing.filing_id)
     if _already_read(db, isin, filing.filing_id, model=AiMentionCheck):
         return None
-    text = _read(db, isin, http, esef._BASE + filing.report_url, filing.filing_id, seconds)
-    if text is None:
+    doc = _read(db, isin, http, esef._BASE + filing.report_url, filing.filing_id, seconds)
+    if doc is None:
         return None
     _store(
         db,
@@ -501,8 +538,8 @@ def _check_esef(db, isin, name, http, seconds) -> None:
         "annual_report",
         filing.filing_id,
         filing.url,
-        filing.period_end,
-        text,
+        esef.fiscal_year_end(doc.periods, filing.period_end),
+        doc.text,
     )
 
 

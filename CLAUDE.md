@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1692 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 183 frontend tests |
+| Tests | pytest · 1702 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 183 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -89,7 +89,9 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   request or model call is never cached. Issuers that tag no revenue (banks, insurers,
   property companies) are checked against margen bruto, insurance revenue or rental income
   instead, and the UI names that measure; `GrossProfit` is margen bruto only next to a
-  tagged net interest income. See `.claude/rules/segments.md`.
+  tagged net interest income. An ESEF report's year is read from its own facts, not from
+  the filings.xbrl.org listing, which is wrong for some (Aviva, Carrefour). See
+  `.claude/rules/segments.md`.
 - "Exposición a la IA" on `/portfolio` is what each issuer's own annual report says about
   AI (10-K Item 1A for US ISINs, the whole ESEF report for the rest): a mention count done
   in code and up to three quotes the model picks, published only if every quote is in the
@@ -236,10 +238,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1692 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1692 pass in ~110s. Those files are not in the repo,
+Backend: `pytest` — 1702 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1702 pass in ~110s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1544 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1554 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the

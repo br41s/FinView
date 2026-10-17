@@ -366,13 +366,58 @@ def test_a_proportionate_breakdown_does_not_add_up_to_the_ifrs_rental_total():
         "Total | 2,328.2"
     )
     report = esef.Report(currency="EUR", total=Decimal("2328200000"), note=note,
-                         measure="rental_income")
+                         period_end=date(2025, 12, 31), measure="rental_income")
     wrong = [("Shopping Centres", "2,526.4"), ("Offices & Others", "86.6"),
              ("Convention & Exhibition", "203.9")]
     right = [("Shopping Centres", "2,052.9"), ("Offices & Others", "74.4"),
              ("Convention & Exhibition", "201.0")]
     assert esef.verify(wrong, report) == (None, "unreconciled")
     assert esef.verify(right, report)[1] == "ok"
+
+
+# ── the report's own year, not the listing's ─────────────────────────
+
+FY24 = (date(2024, 1, 1), date(2024, 12, 31))
+FY23 = (date(2023, 1, 1), date(2023, 12, 31))
+
+
+def test_the_year_is_the_most_common_full_year_in_the_report():
+    """Aviva's FY2025 report is listed at 2026-03-02; its facts say 2025."""
+    periods = [FY24] * 5 + [FY23] * 3 + [(date(2024, 7, 1), date(2024, 12, 31))] * 9
+    assert esef.fiscal_year_end(periods, date(2026, 3, 2)) == date(2024, 12, 31)
+
+
+def test_on_a_tie_the_later_year_wins():
+    assert esef.fiscal_year_end([FY24, FY23], date(2026, 3, 2)) == date(2024, 12, 31)
+
+
+def test_without_a_full_year_period_the_listing_stands():
+    half = [(date(2024, 7, 1), date(2024, 12, 31))]
+    assert esef.fiscal_year_end(half, date(2024, 12, 31)) == date(2024, 12, 31)
+    assert esef.fiscal_year_end([], date(2024, 12, 31)) == date(2024, 12, 31)
+
+
+def test_a_52_week_year_counts_as_a_full_year():
+    week52 = (date(2025, 3, 30), date(2026, 3, 28))
+    assert esef.fiscal_year_end([week52], date(2026, 3, 28)) == date(2026, 3, 28)
+
+
+def test_a_mislisted_report_keeps_its_total_and_its_own_year():
+    """Every fact failed the period check against a wrong listing: `no_revenue`."""
+    report = esef.parse_report(_esef_json(), date(2026, 3, 2))
+    assert report.period_end == date(2024, 12, 31)
+    assert report.total == Decimal("44291000000.0")
+
+
+def test_a_correct_listing_is_unchanged():
+    assert esef.parse_report(_esef_json(), date(2024, 12, 31)).period_end == date(2024, 12, 31)
+
+
+def test_malformed_periods_are_skipped():
+    data = _esef_json()
+    data["facts"]["bad"] = {"value": 1.0, "dimensions": {"concept": "x", "period": "soon/later"}}
+    data["facts"]["instant"] = {"value": 1.0, "dimensions": {"concept": "y", "period": "2024-12-31"}}
+    assert esef.parse_report(data, date(2026, 3, 2)).period_end == date(2024, 12, 31)
 
 
 # ── model answers ────────────────────────────────────────────────────
@@ -421,7 +466,7 @@ def test_the_reader_keeps_only_well_formed_rows(monkeypatch):
         })
         + "\n```",
     )
-    report = esef.Report(currency="EUR", total=Decimal(1), note="x")
+    report = esef.Report(currency="EUR", total=Decimal(1), note="x", period_end=date(2024, 12, 31))
     out = esef.extract("Iberdrola", report, date(2024, 12, 31))
     assert out == {"business": [("Redes", "1.000")], "geography": []}
 
@@ -434,7 +479,8 @@ def test_the_reader_keeps_only_well_formed_rows(monkeypatch):
 ])
 def test_the_reader_is_told_which_figure_to_copy(monkeypatch, measure, words):
     calls = _model_says(monkeypatch, json.dumps({"business": [], "geography": []}))
-    report = esef.Report(currency="EUR", total=Decimal(1), note="x", measure=measure)
+    report = esef.Report(currency="EUR", total=Decimal(1), note="x",
+                         period_end=date(2024, 12, 31), measure=measure)
     esef.extract("X", report, date(2024, 12, 31))
     system = calls[0][0]["content"]
     assert words in system
@@ -509,6 +555,18 @@ def test_a_report_that_adds_up_is_stored_with_its_source(db, no_http, monkeypatc
     assert db.query(SegmentCheck).one().outcome == "ok"
 
 
+def test_a_mislisted_filing_is_stored_under_the_reports_own_year(db, no_http, monkeypatch):
+    _esef_source(monkeypatch)
+    listed = esef.Filing("F-2024", date(2026, 3, 2), "/f.json", "/viewer.html")
+    monkeypatch.setattr(esef, "latest_filing", lambda http, lei: listed)
+    monkeypatch.setattr(
+        esef, "fetch_report", lambda http, f: esef.parse_report(_esef_json(), f.period_end)
+    )
+    refresh.refresh(db, HOLDING, 30)
+    row = db.query(SegmentReport).one()
+    assert (row.fiscal_year, row.period_end) == (2024, date(2024, 12, 31))
+
+
 def test_the_measure_is_stored_with_the_report(db, no_http, monkeypatch):
     _esef_source(monkeypatch)
     report = esef.parse_report(_esef_json(), date(2024, 12, 31))
@@ -554,7 +612,12 @@ def test_a_new_filing_adds_a_year(db, no_http, monkeypatch):
     db.commit()
 
     newer = esef.Filing("F-2025", date(2025, 12, 31), "/f.json", "/viewer.html")
+    fy2025 = json.loads(
+        json.dumps(_esef_json()).replace("2025-01-01T00:00:00", "2026-01-01T00:00:00")
+        .replace("2024-01-01T00:00:00", "2025-01-01T00:00:00")
+    )
     monkeypatch.setattr(esef, "latest_filing", lambda http, lei: newer)
+    monkeypatch.setattr(esef, "fetch_report", lambda http, f: esef.parse_report(fy2025, f.period_end))
     refresh.refresh(db, HOLDING, 30)
     assert sorted(r.fiscal_year for r in db.query(SegmentReport)) == [2024, 2025]
 

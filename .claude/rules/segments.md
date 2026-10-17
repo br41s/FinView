@@ -33,6 +33,17 @@ listing sector, not its domicile: what the report says it sells, and where.
   to be tagged; none of 25 Spanish FY2024 reports did). The model copies the amounts
   out of that block. filings.xbrl.org runs months behind some registers (no Spanish
   FY2025 report yet in October 2026), so the UI always names the report year.
+- **The year is the report's own, not the listing's** (`esef.fiscal_year_end`).
+  filings.xbrl.org's `period_end` is wrong for some filings: Aviva's FY2025 report is
+  listed at 2026-03-02 and Carrefour's at 2026-12-31 (2 of the 45 held issuers with a
+  filing in October 2026), so every fact failed the period check (`no_revenue`) and the
+  year would have shown as 2026. The year is the most common full-year (≥350 days)
+  period end among the report's facts (a report tags more for its own year than for the
+  comparative), the later one on a tie, the listing only when there is none. The segment
+  reader takes the periods from the xBRL-JSON; the AI reader, which never downloads the
+  JSON (up to 38 MB), from the inline-XBRL contexts `TextStream` passes while streaming
+  the report. File names are no better a source: Ebro's and Acciona's carry the wrong
+  year while their listings are right. `latest_filing` still orders by the listed date.
 - `note_text` keeps **one table row per line**: block tags inside a `<td>` are spaces,
   not breaks. PDF-converted reports wrap every figure in `<div>`s, and reading those as
   line breaks put each cell on its own line — 7 of the 9 "no cuadra" reports in the first
