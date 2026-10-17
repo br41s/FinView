@@ -30,6 +30,7 @@ import type {
 import { apiError } from "@/lib/apiError";
 import type { GeoCycleRun } from "@/lib/geoHealth";
 import type { BrokerConnection, SyncProgress } from "@/lib/brokerSync";
+import type { Exposure, ExposureRefresh } from "@/lib/exposure";
 
 const BASE = "/api";
 
@@ -647,6 +648,9 @@ export const api = {
     // work without it, so a failure only costs a slower first price load.
     warmPrices: () =>
       send("POST", "/portfolio/warm-prices").catch(bestEffort("portfolio price cache warm")),
+    exposure: () => fetchJSON<Exposure>("/portfolio/exposure"),
+    /** One bounded step reading due annual reports. See `shouldRefreshAgain`. */
+    refreshExposure: () => send<ExposureRefresh>("POST", "/portfolio/exposure/refresh"),
   },
 
   // Direct broker connection (IBKR Flex). The token is write-only: it goes in

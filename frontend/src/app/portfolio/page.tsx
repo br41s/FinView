@@ -22,6 +22,7 @@ import { LoadingDots } from "@/components/loading-dots";
 import { PageHeader } from "@/components/PageHeader";
 import { usePrivacyToggle } from "@/hooks/use-privacy-toggle";
 
+import { ExposureCharts } from "./ExposureCharts";
 import { PortfolioSummaryCards } from "./PortfolioSummaryCards";
 import { PositionsMobileList } from "./PositionsMobileList";
 import { PositionsTable } from "./PositionsTable";
@@ -190,6 +191,8 @@ function PortfolioContent() {
           </CardContent>
         </Card>
       )}
+
+      {positions.length > 0 && <ExposureCharts ready={pricesLoaded} />}
     </div>
   );
 }
