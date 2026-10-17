@@ -4,6 +4,9 @@ import logging
 from datetime import datetime, time, date
 from decimal import Decimal
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
@@ -56,12 +59,43 @@ def _learn_tickers(db: Session, isins: list[str]) -> dict[str, str]:
         if budget.spent():
             break
         ticker = ticker_map.lookup(isin)
-        if ticker:
-            ticker_map.remember(db, isin, ticker)
-            learned[isin] = ticker
-        else:
+        if not ticker:
             logger.warning("No Yahoo ticker for ISIN %s", isin)
+            continue
+        # One commit per ISIN: /portfolio values the portfolio in parallel requests,
+        # and two of them can learn the same ISIN at once (ticker_map is unique on it).
+        try:
+            ticker_map.remember(db, isin, ticker)
+            db.commit()
+        except IntegrityError:
+            # A concurrent valuation stored it first; its row stands, and it may be
+            # a manual one, so price whatever is stored now.
+            db.rollback()
+            ticker = ticker_map.resolve(db, isin)
+        if ticker:
+            learned[isin] = ticker
     return learned
+
+
+_PRICE_UPDATE_COLUMNS = ("yahoo_ticker", "price", "currency", "original_currency",
+                         "original_price", "fx_rate")
+
+
+def _upsert_price(db: Session, row: dict) -> None:
+    """Write today's price for one ISIN, whoever got there first.
+
+    The check-then-insert this replaces raced: /portfolio prices the portfolio in
+    parallel requests, all of them miss the cache on the day's first view, and the
+    second INSERT of the same (isin, fetched_date) raised UniqueViolation — a 500
+    (production, 2026-10-17). Same-day rows carry the same close, so the later
+    write simply wins.
+    """
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
+    stmt = insert(PriceCache).values(**row)
+    db.execute(stmt.on_conflict_do_update(
+        index_elements=["isin", "fetched_date"],
+        set_={c: stmt.excluded[c] for c in _PRICE_UPDATE_COLUMNS},
+    ))
 
 
 def get_cached_prices(db: Session, isins: list[str]) -> dict[str, Decimal]:
@@ -167,28 +201,16 @@ def fetch_and_cache_prices(
         # One Yahoo ticker can represent multiple ISINs across a corporate
         # action (for example AENA pre/post split). Cache every requested ISIN.
         for isin in ticker_isins:
-            existing = (
-                db.query(PriceCache)
-                .filter(PriceCache.isin == isin, PriceCache.fetched_date == today)
-                .first()
-            )
-            if existing:
-                existing.price = price_dec
-                existing.yahoo_ticker = ticker
-                existing.original_currency = ccy
-                existing.original_price = orig_price
-                existing.fx_rate = rate
-            else:
-                db.add(PriceCache(
-                    isin=isin,
-                    yahoo_ticker=ticker,
-                    price=price_dec,
-                    currency="EUR",
-                    original_currency=ccy,
-                    original_price=orig_price,
-                    fx_rate=rate,
-                    fetched_date=today,
-                ))
+            _upsert_price(db, {
+                "isin": isin,
+                "yahoo_ticker": ticker,
+                "price": price_dec,
+                "currency": "EUR",
+                "original_currency": ccy,
+                "original_price": orig_price,
+                "fx_rate": rate,
+                "fetched_date": today,
+            })
             cached[isin] = price_dec
 
     db.commit()

@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1673 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
+| Tests | pytest · 1676 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -97,6 +97,11 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `scripts/build_ai_industry_exposure.py` from pinned versions. Same rules file.
 - Portfolio price resolution is one ticker to many ISINs. Corporate-action ISINs that
   share a Yahoo ticker must all receive the fetched price and cache row.
+- `/portfolio` prices the portfolio in parallel requests, so every write on that path is
+  conflict-safe: `price_cache` rows are an `ON CONFLICT (isin, fetched_date)` upsert
+  (`prices._upsert_price`), and a ticker learned during a valuation is committed per ISIN,
+  with `IntegrityError` meaning a concurrent request stored it first. Check-then-insert
+  raised UniqueViolation on the first view of the day (a 500, 2026-10-17).
 - ISIN→ticker resolution lives in `services/ticker_map.py`, not in `prices.py`. Precedence
   is **manual > CURATED > yfinance**: an automatic lookup must not overwrite curated
   knowledge about a corporate action (AENA's pre/post-split ISINs share one ticker on
@@ -228,10 +233,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1673 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1673 pass in ~110s. Those files are not in the repo,
+Backend: `pytest` — 1676 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1676 pass in ~110s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1525 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1528 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
