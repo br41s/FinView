@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1576 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (172 frontend) · ESLint
+- **Tests:** pytest (1633 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (181 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -127,6 +127,13 @@ migración de esquema ni backfill implícito.
   etiquetados del informe; las cifras que el modelo copia de una nota ESEF deben aparecer
   tal cual en ella. ETFs, fondos, banca y seguros quedan como "Sin datos". Cada posición
   enlaza a su informe. Detalle en `.claude/rules/segments.md`.
+- **Exposición a la IA**: lo que cada empresa dice de la inteligencia artificial en su
+  último informe anual (factores de riesgo del 10-K en EE. UU., el informe ESEF completo
+  en la UE). FinView cuenta las menciones; un modelo elige hasta tres citas, que solo se
+  muestran si están palabra por palabra en el informe, con enlace. Al lado, un índice por
+  industria que calcula FinView: la exposición β de cada ocupación según Eloundou et al.
+  (Science 2024, datos MIT) ponderada por el empleo de cada industria (BLS OEWS) y por los
+  ingresos de cada segmento. No es una puntuación ni una probabilidad de cierre.
 
 ## Monitor de Opciones
 
@@ -345,7 +352,7 @@ Base URL: `http://localhost:8000/api`
 pytest
 ```
 
-**Backend:** 1576 tests, todos en `backend/tests/` (lo fija `testpaths` en `pyproject.toml`).
+**Backend:** 1633 tests, todos en `backend/tests/` (lo fija `testpaths` en `pyproject.toml`).
 Con los PDFs/CSVs reales en `files/` pasan todos; esos ficheros no están en el repo, y donde
 faltan (CI, un worktree sin enlazar `files/`) los 148 tests que los requieren salen como skipped.
 
@@ -355,7 +362,7 @@ faltan (CI, un worktree sin enlazar `files/`) los 148 tests que los requieren sa
 cd frontend && pnpm test
 ```
 
-172 tests sobre lógica pura: `src/lib/`, `src/app/blog/posts.test.ts`,
+181 tests sobre lógica pura: `src/lib/`, `src/app/blog/posts.test.ts`,
 `src/app/options/optionsData.test.ts` (el reducer de estado de la página de opciones) y
 `src/game/garden/` (las reglas del juego del jardín de la landing). Requiere `pnpm install` —
 sin `vitest` instalado, `pnpm build` falla en `vitest.config.ts` aunque la app compile bien.

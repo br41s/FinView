@@ -78,6 +78,8 @@ from .fiscal import (
     ManualSavingsIncome,
 )
 from .segments import (
+    AiMentionCheck,
+    AiMentionReport,
     SegmentCheck,
     SegmentReport,
 )
@@ -136,6 +138,8 @@ __all__ = [
     "AltInvestmentCatalog",
     "FiscalProfile",
     "ManualSavingsIncome",
+    "AiMentionCheck",
+    "AiMentionReport",
     "SegmentCheck",
     "SegmentReport",
 ]

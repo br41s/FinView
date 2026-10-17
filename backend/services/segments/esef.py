@@ -52,6 +52,8 @@ class Filing:
     period_end: date
     json_url: str
     viewer_url: str
+    # The full inline-XBRL report, prose included. Read for what it says about AI.
+    report_url: str | None = None
 
     @property
     def url(self) -> str:
@@ -106,6 +108,7 @@ def latest_filing(http: httpx.Client, lei: str) -> Filing | None:
         period_end=date.fromisoformat(best["period_end"]),
         json_url=best["json_url"],
         viewer_url=best.get("viewer_url") or best["json_url"],
+        report_url=best.get("report_url"),
     )
 
 

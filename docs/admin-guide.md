@@ -12,7 +12,7 @@
 | CI/CD | Cloud Build (trigger automático en push a main) | Proyecto: finview-brais-2026 |
 | Auth | NextAuth 5.0 (JWT) | — |
 | Pagos | Stripe | — |
-| IA | OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`) | Un modelo compartido: análisis de opciones, analyst de Ideas, scorer de zonas, lectura de notas de segmentos de informes anuales |
+| IA | OpenRouter (`FINVIEW_OPENROUTER_MODEL`, default `deepseek/deepseek-v4-flash`) | Un modelo compartido: análisis de opciones, analyst de Ideas, scorer de zonas, lectura de informes anuales (notas de segmentos y lo que dicen de la IA) |
 | Push | ntfy.sh | — |
 
 ### Notas críticas de producción
@@ -77,7 +77,7 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `FINVIEW_STRIPE_PRICE_PRO` | — | Price ID plan Pro |
 | `FINVIEW_STRIPE_PRICE_UNLIMITED` | — | Price ID plan Unlimited |
 | `FINVIEW_FRONTEND_URL` | `http://localhost:3000` | URL del frontend (para redirects Stripe) |
-| `FINVIEW_OPENROUTER_API_KEY` | — | Clave OpenRouter (opcional — activa el análisis IA de opciones, el analyst de Ideas, el scorer de zonas y la lectura de informes anuales para la exposición por sector y región; sin ella la exposición se queda en "Sin datos") |
+| `FINVIEW_OPENROUTER_API_KEY` | — | Clave OpenRouter (opcional — activa el análisis IA de opciones, el analyst de Ideas, el scorer de zonas y la lectura de informes anuales para la exposición por sector y región y a la IA; sin ella no se lee ningún informe nuevo) |
 | `FINVIEW_OPENROUTER_MODEL` | `deepseek/deepseek-v4-flash` | Modelo compartido por todos ellos |
 | `FINVIEW_CRON_SECRET` | — | **Obligatoria en prod.** Secreto de Cloud Scheduler; sin ella los pipelines no corren |
 | `FINVIEW_FRED_API_KEY` | — | Tipo libre de riesgo por divisa + régimen macro (opcional, gratuita) |
@@ -121,6 +121,14 @@ La base de datos SQLite se crea automáticamente en `data/finview.db` al arranca
 | `split_history_cache` | Histórico de splits por ticker, TTL 30 días; evita una llamada a yfinance por ticker en cada importación |
 | `segment_checks` | Última consulta del informe anual por ISIN (resultado + id del filing), se repite cada 7 días; un fallo de red o del modelo no se guarda |
 | `segment_reports` | Ingresos por segmento y por región de cada informe anual leído (una fila por ISIN y ejercicio), con enlace al filing |
+| `ai_mention_checks` | Última lectura del informe anual por ISIN buscando la IA (resultado + id del filing), se repite cada 7 días; un fallo de red o del modelo no se guarda |
+| `ai_mention_reports` | Menciones de IA, palabras leídas y citas literales verificadas de cada informe (una fila por ISIN y ejercicio), con enlace al filing |
+
+El índice de exposición a la IA por industria no está en la base de datos: es
+`backend/services/segments/data/ai_industry_exposure.json`, generado por
+`scripts/build_ai_industry_exposure.py` (Eloundou et al. 2024 + BLS OEWS, versiones fijadas
+dentro del fichero). La industria de cada segmento se guarda como clave `industry` en las
+líneas de `segment_reports`.
 | `data_issues` | Avisos del supervisor de datos por importación |
 | `watchlist_items` | Tickers en watchlist por usuario (monitor de opciones) |
 | `options_snapshots` | Snapshots de cadena de opciones por ciclo |

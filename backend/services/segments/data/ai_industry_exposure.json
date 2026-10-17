@@ -1,0 +1,1260 @@
+{
+ "sources": {
+  "method": {
+   "citation": "Felten, Raj & Seamans (2021), Strategic Management Journal 42(12)",
+   "doi": "10.1002/smj.3286"
+  },
+  "occupations": {
+   "citation": "Eloundou, Manning, Mishkin & Rock (2024), GPTs are GPTs: Labor market impact potential of LLMs, Science 384(6702):1306-1308",
+   "doi": "10.1126/science.adj0998",
+   "url": "https://github.com/openai/GPTs-are-GPTs/tree/0471612fef3cc22b74fb884d27bff9dbd3770582",
+   "commit": "0471612fef3cc22b74fb884d27bff9dbd3770582",
+   "column": "human_rating_beta",
+   "license": "MIT"
+  },
+  "employment": {
+   "citation": "BLS Occupational Employment and Wage Statistics, national industry-specific estimates, 4-digit NAICS",
+   "release": "May 2025",
+   "url": "https://www.bls.gov/oes/special-requests/oesm25in4.zip",
+   "license": "Public domain (US government work)"
+  },
+  "built": "2026-10-17"
+ },
+ "industries": {
+  "113300": {
+   "title": "Logging",
+   "score": 0.1529,
+   "coverage": 0.9274
+  },
+  "115100": {
+   "title": "Support Activities for Crop Production",
+   "score": 0.1117,
+   "coverage": 0.9818
+  },
+  "115200": {
+   "title": "Support Activities for Animal Production",
+   "score": 0.187,
+   "coverage": 0.9298
+  },
+  "211100": {
+   "title": "Oil and Gas Extraction",
+   "score": 0.3016,
+   "coverage": 0.9664
+  },
+  "212100": {
+   "title": "Coal Mining",
+   "score": 0.1436,
+   "coverage": 0.9316
+  },
+  "212200": {
+   "title": "Metal Ore Mining",
+   "score": 0.1947,
+   "coverage": 0.9115
+  },
+  "212300": {
+   "title": "Nonmetallic Mineral Mining and Quarrying",
+   "score": 0.1646,
+   "coverage": 0.962
+  },
+  "213100": {
+   "title": "Support Activities for Mining",
+   "score": 0.1846,
+   "coverage": 0.9586
+  },
+  "221100": {
+   "title": "Electric Power Generation, Transmission and Distribution",
+   "score": 0.298,
+   "coverage": 0.9871
+  },
+  "221200": {
+   "title": "Natural Gas Distribution",
+   "score": 0.3295,
+   "coverage": 0.9517
+  },
+  "221300": {
+   "title": "Water, Sewage and Other Systems",
+   "score": 0.2659,
+   "coverage": 0.978
+  },
+  "236100": {
+   "title": "Residential Building Construction",
+   "score": 0.2435,
+   "coverage": 0.9808
+  },
+  "236200": {
+   "title": "Nonresidential Building Construction",
+   "score": 0.2506,
+   "coverage": 0.9882
+  },
+  "237100": {
+   "title": "Utility System Construction",
+   "score": 0.168,
+   "coverage": 0.9847
+  },
+  "237200": {
+   "title": "Land Subdivision",
+   "score": 0.3491,
+   "coverage": 0.9538
+  },
+  "237300": {
+   "title": "Highway, Street, and Bridge Construction",
+   "score": 0.1592,
+   "coverage": 0.9907
+  },
+  "237900": {
+   "title": "Other Heavy and Civil Engineering Construction",
+   "score": 0.1831,
+   "coverage": 0.9697
+  },
+  "238100": {
+   "title": "Foundation, Structure, and Building Exterior Contractors",
+   "score": 0.1444,
+   "coverage": 0.9896
+  },
+  "238200": {
+   "title": "Building Equipment Contractors",
+   "score": 0.2096,
+   "coverage": 0.9927
+  },
+  "238300": {
+   "title": "Building Finishing Contractors",
+   "score": 0.1617,
+   "coverage": 0.9864
+  },
+  "238900": {
+   "title": "Other Specialty Trade Contractors",
+   "score": 0.1647,
+   "coverage": 0.981
+  },
+  "311100": {
+   "title": "Animal Food Manufacturing",
+   "score": 0.2198,
+   "coverage": 0.9556
+  },
+  "311200": {
+   "title": "Grain and Oilseed Milling",
+   "score": 0.2018,
+   "coverage": 0.9327
+  },
+  "311300": {
+   "title": "Sugar and Confectionery Product Manufacturing",
+   "score": 0.2144,
+   "coverage": 0.9555
+  },
+  "311400": {
+   "title": "Fruit and Vegetable Preserving and Specialty Food Manufacturing",
+   "score": 0.1716,
+   "coverage": 0.9453
+  },
+  "311500": {
+   "title": "Dairy Product Manufacturing",
+   "score": 0.1875,
+   "coverage": 0.9657
+  },
+  "311600": {
+   "title": "Animal Slaughtering and Processing",
+   "score": 0.102,
+   "coverage": 0.9357
+  },
+  "311700": {
+   "title": "Seafood Product Preparation and Packaging",
+   "score": 0.1424,
+   "coverage": 0.8581
+  },
+  "311800": {
+   "title": "Bakeries and Tortilla Manufacturing",
+   "score": 0.1823,
+   "coverage": 0.9719
+  },
+  "311900": {
+   "title": "Other Food Manufacturing",
+   "score": 0.1887,
+   "coverage": 0.9418
+  },
+  "312100": {
+   "title": "Beverage Manufacturing",
+   "score": 0.2279,
+   "coverage": 0.976
+  },
+  "312200": {
+   "title": "Tobacco Manufacturing",
+   "score": 0.2131,
+   "coverage": 0.8777
+  },
+  "313100": {
+   "title": "Fiber, Yarn, and Thread Mills",
+   "score": 0.1323,
+   "coverage": 0.9124
+  },
+  "313200": {
+   "title": "Fabric Mills",
+   "score": 0.1921,
+   "coverage": 0.9028
+  },
+  "313300": {
+   "title": "Textile and Fabric Finishing and Fabric Coating Mills",
+   "score": 0.2328,
+   "coverage": 0.7369
+  },
+  "314100": {
+   "title": "Textile Furnishings Mills",
+   "score": 0.1757,
+   "coverage": 0.8784
+  },
+  "314900": {
+   "title": "Other Textile Product Mills",
+   "score": 0.2033,
+   "coverage": 0.9282
+  },
+  "315100": {
+   "title": "Apparel Knitting Mills",
+   "score": 0.1654,
+   "coverage": 0.8372
+  },
+  "315200": {
+   "title": "Cut and Sew Apparel Manufacturing",
+   "score": 0.2203,
+   "coverage": 0.8866
+  },
+  "315900": {
+   "title": "Apparel Accessories and Other Apparel Manufacturing",
+   "score": 0.2153,
+   "coverage": 0.8715
+  },
+  "316100": {
+   "title": "Leather and Hide Tanning and Finishing",
+   "score": 0.1517,
+   "coverage": 0.7484
+  },
+  "316200": {
+   "title": "Footwear Manufacturing",
+   "score": 0.1114,
+   "coverage": 0.8229
+  },
+  "316900": {
+   "title": "Other Leather and Allied Product Manufacturing",
+   "score": 0.1902,
+   "coverage": 0.894
+  },
+  "321100": {
+   "title": "Sawmills and Wood Preservation",
+   "score": 0.1233,
+   "coverage": 0.9625
+  },
+  "321200": {
+   "title": "Veneer, Plywood, and Engineered Wood Product Manufacturing",
+   "score": 0.1616,
+   "coverage": 0.9472
+  },
+  "321900": {
+   "title": "Other Wood Product Manufacturing",
+   "score": 0.1604,
+   "coverage": 0.9691
+  },
+  "322100": {
+   "title": "Pulp, Paper, and Paperboard Mills",
+   "score": 0.1818,
+   "coverage": 0.9571
+  },
+  "322200": {
+   "title": "Converted Paper Product Manufacturing",
+   "score": 0.1758,
+   "coverage": 0.9745
+  },
+  "323100": {
+   "title": "Printing and Related Support Activities",
+   "score": 0.2616,
+   "coverage": 0.9802
+  },
+  "324100": {
+   "title": "Petroleum and Coal Products Manufacturing",
+   "score": 0.2539,
+   "coverage": 0.959
+  },
+  "3250A1": {
+   "title": "Chemical Manufacturing (3251, 3252, 3253, and 3259 only)",
+   "score": 0.2537,
+   "coverage": 0.9765
+  },
+  "3250A2": {
+   "title": "Chemical Manufacturing (3255 and 3256 only)",
+   "score": 0.2589,
+   "coverage": 0.9735
+  },
+  "325400": {
+   "title": "Pharmaceutical and Medicine Manufacturing",
+   "score": 0.3104,
+   "coverage": 0.9791
+  },
+  "326100": {
+   "title": "Plastics Product Manufacturing",
+   "score": 0.189,
+   "coverage": 0.968
+  },
+  "326200": {
+   "title": "Rubber Product Manufacturing",
+   "score": 0.1742,
+   "coverage": 0.967
+  },
+  "327000": {
+   "title": "Nonmetallic Mineral Product Manufacturing",
+   "score": 0.1989,
+   "coverage": 0.967
+  },
+  "331100": {
+   "title": "Iron and Steel Mills and Ferroalloy Manufacturing",
+   "score": 0.1827,
+   "coverage": 0.9159
+  },
+  "331200": {
+   "title": "Steel Product Manufacturing from Purchased Steel",
+   "score": 0.1926,
+   "coverage": 0.9614
+  },
+  "331300": {
+   "title": "Alumina and Aluminum Production and Processing",
+   "score": 0.1804,
+   "coverage": 0.9424
+  },
+  "331400": {
+   "title": "Nonferrous Metal (except Aluminum) Production and Processing",
+   "score": 0.2004,
+   "coverage": 0.9556
+  },
+  "331500": {
+   "title": "Foundries",
+   "score": 0.157,
+   "coverage": 0.9697
+  },
+  "3320A1": {
+   "title": "Fabricated Metal Product Manufacturing (3321, 3322, 3325, 3326, and 3329 only)",
+   "score": 0.2226,
+   "coverage": 0.9773
+  },
+  "3320A2": {
+   "title": "Fabricated Metal Product Manufacturing (3323 and 3324 only)",
+   "score": 0.1892,
+   "coverage": 0.9829
+  },
+  "332700": {
+   "title": "Machine Shops; Turned Product; and Screw, Nut, and Bolt Manufacturing",
+   "score": 0.2155,
+   "coverage": 0.9866
+  },
+  "332800": {
+   "title": "Coating, Engraving, Heat Treating, and Allied Activities",
+   "score": 0.1647,
+   "coverage": 0.9641
+  },
+  "3330A1": {
+   "title": "Machinery Manufacturing (3331, 3332, 3334, and 3339 only)",
+   "score": 0.2613,
+   "coverage": 0.963
+  },
+  "333300": {
+   "title": "Commercial and Service Industry Machinery Manufacturing",
+   "score": 0.321,
+   "coverage": 0.9265
+  },
+  "333500": {
+   "title": "Metalworking Machinery Manufacturing",
+   "score": 0.2414,
+   "coverage": 0.9779
+  },
+  "333600": {
+   "title": "Engine, Turbine, and Power Transmission Equipment Manufacturing",
+   "score": 0.2633,
+   "coverage": 0.9424
+  },
+  "334100": {
+   "title": "Computer and Peripheral Equipment Manufacturing",
+   "score": 0.4428,
+   "coverage": 0.9276
+  },
+  "334200": {
+   "title": "Communications Equipment Manufacturing",
+   "score": 0.4223,
+   "coverage": 0.8743
+  },
+  "334300": {
+   "title": "Audio and Video Equipment Manufacturing",
+   "score": 0.421,
+   "coverage": 0.7286
+  },
+  "334400": {
+   "title": "Semiconductor and Other Electronic Component Manufacturing",
+   "score": 0.3407,
+   "coverage": 0.8574
+  },
+  "334500": {
+   "title": "Navigational, Measuring, Electromedical, and Control Instruments Manufacturing",
+   "score": 0.3946,
+   "coverage": 0.8902
+  },
+  "334600": {
+   "title": "Manufacturing and Reproducing Magnetic and Optical Media",
+   "score": 0.4185,
+   "coverage": 0.6978
+  },
+  "335100": {
+   "title": "Electric Lighting Equipment Manufacturing",
+   "score": 0.3508,
+   "coverage": 0.7872
+  },
+  "335200": {
+   "title": "Household Appliance Manufacturing",
+   "score": 0.2072,
+   "coverage": 0.9286
+  },
+  "335300": {
+   "title": "Electrical Equipment Manufacturing",
+   "score": 0.3006,
+   "coverage": 0.7732
+  },
+  "335900": {
+   "title": "Other Electrical Equipment and Component Manufacturing",
+   "score": 0.2823,
+   "coverage": 0.7989
+  },
+  "336100": {
+   "title": "Motor Vehicle Manufacturing",
+   "score": 0.1652,
+   "coverage": 0.9479
+  },
+  "336200": {
+   "title": "Motor Vehicle Body and Trailer Manufacturing",
+   "score": 0.1664,
+   "coverage": 0.9739
+  },
+  "336300": {
+   "title": "Motor Vehicle Parts Manufacturing",
+   "score": 0.19,
+   "coverage": 0.9568
+  },
+  "336400": {
+   "title": "Aerospace Product and Parts Manufacturing",
+   "score": 0.3155,
+   "coverage": 0.9786
+  },
+  "336500": {
+   "title": "Railroad Rolling Stock Manufacturing",
+   "score": 0.2287,
+   "coverage": 0.8898
+  },
+  "336600": {
+   "title": "Ship and Boat Building",
+   "score": 0.1957,
+   "coverage": 0.888
+  },
+  "336900": {
+   "title": "Other Transportation Equipment Manufacturing",
+   "score": 0.2244,
+   "coverage": 0.8855
+  },
+  "3370A1": {
+   "title": "Furniture and Related Product Manufacturing (3371 and 3372 only)",
+   "score": 0.1877,
+   "coverage": 0.9722
+  },
+  "337900": {
+   "title": "Other Furniture Related Product Manufacturing",
+   "score": 0.2017,
+   "coverage": 0.9365
+  },
+  "339100": {
+   "title": "Medical Equipment and Supplies Manufacturing",
+   "score": 0.2757,
+   "coverage": 0.9737
+  },
+  "339900": {
+   "title": "Other Miscellaneous Manufacturing",
+   "score": 0.2737,
+   "coverage": 0.9552
+  },
+  "4230A1": {
+   "title": "Merchant Wholesalers, Durable Goods (4232, 4233, 4235, 4236, 4237, and 4239 only)",
+   "score": 0.3712,
+   "coverage": 0.9555
+  },
+  "423100": {
+   "title": "Motor Vehicle and Motor Vehicle Parts and Supplies Merchant Wholesalers",
+   "score": 0.3127,
+   "coverage": 0.9563
+  },
+  "423400": {
+   "title": "Professional and Commercial Equipment and Supplies Merchant Wholesalers",
+   "score": 0.4586,
+   "coverage": 0.9678
+  },
+  "423800": {
+   "title": "Machinery, Equipment, and Supplies Merchant Wholesalers",
+   "score": 0.3705,
+   "coverage": 0.9736
+  },
+  "4240A1": {
+   "title": "Merchant Wholesalers, Nondurable Goods (4244 and 4248 only)",
+   "score": 0.3158,
+   "coverage": 0.9612
+  },
+  "4240A2": {
+   "title": "Merchant Wholesalers, Nondurable Goods (4242 and 4246 only)",
+   "score": 0.4325,
+   "coverage": 0.955
+  },
+  "4240A3": {
+   "title": "Merchant Wholesalers, Nondurable Goods (4241, 4247, and 4249 only)",
+   "score": 0.3326,
+   "coverage": 0.9393
+  },
+  "424300": {
+   "title": "Apparel, Piece Goods, and Notions Merchant Wholesalers",
+   "score": 0.4077,
+   "coverage": 0.9429
+  },
+  "424500": {
+   "title": "Farm Product Raw Material Merchant Wholesalers",
+   "score": 0.2487,
+   "coverage": 0.9443
+  },
+  "425100": {
+   "title": "Wholesale Trade Agents and Brokers",
+   "score": 0.4946,
+   "coverage": 0.8506
+  },
+  "441100": {
+   "title": "Automobile Dealers",
+   "score": 0.3005,
+   "coverage": 0.9763
+  },
+  "441200": {
+   "title": "Other Motor Vehicle Dealers",
+   "score": 0.291,
+   "coverage": 0.9817
+  },
+  "441300": {
+   "title": "Automotive Parts, Accessories, and Tire Retailers",
+   "score": 0.2677,
+   "coverage": 0.9876
+  },
+  "444100": {
+   "title": "Building Material and Supplies Dealers",
+   "score": 0.3214,
+   "coverage": 0.9774
+  },
+  "444200": {
+   "title": "Lawn and Garden Equipment and Supplies Retailers",
+   "score": 0.2991,
+   "coverage": 0.9833
+  },
+  "4450A1": {
+   "title": "Food and Beverage Retailers (4451 and 4452 only)",
+   "score": 0.2693,
+   "coverage": 0.9775
+  },
+  "445300": {
+   "title": "Beer, Wine, and Liquor Retailers",
+   "score": 0.3489,
+   "coverage": 0.9854
+  },
+  "449100": {
+   "title": "Furniture and Home Furnishings Retailers",
+   "score": 0.3428,
+   "coverage": 0.9798
+  },
+  "449200": {
+   "title": "Electronics and Appliance Retailers",
+   "score": 0.4085,
+   "coverage": 0.9818
+  },
+  "455000": {
+   "title": "General Merchandise Retailers",
+   "score": 0.3006,
+   "coverage": 0.9775
+  },
+  "456100": {
+   "title": "Health and Personal Care Retailers",
+   "score": 0.3745,
+   "coverage": 0.9843
+  },
+  "457100": {
+   "title": "Gasoline Stations",
+   "score": 0.3283,
+   "coverage": 0.9903
+  },
+  "457200": {
+   "title": "Fuel Dealers",
+   "score": 0.2939,
+   "coverage": 0.9616
+  },
+  "458100": {
+   "title": "Clothing and Clothing Accessories Retailers",
+   "score": 0.3606,
+   "coverage": 0.9812
+  },
+  "458200": {
+   "title": "Shoe Retailers",
+   "score": 0.3636,
+   "coverage": 0.9889
+  },
+  "458300": {
+   "title": "Jewelry, Luggage, and Leather Goods Retailers",
+   "score": 0.3591,
+   "coverage": 0.9703
+  },
+  "4590A1": {
+   "title": "Miscellaneous Store Retailers (4594 and 4595 only)",
+   "score": 0.3426,
+   "coverage": 0.9777
+  },
+  "459100": {
+   "title": "Sporting Goods, Hobby, and Musical Instrument Retailers",
+   "score": 0.3531,
+   "coverage": 0.9822
+  },
+  "459200": {
+   "title": "Book Retailers and News Dealers",
+   "score": 0.347,
+   "coverage": 0.9589
+  },
+  "459300": {
+   "title": "Florists",
+   "score": 0.2989,
+   "coverage": 0.9722
+  },
+  "459900": {
+   "title": "Other Miscellaneous Retailers",
+   "score": 0.3482,
+   "coverage": 0.972
+  },
+  "481100": {
+   "title": "Scheduled Air Transportation",
+   "score": 0.262,
+   "coverage": 0.9711
+  },
+  "481200": {
+   "title": "Nonscheduled Air Transportation",
+   "score": 0.2887,
+   "coverage": 0.9481
+  },
+  "482100": {
+   "title": "Rail Transportation",
+   "score": 0.2043,
+   "coverage": 0.9621
+  },
+  "483100": {
+   "title": "Deep Sea, Coastal, and Great Lakes Water Transportation",
+   "score": 0.3663,
+   "coverage": 0.9058
+  },
+  "483200": {
+   "title": "Inland Water Transportation",
+   "score": 0.1651,
+   "coverage": 0.9314
+  },
+  "484000": {
+   "title": "Truck Transportation",
+   "score": 0.2198,
+   "coverage": 0.9671
+  },
+  "485100": {
+   "title": "Urban Transit Systems",
+   "score": 0.2094,
+   "coverage": 0.9387
+  },
+  "485200": {
+   "title": "Interurban and Rural Bus Transportation",
+   "score": 0.2254,
+   "coverage": 0.9036
+  },
+  "485300": {
+   "title": "Taxi and Limousine Service",
+   "score": 0.3211,
+   "coverage": 0.943
+  },
+  "485400": {
+   "title": "School and Employee Bus Transportation",
+   "score": 0.1904,
+   "coverage": 0.9848
+  },
+  "485500": {
+   "title": "Charter Bus Industry",
+   "score": 0.2037,
+   "coverage": 0.9481
+  },
+  "485900": {
+   "title": "Other Transit and Ground Passenger Transportation",
+   "score": 0.2443,
+   "coverage": 0.952
+  },
+  "486100": {
+   "title": "Pipeline Transportation of Crude Oil",
+   "score": 0.2827,
+   "coverage": 0.884
+  },
+  "486200": {
+   "title": "Pipeline Transportation of Natural Gas",
+   "score": 0.2388,
+   "coverage": 0.9433
+  },
+  "486900": {
+   "title": "Other Pipeline Transportation",
+   "score": 0.221,
+   "coverage": 0.7957
+  },
+  "487100": {
+   "title": "Scenic and Sightseeing Transportation, Land",
+   "score": 0.3023,
+   "coverage": 0.8704
+  },
+  "487200": {
+   "title": "Scenic and Sightseeing Transportation, Water",
+   "score": 0.2504,
+   "coverage": 0.8597
+  },
+  "487900": {
+   "title": "Scenic and Sightseeing Transportation, Other",
+   "score": 0.3042,
+   "coverage": 0.7252
+  },
+  "488100": {
+   "title": "Support Activities for Air Transportation",
+   "score": 0.2246,
+   "coverage": 0.9529
+  },
+  "488200": {
+   "title": "Support Activities for Rail Transportation",
+   "score": 0.1592,
+   "coverage": 0.9214
+  },
+  "488300": {
+   "title": "Support Activities for Water Transportation",
+   "score": 0.2122,
+   "coverage": 0.8777
+  },
+  "488400": {
+   "title": "Support Activities for Road Transportation",
+   "score": 0.2513,
+   "coverage": 0.9336
+  },
+  "488500": {
+   "title": "Freight Transportation Arrangement",
+   "score": 0.4453,
+   "coverage": 0.9594
+  },
+  "488900": {
+   "title": "Other Support Activities for Transportation",
+   "score": 0.2649,
+   "coverage": 0.9019
+  },
+  "491100": {
+   "title": "Postal Service (Federal Government)",
+   "score": 0.2993,
+   "coverage": 0.9878
+  },
+  "492100": {
+   "title": "Couriers and Express Delivery Services",
+   "score": 0.177,
+   "coverage": 0.9424
+  },
+  "492200": {
+   "title": "Local Messengers and Local Delivery",
+   "score": 0.2552,
+   "coverage": 0.9608
+  },
+  "493100": {
+   "title": "Warehousing and Storage",
+   "score": 0.179,
+   "coverage": 0.9603
+  },
+  "512100": {
+   "title": "Motion Picture and Video Industries",
+   "score": 0.3362,
+   "coverage": 0.935
+  },
+  "512200": {
+   "title": "Sound Recording Industries",
+   "score": 0.4437,
+   "coverage": 0.922
+  },
+  "513100": {
+   "title": "Newspaper, Periodical, Book, and Directory Publishers",
+   "score": 0.5203,
+   "coverage": 0.9763
+  },
+  "513200": {
+   "title": "Software Publishers",
+   "score": 0.5212,
+   "coverage": 0.9863
+  },
+  "516100": {
+   "title": "Radio and Television Broadcasting Stations",
+   "score": 0.4953,
+   "coverage": 0.9714
+  },
+  "516200": {
+   "title": "Media Streaming Distribution Services, Social Networks, and Other Media Networks and Content Providers",
+   "score": 0.5057,
+   "coverage": 0.97
+  },
+  "517000": {
+   "title": "Telecommunications",
+   "score": 0.4149,
+   "coverage": 0.9811
+  },
+  "518200": {
+   "title": "Computing Infrastructure Providers, Data Processing, Web Hosting, and Related Services",
+   "score": 0.5278,
+   "coverage": 0.9791
+  },
+  "519200": {
+   "title": "Web Search Portals, Libraries, Archives, and Other Information Services",
+   "score": 0.5056,
+   "coverage": 0.9736
+  },
+  "521100": {
+   "title": "Monetary Authorities-Central Bank",
+   "score": 0.514,
+   "coverage": 0.9395
+  },
+  "5220A1": {
+   "title": "Credit Intermediation and Related Activities (5221 and 5223 only)",
+   "score": 0.5063,
+   "coverage": 0.9832
+  },
+  "522200": {
+   "title": "Nondepository Credit Intermediation",
+   "score": 0.5323,
+   "coverage": 0.9649
+  },
+  "523000": {
+   "title": "Securities, Commodity Contracts, and Other Financial Investments and Related Activities",
+   "score": 0.5535,
+   "coverage": 0.9893
+  },
+  "524100": {
+   "title": "Insurance Carriers",
+   "score": 0.5175,
+   "coverage": 0.9879
+  },
+  "524200": {
+   "title": "Agencies, Brokerages, and Other Insurance Related Activities",
+   "score": 0.5299,
+   "coverage": 0.9903
+  },
+  "525100": {
+   "title": "Insurance and Employee Benefit Funds",
+   "score": 0.5056,
+   "coverage": 0.9087
+  },
+  "525900": {
+   "title": "Other Investment Pools and Funds",
+   "score": 0.4861,
+   "coverage": 0.8948
+  },
+  "531000": {
+   "title": "Real Estate",
+   "score": 0.3573,
+   "coverage": 0.9757
+  },
+  "5320A1": {
+   "title": "Rental and Leasing Services (5322, 5323, and 5324 only)",
+   "score": 0.332,
+   "coverage": 0.9636
+  },
+  "532100": {
+   "title": "Automotive Equipment Rental and Leasing",
+   "score": 0.3581,
+   "coverage": 0.9402
+  },
+  "533100": {
+   "title": "Lessors of Nonfinancial Intangible Assets (except Copyrighted Works)",
+   "score": 0.5006,
+   "coverage": 0.9294
+  },
+  "541100": {
+   "title": "Legal Services",
+   "score": 0.5058,
+   "coverage": 0.9842
+  },
+  "541200": {
+   "title": "Accounting, Tax Preparation, Bookkeeping, and Payroll Services",
+   "score": 0.4952,
+   "coverage": 0.9764
+  },
+  "541300": {
+   "title": "Architectural, Engineering, and Related Services",
+   "score": 0.4339,
+   "coverage": 0.9886
+  },
+  "541400": {
+   "title": "Specialized Design Services",
+   "score": 0.3973,
+   "coverage": 0.95
+  },
+  "541500": {
+   "title": "Computer Systems Design and Related Services",
+   "score": 0.5186,
+   "coverage": 0.9895
+  },
+  "541600": {
+   "title": "Management, Scientific, and Technical Consulting Services",
+   "score": 0.4831,
+   "coverage": 0.979
+  },
+  "541700": {
+   "title": "Scientific Research and Development Services",
+   "score": 0.4646,
+   "coverage": 0.9799
+  },
+  "541800": {
+   "title": "Advertising, Public Relations, and Related Services",
+   "score": 0.5065,
+   "coverage": 0.9854
+  },
+  "541900": {
+   "title": "Other Professional, Scientific, and Technical Services",
+   "score": 0.3646,
+   "coverage": 0.9733
+  },
+  "551100": {
+   "title": "Management of Companies and Enterprises",
+   "score": 0.48,
+   "coverage": 0.9785
+  },
+  "561100": {
+   "title": "Office Administrative Services",
+   "score": 0.4878,
+   "coverage": 0.9319
+  },
+  "561200": {
+   "title": "Facilities Support Services",
+   "score": 0.2039,
+   "coverage": 0.9417
+  },
+  "561300": {
+   "title": "Employment Services",
+   "score": 0.2611,
+   "coverage": 0.9231
+  },
+  "561400": {
+   "title": "Business Support Services",
+   "score": 0.5506,
+   "coverage": 0.9544
+  },
+  "561500": {
+   "title": "Travel Arrangement and Reservation Services",
+   "score": 0.5155,
+   "coverage": 0.9392
+  },
+  "561600": {
+   "title": "Investigation and Security Services",
+   "score": 0.2765,
+   "coverage": 0.9763
+  },
+  "561700": {
+   "title": "Services to Buildings and Dwellings",
+   "score": 0.1188,
+   "coverage": 0.9764
+  },
+  "561900": {
+   "title": "Other Support Services",
+   "score": 0.3052,
+   "coverage": 0.9175
+  },
+  "562100": {
+   "title": "Waste Collection",
+   "score": 0.2398,
+   "coverage": 0.9555
+  },
+  "562200": {
+   "title": "Waste Treatment and Disposal",
+   "score": 0.2423,
+   "coverage": 0.9321
+  },
+  "562900": {
+   "title": "Remediation and Other Waste Management Services",
+   "score": 0.2126,
+   "coverage": 0.9605
+  },
+  "611100": {
+   "title": "Elementary and Secondary Schools",
+   "score": 0.3112,
+   "coverage": 0.8186
+  },
+  "611200": {
+   "title": "Junior Colleges",
+   "score": 0.4346,
+   "coverage": 0.8795
+  },
+  "611300": {
+   "title": "Colleges, Universities, and Professional Schools",
+   "score": 0.4267,
+   "coverage": 0.9286
+  },
+  "611400": {
+   "title": "Business Schools and Computer and Management Training",
+   "score": 0.5163,
+   "coverage": 0.9092
+  },
+  "611500": {
+   "title": "Technical and Trade Schools",
+   "score": 0.4246,
+   "coverage": 0.9084
+  },
+  "611600": {
+   "title": "Other Schools and Instruction",
+   "score": 0.3599,
+   "coverage": 0.9231
+  },
+  "611700": {
+   "title": "Educational Support Services",
+   "score": 0.4438,
+   "coverage": 0.7907
+  },
+  "621100": {
+   "title": "Offices of Physicians",
+   "score": 0.3469,
+   "coverage": 0.9839
+  },
+  "621200": {
+   "title": "Offices of Dentists",
+   "score": 0.253,
+   "coverage": 0.9929
+  },
+  "621300": {
+   "title": "Offices of Other Health Practitioners",
+   "score": 0.3467,
+   "coverage": 0.9084
+  },
+  "621400": {
+   "title": "Outpatient Care Centers",
+   "score": 0.3479,
+   "coverage": 0.9076
+  },
+  "621500": {
+   "title": "Medical and Diagnostic Laboratories",
+   "score": 0.3046,
+   "coverage": 0.9909
+  },
+  "621600": {
+   "title": "Home Health Care Services",
+   "score": 0.2488,
+   "coverage": 0.9934
+  },
+  "621900": {
+   "title": "Other Ambulatory Health Care Services",
+   "score": 0.2963,
+   "coverage": 0.9826
+  },
+  "622100": {
+   "title": "General Medical and Surgical Hospitals",
+   "score": 0.3109,
+   "coverage": 0.991
+  },
+  "622200": {
+   "title": "Psychiatric and Substance Abuse Hospitals",
+   "score": 0.3204,
+   "coverage": 0.9109
+  },
+  "622300": {
+   "title": "Specialty (except Psychiatric and Substance Abuse) Hospitals",
+   "score": 0.3253,
+   "coverage": 0.9791
+  },
+  "623100": {
+   "title": "Nursing Care Facilities (Skilled Nursing Facilities)",
+   "score": 0.2136,
+   "coverage": 0.9962
+  },
+  "623200": {
+   "title": "Residential Intellectual and Developmental Disability, Mental Health, and Substance Abuse Facilities",
+   "score": 0.2655,
+   "coverage": 0.914
+  },
+  "623300": {
+   "title": "Continuing Care Retirement Communities and Assisted Living Facilities for the Elderly",
+   "score": 0.2084,
+   "coverage": 0.9949
+  },
+  "623900": {
+   "title": "Other Residential Care Facilities",
+   "score": 0.2893,
+   "coverage": 0.9197
+  },
+  "624100": {
+   "title": "Individual and Family Services",
+   "score": 0.2437,
+   "coverage": 0.9533
+  },
+  "624200": {
+   "title": "Community Food and Housing, and Emergency and Other Relief Services",
+   "score": 0.364,
+   "coverage": 0.9199
+  },
+  "624300": {
+   "title": "Vocational Rehabilitation Services",
+   "score": 0.3033,
+   "coverage": 0.9335
+  },
+  "624400": {
+   "title": "Child Care Services",
+   "score": 0.3359,
+   "coverage": 0.8456
+  },
+  "711100": {
+   "title": "Performing Arts Companies",
+   "score": 0.2977,
+   "coverage": 0.9515
+  },
+  "711200": {
+   "title": "Spectator Sports",
+   "score": 0.2978,
+   "coverage": 0.9512
+  },
+  "711300": {
+   "title": "Promoters of Performing Arts, Sports, and Similar Events",
+   "score": 0.2984,
+   "coverage": 0.9634
+  },
+  "711400": {
+   "title": "Agents and Managers for Artists, Athletes, Entertainers, and Other Public Figures",
+   "score": 0.4378,
+   "coverage": 0.7646
+  },
+  "711500": {
+   "title": "Independent Artists, Writers, and Performers",
+   "score": 0.414,
+   "coverage": 0.5497
+  },
+  "712100": {
+   "title": "Museums, Historical Sites, and Similar Institutions",
+   "score": 0.3713,
+   "coverage": 0.9678
+  },
+  "713100": {
+   "title": "Amusement Parks and Arcades",
+   "score": 0.2872,
+   "coverage": 0.892
+  },
+  "713200": {
+   "title": "Gambling Industries",
+   "score": 0.2697,
+   "coverage": 0.9503
+  },
+  "713900": {
+   "title": "Other Amusement and Recreation Industries",
+   "score": 0.2796,
+   "coverage": 0.9869
+  },
+  "721100": {
+   "title": "Traveler Accommodation",
+   "score": 0.2155,
+   "coverage": 0.9889
+  },
+  "721200": {
+   "title": "RV (Recreational Vehicle) Parks and Recreational Camps",
+   "score": 0.2725,
+   "coverage": 0.9676
+  },
+  "721300": {
+   "title": "Rooming and Boarding Houses, Dormitories, and Workers' Camps",
+   "score": 0.1808,
+   "coverage": 0.8898
+  },
+  "722300": {
+   "title": "Special Food Services",
+   "score": 0.1687,
+   "coverage": 0.9796
+  },
+  "722400": {
+   "title": "Drinking Places (Alcoholic Beverages)",
+   "score": 0.1715,
+   "coverage": 0.9878
+  },
+  "722500": {
+   "title": "Restaurants and Other Eating Places",
+   "score": 0.1611,
+   "coverage": 0.993
+  },
+  "811100": {
+   "title": "Automotive Repair and Maintenance",
+   "score": 0.1688,
+   "coverage": 0.9717
+  },
+  "811200": {
+   "title": "Electronic and Precision Equipment Repair and Maintenance",
+   "score": 0.3504,
+   "coverage": 0.9356
+  },
+  "811300": {
+   "title": "Commercial and Industrial Machinery and Equipment (except Automotive and Electronic) Repair and Maintenance",
+   "score": 0.2306,
+   "coverage": 0.9766
+  },
+  "811400": {
+   "title": "Personal and Household Goods Repair and Maintenance",
+   "score": 0.2023,
+   "coverage": 0.9639
+  },
+  "812100": {
+   "title": "Personal Care Services",
+   "score": 0.1743,
+   "coverage": 0.9701
+  },
+  "812200": {
+   "title": "Death Care Services",
+   "score": 0.276,
+   "coverage": 0.9801
+  },
+  "812300": {
+   "title": "Drycleaning and Laundry Services",
+   "score": 0.1935,
+   "coverage": 0.9836
+  },
+  "812900": {
+   "title": "Other Personal Services",
+   "score": 0.255,
+   "coverage": 0.9313
+  },
+  "813100": {
+   "title": "Religious Organizations",
+   "score": 0.3463,
+   "coverage": 0.8773
+  },
+  "813200": {
+   "title": "Grantmaking and Giving Services",
+   "score": 0.4824,
+   "coverage": 0.941
+  },
+  "813300": {
+   "title": "Social Advocacy Organizations",
+   "score": 0.438,
+   "coverage": 0.9218
+  },
+  "813400": {
+   "title": "Civic and Social Organizations",
+   "score": 0.3044,
+   "coverage": 0.9556
+  },
+  "813900": {
+   "title": "Business, Professional, Labor, Political, and Similar Organizations",
+   "score": 0.4488,
+   "coverage": 0.9745
+  },
+  "999100": {
+   "title": "Federal Executive Branch (OEWS Designation)",
+   "score": 0.4236,
+   "coverage": 0.9343
+  },
+  "999200": {
+   "title": "State Government, excluding Schools and Hospitals (OEWS Designation)",
+   "score": 0.4045,
+   "coverage": 0.9611
+  },
+  "999300": {
+   "title": "Local Government, excluding Schools and Hospitals (OEWS Designation)",
+   "score": 0.32,
+   "coverage": 0.9669
+  }
+ }
+}

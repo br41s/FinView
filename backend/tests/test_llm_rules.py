@@ -14,6 +14,7 @@ import pytest
 from backend.api import options as options_api
 from backend.services import options_agent, zone_scorer
 from backend.services.geo import analyst
+from backend.services.segments import ai_mentions
 from backend.services.llm_rules import NOT_ADVICE_RULE_EN, NOT_ADVICE_RULE_ES
 
 
@@ -27,6 +28,11 @@ def test_the_per_ticker_report_prompt_carries_the_rule():
 
 def test_the_zone_scorer_prompt_carries_the_rule():
     assert NOT_ADVICE_RULE_ES in zone_scorer._SYSTEM
+
+
+def test_the_annual_report_ai_reader_prompt_carries_the_rule():
+    """Its summary sentence is shown on /portfolio next to the quotes."""
+    assert NOT_ADVICE_RULE_ES in ai_mentions._SYSTEM
 
 
 @pytest.mark.parametrize(

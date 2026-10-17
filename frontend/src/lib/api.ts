@@ -30,6 +30,7 @@ import type {
 import { apiError } from "@/lib/apiError";
 import type { GeoCycleRun } from "@/lib/geoHealth";
 import type { BrokerConnection, SyncProgress } from "@/lib/brokerSync";
+import type { AiExposure } from "@/lib/aiExposure";
 import type { Exposure, ExposureRefresh } from "@/lib/exposure";
 
 const BASE = "/api";
@@ -651,6 +652,9 @@ export const api = {
     exposure: () => fetchJSON<Exposure>("/portfolio/exposure"),
     /** One bounded step reading due annual reports. See `shouldRefreshAgain`. */
     refreshExposure: () => send<ExposureRefresh>("POST", "/portfolio/exposure/refresh"),
+    aiExposure: () => fetchJSON<AiExposure>("/portfolio/ai-exposure"),
+    /** Same contract as `refreshExposure`, for what reports say about AI. */
+    refreshAiExposure: () => send<ExposureRefresh>("POST", "/portfolio/ai-exposure/refresh"),
   },
 
   // Direct broker connection (IBKR Flex). The token is write-only: it goes in

@@ -48,11 +48,16 @@ OUTCOME_DETAIL = {
 }
 
 
-def due_isins(db: Session, isins: Iterable[str], now: datetime | None = None) -> list[str]:
-    """ISINs never checked first, then those whose last check is older than RECHECK_DAYS."""
+def due_isins(
+    db: Session, isins: Iterable[str], now: datetime | None = None, model=SegmentCheck
+) -> list[str]:
+    """ISINs never checked first, then those whose last check is older than RECHECK_DAYS.
+
+    `model` is the check table: `SegmentCheck` here, `AiMentionCheck` for the AI reader.
+    """
     now = now or datetime.now(timezone.utc)
     wanted = sorted(set(isins))
-    checks = {c.isin: c for c in db.query(SegmentCheck).filter(SegmentCheck.isin.in_(wanted)).all()}
+    checks = {c.isin: c for c in db.query(model).filter(model.isin.in_(wanted)).all()}
     cutoff = (now - timedelta(days=RECHECK_DAYS)).replace(tzinfo=None)
     never = [i for i in wanted if i not in checks]
     stale = sorted(
@@ -104,19 +109,21 @@ def refresh(
     return {"checked": checked, "pending": len(due_isins(db, holdings))}
 
 
-def _record(db: Session, isin: str, outcome: str, filing_id: str | None = None) -> None:
-    row = db.query(SegmentCheck).filter(SegmentCheck.isin == isin).one_or_none()
+def _record(
+    db: Session, isin: str, outcome: str, filing_id: str | None = None, model=SegmentCheck
+) -> None:
+    row = db.query(model).filter(model.isin == isin).one_or_none()
     if row is None:
-        row = SegmentCheck(isin=isin, outcome=outcome)
+        row = model(isin=isin, outcome=outcome)
         db.add(row)
     row.outcome = outcome
     row.filing_id = filing_id
     row.checked_at = datetime.now(timezone.utc)
 
 
-def _already_read(db: Session, isin: str, filing_id: str) -> bool:
+def _already_read(db: Session, isin: str, filing_id: str, model=SegmentCheck) -> bool:
     """Same filing as the last check: refresh the timestamp, keep the answer."""
-    row = db.query(SegmentCheck).filter(SegmentCheck.isin == isin).one_or_none()
+    row = db.query(model).filter(model.isin == isin).one_or_none()
     if row is None or row.filing_id != filing_id:
         return False
     row.checked_at = datetime.now(timezone.utc)

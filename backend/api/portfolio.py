@@ -13,7 +13,7 @@ from backend.services.portfolio_service import (
     get_position_detail,
 )
 from backend.services.prices import fetch_and_cache_prices
-from backend.services.segments import exposure, refresh
+from backend.services.segments import ai_mentions, exposure, refresh
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
@@ -106,6 +106,23 @@ def refresh_exposure(db: DbSession, user: CurrentUser):
     positions = get_open_positions(db, user.id, skip_prices=True)
     holdings = {p.isin: (p.ticker, p.name) for p in positions}
     return refresh.refresh(db, holdings, refresh.REQUEST_SECONDS)
+
+
+@router.get("/ai-exposure")
+def portfolio_ai_exposure(db: DbSession, user: CurrentUser):
+    """What each issuer's latest annual report says about AI, quoted with its link."""
+    return ai_mentions.build(db, get_open_positions(db, user.id))
+
+
+@router.post("/ai-exposure/refresh")
+def refresh_ai_exposure(db: DbSession, user: CurrentUser):
+    """Read the annual reports of this user's holdings that are due, within a budget.
+
+    Same contract as `/exposure/refresh`: call again while `pending` > 0 and `checked` > 0.
+    """
+    positions = get_open_positions(db, user.id, skip_prices=True)
+    holdings = {p.isin: (p.ticker, p.name) for p in positions}
+    return ai_mentions.refresh(db, holdings, ai_mentions.REQUEST_SECONDS)
 
 
 @router.get("/positions/{isin}")

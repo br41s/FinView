@@ -1,5 +1,7 @@
 # Data files (broker CSVs, PDFs, DB)
 data/
+# Committed reference data (AI exposure by industry, built by scripts/build_ai_industry_exposure.py).
+!backend/services/segments/data/
 files/
 *.db
 *.db-*
