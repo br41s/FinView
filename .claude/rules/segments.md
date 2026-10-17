@@ -33,6 +33,14 @@ listing sector, not its domicile: what the report says it sells, and where.
   to be tagged; none of 25 Spanish FY2024 reports did). The model copies the amounts
   out of that block. filings.xbrl.org runs months behind some registers (no Spanish
   FY2025 report yet in October 2026), so the UI always names the report year.
+- `note_text` keeps **one table row per line**: block tags inside a `<td>` are spaces,
+  not breaks. PDF-converted reports wrap every figure in `<div>`s, and reading those as
+  line breaks put each cell on its own line — 7 of the 9 "no cuadra" reports in the first
+  production run (Naturgy, Endesa, Enagás, Acciona, Ebro, FCC, Severn Trent) failed that
+  way. Some notes are positioned blocks with no `<table>` at all (Endesa, Acciona, FCC:
+  headers one per line, then the figures in the same order); the prompt says so.
+- German issuers are absent from filings.xbrl.org (Unternehmensregister is not mirrored),
+  so they end as `no_filing`.
 - ETFs and funds need no special case: they end as `no_issuer` / `no_filing`.
 - Banks and insurers tag no `Revenue`, so they end as `no_revenue`. Supporting them
   means choosing their equivalent (gross margin) — not done.
@@ -62,7 +70,9 @@ listing sector, not its domicile: what the report says it sells, and where.
   report for a week.
 - `segment_reports`: one row per ISIN **and fiscal year**, so a new report adds a year.
   A recheck that finds the same filing id costs one or two small requests and no
-  model call.
+  model call — **except** for `REREAD_OUTCOMES` (`unreconciled`, `no_segments`): those say
+  how well FinView read the filing, not what it says, so they are read again at every
+  weekly recheck. Otherwise a reader fix would only reach a report a year later.
 - Status text is `OUTCOME_DETAIL[outcome]`, looked up at read time — never stored.
 - Runs inside requests: `POST /portfolio/exposure/refresh` (40s budget, the frontend
   calls it again while `checked > 0 && pending > 0`) and the daily zonas cron through

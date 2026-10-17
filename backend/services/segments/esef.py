@@ -158,9 +158,21 @@ def _covers_year(period: str, period_end: date) -> bool:
     return end - timedelta(days=1) == period_end and (end - start).days >= 350
 
 
+_CELL = re.compile(r"(?is)<t([dh])\b.*?</t\1\s*>")
+_BREAK = re.compile(r"(?i)</p\s*>|</div\s*>|<br\s*/?>")
+
+
 def note_text(fragment: str) -> str:
-    """The note's HTML as plain text that keeps table rows and cells apart."""
+    """The note's HTML as plain text, one table row per line with its cells apart.
+
+    Reports converted from PDF wrap each cell's figure in <div>s. Read as line
+    breaks, those put every cell of a row on its own line and the model can no
+    longer tell which column a figure belongs to: Naturgy, Endesa, Enagás,
+    Acciona, Ebro, FCC and Severn Trent all failed the add-up check that way.
+    So a break inside a cell is only a space.
+    """
     s = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", fragment)
+    s = _CELL.sub(lambda m: _BREAK.sub(" ", m.group(0)), s)
     s = re.sub(r"(?i)</t[dh]\s*>", " | ", s)
     s = re.sub(r"(?i)</tr\s*>|<br\s*/?>|</p\s*>|</div\s*>", "\n", s)
     s = html.unescape(re.sub(r"<[^>]+>", " ", s))
@@ -180,7 +192,10 @@ _SYSTEM = (
     "external customers). Include adjustment, corporate or elimination lines with their "
     "sign. Never include a total or subtotal line. Copy each amount exactly as printed, "
     "with its separators and parentheses, without converting units. Copy each label as "
-    "printed. Leave a list empty if the note does not give that breakdown for the year."
+    "printed. Leave a list empty if the note does not give that breakdown for the year. "
+    "Tables arrive as text: usually one row per line with cells separated by |, but in "
+    "some reports each cell is on its own line, the column headers first and then each "
+    "row's figures in the same order. Match figures to columns by that order."
 )
 
 
