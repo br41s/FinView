@@ -23,6 +23,8 @@ from backend.services.db_locks import lock_fifo_recalculation
 
 # Shared caches and reference data: no row describes a user.
 GLOBAL_TABLES = frozenset({
+    "ai_mention_checks",
+    "ai_mention_reports",
     "alt_investment_catalog",
     "exchange_rates",
     "fred_rates",

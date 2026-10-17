@@ -49,3 +49,14 @@ def run_reference_data_maintenance() -> None:
             refresh(db, {p.isin: (p.ticker, p.name) for p in positions}, CRON_SECONDS)
     except Exception as exc:  # independent best-effort source
         logger.warning("[segments] skipped: %s", exc.__class__.__name__)
+
+    try:
+        from backend.services.portfolio_service import get_open_positions
+        from backend.services.segments import ai_mentions
+
+        with SessionLocal() as db:
+            positions = get_open_positions(db, None, skip_prices=True)
+            holdings = {p.isin: (p.ticker, p.name) for p in positions}
+            ai_mentions.refresh(db, holdings, ai_mentions.CRON_SECONDS)
+    except Exception as exc:  # independent best-effort source
+        logger.warning("[ai-mentions] skipped: %s", exc.__class__.__name__)
