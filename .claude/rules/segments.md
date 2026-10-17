@@ -5,6 +5,8 @@ paths:
   - "frontend/src/app/portfolio/ExposureCharts.tsx"
   - "frontend/src/app/portfolio/useExposure.ts"
   - "frontend/src/lib/exposure.ts"
+  - "frontend/src/app/portfolio/AiExposureCard.tsx"
+  - "frontend/src/lib/aiExposure.ts"
 ---
 
 ## Sector and region exposure — from annual reports
@@ -74,3 +76,37 @@ the `no_data` bucket at full value; a position without a price is listed in
 
 Both tables are global (`GLOBAL_TABLES`): an issuer's annual report is the same for
 everybody. Only public report text reaches OpenRouter — no user data.
+
+## AI exposure — what each report says about AI (`ai_mentions.py`)
+
+"Exposición a la IA" on `/portfolio`. **Not a score and not a "risk of closure"**: no
+published, verifiable dataset rates that per company, and a closure probability would
+read as a sell signal (not-advice rule). What is shown is the issuer's own words.
+
+- **What is read**: US ISINs → the latest 10-K's primary document on EDGAR, cut to
+  Item 1A (`risk_factors`: the longest stretch from the Item 1A heading to Item 1B/1C/2,
+  compared letter by letter because headings are styled per letter — Microsoft prints
+  "RIS K FACTORS"; the table of contents has the same headings a few lines apart).
+  Everything else → the whole ESEF report (`report_url` on filings.xbrl.org): ESEF has
+  no standard risk section, so the UI says "Informe anual", never "factores de riesgo".
+- **Reading** is streamed (`TextStream`): quoted `data:` URIs are dropped at byte level
+  (Inditex's FY2024 report is 85 MB, 59 MB of it images), tags as they complete. A read
+  may use its run's whole budget; past `MAX_REPORT_BYTES` the filing is `too_large`.
+- **Count** (`TERMS`): done in code, in the languages ESEF reports are filed in; the
+  acronyms (AI, GenAI, IA, KI) only as whole upper-case words.
+- **Quotes**: the model sees only the passages around each mention and returns up to
+  three quotes plus a one-sentence Spanish summary (prompt carries `NOT_ADVICE_RULE_ES`).
+  Every quote must be in the filing verbatim (after normalising whitespace, quotes and
+  dashes) and must itself name AI. **One failing quote drops all of them and the
+  summary** (`quotes_status = "unverified"`); the count is still published, and the
+  check is stored without its filing id so the same filing is read again at the next
+  weekly recheck — not on every page load.
+- **Caching** is the segment reader's: `ai_mention_checks` / `ai_mention_reports`
+  (global), `due_isins` / `_record` / `_already_read` take the check table as `model=`.
+  A failed request or a null/non-JSON model answer writes nothing. A report with zero
+  mentions needs no model call.
+- **Refresh**: `POST /portfolio/ai-exposure/refresh` (40s) and the daily cron through
+  `run_reference_data_maintenance` (120s), after the segment reader.
+- **Industry exposure index** (published AI-exposure scores by industry, weighted by
+  segment revenue) is not built: the Felten-Raj-Seamans AIIE table on GitHub carries no
+  licence, so republishing its scores needs a decision first.

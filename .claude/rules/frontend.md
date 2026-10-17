@@ -86,7 +86,8 @@ context), `usePortfolioData.ts` (two-phase load + retry) and `usePositionDetails
 (expand state, detail cache, OHLC cache, chart scope), and `ExposureCharts.tsx` +
 `useExposure.ts` (sector/region bars from annual reports; loads once prices are in,
 then steps `POST /portfolio/exposure/refresh` while it makes progress — see
-`.claude/rules/segments.md`). The two hooks are called
+`.claude/rules/segments.md`), and `AiExposureCard.tsx` (what reports say about AI; same
+loop through `useAnnualReports`, against `/portfolio/ai-exposure`). The two hooks are called
 *after* the badge effects on purpose: effects run in declaration order and the
 mount-time fetch order (zonas → geo → portfolio → OHLC) is unchanged from the inline
 version.
