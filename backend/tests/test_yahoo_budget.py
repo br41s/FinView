@@ -368,3 +368,45 @@ def test_the_portfolio_fetch_is_bounded_and_chunked(clock, monkeypatch):
     # Whatever resolved is still cached and returned; the rest stay absent, which
     # the portfolio treats as unknown price and fails closed on.
     assert len(out) == 3
+
+
+def test_valuation_lookups_stop_once_their_budget_is_spent(clock, monkeypatch):
+    """Unresolved ISINs are looked up while a user waits. A stalled lookup must not
+    multiply, nor eat the allowance that prices the positions that have a ticker."""
+    from backend.services import ticker_map
+    from backend.services.yahoo_budget import TICKER_LOOKUP_SECONDS
+
+    lookups: list[str] = []
+
+    def _stalled_lookup(isin):
+        lookups.append(isin)
+        clock.advance(STALLED_CALL)
+        return None
+
+    downloads: list[list[str]] = []
+
+    def _download(tickers, **kwargs):
+        downloads.append(list(tickers))
+        return object()
+
+    monkeypatch.setattr(ticker_map, "lookup", _stalled_lookup)
+    monkeypatch.setattr(yahoo_budget, "download", _download)
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
+    monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("1"))
+
+    known = "ES0113900J37"   # Santander, curated: the day's fetch has work to do
+    unknown = [f"US{i:010d}" for i in range(20)]
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        out = prices.fetch_and_cache_prices(db, [known, *unknown])
+    finally:
+        db.close()
+
+    # 15s of allowance, 30s per stalled lookup: one lookup, then stop.
+    assert len(lookups) == 1 < len(unknown)
+    assert TICKER_LOOKUP_SECONDS < STALLED_CALL
+    # The price download still ran on its own allowance.
+    assert downloads == [["SAN.MC"]]
+    assert set(out) == {known}

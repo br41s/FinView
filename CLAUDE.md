@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1635 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
+| Tests | pytest · 1676 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -97,12 +97,25 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `scripts/build_ai_industry_exposure.py` from pinned versions. Same rules file.
 - Portfolio price resolution is one ticker to many ISINs. Corporate-action ISINs that
   share a Yahoo ticker must all receive the fetched price and cache row.
+- `/portfolio` prices the portfolio in parallel requests, so every write on that path is
+  conflict-safe: `price_cache` rows are an `ON CONFLICT (isin, fetched_date)` upsert
+  (`prices._upsert_price`), and a ticker learned during a valuation is committed per ISIN,
+  with `IntegrityError` meaning a concurrent request stored it first. Check-then-insert
+  raised UniqueViolation on the first view of the day (a 500, 2026-10-17).
 - ISIN→ticker resolution lives in `services/ticker_map.py`, not in `prices.py`. Precedence
   is **manual > CURATED > yfinance**: an automatic lookup must not overwrite curated
   knowledge about a corporate action (AENA's pre/post-split ISINs share one ticker on
   purpose), and a user correction must beat both or a wrongly curated ISIN could only be
   fixed by a deploy. What the data supervisor resolves is persisted, so coverage widens
-  with use instead of requiring a code change.
+  with use instead of requiring a code change. A valuation learns too: an ISIN nothing
+  resolves is looked up during the day's first real price fetch (`prices._learn_tickers`,
+  its own 15s budget), never on a view where everything with a ticker is already cached
+  — that would put a Yahoo call on every page load for a bond. Until 2026-10-17 only an
+  import looked tickers up, and a dozen of the owner's holdings imported before `ticker_map`
+  existed stayed unpriced. Whatever learns goes through `ticker_map.lookup`, which refuses
+  a listing the price layer would value in the wrong currency (`valued_as_quoted`: the
+  currency comes from the suffix and every `.L` is divided by 100) — Yahoo's ISIN lookup
+  returned 1211.HK for BYD, a USD line on LSE and a Stuttgart line for EUR ETFs.
 - Split history is cached in `split_history_cache` for 30 days. A failed Yahoo fetch is
   **not** cached — it returns the stale entry and retries next run. Caching a failure
   would pin "never split" on a real security for a month and the supervisor would miss
@@ -220,10 +233,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1635 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1635 pass in ~110s. Those files are not in the repo,
+Backend: `pytest` — 1676 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1676 pass in ~110s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1487 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1528 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the

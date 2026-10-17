@@ -41,6 +41,7 @@ EXCHANGE_CURRENCY: dict[str, str] = {
     ".CO": "DKK",
     ".ST": "SEK",
     ".SI": "SGD",
+    ".HK": "HKD",
     ".SA": "BRL",
 }
 
@@ -51,6 +52,21 @@ def currency_for_ticker(ticker: str | None) -> str:
         return "USD"
     suffix = "." + ticker.rsplit(".", 1)[-1].upper()
     return EXCHANGE_CURRENCY.get(suffix, "USD")
+
+
+def valued_as_quoted(ticker: str, quote_currency: str | None) -> bool:
+    """Whether the price layer would read *ticker*'s quote in the currency Yahoo uses.
+
+    prices.py never asks Yahoo for a currency: it takes it from the suffix and
+    divides every London quote by 100. Yahoo's ISIN lookup does not care — it
+    returned 1211.HK for BYD (HKD, valued as USD before ".HK" was listed: 8× too
+    high), MLPD.L for an MLP ETF (a USD line on LSE: divided by 100 as pence) and a
+    Stuttgart line for a covered-call ETF (EUR, valued as USD). A wrong price is
+    worse than none, so a listing that fails this is never learned.
+    """
+    if ticker.upper().endswith(".L"):
+        return quote_currency in ("GBp", "GBX")
+    return quote_currency == currency_for_ticker(ticker)
 
 
 CURATED: dict[str, str] = {
@@ -65,7 +81,7 @@ CURATED: dict[str, str] = {
     "ES0130960018": "ENG.MC",     # Enagas
     "ES0105546008": "LDA.MC",     # Linea Directa
     "ES0180907000": "UNI.MC",     # Unicaja
-    "ES0112320009": "CNTE.MC",    # Catenon
+    "ES0112320009": "COM.MC",     # Catenon (CNTE.MC: Yahoo has no data)
     "ES0122060314": "FCC.MC",     # FCC
     "ES0139140174": "COL.MC",     # Inmobiliaria Colonial
     "ES0178430E18": "TEF.MC",     # Telefonica
@@ -151,6 +167,10 @@ CURATED: dict[str, str] = {
     "IE00B4L5Y983": "IWDA.AS",   # iShares Core MSCI World
     "IE00BYWQWR46": "ESPO.L",    # VanEck Video Gaming
     "IE00BMW3QX54": "ROBO.L",    # L&G ROBO
+    # Yahoo's ISIN lookup lands on a line the price layer cannot value (see
+    # valued_as_quoted): MLPD.L quotes USD on LSE, IE0002L5QB31.SG has no bars.
+    "IE00B8CJW150": "MLPD.MI",   # Invesco US Energy Infrastructure MLP (Dist), EUR
+    "IE0002L5QB31": "XY7D.DE",   # Global X S&P 500 Covered Call (Dist), EUR
 }
 
 
@@ -179,6 +199,35 @@ def resolve(db: Session, isin: str) -> str | None:
     if isin in CURATED:
         return CURATED[isin]
     return row.yahoo_ticker if row else None
+
+
+def lookup(isin: str) -> str | None:
+    """Ask Yahoo which listing an ISIN trades as, or None.
+
+    One network call with no usable timeout (see yahoo_budget): callers loop under
+    a Budget. Nothing here is stored — a None is retried by the next caller, never
+    remembered as "no ticker".
+    """
+    try:
+        import yfinance as yf
+
+        info = yf.Ticker(isin).info
+    except Exception:
+        # yfinance raises ValueError when its search finds nothing, and anything at
+        # all when Yahoo misbehaves; both mean "not now".
+        return None
+    if not isinstance(info, dict):
+        return None
+    symbol = info.get("symbol")
+    if not isinstance(symbol, str) or not symbol or not info.get("regularMarketPrice"):
+        return None
+    if not valued_as_quoted(symbol, info.get("currency")):
+        logger.warning(
+            "Yahoo lists ISIN %s as %s in %s; the price layer would value it as %s — not used",
+            isin, symbol, info.get("currency"), currency_for_ticker(symbol),
+        )
+        return None
+    return symbol
 
 
 def remember(

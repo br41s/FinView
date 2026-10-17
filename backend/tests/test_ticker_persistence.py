@@ -119,6 +119,25 @@ def test_an_unresolvable_isin_is_not_persisted(db, monkeypatch):
     assert db.query(TickerMap).count() == 0
 
 
+def test_the_supervisor_does_not_learn_a_listing_valued_in_the_wrong_currency(db, monkeypatch):
+    """MLPD.L is a USD line on LSE; prices.py would divide it by 100 as pence."""
+    import yfinance
+
+    class _Ticker:
+        def __init__(self, _isin):
+            self.info = {"symbol": "MLPD.L", "currency": "USD", "regularMarketPrice": 55.7}
+
+    user, account, record = _owner(db)
+    _holding(db, account, record, UNKNOWN_ISIN, name="US Energy Infrastructure MLP")
+    monkeypatch.setattr(yfinance, "Ticker", _Ticker)
+
+    issues = data_supervisor._check_missing_ticker(db, record.id, user.id)
+    db.flush()
+
+    assert [i.status for i in issues] == ["needs_input"]
+    assert db.query(TickerMap).count() == 0
+
+
 def test_split_detection_sees_a_learned_ticker(db, monkeypatch):
     """This check walked the curated map only, so learned ISINs were invisible."""
     user, account, record = _owner(db)

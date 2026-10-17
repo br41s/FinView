@@ -33,6 +33,14 @@ replace each other:
   broker+year). Upload each PDF separately — both persist and combine.
 - tr_csv.py imports the TR transaction-export CSV (multi-year ledger, dedups by
   date/isin/type/qty, never year-replaces).
+- Scrip-dividend rights ("-ANR-", their own ISIN) arrive as an
+  INTERMEDIATE_SECURITIES_DISTRIBUTION and end with a LIQUIDATION_DIVIDEND of the same
+  ISIN when TR pays them in cash. The parser nets the two (`_net_liquidated_rights`), so
+  rights cashed out in the same file never enter the ledger: the cash is a dividend the
+  PDF reports, not a sale (same rule as `_check_rights_as_sells`). Only the uncovered
+  remainder stays a SPINOFF. Until 2026-10-17 the liquidation was dropped and the FCC and
+  Viscofan rights stayed open positions with no price or cost. Rows already imported
+  stay until that import is deleted and the file uploaded again: the dedup never deletes.
 
 ---
 

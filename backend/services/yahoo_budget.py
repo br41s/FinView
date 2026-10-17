@@ -54,6 +54,12 @@ IMPORT_SECONDS = 60.0
 # budget a stalled Yahoo hangs the page for half an hour and is then killed mid-work.
 PORTFOLIO_SECONDS = 30.0
 
+# ISINs nothing resolves, looked up during a portfolio valuation. Its own allowance,
+# spent before the price download, so a slow lookup cannot eat the 30s that prices
+# every position that already has a ticker. ~1.5s a healthy lookup: about ten a day;
+# whatever it does not reach is looked up on the next day's first valuation.
+TICKER_LOOKUP_SECONDS = 15.0
+
 # One geo cron cycle. Longer because no user is waiting on it, but still bounded:
 # the Cloud Run revision runs --max-instances=1 with --cpu-throttling and the
 # work has to finish inside the HTTP request.
