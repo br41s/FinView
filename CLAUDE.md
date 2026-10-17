@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1633 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
+| Tests | pytest · 1660 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 181 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -102,7 +102,15 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   knowledge about a corporate action (AENA's pre/post-split ISINs share one ticker on
   purpose), and a user correction must beat both or a wrongly curated ISIN could only be
   fixed by a deploy. What the data supervisor resolves is persisted, so coverage widens
-  with use instead of requiring a code change.
+  with use instead of requiring a code change. A valuation learns too: an ISIN nothing
+  resolves is looked up during the day's first real price fetch (`prices._learn_tickers`,
+  its own 15s budget), never on a view where everything with a ticker is already cached
+  — that would put a Yahoo call on every page load for a bond. Until 2026-10-17 only an
+  import looked tickers up, and a dozen of the owner's holdings imported before `ticker_map`
+  existed stayed unpriced. Whatever learns goes through `ticker_map.lookup`, which refuses
+  a listing the price layer would value in the wrong currency (`valued_as_quoted`: the
+  currency comes from the suffix and every `.L` is divided by 100) — Yahoo's ISIN lookup
+  returned 1211.HK for BYD, a USD line on LSE and a Stuttgart line for EUR ETFs.
 - Split history is cached in `split_history_cache` for 30 days. A failed Yahoo fetch is
   **not** cached — it returns the stale entry and retries next run. Caching a failure
   would pin "never split" on a real security for a month and the supervisor would miss
@@ -220,10 +228,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1633 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1633 pass in ~110s. Those files are not in the repo,
+Backend: `pytest` — 1660 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1660 pass in ~110s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1485 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1512 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the

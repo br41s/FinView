@@ -950,16 +950,9 @@ def _held_quantities(
 
 
 def _try_resolve_ticker(isin: str) -> str | None:
-    """Try to find a Yahoo Finance ticker for an ISIN."""
-    try:
-        import yfinance as yf
+    """Try to find a Yahoo Finance ticker for an ISIN (see ticker_map.lookup)."""
+    from backend.services import ticker_map
 
-        stock = yf.Ticker(isin)
-        info = stock.info
-        if info and info.get("symbol") and info.get("regularMarketPrice"):
-            return info["symbol"]
-    except Exception:
-        pass
-    return None
+    return ticker_map.lookup(isin)
 
 

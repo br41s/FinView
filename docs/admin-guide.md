@@ -177,7 +177,7 @@ Se invoca automáticamente al final de cada importación de cualquier broker.
 | `rights_as_sell` | SELL cuyo nombre contiene "derechos/rights/drets" | Reclasifica a DIVIDEND, qty = 0 |
 | `missing_buys` | Holdings sin transacciones de compra | Aviso `needs_input` |
 | `holdings_mismatch` | Qty en broker ≠ qty calculada de transacciones | Aviso `needs_input`; si coincide con un split conocido, se resuelve en `potential_split` |
-| `missing_ticker` | ISIN sin ticker en Yahoo Finance | Búsqueda automática en yfinance y **se persiste** en `ticker_map`; si falla, aviso `needs_input` resoluble a mano con la acción `set_ticker` |
+| `missing_ticker` | ISIN sin ticker en Yahoo Finance | Búsqueda automática en yfinance y **se persiste** en `ticker_map`; si falla, aviso `needs_input` resoluble a mano con la acción `set_ticker`. La primera valoración de cartera de cada día vuelve a buscar los ISIN sin ticker (15 s de presupuesto). Solo se aprende un ticker cuya moneda de cotización en Yahoo coincide con la que asume la capa de precios (`ticker_map.valued_as_quoted`) |
 | `potential_split` | Split detectado vía yfinance con ratio fuera de [0.9, 1.1] | **Tres casos:** |
 | | → Mismo ticker, múltiples ISINs con compras en ambos lados | `auto_resolved` — datos ya correctos |
 | | → Mismo ISIN, qty × ratio ≈ holdings (±5%) | `auto_resolved` — ajusta qty y precio en las transacciones previas |

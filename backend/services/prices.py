@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 
 from backend.models import PriceCache
 from backend.services import exchange_rates, ticker_map, yahoo_budget
-from backend.services.yahoo_budget import GEO_CYCLE_SECONDS, PORTFOLIO_SECONDS, Budget
+from backend.services.yahoo_budget import (
+    GEO_CYCLE_SECONDS,
+    PORTFOLIO_SECONDS,
+    TICKER_LOOKUP_SECONDS,
+    Budget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,30 @@ def _resolve_ticker(isin: str, db: Session) -> str | None:
         .first()
     )
     return cached[0] if cached else None
+
+
+def _learn_tickers(db: Session, isins: list[str]) -> dict[str, str]:
+    """Look up ISINs nothing resolves and remember the answers; returns isin → ticker.
+
+    Until this, a ticker was only learned by the data supervisor during an import,
+    so an ISIN whose lookup came back empty — or that was imported before
+    `ticker_map` existed, when the answer was thrown away — stayed unpriced until
+    the next upload, which for annual broker reports is a year. Learned rows lose
+    to curated and manual ones (`ticker_map.resolve`); a miss is not stored, so it
+    is asked again tomorrow.
+    """
+    learned: dict[str, str] = {}
+    budget = Budget(TICKER_LOOKUP_SECONDS, "ticker lookup during valuation")
+    for isin in isins:
+        if budget.spent():
+            break
+        ticker = ticker_map.lookup(isin)
+        if ticker:
+            ticker_map.remember(db, isin, ticker)
+            learned[isin] = ticker
+        else:
+            logger.warning("No Yahoo ticker for ISIN %s", isin)
+    return learned
 
 
 def get_cached_prices(db: Session, isins: list[str]) -> dict[str, Decimal]:
@@ -62,15 +91,24 @@ def fetch_and_cache_prices(
 
     # Resolve tickers for missing ISINs
     ticker_to_isins: dict[str, list[str]] = {}
+    unresolved: list[str] = []
     for isin in missing:
         ticker = _resolve_ticker(isin, db)
         if ticker:
             ticker_to_isins.setdefault(ticker, []).append(isin)
         else:
-            logger.warning("No Yahoo ticker for ISIN %s", isin)
+            unresolved.append(isin)
 
     if not ticker_to_isins:
+        # Everything with a ticker is already priced today. Looking the rest up here
+        # would put a Yahoo call on every page view for an ISIN that has none (a
+        # bond, a right), so lookups only ride along with the day's real fetch.
+        for isin in unresolved:
+            logger.warning("No Yahoo ticker for ISIN %s", isin)
         return cached
+
+    for isin, ticker in _learn_tickers(db, unresolved).items():
+        ticker_to_isins.setdefault(ticker, []).append(isin)
 
     # Batch fetch via yfinance, bounded: a user is waiting, and a stalled batch is
     # superlinear in the number of symbols (see yahoo_budget). Whatever the budget
