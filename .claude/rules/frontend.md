@@ -83,7 +83,10 @@ the Zonas Clave / geo badge state and `handleAddToZonas`. Beside it: `types.ts`
 `PositionDetailPanel.tsx` (the expanded row, shared by desktop and mobile),
 `PositionsTable.tsx` / `PositionsMobileList.tsx` (same `PositionsListProps`, no
 context), `usePortfolioData.ts` (two-phase load + retry) and `usePositionDetails.ts`
-(expand state, detail cache, OHLC cache, chart scope). The two hooks are called
+(expand state, detail cache, OHLC cache, chart scope), and `ExposureCharts.tsx` +
+`useExposure.ts` (sector/region bars from annual reports; loads once prices are in,
+then steps `POST /portfolio/exposure/refresh` while it makes progress — see
+`.claude/rules/segments.md`). The two hooks are called
 *after* the badge effects on purpose: effects run in declaration order and the
 mount-time fetch order (zonas → geo → portfolio → OHLC) is unchanged from the inline
 version.

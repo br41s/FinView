@@ -4,7 +4,7 @@ Personal investment dashboard: multi-broker import, Spanish IRPF fiscal engine, 
 Extends the workspace `CLAUDE.md`. Rules here are FinView-specific only.
 
 Subsystem detail lives in `.claude/rules/` and loads automatically when you touch the matching files —
-options, zonas-clave, geo-intel, importers/fiscal, alt-investments, frontend, auth. Read one directly if you
+options, zonas-clave, geo-intel, importers/fiscal, alt-investments, segments, frontend, auth. Read one directly if you
 need it before touching code.
 
 Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
@@ -26,13 +26,13 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | Backend | Python 3.12 · FastAPI · SQLAlchemy (create_all + ensure_columns, no Alembic) |
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
-| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, code default `deepseek/deepseek-v4-flash`, overridden in production by `FINVIEW_OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash` since 2026-10-10. One shared model for options analysis + geo analyst. Every call goes through `llm_envelope.chat()`, which always sends `provider.data_collection: "deny"` (`PROVIDER_POLICY`; callers cannot override it). |
+| AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, code default `deepseek/deepseek-v4-flash`, overridden in production by `FINVIEW_OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash` since 2026-10-10. One shared model for options analysis, the geo analyst and reading annual-report segment notes. Every call goes through `llm_envelope.chat()`, which always sends `provider.data_collection: "deny"` (`PROVIDER_POLICY`; callers cannot override it). |
 | Frontend | Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1525 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 164 frontend tests |
+| Tests | pytest · 1575 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 172 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -82,6 +82,11 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 - Portfolio totals are fail-closed: one unknown cost invalidates invested/P&L and one
   missing price invalidates total market value/P&L. Never publish a partial subtotal as
   the whole portfolio.
+- Sector and region exposure on `/portfolio` comes from each issuer's own annual report
+  (SEC 10-K XBRL for US ISINs, ESEF segment note for the rest) and is fail-closed: a
+  breakdown is stored only if its lines add up to the report's tagged total revenue, and
+  an amount read from an ESEF note by the model must appear in the note verbatim. A failed
+  request or model call is never cached. See `.claude/rules/segments.md`.
 - Portfolio price resolution is one ticker to many ISINs. Corporate-action ISINs that
   share a Yahoo ticker must all receive the fetched price and cache row.
 - ISIN→ticker resolution lives in `services/ticker_map.py`, not in `prices.py`. Precedence
@@ -204,10 +209,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1525 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1525 pass in ~110s. Those files are not in the repo,
+Backend: `pytest` — 1575 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1575 pass in ~110s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1377 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1427 run in ~80s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
@@ -225,8 +230,8 @@ reported 127 skips here against 159 there. Gate on a path built from
 is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
 the pure unit tests down with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 164 tests over pure logic: `src/lib/`
-(`brokerSync`, `optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
+Frontend: `cd frontend && pnpm test` (vitest) — 172 tests over pure logic: `src/lib/`
+(`brokerSync`, `exposure`, `optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis, tier grouping, ladder badge)
 plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options
 page's state reducer) and `src/game/garden/` (the rules of the landing page's garden game). **`vitest` must be installed**
