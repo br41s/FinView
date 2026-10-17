@@ -18,7 +18,7 @@ import yaml
 
 ROOT = Path(__file__).parents[2]
 PREVIOUS = "finview-api-d935ddc"
-REVISION = "finview-api-1c929ab"
+REVISION = "finview-api-1c929ab-build-1"
 JOBS = (
     "geo-intel-cycle",
     "geo-intel-audit",
