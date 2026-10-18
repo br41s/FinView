@@ -2751,7 +2751,32 @@ function ImgRectificarDeclaracionRenta() {
   );
 }
 
+function ImgRentabilidadRealCartera() {
+  return (
+    <div className={styles.postImgRentabilidadRealCartera}>
+      <svg viewBox="0 0 200 120" width="200" height="120" fill="none" aria-hidden="true">
+        <text x="100" y="16" fontSize="6.5" fill="var(--fv-ink-40)" fontFamily="system-ui" textAnchor="middle" letterSpacing="0.06em">TU RENTABILIDAD REAL</text>
+        {/* Axes */}
+        <path d="M28 100 L28 34" stroke="var(--fv-ink-30)" strokeWidth="1.2" />
+        <path d="M28 100 L184 100" stroke="var(--fv-ink-30)" strokeWidth="1.2" />
+        {/* TWR curve — strategy, unaffected by cash flows */}
+        <path d="M38 82 C70 72 95 62 125 56 C150 51 165 49 178 48" stroke="var(--fv-ochre)" strokeWidth="2" fill="none" />
+        {/* MWR curve — personal money, weighted by timing */}
+        <path d="M38 82 C70 86 95 88 125 90 C150 92 165 93 178 94" stroke="var(--fv-ink)" strokeWidth="2" fill="none" />
+        {/* Shared start */}
+        <circle cx="38" cy="82" r="2.5" fill="var(--fv-ochre)" />
+        {/* Labels */}
+        <text x="150" y="45" fontSize="7" fill="var(--fv-ochre)" fontFamily="system-ui">TWR</text>
+        <text x="150" y="88" fontSize="7" fill="var(--fv-ink)" fontFamily="system-ui">MWR</text>
+        {/* Footer */}
+        <text x="100" y="114" fontSize="5.5" fill="var(--fv-ink-30)" fontFamily="system-ui" textAnchor="middle">misma cartera, dos preguntas</text>
+      </svg>
+    </div>
+  );
+}
+
 export const POST_IMAGES: Record<PostSlug, PostImage> = {
+  'rentabilidad-real-cartera-twr-mwr': ImgRentabilidadRealCartera,
   'rectificar-declaracion-renta-irpf': ImgRectificarDeclaracionRenta,
   'itf-impuesto-transacciones-financieras-espana': ImgItfTransacciones,
   'promociones-brokers-irpf-espana': ImgPromocionesBrokers,

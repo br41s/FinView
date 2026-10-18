@@ -44,6 +44,15 @@ export type PostMeta = {
  */
 export const POST_META = [
   {
+    slug: 'rentabilidad-real-cartera-twr-mwr',
+    tag: 'Métricas',
+    date: '18 oct 2026',
+    readTime: '9 min',
+    title: 'La rentabilidad real de tu cartera: TWR, MWR y por qué el número del broker engaña',
+    excerpt:
+      'Tu broker te enseña una rentabilidad que sube cada vez que aportas, aunque el mercado no se mueva. La clave está en separar el beneficio de la rentabilidad y en saber cuándo usar la TWR (para compararte) y cuándo la MWR o TIR (para saber si has ganado).',
+  },
+  {
     slug: 'rectificar-declaracion-renta-irpf',
     tag: 'Fiscalidad',
     date: '16 oct 2026',

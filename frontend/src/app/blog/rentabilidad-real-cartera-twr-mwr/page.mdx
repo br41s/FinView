@@ -1,0 +1,142 @@
+export const metadata = {
+  title: "La rentabilidad real de tu cartera: TWR, MWR y por qué el broker engaña — FinView",
+  description: "Tu broker te da una rentabilidad que ignora cuándo aportaste. Aprende a distinguir rentabilidad simple, TWR y MWR (TIR/XIRR) con ejemplos y a calcularla en Excel.",
+};
+
+# La rentabilidad real de tu cartera: TWR, MWR y por qué el número del broker engaña
+
+> Tu cartera ha subido 2.100 € este año y el broker te felicita por un +21 %. Pero 1.900 de esos euros los pusiste tú hace dos meses. La rentabilidad de verdad no es el 21 %: esa es la trampa más común de los extractos.
+
+---
+
+## 1. El número del broker y por qué casi siempre está inflado
+
+Haz la cuenta típica. El 1 de enero tu cartera vale 10.000 €. En abril metes 5.000 € más. En octubre vale 17.100 €.
+
+Tu banco, con la cuenta fácil, calcula (17.100 − 10.000) / 10.000 = **+71 %**. Un disparate: trata tus 5.000 € de aportación como si los hubiera generado el mercado.
+
+La cuenta honesta empieza separando dos cosas que se mezclan todo el rato:
+
+```
+Beneficio = valor final + retiradas − valor inicial − aportaciones
+```
+
+Con los datos de antes: 17.100 + 0 − 10.000 − 5.000 = **2.100 € de beneficio real**. Los 5.000 que metiste no son ganancia; son capital nuevo que pusiste tú.
+
+Pero ni siquiera esos 2.100 € son "rentabilidad". Son euros. La rentabilidad es ese beneficio en relación con el capital y con el tiempo. Y ahí empieza el lío.
+
+---
+
+## 2. Beneficio no es rentabilidad
+
+Ganar 1.000 € sobre 10.000 € en un año no es lo mismo que ganarlos sobre 100.000 € en cuatro años. Mismo número de euros, esfuerzo y riesgo distintos.
+
+El error habitual es la *rentabilidad simple*: divides el beneficio entre un capital de partida y ya está. Funciona cuando apenas has movido dinero —un ejercicio sin aportaciones, una compra y poco más—, pero se rompe en cuanto la cartera tiene vida propia. ¿Cuál es el denominador si cada mes entra dinero? ¿El capital inicial, el medio o el final? Cada elección da un resultado, y ninguna es la buena.
+
+Para un inversor de dividendos con aportaciones periódicas, la rentabilidad simple es poco más que un titular. Necesitas dos métricas, y son complementarias, no rivales.
+
+---
+
+## 3. TWR: la rentabilidad ponderada por el tiempo
+
+La TWR (Time-Weighted Return, rentabilidad ponderada por el tiempo) responde a una pregunta concreta: ¿cómo se comportó la estrategia, al margen de cuánto dinero tenías dentro y de cuándo entró?
+
+La idea es sencilla aunque el nombre asuste. Cada vez que entra o sale dinero, cortas la historia en un tramo. Calculas la rentabilidad de cada tramo por separado y luego los encadenas multiplicando, nunca sumando:
+
+```
+TWR = (1 + r₁) × (1 + r₂) × … × (1 + rₙ) − 1
+```
+
+Un ejemplo con números redondos. Arrancas con 10.000 €. Justo antes de aportar, la cartera vale 11.000 €: primer tramo, +10 %. Añades 5.000 € y el capital pasa a 16.000 €. Al cierre vale 15.750 €: segundo tramo, 15.750 / 16.000 − 1 = −1,5625 %. Encadenas: (1,10 × 0,984375) − 1 = **+8,28 %**.
+
+Ese 8,28 % es la rentabilidad de la estrategia, sin el ruido de tu aportación. Es la cifra que puedes poner al lado del Ibex 35 o de un fondo para saber si lo hiciste mejor o peor. Por algo es el estándar que usan los gestores: los GIPS (Global Investment Performance Standards), el marco que siguen las gestoras para publicar resultados comparables entre sí.
+
+---
+
+## 4. MWR: la rentabilidad ponderada por el dinero (TIR y XIRR)
+
+La MWR (Money-Weighted Return) responde a otra pregunta: ¿qué rentabilidad sacó tu dinero, con tus fechas y tus importes?
+
+Aquí sí cuentan las aportaciones, las retiradas y, sobre todo, cuándo se hicieron. La MWR es la tasa que iguala a cero el valor actual de todos los flujos: lo que metiste, lo que sacaste y lo que vale hoy. En finanzas eso es la **TIR** (tasa interna de retorno). Cuando las fechas son irregulares —lo normal—, la versión buena es la **XIRR**, que en Excel y Google Sheets se llama `TIR.NO.PER`.
+
+Si comparas una cartera de aportaciones mensuales contra otra que solo recibió dinero una vez, la MWR te dice cuál hizo mejor tu dinero. Es el número personal, el que contesta "¿he ganado dinero?".
+
+También es más caprichoso. La MWR pesa más los periodos en los que tenías más capital invertido. Si aportaste una cantidad grande justo antes de una caída, tu MWR saldrá por debajo de la TWR; si la aportaste antes de una subida, por encima. No es que tengas buen o mal ojo: es que el dinero pesa por su tamaño.
+
+---
+
+## 5. Cuál usar para qué
+
+| Pregunta que te haces | Métrica | Para qué |
+|---|---|---|
+| ¿Lo he hecho mejor que el índice? | TWR | Comparar con fondos o benchmarks |
+| ¿Mi dinero ha rentado o no? | MWR (XIRR) | Tus aportaciones y fechas reales |
+| ¿Cuántos euros he ganado? | Beneficio | La foto de tu bolsillo |
+
+---
+
+## 6. Por qué a un inversor de dividendos le salen números distintos
+
+Cuanto más mueve dinero tu cartera, más se separan TWR y MWR. Un inversor de dividendos con aportaciones periódicas y reinversión mueve dinero casi sin parar, así que las dos cifras divergen a menudo.
+
+Un caso de manual: dos personas entran en el mismo fondo. Una invierte 10.000 € de golpe y no toca nada. La otra pone 1.000 € al mes durante un año. Si el mercado cae en el primer semestre y sube en el segundo, la de la aportación única sufre más la caída y la de las aportaciones mensuales compra barato. Misma estrategia, TWR idéntica; MWR completamente distinta. Eso no es habilidad, es el calendario del dinero.
+
+Cuando reinviertes los dividendos ([cómo hacerlo en la práctica](/blog/reinvertir-dividendos)), metes flujos internos que a veces se cuentan dos veces. Regla de oro: para medir la cartera solo cuentan los flujos que cruzan su frontera, el dinero que entra desde el banco y el que sale hacia ti. Un dividendo reinvertido no es una aportación nueva: si ya estaba dentro del valor final, no lo sumes otra vez.
+
+Y falta la parte que ningún broker te descuenta: los impuestos. En España cobras el dividendo bruto para Hacienda, pero en tu cuenta entra menos porque la retención se aplica en origen. Esa retención (que ajustas luego en tu declaración, mira [qué es el 19 % y qué pasa con él](/blog/retencion-19-vs-tributacion-real-irpf)) no aparece en la mayoría de gráficos de rentabilidad. Si quieres el número honesto, calcula la rentabilidad bruta y, aparte, la neta de impuestos.
+
+---
+
+## 7. Cómo calcular tu XIRR paso a paso
+
+Solo necesitas tus movimientos y una hoja de cálculo:
+
+1. Una columna de fechas y otra de importes.
+2. Cada aportación desde fuera, en negativo (sale de tu bolsillo).
+3. Cada retirada hacia ti, en positivo.
+4. La última fila: el valor de mercado de tu cartera hoy, como flujo positivo, en la fecha de valoración.
+5. Aplica la función: `=TIR.NO.PER(importes; fechas)` (o `=XIRR()`, según tu idioma y separadores).
+
+Tres avisos que ahorran disgustos:
+
+- El resultado sale anualizado. Si quieres la rentabilidad acumulada de un periodo de `n` días: (1 + TIR) elevado a (n / 365), menos 1.
+- No dupliques dividendos reinvertidos ni ventas que se quedaron dentro de la cartera.
+- Hace falta al menos un flujo negativo y otro positivo, y con los signos en orden. Si la función da error, casi siempre es esto.
+
+---
+
+## 8. Lo que estas métricas no te dicen
+
+Ninguna de las tres te cuenta si asumiste demasiado riesgo, cuánto cayó la cartera en el peor momento, ni si tu resultado fue habilidad o suerte. Una TWR del 12 % con una caída del 40 % en medio no es lo mismo que un 12 % tranquilo.
+
+Tampoco llevan la inflación dentro. Un 4 % nominal en un año con un 5 % de IPC es una pérdida en euros constantes, y de eso ya hablamos en [dividendos e inflación](/blog/dividendos-inflacion-poder-adquisitivo). El número del broker es nominal, no real.
+
+FinView te muestra el beneficio, el total return y el valor de cada posición, y deja a la vista los dividendos cobrados y las aportaciones. Con eso montas las tres métricas —beneficio, TWR y MWR— sobre tus datos reales en lugar de la cifra simplificada del extracto.
+
+---
+
+## Preguntas frecuentes
+
+### ¿Qué diferencia hay entre TWR y MWR?
+
+La TWR mide cómo se comportó la estrategia sin contar cuánto dinero tenías dentro; sirve para compararte con un índice o un fondo. La MWR mide qué rentabilidad sacó tu dinero con tus fechas y tus aportaciones; sirve para saber si has ganado. Si no hay movimientos, coinciden.
+
+### ¿Cuál usa mi banco?
+
+Depende. Muchos extractos usan rentabilidad simple, o una versión que solo acierta en periodos sin aportaciones. Los fondos suelen publicar una MWR con tu perfil de movimientos, porque cada cliente la tiene distinta. Si el número te chirría, pídelo y comprueba si tiene en cuenta las aportaciones.
+
+### ¿Por qué mi MWR es peor que mi TWR?
+
+Casi siempre por el calendario del dinero. Si aportaste cantidades grandes antes de los baches, tu MWR sale más baja; si las aportaste antes de las subidas, más alta. La TWR no se entera de esas fechas porque las elimina a propósito.
+
+### ¿Cómo afectan los dividendos al cálculo?
+
+Un dividendo que sale de la cartera cuenta como retirada (flujo positivo). Uno que reinviertes dentro no es una aportación nueva: ya está reflejado en el valor final. Confundirlos infla o desinfla la rentabilidad.
+
+### ¿Metes impuestos en la rentabilidad?
+
+No. La TWR y la MWR se calculan antes de impuestos. En España los dividendos tributan en la base del ahorro (del 19 % al 30 %) y la retención se aplica en origen. Para el número real, calcula también la versión neta.
+
+### ¿Sirve el ROI simple para algo?
+
+Para una foto rápida de cuántos euros has ganado o perdido, sí. Como medida de rentabilidad con aportaciones, no: ignora el tiempo. Úsalo como titular y deja la comparación seria para la TWR y la MWR.
