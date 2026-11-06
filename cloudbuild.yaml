@@ -59,7 +59,7 @@ steps:
   # the latest created revision), so re-running the same commit "deployed" onto
   # the dead revision and reported its old failure: 93b303c, 2026-10-17, after
   # the secret permission that had failed it was already fixed.
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:591.0.0
     entrypoint: gcloud
     args:
       - run
@@ -84,7 +84,7 @@ steps:
 
   # Verify the candidate, shift traffic atomically, verify the public URL, and
   # rollback automatically if the live check fails.
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:591.0.0
     entrypoint: bash
     args:
       - -ceu
