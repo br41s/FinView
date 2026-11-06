@@ -111,7 +111,41 @@ that line is labelled as an estimate.
 - Status text is `OUTCOME_DETAIL[outcome]`, looked up at read time — never stored.
 - Runs inside requests: `POST /portfolio/exposure/refresh` (40s budget, the frontend
   calls it again while `checked > 0 && pending > 0`) and the daily zonas cron through
-  `run_reference_data_maintenance` (120s).
+  `run_reference_data_maintenance` (120s per reader, and the two readers share one
+  `refresh.Sources`, below).
+
+### Hosts (`hosts.py`) — rate limit, 429, shared lookups
+
+**filings.xbrl.org refuses the 11th request inside about 30 s from one address** with a
+bare 429 (Apache, no `Retry-After`, no rate-limit header; it lifts after ~25 s). Measured
+on 2026-11-06: ten succeed at any pace from 0.15 s to 3 s apart, the limit is on the client
+and not the URL (ten different LEIs trip it too), and a 3.5 s gap passed 22 in a row.
+Until then each reader made a request per ISIN every 0.15 s, so a night read ~10 ISINs and
+logged the rest as skipped: the segment reader's backlog went 51, 42, 29, 20, 10 over five
+nights and the AI reader, running second on an address the first had exhausted, had 23
+ISINs refused on each of 2026-11-04 and 11-05. Both readers get 120 s each, so it was never
+time.
+
+- `hosts.Client` (what `sec.client()` and `esef.client()` return) **paces
+  filings.xbrl.org at 3.5 s** (`PACE`), process-wide: a second client, or a page load
+  during the cron, queues behind the first instead of starting a fresh burst. GLEIF and
+  the SEC are not paced.
+- **A 429 closes that host for the rest of the run.** The refused ISIN is skipped (nothing
+  written, same as any failed request); the next ones whose host is closed are counted and
+  logged once per reader (`N ISINs left for the next run`), not tried. The other host
+  carries on: US ISINs read from the SEC while ESEF waits for the next night.
+- **`refresh.Sources`** is the run's two clients. The cron opens one and passes it to both
+  readers, so the AI reader inherits a closed host and the segment reader's lookups: ISIN →
+  LEI and LEI → latest filing are remembered on the client (`esef._once`), so an issuer both
+  readers need costs one GLEIF and one listing request, not two of each. A definite nothing
+  (no LEI, no filing) is remembered; a failed request is not. Called without one, each reader
+  opens its own.
+- **No quota between the readers.** Each has its own 120 s deadline and, with the pace, no
+  shared allowance to exhaust; `due_isins` already puts never-read issuers first. Throughput
+  is now ~34 filings.xbrl.org requests per reader per night (a listing, plus a download for a
+  new filing), against ~10.
+- To re-measure (the limit may change): `GET /api/entities/{lei}/filings` in a loop from a
+  clean address and count the 200s before the first 429; do it sparingly.
 
 ### Exposure (`exposure.py`)
 

@@ -40,23 +40,29 @@ def run_reference_data_maintenance() -> None:
     except Exception as exc:  # independent best-effort source
         logger.warning("[cnmv-catalog] skipped: %s", exc.__class__.__name__)
 
-    try:
-        from backend.services.portfolio_service import get_open_positions
-        from backend.services.segments.refresh import CRON_SECONDS, refresh
+    # The two annual-report readers run back to back on one set of connections: a host
+    # that refuses the first (filings.xbrl.org answers 429 after ten requests in 30 s)
+    # stays closed for the second, and the lookups the first made are not paid for twice.
+    from backend.services.segments.refresh import Sources
 
-        with SessionLocal() as db:
-            positions = get_open_positions(db, None, skip_prices=True)
-            refresh(db, {p.isin: (p.ticker, p.name) for p in positions}, CRON_SECONDS)
-    except Exception as exc:  # independent best-effort source
-        logger.warning("[segments] skipped: %s", exc.__class__.__name__)
+    with Sources() as sources:
+        try:
+            from backend.services.portfolio_service import get_open_positions
+            from backend.services.segments.refresh import CRON_SECONDS, refresh
 
-    try:
-        from backend.services.portfolio_service import get_open_positions
-        from backend.services.segments import ai_mentions
+            with SessionLocal() as db:
+                positions = get_open_positions(db, None, skip_prices=True)
+                refresh(db, {p.isin: (p.ticker, p.name) for p in positions}, CRON_SECONDS, sources)
+        except Exception as exc:  # independent best-effort source
+            logger.warning("[segments] skipped: %s", exc.__class__.__name__)
 
-        with SessionLocal() as db:
-            positions = get_open_positions(db, None, skip_prices=True)
-            holdings = {p.isin: (p.ticker, p.name) for p in positions}
-            ai_mentions.refresh(db, holdings, ai_mentions.CRON_SECONDS)
-    except Exception as exc:  # independent best-effort source
-        logger.warning("[ai-mentions] skipped: %s", exc.__class__.__name__)
+        try:
+            from backend.services.portfolio_service import get_open_positions
+            from backend.services.segments import ai_mentions
+
+            with SessionLocal() as db:
+                positions = get_open_positions(db, None, skip_prices=True)
+                holdings = {p.isin: (p.ticker, p.name) for p in positions}
+                ai_mentions.refresh(db, holdings, ai_mentions.CRON_SECONDS, sources)
+        except Exception as exc:  # independent best-effort source
+            logger.warning("[ai-mentions] skipped: %s", exc.__class__.__name__)

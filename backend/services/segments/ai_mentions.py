@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -41,7 +42,13 @@ from backend.services.portfolio_service import Position
 from backend.services.segments import esef, industry_index, sec
 from backend.services.segments.classify import UNASSIGNED, ClassificationError
 from backend.services.segments.exposure import latest_reports
-from backend.services.segments.refresh import _already_read, _drop_misdated, _record, due_isins
+from backend.services.segments.refresh import (
+    Sources,
+    _already_read,
+    _drop_misdated,
+    _record,
+    due_isins,
+)
 from backend.services.segments.sec import SourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -394,9 +401,16 @@ def verify(content: str, text: str) -> tuple[list[dict], str | None, str]:
 
 
 def refresh(
-    db: Session, holdings: dict[str, tuple[str | None, str]], budget_seconds: float
+    db: Session,
+    holdings: dict[str, tuple[str | None, str]],
+    budget_seconds: float,
+    sources: Sources | None = None,
 ) -> dict:
     """Read the due ISINs in `holdings` ({isin: (ticker, name)}) until the budget is spent.
+
+    `sources` is the run's shared connections (`refresh.Sources`): the daily cron hands
+    the segment reader's to this one, so a host that refused it is not tried again and
+    the lookups it made are reused. Without one the call opens its own.
 
     First maps any segment report's business lines that have no industry yet (one
     model call each, no download), then reads the due annual reports.
@@ -421,18 +435,22 @@ def refresh(
             db.rollback()
             logger.exception("[ai-industries] %s failed", report.isin)
     cik_by_ticker: dict[str, int] | None = None
-    with sec.client() as sec_http, esef.client() as esef_http:
+    deferred = 0
+    with nullcontext(sources) if sources else Sources() as src:
         for isin in due:
             if time.monotonic() >= deadline:
                 break
+            if not src.usable(isin):
+                deferred += 1
+                continue
             ticker, name = holdings[isin]
             try:
                 if isin.startswith("US"):
                     if cik_by_ticker is None:
-                        cik_by_ticker = sec.ticker_to_cik(sec_http)
-                    _check_sec(db, isin, ticker, name, sec_http, cik_by_ticker, budget_seconds)
+                        cik_by_ticker = sec.ticker_to_cik(src.sec)
+                    _check_sec(db, isin, ticker, name, src.sec, cik_by_ticker, budget_seconds)
                 else:
-                    _check_esef(db, isin, name, esef_http, budget_seconds)
+                    _check_esef(db, isin, name, src.esef, budget_seconds)
                 db.commit()
                 checked += 1
             except (SourceUnavailable, AiReadError) as exc:
@@ -444,6 +462,7 @@ def refresh(
             except Exception:
                 db.rollback()
                 logger.exception("[ai-mentions] %s failed", isin)
+        src.report_deferred("ai-mentions", deferred)
     pending = len(due_isins(db, holdings, model=AiMentionCheck)) + len(
         unmapped_reports(db, holdings)
     )
