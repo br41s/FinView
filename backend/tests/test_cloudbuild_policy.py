@@ -27,6 +27,22 @@ def _step(fragment: str) -> dict:
     return _steps()[_index_of(fragment)]
 
 
+def test_cloud_sdk_steps_are_pinned_to_a_tagged_image():
+    """The rollout steps run `python3` inside cloud-sdk. `latest` is a moving target:
+    592.0.0 (2026-11-03) dropped the system python3 and the builds for #359 and #360
+    died with exit 127 after creating a 0%-traffic candidate nobody promoted."""
+    images = [
+        step["name"]
+        for step in _steps()
+        if step["name"].startswith("gcr.io/google.com/cloudsdktool/cloud-sdk")
+    ]
+
+    assert images, "no cloud-sdk steps found"
+    for image in images:
+        _, _, tag = image.partition(":")
+        assert tag and tag != "latest", f"{image} must pin an explicit version tag"
+
+
 def test_suite_gates_the_build_before_the_image_is_published():
     test_index = _index_of("python -m pytest")
     push_index = _index_of('"push"')
