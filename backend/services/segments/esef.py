@@ -29,7 +29,13 @@ from decimal import Decimal
 import httpx
 
 from backend.services import llm_envelope
-from backend.services.segments.numbers import appears_in, parse_amount, scale_to_total
+from backend.services.segments.numbers import (
+    SCALES,
+    appears_in,
+    leaf_rows,
+    parse_amount,
+    scale_to_total,
+)
 from backend.services.segments.hosts import Client, SourceUnavailable
 
 _GLEIF_URL = "https://api.gleif.org/api/v1/lei-records"
@@ -347,7 +353,12 @@ def extract(company: str, report: Report, period_end: date) -> dict[str, list[tu
 def verify(
     rows: list[tuple[str, str]], report: Report
 ) -> tuple[list[tuple[str, Decimal]] | None, str]:
-    """Scaled lines if every amount is in the note and they add up; else (None, why)."""
+    """Scaled lines if every amount is in the note and they add up; else (None, why).
+
+    `rescued` is `ok` for an answer that mixed levels: the model copied a group's lines
+    and its subtotal too, so only the rows that are not a neighbours' sum are kept
+    (`numbers.leaf_rows`). Both gates apply to what is kept, exactly as before.
+    """
     if len(rows) < 2:
         return None, "absent"
     parsed: list[tuple[str, Decimal]] = []
@@ -357,6 +368,52 @@ def verify(
             return None, "not_in_note"
         parsed.append((label, value))
     scale = scale_to_total([v for _, v in parsed], report.total)
-    if scale is None:
-        return None, "unreconciled"
-    return [(label, value * scale) for label, value in parsed], "ok"
+    if scale is not None:
+        return [(label, value * scale) for label, value in parsed], "ok"
+    kept = leaf_rows([v for _, v in parsed])
+    if kept is not None:
+        leaves = [parsed[i] for i in kept]
+        scale = scale_to_total([v for _, v in leaves], report.total)
+        if scale is not None:
+            return [(label, value * scale) for label, value in leaves], "rescued"
+    return None, "unreconciled"
+
+
+# ── why an axis was rejected ─────────────────────────────────────────
+
+MAX_LOGGED_ROWS = 30
+MAX_LOGGED_LABEL = 40
+MAX_LOGGED_CHARS = 1_800
+
+
+def rejection_detail(rows: list[tuple[str, str]], report: Report, status: str) -> str:
+    """One bounded line on what the model returned and why `verify` refused it.
+
+    Nothing recorded the model's answer, so every fix to this check was made blind. The
+    text is public report text (labels and amounts as printed), never user data.
+    """
+
+    def row(label: str, raw: str) -> str:
+        return f"{label[:MAX_LOGGED_LABEL]}={raw}"
+
+    shown = [row(*r) for r in rows[:MAX_LOGGED_ROWS]]
+    if len(rows) > MAX_LOGGED_ROWS:
+        shown.append(f"+{len(rows) - MAX_LOGGED_ROWS} more")
+    parts = [f"rows({len(rows)})=[{'; '.join(shown)}]"]
+
+    if status == "not_in_note":
+        failed = [
+            f"{raw!r} ({'unparsable' if parse_amount(raw) is None else 'not printed'})"
+            for _, raw in rows
+            if parse_amount(raw) is None or not appears_in(raw, report.note)
+        ]
+        parts.append(f"failed={', '.join(failed[:8])}")
+    else:
+        amounts = [v for _, raw in rows if (v := parse_amount(raw)) is not None]
+        raw_sum = sum(amounts, Decimal(0))
+        # The scale that comes closest is the likeliest one the note used.
+        scale = min(SCALES, key=lambda s: abs(raw_sum * s - report.total))
+        pct = (raw_sum * scale - report.total) / report.total * 100 if report.total else 0
+        parts.append(f"sum={raw_sum} x{scale} total={report.total} off={pct:+.2f}%")
+    parts.append(f"measure={report.measure} note_chars={len(report.note)}")
+    return " ".join(parts)[:MAX_LOGGED_CHARS]
