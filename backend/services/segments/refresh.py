@@ -53,7 +53,7 @@ OUTCOME_DETAIL = {
 # once, whatever its age, and its filing is read again: otherwise a reader fix reaches
 # an answer cached the day before only after RECHECK_DAYS (the fallback totals of
 # 2026-10-17 were live and invisible for a week). Bump the reader you change.
-READERS = {SegmentCheck: "2026-10-17", AiMentionCheck: "2026-10-17"}
+READERS = {SegmentCheck: "2026-11-06", AiMentionCheck: "2026-10-17"}
 
 
 class Sources:
@@ -269,6 +269,15 @@ def _check_esef(db, isin, name, http) -> None:
         lines, status[axis] = esef.verify(rows[axis], report)
         if lines:
             candidates[axis].append(lines)
+        if status[axis] in ("not_in_note", "unreconciled", "rescued"):
+            logger.log(
+                logging.INFO if status[axis] == "rescued" else logging.WARNING,
+                "[segments] %s %s %s: %s",
+                isin,
+                axis,
+                status[axis],
+                esef.rejection_detail(rows[axis], report, status[axis]),
+            )
 
     _store(
         db,

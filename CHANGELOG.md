@@ -4,6 +4,26 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Los desgloses ESEF rechazados dejan rastro, y las filas de subtotal ya no los tumban — 2026-11-06
+
+#### Added
+- **Cada eje que `esef.verify` rechaza (`not_in_note`, `unreconciled`) escribe una línea
+  en el log** con el ISIN, el eje, el estado, las filas que devolvió el modelo (etiqueta e
+  importe tal como se imprimen), la suma frente al total (a la escala más cercana) y, para
+  `not_in_note`, el importe que falla. Acotada a 30 filas, 40 caracteres por etiqueta y 1.800
+  por línea; es texto público del informe. Hasta ahora nada guardaba lo que contestó el modelo
+  y cada arreglo del lector se hacía a ciegas.
+
+#### Fixed
+- **Una respuesta que mezcla niveles (las líneas de un grupo y además su subtotal) se
+  rescata en vez de descartarse.** Se quitan las filas que son la suma de 2 o más filas
+  contiguas, con la holgura del redondeo impreso (`numbers.leaf_rows`), y las restantes pasan
+  las dos puertas de siempre: cada importe literal en la nota y suma igual al total
+  etiquetado. No se busca el mayor subconjunto como en la SEC: con 17 filas dio un subconjunto
+  mayor y falso en 2 de 15 pruebas aleatorias, con hasta 14 empates, y Naturgy tiene 19.
+  **No verificado en vivo**: qué devuelve el modelo en producción. Las líneas rescatadas se
+  registran con nivel INFO (`rescued`).
+
 ### Los lectores de informes anuales respetan el límite de filings.xbrl.org — 2026-11-06
 
 #### Fixed

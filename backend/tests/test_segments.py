@@ -9,6 +9,7 @@ is) and how a portfolio's value is spread over what the reports say.
 """
 
 import json
+import logging
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -23,6 +24,7 @@ from backend.services.segments import classify as classify_mod
 from backend.services.segments import esef, exposure, listing, refresh, sec
 from backend.services.segments.numbers import (
     appears_in,
+    leaf_rows,
     parse_amount,
     pick_partition,
     reconciles,
@@ -109,6 +111,116 @@ def test_no_partition_when_nothing_adds_up():
 def test_a_single_member_equal_to_the_total_is_not_a_breakdown():
     values = {"Total": Decimal(100), "A": Decimal(30), "B": Decimal(30)}
     assert pick_partition(values, Decimal(100)) is None
+
+
+def _d(*values):
+    return [Decimal(str(v)) for v in values]
+
+
+def test_a_subtotal_after_its_lines_is_dropped():
+    assert leaf_rows(_d(3100, 2200, 5300, 400)) == [0, 1, 3]
+
+
+def test_a_subtotal_before_its_lines_is_dropped():
+    assert leaf_rows(_d(400, 5300, 3100, 2200)) == [0, 2, 3]
+
+
+def test_a_subtotal_of_subtotals_and_the_lines_under_them_leave_only_the_leaves():
+    # A + B = AB; C; AB + C = ABC
+    assert leaf_rows(_d(10, 20, 30, 5, 35)) == [0, 1, 3]
+
+
+def test_rows_that_are_not_a_neighbours_sum_are_all_kept():
+    assert leaf_rows(_d(3100, 2200, 1900, 400)) is None
+
+
+def test_a_coincidental_sum_of_rows_that_are_not_adjacent_is_not_a_subtotal():
+    """100 = 60 + 40, but 7 and 9 sit between them: that is a coincidence, not a layout."""
+    assert leaf_rows(_d(100, 7, 60, 9, 40)) is None
+
+
+def test_the_slack_is_the_rounding_of_the_printed_figures():
+    assert leaf_rows(_d("100.4", "50.2", "50.3")) == [1, 2]  # 100.5 vs 100.4: one tenth
+    assert leaf_rows(_d(100, 50, 52)) is None  # whole numbers: 2 apart is not rounding
+
+
+def test_zero_rows_and_short_lists_are_left_alone():
+    assert leaf_rows(_d(0, 0, 0)) is None
+    assert leaf_rows(_d(5, 5)) is None
+
+
+# Naturgy's FY2025 note, shaped: two groups with their subtotals, a residual and an
+# elimination. Leaves 3,100 + 2,200 + 1,900 + 1,100 + 400 - 100 = 8,600.
+_MIXED_NOTE = (
+    "Gas Spain | 3.100\nPower Spain | 2.200\nSpain subtotal | 5.300\n"
+    "Gas Latam | 1.900\nPower Latam | 1.100\nLatam subtotal | 3.000\n"
+    "Other | 400\nAdjustments | (100)\nTotal | 8.600"
+)
+_MIXED_ROWS = [
+    ("Gas Spain", "3.100"),
+    ("Power Spain", "2.200"),
+    ("Spain subtotal", "5.300"),
+    ("Gas Latam", "1.900"),
+    ("Power Latam", "1.100"),
+    ("Latam subtotal", "3.000"),
+    ("Other", "400"),
+    ("Adjustments", "(100)"),
+]
+
+
+def _mixed_report(total="8600000000"):
+    return esef.Report(
+        currency="EUR", total=Decimal(total), note=_MIXED_NOTE, period_end=date(2025, 12, 31)
+    )
+
+
+def test_leaves_with_their_subtotals_are_rescued_to_the_leaves():
+    lines, status = esef.verify(_MIXED_ROWS, _mixed_report())
+    assert status == "rescued"
+    assert lines == [
+        ("Gas Spain", Decimal("3100000000")),
+        ("Power Spain", Decimal("2200000000")),
+        ("Gas Latam", Decimal("1900000000")),
+        ("Power Latam", Decimal("1100000000")),
+        ("Other", Decimal("400000000")),
+        ("Adjustments", Decimal("-100000000")),
+    ]
+
+
+def test_a_rescue_still_has_to_add_up_to_the_tagged_total():
+    assert esef.verify(_MIXED_ROWS, _mixed_report("9900000000")) == (None, "unreconciled")
+
+
+def test_a_rescue_never_lets_an_amount_the_note_does_not_print_through():
+    rows = [*_MIXED_ROWS[:-1], ("Adjustments", "(99)")]
+    assert esef.verify(rows, _mixed_report()) == (None, "not_in_note")
+
+
+def test_the_rows_are_logged_with_the_amount_that_is_not_in_the_note():
+    report = esef.parse_report(_esef_json(), date(2024, 12, 31))
+    rows = [("España", "16.534"), ("Brasil", "27.757"), ("Otros", "n/a")]
+    detail = esef.rejection_detail(rows, report, "not_in_note")
+    assert "rows(3)=[España=16.534; Brasil=27.757; Otros=n/a]" in detail
+    assert "'16.534' (not printed)" in detail
+    assert "'n/a' (unparsable)" in detail
+    assert "'27.757'" not in detail.split("failed=")[1]
+
+
+def test_the_sum_is_logged_against_the_total_at_the_closest_scale():
+    report = esef.parse_report(_esef_json(), date(2024, 12, 31))
+    rows = [("España", "16.982"), ("Brasil", "27.757")]  # the adjustment left out
+    detail = esef.rejection_detail(rows, report, "unreconciled")
+    assert "sum=44739 x1000000 total=44291000000.0 off=+1.01%" in detail
+    assert "measure=revenue" in detail and "note_chars=" in detail
+
+
+def test_a_logged_line_is_bounded_and_survives_a_zero_total():
+    report = esef.Report(currency="EUR", total=Decimal(0), note="x", period_end=date(2025, 12, 31))
+    rows = [("L" * 500 + str(i), "1.000") for i in range(100)]
+    detail = esef.rejection_detail(rows, report, "unreconciled")
+    assert len(detail) <= esef.MAX_LOGGED_CHARS
+    assert detail.startswith("rows(100)=[")
+    assert esef.rejection_detail(rows[:40], report, "unreconciled").count("+10 more") == 1
 
 
 # ── SEC instance ─────────────────────────────────────────────────────
@@ -278,10 +390,13 @@ def test_lines_that_do_not_add_up_are_rejected():
     assert esef.verify(rows, report) == (None, "unreconciled")
 
 
-def test_a_total_line_copied_in_by_mistake_fails_the_check():
+def test_a_total_line_copied_in_by_mistake_is_dropped_not_published():
+    """The model was told never to copy a total. Its lines still add up, so they stand."""
     report = esef.parse_report(_esef_json(), date(2024, 12, 31))
     rows = [("España", "16.982"), ("Brasil", "27.757"), ("Ajustes", "(448)"), ("Total", "44.291")]
-    assert esef.verify(rows, report) == (None, "unreconciled")
+    lines, status = esef.verify(rows, report)
+    assert status == "rescued"
+    assert [label for label, _ in lines] == ["España", "Brasil", "Ajustes"]
 
 
 def test_one_line_is_not_a_breakdown():
@@ -657,6 +772,64 @@ def test_a_breakdown_that_does_not_add_up_is_recorded_not_stored(db, no_http, mo
     refresh.refresh(db, HOLDING, 30)
     assert db.query(SegmentReport).count() == 0
     assert db.query(SegmentCheck).one().outcome == "unreconciled"
+
+
+def _segment_log(caplog):
+    return [r for r in caplog.records if r.getMessage().startswith("[segments] ES0000000001")]
+
+
+def test_a_rejected_axis_is_logged_once_with_what_the_model_returned(db, no_http, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger=refresh.logger.name)
+    _esef_source(
+        monkeypatch,
+        rows={"business": [], "geography": [("España", "16.982"), ("Brasil", "27.757")]},
+    )
+    refresh.refresh(db, HOLDING, 30)
+    (record,) = _segment_log(caplog)
+    message = record.getMessage()
+    assert record.levelno == logging.WARNING
+    assert message.startswith("[segments] ES0000000001 geography unreconciled: ")
+    assert "España=16.982; Brasil=27.757" in message and "sum=44739" in message
+
+
+def test_an_amount_missing_from_the_note_is_logged_by_name(db, no_http, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger=refresh.logger.name)
+    _esef_source(
+        monkeypatch,
+        rows={"business": [], "geography": [("España", "16.534"), ("Brasil", "27.757")]},
+    )
+    refresh.refresh(db, HOLDING, 30)
+    (record,) = _segment_log(caplog)
+    assert " geography not_in_note: " in record.getMessage()
+    assert "'16.534' (not printed)" in record.getMessage()
+
+
+def test_an_answer_that_adds_up_or_is_absent_logs_nothing(db, no_http, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger=refresh.logger.name)
+    _esef_source(monkeypatch, rows={"business": [("Todo", "44.291")], "geography": [
+        ("España", "16.982"), ("Brasil", "27.757"), ("Ajustes", "(448)")]})
+    refresh.refresh(db, HOLDING, 30)
+    assert _segment_log(caplog) == []
+
+
+def test_a_mixed_level_answer_is_stored_as_its_leaves_and_logged_as_info(
+    db, no_http, monkeypatch, caplog
+):
+    caplog.set_level(logging.INFO, logger=refresh.logger.name)
+    _esef_source(
+        monkeypatch,
+        rows={
+            "business": [],
+            "geography": [("España", "16.982"), ("Brasil", "27.757"),
+                          ("Ajustes", "(448)"), ("Total", "44.291")],
+        },
+    )
+    assert refresh.refresh(db, HOLDING, 30) == {"checked": 1, "pending": 0}
+    stored = json.loads(db.query(SegmentReport).one().lines)
+    assert [line["label"] for line in stored] == ["España", "Brasil", "Ajustes"]
+    assert json.loads(db.query(SegmentReport).one().axis_status)["geography"] == "ok"
+    (record,) = _segment_log(caplog)
+    assert record.levelno == logging.INFO and " geography rescued: " in record.getMessage()
 
 
 def test_a_breakdown_that_did_not_add_up_is_read_again_at_the_recheck(db, no_http, monkeypatch):

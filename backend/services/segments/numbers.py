@@ -80,6 +80,38 @@ def scale_to_total(values: list[Decimal], total: Decimal) -> Decimal | None:
     return None
 
 
+def leaf_rows(values: list[Decimal]) -> list[int] | None:
+    """Indexes of the rows left after dropping every row that sums the rows next to it.
+
+    A note prints a group's lines and then (or before) the group's own subtotal, and the
+    model sometimes copies both. Searching every subset for the one that adds up is not
+    safe here: 17 rows, 12 of them leaves, gave a coincidental larger subset in 2 of 15
+    random trials, with up to 14 equal-size candidates, and Naturgy has 19. A subtotal
+    is a row that equals a run of 2+ rows directly before or after it, to within the
+    rounding of the figures printed, and that is a structure a coincidence rarely has.
+
+    None when no row is a subtotal or fewer than two are left: nothing to rescue.
+    """
+    if len(values) < 3:
+        return None
+    # Each printed figure is rounded to its last digit; a run of k plus the subtotal may
+    # drift (k + 1) half-units apart.
+    unit = Decimal(1).scaleb(min(min(v.as_tuple().exponent for v in values), 0))
+    subtotals: set[int] = set()
+    for i, value in enumerate(values):
+        if value == 0:
+            continue
+        for k in range(2, len(values)):
+            slack = (k + 1) * unit / 2
+            before = values[i - k : i] if i >= k else []
+            after = values[i + 1 : i + 1 + k]
+            for run in (before, after):
+                if len(run) == k and abs(sum(run, Decimal(0)) - value) <= slack:
+                    subtotals.add(i)
+    kept = [i for i in range(len(values)) if i not in subtotals]
+    return kept if subtotals and len(kept) >= 2 else None
+
+
 def pick_partition(values: dict[str, Decimal], total: Decimal) -> list[str] | None:
     """The largest set of members whose values add up to `total`.
 

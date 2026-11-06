@@ -82,6 +82,21 @@ that line is labelled as an estimate.
 - **Verbatim check** (ESEF): every amount the model returns must appear in the note
   exactly as printed (`appears_in`); one invented or "corrected" figure drops the
   whole breakdown. Amounts are parsed by `parse_amount`, never by the model.
+- **Mixed levels** (ESEF, `numbers.leaf_rows`): when the lines do not add up, a row that
+  equals the sum of 2+ rows directly before or after it (within the rounding of the printed
+  figures) is a subtotal the model copied against its instructions. The rows left are checked
+  with both gates above and kept as status `rescued` (stored as `ok`). **Not** `pick_partition`'s
+  subset search: simulated with 12 leaves and 5 subtotals, the largest subset that reconciled
+  within 0.5% was a coincidence in 2 of 15 trials, with up to 14 equal-size candidates, and
+  Naturgy returns 19 rows (a meet-in-the-middle search would make it fast, not unambiguous).
+  A grand total over subtotals with their lines between them has no neighbour run to match and
+  stays in, so the answer fails closed (`unreconciled`).
+- **Every rejected ESEF axis is logged** (`refresh._check_esef` → `esef.rejection_detail`):
+  `[segments] <isin> <axis> not_in_note|unreconciled: rows(n)=[label=amount; …] failed=… |
+  sum=… x<scale> total=… off=±x% measure=… note_chars=…`, WARNING; a rescue is INFO. Bounded
+  (30 rows, 40 chars a label, 1,800 a line); public report text only. Use it before changing
+  a reader: until 2026-11-06 nothing recorded what the model answered. `absent` (under two
+  rows) is not logged, it is the normal answer for an axis a note does not give.
 - **Classification** (`classify.py`) is the only judgment step: one model call maps
   segment names to FinView's own sector list (`SECTORS` — GICS is licensed, do not
   copy it) and `REGIONS`. Output outside those keys becomes `unassigned`. The original
@@ -108,6 +123,8 @@ that line is labelled as an estimate.
   (#356) were live and invisible because every answer they change had been cached that
   morning for `RECHECK_DAYS`. Storing a report also drops the row the same filing left
   under another year (`_drop_misdated`), which a wrong listing date had created.
+  The segment reader is at `2026-11-06` (mixed-level rescue and the rejection log): every
+  held issuer is read again once, at the cron's pace, never-read and older-reader ISINs first.
 - Status text is `OUTCOME_DETAIL[outcome]`, looked up at read time — never stored.
 - Runs inside requests: `POST /portfolio/exposure/refresh` (40s budget, the frontend
   calls it again while `checked > 0 && pending > 0`) and the daily zonas cron through
