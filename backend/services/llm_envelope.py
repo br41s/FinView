@@ -39,6 +39,9 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # A model whose reasoning is mandatory (`reasoning.mandatory` there) rejects
 # this with a 4xx: read the new model's entry before changing openrouter_model.
 NO_REASONING = {"effort": "none"}
+# The other way OpenRouter documents to switch it off. `chat()` falls back to it once,
+# see `_reasoned_though_off`.
+REASONING_DISABLED = {"enabled": False}
 
 # Every request asks OpenRouter to route only to providers that neither store the prompt nor
 # train on it. The options assistant forwards free text typed by users, so this is not a
@@ -59,9 +62,31 @@ def chat(
     errors and non-200s come back as ``error`` too, so callers have exactly one
     branch to write. ``params`` are passed through (max_tokens, temperature,
     response_format, reasoning); ``provider`` is not one of them, see PROVIDER_POLICY.
+
+    A call that asked for ``NO_REASONING`` and still spent its whole budget thinking is
+    asked once more (`_reasoned_though_off`).
     """
     if not settings.openrouter_api_key:
         return None, "FINVIEW_OPENROUTER_API_KEY not configured."
+    content, error, body = _post(messages, context, timeout, params)
+    if content is None and _reasoned_though_off(body, params):
+        first = _served_by(body)
+        retry = {**params, "reasoning": REASONING_DISABLED}
+        content, error, body = _post(messages, context, timeout, retry)
+        logger.warning(
+            "%s: [reasoning-retry] first answer by %s, second by %s: %s",
+            context,
+            first,
+            _served_by(body),
+            "answered" if content is not None else "failed too",
+        )
+    return content, error
+
+
+def _post(
+    messages: list[dict], context: str, timeout: float, params: dict
+) -> tuple[str | None, str | None, dict | None]:
+    """One request. ``(content, error, body)``; ``body`` is the parsed 200, else None."""
     try:
         resp = httpx.post(
             OPENROUTER_URL,
@@ -76,17 +101,48 @@ def chat(
         )
     except Exception as exc:
         logger.warning("%s: OpenRouter request failed — %s: %s", context, type(exc).__name__, exc)
-        return None, f"{type(exc).__name__}: {exc}"
+        return None, f"{type(exc).__name__}: {exc}", None
     if resp.status_code != 200:
         body = str(resp.text)[:300]
         logger.warning("%s: OpenRouter HTTP %s — %s", context, resp.status_code, body)
-        return None, f"OpenRouter HTTP {resp.status_code}: {body}"
+        return None, f"OpenRouter HTTP {resp.status_code}: {body}", None
     try:
         body = resp.json()
     except ValueError:
         logger.warning("%s: OpenRouter 200 with a non-JSON body", context)
-        return None, "The model's response was not JSON"
-    return extract_content(body, context)
+        return None, "The model's response was not JSON", None
+    content, error = extract_content(body, context)
+    return content, error, body if isinstance(body, dict) else None
+
+
+def _reasoned_though_off(body: dict | None, params: dict) -> bool:
+    """True when ``reasoning: none`` was sent and the 200 shows the model reasoned anyway.
+
+    Production, 2026-10-17 to 2026-11-05: seven answers (the AI reader's AXA and AENA twice,
+    the options agent four times) came back empty with ``finish_reason: "length"`` and
+    ``reasoning_tokens`` equal to ``completion_tokens``, from revisions that sent
+    ``{"effort": "none"}``. The setting is honoured nearly always (empty answers fell from
+    85 in ten days to about five in sixteen once it was sent), and the catalogue lists
+    ``reasoning`` on every endpoint of the model, so some route ignores it only now and then.
+    OpenRouter picks the route per request, and the failed call is billed in full, so one
+    more request with the other documented spelling is cheaper than failing until the next
+    cycle: the AI reader would retry AENA every night, and an options chat would answer 502.
+    Not verified live (no key outside Cloud Run): `[reasoning-retry]` in the logs says whether
+    the second request answers, and which provider served each.
+    """
+    if not body or params.get("reasoning") != NO_REASONING:
+        return False
+    try:
+        choice = (body.get("choices") or [{}])[0]
+        usage = body.get("usage") or {}
+        spent = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+        return choice.get("finish_reason") == "length" and spent > 0
+    except Exception:
+        return False
+
+
+def _served_by(body: dict | None) -> str:
+    return str((body or {}).get("provider") or "unknown")
 
 
 def extract_content(body: dict, context: str) -> tuple[str | None, str | None]:
@@ -110,11 +166,14 @@ def extract_content(body: dict, context: str) -> tuple[str | None, str | None]:
 
         finish_reason = choices[0].get("finish_reason")
         logger.warning(
-            "%s: 200 with empty content — finish_reason=%r message_keys=%s usage=%s",
+            "%s: 200 with empty content — finish_reason=%r message_keys=%s usage=%s "
+            "provider=%s model=%s",
             context,
             finish_reason,
             sorted(message),
             body.get("usage"),
+            body.get("provider"),
+            body.get("model"),
         )
         # finish_reason is the single most useful field for diagnosing this:
         # "length" means the budget ran out, anything else usually means the

@@ -24,6 +24,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from backend.config import settings
+from backend.services.segments.hosts import Client, SourceUnavailable
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
@@ -42,10 +43,6 @@ BUSINESS_AXES = ("srt:ProductOrServiceAxis", "us-gaap:StatementBusinessSegmentsA
 GEOGRAPHY_AXES = ("srt:StatementGeographicalAxis", "us-gaap:StatementBusinessSegmentsAxis")
 # Present alongside a segment member when the fact is the segment's own figure.
 _NEUTRAL_DIMENSION = ("srt:ConsolidationItemsAxis", "us-gaap:OperatingSegmentsMember")
-
-
-class SourceUnavailable(Exception):
-    """A request failed. Not a fact about the issuer, so it is never cached."""
 
 
 @dataclass
@@ -95,7 +92,7 @@ def _get(client: httpx.Client, url: str) -> httpx.Response:
 
 
 def client() -> httpx.Client:
-    return httpx.Client(
+    return Client(
         headers={"User-Agent": settings.sec_user_agent}, timeout=20.0, follow_redirects=True
     )
 

@@ -230,7 +230,8 @@ def test_an_answer_lost_to_reasoning_is_no_thesis_and_not_a_cached_no(monkeypatc
     # is not that answer: caching it would silence the event on a failure.
     assert analyst.has_fresh_generative(ev.id) is False
     assert analyze_unmatched(ev) is None
-    assert len(sent) == 2
+    # Two attempts, each asking twice (the envelope's one retry): nothing was remembered.
+    assert [r["reasoning"] for r in sent] == [llm_envelope.NO_REASONING, llm_envelope.REASONING_DISABLED] * 2
 
 
 def test_an_answer_cut_mid_json_is_no_thesis_either(monkeypatch):

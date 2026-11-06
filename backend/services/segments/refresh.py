@@ -15,6 +15,7 @@ import json
 import logging
 import time
 from collections.abc import Iterable
+from contextlib import ExitStack, nullcontext
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -55,6 +56,43 @@ OUTCOME_DETAIL = {
 READERS = {SegmentCheck: "2026-10-17", AiMentionCheck: "2026-10-17"}
 
 
+class Sources:
+    """The connections one run shares between the readers: the SEC's and ESEF's.
+
+    The daily cron opens one and hands it to the segment reader and then to the AI
+    reader, so a host that answered 429 stays closed for the second reader too and the
+    lookups the first made are not paid for again (`hosts.Client`). A reader called
+    without one opens its own for the length of its call.
+    """
+
+    def __enter__(self) -> "Sources":
+        self._stack = ExitStack()
+        self.sec = self._stack.enter_context(sec.client())
+        self.esef = self._stack.enter_context(esef.client())
+        return self
+
+    def __exit__(self, *exc) -> bool | None:
+        return self._stack.__exit__(*exc)
+
+    def usable(self, isin: str) -> bool:
+        """False once the host this ISIN is read from has refused us in this run."""
+        client = self.sec if isin.startswith("US") else self.esef
+        return not getattr(client, "closed", None)
+
+    def report_deferred(self, reader: str, deferred: int) -> None:
+        """One line instead of one per ISIN: what the closed hosts left for the next run."""
+        closed = sorted(
+            set(getattr(self.sec, "closed", ())) | set(getattr(self.esef, "closed", ()))
+        )
+        if deferred and closed:
+            logger.warning(
+                "[%s] %d ISINs left for the next run: %s answered 429",
+                reader,
+                deferred,
+                ", ".join(closed),
+            )
+
+
 def due_isins(
     db: Session, isins: Iterable[str], now: datetime | None = None, model=SegmentCheck
 ) -> list[str]:
@@ -76,11 +114,15 @@ def due_isins(
 
 
 def refresh(
-    db: Session, holdings: dict[str, tuple[str | None, str]], budget_seconds: float
+    db: Session,
+    holdings: dict[str, tuple[str | None, str]],
+    budget_seconds: float,
+    sources: Sources | None = None,
 ) -> dict:
     """Check the due ISINs in `holdings` ({isin: (ticker, name)}) until the budget is spent.
 
-    Returns {"checked": n, "pending": m}; `pending` is what is still due.
+    Returns {"checked": n, "pending": m}; `pending` is what is still due. `sources` is
+    the run's shared connections (`Sources`); without one the call opens its own.
     """
     due = due_isins(db, holdings)
     deadline = time.monotonic() + budget_seconds
@@ -89,18 +131,23 @@ def refresh(
     # classifier, on every page load; the listing fallback needs no model.
     if settings.openrouter_api_key:
         cik_by_ticker: dict[str, int] | None = None
-        with sec.client() as sec_http, esef.client() as esef_http:
+        deferred = 0
+        with nullcontext(sources) if sources else Sources() as src:
             for isin in due:
                 if time.monotonic() >= deadline:
                     break
+                if not src.usable(isin):
+                    # Its host refused us earlier in the run: no request, no log line each.
+                    deferred += 1
+                    continue
                 ticker, name = holdings[isin]
                 try:
                     if isin.startswith("US"):
                         if cik_by_ticker is None:
-                            cik_by_ticker = sec.ticker_to_cik(sec_http)
-                        _check_sec(db, isin, ticker, name, sec_http, cik_by_ticker)
+                            cik_by_ticker = sec.ticker_to_cik(src.sec)
+                        _check_sec(db, isin, ticker, name, src.sec, cik_by_ticker)
                     else:
-                        _check_esef(db, isin, name, esef_http)
+                        _check_esef(db, isin, name, src.esef)
                     db.commit()
                     checked += 1
                 except (SourceUnavailable, ClassificationError, esef.ExtractionError) as exc:
@@ -113,6 +160,7 @@ def refresh(
                 except Exception:
                     db.rollback()
                     logger.exception("[segments] %s failed", isin)
+            src.report_deferred("segments", deferred)
     # What the reports leave uncovered falls back to the listing (`listing.py`), on
     # whatever time the reports left.
     listed, listing_pending = listing.refresh(

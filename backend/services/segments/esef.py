@@ -30,7 +30,7 @@ import httpx
 
 from backend.services import llm_envelope
 from backend.services.segments.numbers import appears_in, parse_amount, scale_to_total
-from backend.services.segments.sec import SourceUnavailable
+from backend.services.segments.hosts import Client, SourceUnavailable
 
 _GLEIF_URL = "https://api.gleif.org/api/v1/lei-records"
 _FILINGS_URL = "https://filings.xbrl.org/api/entities/{lei}/filings"
@@ -87,7 +87,23 @@ class Report:
 
 
 def client() -> httpx.Client:
-    return httpx.Client(timeout=30.0, follow_redirects=True)
+    return Client(timeout=30.0, follow_redirects=True)
+
+
+def _once(http: httpx.Client, key: tuple, fetch):
+    """`fetch()`, remembered on the run's client when it has a memo (`hosts.Client`).
+
+    The segment and the AI reader both ask GLEIF and filings.xbrl.org the same two
+    questions about an ISIN, one after the other. A definite answer (including None:
+    no LEI, no filing) is kept for the run; a failed request raises before anything is
+    stored, so it is asked again.
+    """
+    memo = getattr(http, "memo", None)
+    if memo is None:
+        return fetch()
+    if key not in memo:
+        memo[key] = fetch()
+    return memo[key]
 
 
 def _get_json(http: httpx.Client, url: str, **params) -> dict | None:
@@ -106,12 +122,20 @@ def _get_json(http: httpx.Client, url: str, **params) -> dict | None:
 
 
 def isin_to_lei(http: httpx.Client, isin: str) -> str | None:
+    return _once(http, ("lei", isin), lambda: _isin_to_lei(http, isin))
+
+
+def _isin_to_lei(http: httpx.Client, isin: str) -> str | None:
     data = _get_json(http, _GLEIF_URL, **{"filter[isin]": isin})
     records = (data or {}).get("data") or []
     return records[0]["id"] if records else None
 
 
 def latest_filing(http: httpx.Client, lei: str) -> Filing | None:
+    return _once(http, ("filing", lei), lambda: _latest_filing(http, lei))
+
+
+def _latest_filing(http: httpx.Client, lei: str) -> Filing | None:
     data = _get_json(http, _FILINGS_URL.format(lei=lei))
     filings = [
         f["attributes"]
