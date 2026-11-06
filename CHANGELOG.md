@@ -4,6 +4,25 @@ All notable changes to FinView are documented here.
 
 ## [Unreleased]
 
+### Los lectores de informes anuales respetan el límite de filings.xbrl.org — 2026-11-06
+
+#### Fixed
+- **Una respuesta 429 de filings.xbrl.org ya no se repite ISIN tras ISIN.** Medido el
+  2026-11-06: el servidor rechaza la petición 11 dentro de unos 30 s desde una misma
+  dirección (sin `Retry-After`; se levanta a los ~25 s), da igual qué URL. Los dos lectores
+  (segmentos e IA) hacían una petición cada 0,15 s: leían ~10 ISINs por noche y registraban
+  el resto como saltados (42, 29, 20, 10 en el lector de segmentos; 23 y 23 en el de IA, que
+  corre segundo y encontraba la dirección agotada). Ahora `filings.xbrl.org` se pide cada
+  3,5 s, un 429 cierra ese host para el resto de la ejecución (los ISINs de la SEC siguen) y
+  no se escribe nada en caché. El cron comparte conexiones entre los dos lectores: el segundo
+  hereda el host cerrado y las consultas ISIN → LEI y LEI → último informe del primero.
+- **Una respuesta del modelo sin texto porque gastó todo el presupuesto razonando ya no se
+  da por perdida a la primera.** Con `reasoning: {effort: "none"}` enviado, siete respuestas
+  (AXA, AENA dos noches, el agente de opciones cuatro veces) llegaron vacías con
+  `finish_reason: "length"`. `llm_envelope.chat()` registra ahora el proveedor y el modelo y
+  repite la petición una vez con `reasoning: {enabled: false}`. **No verificado en vivo**: el
+  log `[reasoning-retry]` dirá si la segunda petición responde y qué proveedor sirvió cada una.
+
 ### Las llamadas a OpenRouter piden proveedores que no guardan ni entrenan con el prompt — 2026-10-09
 
 #### Changed
