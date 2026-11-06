@@ -442,7 +442,8 @@ def test_llm_analyze_survives_an_answer_lost_to_reasoning(monkeypatch):
     assert analyst._LLM_CACHE == {}
     result = analyst.analyze_event(event, {}, use_llm=True)
     assert result.llm_narrative is None and result.direction == "quake"
-    assert len(sent) == 2  # asked again: nothing was remembered
+    # Two attempts, each asking twice (the envelope's one retry): nothing was remembered.
+    assert len([r for r in sent if r["reasoning"] == {"effort": "none"}]) == 2
 
 
 def test_llm_analyze_turns_reasoning_off(monkeypatch):

@@ -83,7 +83,8 @@ Result stored in `OptionsAgentLog.result_json` as `claude_analysis` key.
   the model (48 of 144, 10 days to 2026-10-05) came back 200 with `content: null` and
   `finish_reason: "length"`: all 1500 tokens spent, billed, no report. The model has no
   lower effort and no reasoning budget (see the same bullet in `geo.md`), so the choice was
-  off or a budget big enough for both. The budget lost: reasoning has no bound to size it
+  off or a budget big enough for both (`geo.md` also has what happens when a call that sent
+  `none` reasons anyway: one retry, logged `[reasoning-retry]`). The budget lost: reasoning has no bound to size it
   by, the 1500 tokens already took 19 s at the median and up to 70 s (`chat()`'s 60 s
   timeout is httpx's per-read timeout, not a deadline for the call), so 3–4× that per
   cycle and per on-demand report, on a key whose monthly limit was hit on 2026-09-28. The

@@ -289,6 +289,20 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
   (logged `OpenRouter HTTP 4xx`, never raised). The options agent's three calls share the
   model and the constant (`options.md`); the zone scorer shares the model and still
   reasons, on purpose (`zonas.md`).
+  **The setting is honoured nearly always, not always.** 2026-10-17 to 2026-11-05, seven
+  answers (the AI reader's AXA and AENA twice, the options agent four times) came back
+  empty with `finish_reason: "length"` and `reasoning_tokens == completion_tokens`, from
+  revisions that sent `{"effort": "none"}`; empty answers had fallen from 85 in ten days to
+  about five in sixteen once it was sent. The catalogue now lists `none` for
+  `deepseek-v4.1-flash` (`supported_efforts: [max, high, low, none]`) and `reasoning` on all
+  38 of its endpoints, so which route ignores it is not in the catalogue and was not in the
+  logs (`provider` was not logged). `chat()` therefore logs `provider=` and `model=` on an
+  empty answer, and a call that sent `NO_REASONING` and shows reasoning tokens is asked once
+  more with `REASONING_DISABLED` (`{"enabled": false}`), logging `[reasoning-retry] first
+  answer by X, second by Y: answered|failed too`. **Not verified live** (no key outside
+  Cloud Run): if the retry keeps failing for the same provider, the next step is
+  `provider.ignore` with that provider's slug (the response gives its display name, not the
+  slug: map it through `GET /api/v1/providers`).
 - **An answer that is not a JSON object is logged, never repaired**
   (`analyst._json_object`, both calls). One WARNING — `geo generative LLM: content is not
   JSON for <event id> (<parser message>; N chars): '<first 200 chars, as a repr>'`, or
