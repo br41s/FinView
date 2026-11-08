@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { DISTRICT_LABEL } from "../model/archetypes";
 import { seeded, valueNoise } from "../model/rng";
 import { pointAlong, routeLength } from "../model/routes";
-import { WATER_Y, type Pt, type Terrain } from "../model/terrain";
+import { WATER_Y, distToPolyline, type Pt, type Terrain } from "../model/terrain";
 import { LOT_PITCH, PLAZA_RADIUS, toWorld, type CivicKind, type WorldLayout } from "../model/townLayout";
 import { accentFor, Builder } from "./buildingFactory";
 import type { WorldAsset } from "../model/types";
@@ -517,7 +517,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       const dz = z - d.cz;
       return Math.hypot(dx, dz) < d.extent + 2 && inGrid(d, x, z);
     })) continue;
-    if (layout.roads.some((rd) => distToSegment(x, z, rd.x1, rd.z1, rd.x2, rd.z2) < 3.5)) continue;
+    if (layout.roads.some((road) => distToPolyline(x, z, road.path) < road.width / 2 + 2.2)) continue;
     if (near.some(([fx, fz]) => Math.hypot(fx - x, fz - z) < 4.2)) continue;
     spots.push([x, z, 0.7 + rng() * 0.9]);
   }
