@@ -345,11 +345,51 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   }
 
   // Boulevards from the square, draped over the ground; bridges where they cross the river.
+  // A single merged detail mesh adds road dashes, crosswalks and warm street lamps without
+  // creating dozens of extra draw calls.
+  const streetDetails = new Builder();
   for (const r of layout.roads) {
     const line = [{ x: r.x1, z: r.z1 }, { x: r.x2, z: r.z2 }];
     const road = new THREE.Mesh(own(ribbon(line, 4.2, 0.1, STREET, t.roadY)), vcMat);
     road.receiveShadow = true;
     group.add(road);
+    const dx = r.x2 - r.x1;
+    const dz = r.z2 - r.z1;
+    const length = Math.hypot(dx, dz) || 1;
+    const ux = dx / length;
+    const uz = dz / length;
+    const px = uz;
+    const pz = -ux;
+    const roadAngle = Math.atan2(-uz, ux);
+
+    // Broken centre line, stopped before the plaza and before the district entrance.
+    for (let d = 5; d < length - 10; d += 4.2) {
+      const x = r.x1 + ux * d;
+      const z = r.z1 + uz * d;
+      streetDetails.box(0.82, 0.035, 0.11, x, t.roadY(x, z) + 0.17, z, 0xf1eee4, roadAngle);
+    }
+
+    // Zebra crossing at the district gate.
+    const crossingAt = Math.max(4, length - 6.2);
+    for (let i = -3; i <= 3; i++) {
+      const d = crossingAt + i * 0.58;
+      const x = r.x1 + ux * d;
+      const z = r.z1 + uz * d;
+      streetDetails.box(0.34, 0.04, 3.55, x, t.roadY(x, z) + 0.17, z, 0xf4f0e5, roadAngle);
+    }
+
+    // Paired lamps along both pavements; each is built into the merged street-detail mesh.
+    for (const d of [length * 0.24, length * 0.48, length * 0.72]) {
+      for (const side of [-1, 1]) {
+        const x = r.x1 + ux * d + px * side * 2.75;
+        const z = r.z1 + uz * d + pz * side * 2.75;
+        const y = t.roadY(x, z);
+        streetDetails.cyl(0.045, 0.055, 2.15, x, y + 0.08, z, DARK, 6);
+        streetDetails.box(0.5, 0.07, 0.07, x + ux * 0.18, y + 2.15, z + uz * 0.18, DARK, roadAngle);
+        streetDetails.sphere(0.13, x + ux * 0.38, y + 2.1, z + uz * 0.38, 0xf7df9e);
+      }
+    }
+
     const bridge = bridges(line, t, 4.2);
     if (bridge) {
       const bm = new THREE.Mesh(own(bridge), vcMat);
@@ -357,6 +397,12 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       bm.receiveShadow = true;
       group.add(bm);
     }
+  }
+  if (layout.roads.length > 0) {
+    const details = new THREE.Mesh(own(streetDetails.build()), vcMat);
+    details.castShadow = true;
+    details.receiveShadow = true;
+    group.add(details);
   }
 
   // Central square: paving, the market bell, and the four civic buildings.
