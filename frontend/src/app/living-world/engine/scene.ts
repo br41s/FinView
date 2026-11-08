@@ -20,7 +20,7 @@ import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
-import { buildTown, disposeLabel, makeLabel, type Town } from "./props";
+import { buildTown, disposeLabel, makeBrandLabel, type Town } from "./props";
 
 /**
  * The renderer. React owns controls and cards; everything that changes per frame lives
@@ -129,6 +129,16 @@ export function createWorld(
   selectRing.renderOrder = 4;
   scene.add(selectRing);
 
+  const hoverRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.82, 0.94, 48),
+    new THREE.MeshBasicMaterial({ color: 0x48b9d1, side: THREE.DoubleSide, transparent: true, opacity: 0.82, depthWrite: false }),
+  );
+  hoverRing.rotation.x = -Math.PI / 2;
+  hoverRing.position.y = 0.34;
+  hoverRing.visible = false;
+  hoverRing.renderOrder = 3;
+  scene.add(hoverRing);
+
   const stage = {
     scene,
     agents,
@@ -195,6 +205,8 @@ export function createWorld(
 
   // --- building the town ---------------------------------------------------------
   const clearSites = () => {
+    hovered = null;
+    hoverRing.visible = false;
     for (const e of sites.values()) {
       scene.remove(e.site.group, e.label);
       disposeSite(e.site);
@@ -252,7 +264,8 @@ export function createWorld(
       const tier = tierFor(asset.weightPct);
       const site = createSite(asset, tier, asset.marketValueEur === null);
       const footprint = footprintFor(asset.weightPct);
-      const scale = footprint / NOMINAL[tier];
+      // Portfolio holdings are the landmarks; give them extra visual mass.
+      const scale = (footprint / NOMINAL[tier]) * 1.12;
       const groundY = layout.terrain.heightAt(lot.x, lot.z);
       site.group.position.set(lot.x, groundY, lot.z);
       site.group.rotation.y = lot.rotationY;
@@ -261,8 +274,8 @@ export function createWorld(
       scene.add(site.group);
       siteMeshes.push(site.mesh);
 
-      const label = makeLabel(asset.name, { font: 28 });
-      label.position.set(lot.x, groundY + site.top * scale + 1.1, lot.z);
+      const label = makeBrandLabel(asset);
+      label.position.set(lot.x, groundY + site.top * scale + 0.72, lot.z);
       scene.add(label);
       sites.set(asset.id, {
         asset, lot, site, label, footprint, groundY, scale, opacity: 1, applied: 1, targetOpacity: 1, route: routeToPlaza(lot, d),
@@ -291,6 +304,34 @@ export function createWorld(
     return hit ? (hit.object.userData.assetId as string) : null;
   };
 
+  const labelShouldShow = (e: SiteEntry, dist: number) => {
+    const tier = tierFor(e.asset.weightPct);
+    const visibleByDistance = dist > 105
+      ? false
+      : dist > 70
+        ? tier === "campus" || tier === "major"
+        : dist > 42
+          ? tier !== "outpost"
+          : true;
+    return (visibleByDistance || e.asset.id === selected || e.asset.id === hovered) && e.site.group.visible;
+  };
+
+  const syncHighlights = () => {
+    const dist = ctrl.distance;
+    for (const s of sites.values()) {
+      const active = s.asset.id === selected;
+      const over = s.asset.id === hovered;
+      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : 0x000000);
+      s.label.visible = labelShouldShow(s, dist);
+    }
+    const e = hovered && hovered !== selected ? sites.get(hovered) : null;
+    hoverRing.visible = !!e;
+    if (e) {
+      hoverRing.position.set(e.lot.x, e.groundY + 0.34, e.lot.z);
+      hoverRing.scale.setScalar(e.footprint * 0.86);
+    }
+  };
+
   function select(id: string | null) {
     selected = id;
     const e = id ? sites.get(id) : null;
@@ -299,7 +340,7 @@ export function createWorld(
       selectRing.position.set(e.lot.x, e.groundY + 0.3, e.lot.z);
       selectRing.scale.setScalar(e.footprint * 0.78);
     }
-    for (const s of sites.values()) s.site.material.emissive.setHex(s.asset.id === id ? 0x2a2410 : 0x000000);
+    syncHighlights();
   }
 
   function pick(cx: number, cy: number) {
@@ -330,10 +371,18 @@ export function createWorld(
     if (id !== hovered) {
       hovered = id;
       canvas.style.cursor = id ? "pointer" : "grab";
+      syncHighlights();
       cb.onHover(id);
     }
   };
+  const onLeave = () => {
+    hovered = null;
+    canvas.style.cursor = "grab";
+    syncHighlights();
+    cb.onHover(null);
+  };
   canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointerleave", onLeave);
   canvas.style.cursor = "grab";
 
   // --- loop ------------------------------------------------------------------------
@@ -356,11 +405,9 @@ export function createWorld(
         s.scale.set(s.userData.aspect * h, h, 1);
       }
     }
-    const h = Math.min(2.4, Math.max(0.8, dist * 0.02));
+    const h = Math.min(1.35, Math.max(0.68, dist * 0.014));
     for (const e of sites.values()) {
-      const tier = tierFor(e.asset.weightPct);
-      const bigEnough = dist > 95 ? false : dist > 55 ? tier === "campus" || tier === "major" : dist > 35 ? tier !== "outpost" : true;
-      e.label.visible = bigEnough && e.site.group.visible;
+      e.label.visible = labelShouldShow(e, dist);
       e.label.scale.set(e.label.userData.aspect * h, h, 1);
     }
     const near = dist < 140;
@@ -553,6 +600,7 @@ export function createWorld(
       ro.disconnect();
       document.removeEventListener("visibilitychange", wake);
       canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerleave", onLeave);
       canvas.removeEventListener("webglcontextlost", onLost);
       ctrl.dispose();
       clearSites();
@@ -562,6 +610,8 @@ export function createWorld(
       agents.dispose();
       selectRing.geometry.dispose();
       (selectRing.material as THREE.Material).dispose();
+      hoverRing.geometry.dispose();
+      (hoverRing.material as THREE.Material).dispose();
       renderer.dispose();
       // Frees the GPU context now instead of waiting for GC; React strict mode remounts.
       renderer.forceContextLoss();
