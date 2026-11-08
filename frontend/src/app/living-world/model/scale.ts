@@ -12,14 +12,14 @@ export const TIERS: readonly Tier[] = ["outpost", "small", "campus", "major"];
 
 /** [tier, lower weight bound %, footprint at the lower bound] */
 const STEPS: ReadonlyArray<readonly [Tier, number, number]> = [
-  ["outpost", 0, 3.4],
-  ["small", 1, 4.2],
-  ["campus", 3, 5.2],
-  ["major", 7, 6.2],
+  ["outpost", 0, 3.6],
+  ["small", 1, 5.0],
+  ["campus", 3, 7.4],
+  ["major", 7, 10.4],
 ];
 /** Weight at/after which the footprint stops growing, and the footprint there. */
 const CAP_WEIGHT = 15;
-const CAP_SIZE = 7;
+const CAP_SIZE = 12.8;
 
 /** Largest footprint; the layout sizes its lots from this. */
 export const MAX_FOOTPRINT = CAP_SIZE;
