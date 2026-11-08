@@ -562,3 +562,220 @@
     animation: none !important;
   }
 }
+
+
+/* --- event storytelling: one readable visual vignette per company event ------------- */
+.cards {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  max-height: 58vh;
+  overflow: visible;
+}
+.eventCard {
+  display: flex;
+  flex-direction: column;
+  width: min(430px, calc(100vw - 32px));
+  max-height: 55vh;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(45, 51, 64, 0.16);
+  background: rgba(255, 252, 246, 0.97);
+  box-shadow: 0 12px 36px rgba(34, 48, 58, 0.22);
+  animation: lw-event-enter 240ms cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes lw-event-enter {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.eventHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.eventIdentity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.eventIdentityText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.eventIdentityText strong {
+  max-width: 225px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.eventTicker {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 42px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  color: #fff;
+  background: #24394b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+.eventHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.eventSeverity {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e8edf0;
+  color: #4b5862;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.eventSeverityImportant {
+  background: #fff0cf;
+  color: #895a11;
+}
+.eventSeverityCritical {
+  background: #fae0dc;
+  color: #a3332e;
+}
+.eventVisual {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 13px;
+  background: #dce9e9;
+  box-shadow: inset 0 0 0 1px rgba(35, 51, 62, .08);
+}
+.eventArt {
+  display: block;
+  width: 100%;
+  height: 164px;
+}
+.eventVisualTags {
+  position: absolute;
+  left: 9px;
+  bottom: 8px;
+  display: flex;
+  gap: 5px;
+}
+.eventVisualTag {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(24, 42, 55, .72);
+  color: #fff;
+  backdrop-filter: blur(6px);
+  font-size: 10px;
+  font-weight: 750;
+}
+.eventImpact {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 10px 2px 4px;
+}
+.eventImpactValue {
+  font-size: 25px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+.eventImpactLabel {
+  color: var(--lw-ink-soft);
+  font-size: 11px;
+  font-weight: 650;
+}
+.eventDirection {
+  margin-left: auto;
+  color: var(--lw-ink-soft);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.eventTitle {
+  margin: 6px 0 2px;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 850;
+}
+.eventSummary {
+  margin: 2px 0 6px;
+  color: var(--lw-ink-soft);
+  font-size: 12px;
+}
+.eventDetails {
+  margin: 5px 0 2px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(45, 51, 64, .045);
+}
+.eventDetails summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--lw-ink-soft);
+}
+.eventDetails[open] summary {
+  margin-bottom: 5px;
+  color: var(--lw-ink);
+}
+.eventDetails .metrics {
+  margin: 4px 0;
+  font-size: 11px;
+}
+.eventDetails .why {
+  margin: 8px 0 2px;
+  font-size: 11px;
+}
+.eventDetails .why p {
+  margin: 4px 0 0;
+  color: var(--lw-ink-soft);
+}
+.eventCard .actions {
+  display: flex;
+  position: sticky;
+  bottom: -12px;
+  margin: 7px 0 -12px;
+  padding: 9px 0 12px;
+  background: rgba(255, 252, 246, .97);
+  border-top: 1px solid rgba(45, 51, 64, .08);
+  gap: 5px;
+}
+.eventCard .actions .btn {
+  font-size: 11px;
+  min-height: 29px;
+  padding: 0 7px;
+}
+@media (max-width: 760px) {
+  .cards {
+    justify-content: stretch;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: 40vh;
+    padding-bottom: 2px;
+  }
+  .eventCard {
+    width: min(360px, calc(100vw - 32px));
+    max-height: 38vh;
+    flex: 0 0 min(360px, calc(100vw - 32px));
+  }
+  .eventArt {
+    height: 124px;
+  }
+  .eventImpactValue {
+    font-size: 21px;
+  }
+}
