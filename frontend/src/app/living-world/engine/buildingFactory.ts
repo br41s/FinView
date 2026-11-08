@@ -305,21 +305,29 @@ const RECIPES: Record<Archetype, (c: Ctx) => void> = {
     }
   },
   consumer({ b, k, n, accent }) {
-    b.box(n * 0.56, 1.0, n * 0.4, -n * 0.1, 0.12, -n * 0.14, 0xe9d3b0);
-    for (let i = 0; i < 3; i++) b.tilted(n * 0.18, 0.1, n * 0.42, -n * 0.28 + i * n * 0.18, 1.3, -n * 0.14, ROOF_RED, 0.5);
-    b.cyl(0.38, 0.38, 1.8, n * 0.3, 0.12, -n * 0.2, WHITE, 12);
-    b.cone(0.38, 0.3, n * 0.3, 1.92, -n * 0.2, accent, 12);
+    // Consumer-goods maker: production hall, packaging silos and a dispatch dock.
+    b.box(n * 0.7, 1.28, n * 0.46, -n * 0.08, 0.12, -n * 0.12, 0xe9d3b0);
+    b.box(n * 0.74, 0.12, n * 0.5, -n * 0.08, 1.42, -n * 0.12, accent);
+    facadeWindows(b, 5, 1, n * 0.62, 0.19, 0.48, -n * 0.08, 0.34, n * 0.12, GLASS);
+    b.box(n * 0.16, 0.78, 0.08, -n * 0.08, 0.24, n * 0.245, DARK);
+    // Tall package-shaped tanks make the product sector distinct from retail premises.
+    b.cyl(n * 0.14, n * 0.14, 1.65, n * 0.3, 0.12, -n * 0.2, WHITE, 12);
+    b.cyl(n * 0.14, n * 0.14, 0.1, n * 0.3, 1.72, -n * 0.2, accent, 12);
+    b.cone(n * 0.14, 0.24, n * 0.3, 1.82, -n * 0.2, WHITE, 12);
     if (k > 1) {
-      b.cyl(0.38, 0.38, 1.5, n * 0.3, 0.12, n * 0.08, WHITE, 12);
-      b.cone(0.38, 0.3, n * 0.3, 1.62, n * 0.08, accent, 12);
+      b.cyl(n * 0.12, n * 0.12, 1.35, n * 0.02, 0.12, n * 0.28, WHITE, 12);
+      b.cyl(n * 0.13, n * 0.13, 0.09, n * 0.02, 1.42, n * 0.28, accent, 12);
+      b.box(n * 0.38, 0.12, 0.16, n * 0.1, 0.72, n * 0.27, DARK);
     }
     if (k > 2) {
-      b.box(n * 0.36, 0.8, n * 0.26, -n * 0.3, 0.12, n * 0.28, 0xf3d6c4);
-      b.box(n * 0.4, 0.1, n * 0.3, -n * 0.3, 0.92, n * 0.28, accent);
+      b.box(n * 0.36, 0.84, n * 0.28, -n * 0.32, 0.12, n * 0.28, 0xf3d6c4);
+      b.box(n * 0.4, 0.1, n * 0.3, -n * 0.32, 0.98, n * 0.28, accent);
+      for (let i = 0; i < 3; i++) b.box(0.12, 0.34, 0.05, -n * 0.42 + i * 0.16, 0.24, n * 0.43, GLASS);
     }
     if (k > 3) {
-      b.box(0.9, 0.5, 0.5, n * 0.1, 0.12, n * 0.34, accent);
-      b.cyl(0.1, 0.1, 0.3, -n * 0.05, 0.12, n * 0.34, GLASS, 6);
+      b.box(0.95, 0.48, 0.55, n * 0.25, 0.12, n * 0.36, accent);
+      b.box(0.46, 0.38, 0.5, n * 0.25 + 0.58, 0.12, n * 0.36, GLASS);
+      b.cyl(0.1, 0.1, 0.32, n * 0.25 + 0.58, 0.12, n * 0.36, DARK, 6);
     }
   },
   telecom({ b, k, n, accent }) {
