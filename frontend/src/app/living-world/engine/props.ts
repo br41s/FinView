@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { DISTRICT_LABEL } from "../model/archetypes";
 import { seeded, valueNoise } from "../model/rng";
+import { pointAlong, routeLength } from "../model/routes";
 import { WATER_Y, type Pt, type Terrain } from "../model/terrain";
 import { LOT_PITCH, PLAZA_RADIUS, toWorld, type CivicKind, type WorldLayout } from "../model/townLayout";
 import { accentFor, Builder } from "./buildingFactory";
@@ -13,6 +14,19 @@ const STREET = 0x8d9097;
 const LANE = 0xb3b5b3;
 const WHITE = 0xf4f1ea;
 const DARK = 0x4a4f5a;
+
+function offsetPath(line: readonly Pt[], offset: number): Pt[] {
+  return line.map((point, i) => {
+    const previous = line[Math.max(0, i - 1)];
+    const next = line[Math.min(line.length - 1, i + 1)];
+    const dx = next.x - previous.x;
+    const dz = next.z - previous.z;
+    const length = Math.hypot(dx, dz) || 1;
+    const nx = -dz / length;
+    const nz = dx / length;
+    return { x: point.x + nx * offset, z: point.z + nz * offset };
+  });
+}
 
 export interface Town {
   group: THREE.Group;
@@ -324,78 +338,60 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   water.position.y = WATER_Y;
   group.add(water);
 
-  // Inner streets of every district, in its own (slightly rotated) axes. There is no street
-  // along the outer edge: a district fades into the neighbourhood around it, not into a frame.
-  const streets = new Builder();
-  for (const d of layout.districts) {
-    const y = t.heightAt(d.cx, d.cz) + 0.05;
-    for (let k = 1; k < d.rows; k++) {
-      const p = toWorld(d, 0, (k - d.rows / 2) * LOT_PITCH);
-      streets.box(d.cols * LOT_PITCH - 2, 0.08, 1.8, p.x, y, p.z, LANE, -d.theta);
-    }
-    for (let k = 1; k < d.cols; k++) {
-      const p = toWorld(d, (k - d.cols / 2) * LOT_PITCH, 0);
-      streets.box(1.8, 0.08, d.rows * LOT_PITCH - 2, p.x, y, p.z, LANE, -d.theta);
-    }
-  }
-  if (layout.districts.length > 0) {
-    const m = new THREE.Mesh(own(streets.build()), vcMat);
-    m.receiveShadow = true;
-    group.add(m);
-  }
-
-  // Boulevards from the square, draped over the ground; bridges where they cross the river.
-  // A single merged detail mesh adds road dashes, crosswalks and warm street lamps without
-  // creating dozens of extra draw calls.
+  // Connected streets: the outer arterial, curved district feeders and local neighbourhood loops.
+  // Roads are built from the same connected polylines used by the traffic and transit systems.
   const streetDetails = new Builder();
-  for (const r of layout.roads) {
-    const line = [{ x: r.x1, z: r.z1 }, { x: r.x2, z: r.z2 }];
-    const road = new THREE.Mesh(own(ribbon(line, 4.2, 0.1, STREET, t.roadY)), vcMat);
-    road.receiveShadow = true;
-    group.add(road);
-    const dx = r.x2 - r.x1;
-    const dz = r.z2 - r.z1;
-    const length = Math.hypot(dx, dz) || 1;
-    const ux = dx / length;
-    const uz = dz / length;
-    const px = uz;
-    const pz = -ux;
-    const roadAngle = Math.atan2(-uz, ux);
+  for (const road of layout.roads) {
+    const isMajor = road.kind === "arterial" || road.kind === "exit";
+    const roadColor = isMajor ? 0x454a52 : road.kind === "boulevard" ? 0x555b62 : STREET;
+    const roadMesh = new THREE.Mesh(own(ribbon(road.path, road.width, 0.12, roadColor, t.roadY)), vcMat);
+    roadMesh.receiveShadow = true;
+    group.add(roadMesh);
 
-    // Broken centre line, stopped before the plaza and before the district entrance.
-    for (let d = 5; d < length - 10; d += 4.2) {
-      const x = r.x1 + ux * d;
-      const z = r.z1 + uz * d;
-      streetDetails.box(0.82, 0.035, 0.11, x, t.roadY(x, z) + 0.17, z, 0xf1eee4, roadAngle);
-    }
-
-    // Zebra crossing at the district gate.
-    const crossingAt = Math.max(4, length - 6.2);
-    for (let i = -3; i <= 3; i++) {
-      const d = crossingAt + i * 0.58;
-      const x = r.x1 + ux * d;
-      const z = r.z1 + uz * d;
-      streetDetails.box(0.34, 0.04, 3.55, x, t.roadY(x, z) + 0.17, z, 0xf4f0e5, roadAngle);
-    }
-
-    // Paired lamps along both pavements; each is built into the merged street-detail mesh.
-    for (const d of [length * 0.24, length * 0.48, length * 0.72]) {
+    if (road.sidewalk) {
       for (const side of [-1, 1]) {
-        const x = r.x1 + ux * d + px * side * 2.75;
-        const z = r.z1 + uz * d + pz * side * 2.75;
-        const y = t.roadY(x, z);
-        streetDetails.cyl(0.045, 0.055, 2.15, x, y + 0.08, z, DARK, 6);
-        streetDetails.box(0.5, 0.07, 0.07, x + ux * 0.18, y + 2.15, z + uz * 0.18, DARK, roadAngle);
-        streetDetails.sphere(0.13, x + ux * 0.38, y + 2.1, z + uz * 0.38, 0xf7df9e);
+        const offset = side * (road.width / 2 + 1.05);
+        const walk = offsetPath(road.path, offset);
+        const sidewalk = new THREE.Mesh(own(ribbon(walk, 1.55, 0.15, 0xd7c9ad, t.roadY)), vcMat);
+        sidewalk.receiveShadow = true;
+        group.add(sidewalk);
+        const curb = new THREE.Mesh(own(ribbon(offsetPath(road.path, offset - side * 0.76), 0.18, 0.19, 0xeee8d8, t.roadY)), vcMat);
+        group.add(curb);
       }
     }
 
-    const bridge = bridges(line, t, 4.2);
+    const total = routeLength(road.path);
+    if (road.width >= 6) {
+      for (let d = 5; d < total - 6; d += isMajor ? 6.2 : 4.6) {
+        const p = pointAlong(road.path, d);
+        streetDetails.box(road.width >= 8 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + 0.2, p.z, 0xf0eee4, p.heading);
+      }
+    }
+
+    // Lamps on the main avenues, spaced by real path distance rather than endpoint chords.
+    if (road.kind === "arterial" || road.kind === "boulevard" || road.kind === "exit") {
+      const spacing = road.kind === "arterial" ? 28 : 22;
+      for (let d = spacing * 0.5; d < total; d += spacing) {
+        const p = pointAlong(road.path, d);
+        const nx = Math.cos(p.heading);
+        const nz = -Math.sin(p.heading);
+        for (const side of [-1, 1]) {
+          const x = p.x + nx * side * (road.width / 2 + 2.05);
+          const z = p.z + nz * side * (road.width / 2 + 2.05);
+          const y = t.roadY(x, z);
+          streetDetails.cyl(0.045, 0.055, 2.3, x, y + 0.08, z, DARK, 6);
+          streetDetails.box(0.55, 0.07, 0.07, x + Math.sin(p.heading) * 0.2, y + 2.25, z + Math.cos(p.heading) * 0.2, DARK, p.heading);
+          streetDetails.sphere(0.13, x + Math.sin(p.heading) * 0.4, y + 2.2, z + Math.cos(p.heading) * 0.4, 0xf7df9e);
+        }
+      }
+    }
+
+    const bridge = bridges(road.path, t, road.width);
     if (bridge) {
-      const bm = new THREE.Mesh(own(bridge), vcMat);
-      bm.castShadow = true;
-      bm.receiveShadow = true;
-      group.add(bm);
+      const mesh = new THREE.Mesh(own(bridge), vcMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
     }
   }
   if (layout.roads.length > 0) {
@@ -403,6 +399,68 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     details.castShadow = true;
     details.receiveShadow = true;
     group.add(details);
+  }
+
+  // Parks and pocket gardens have their own landscape, paths, benches and pond.
+  for (const park of layout.greenSpaces) {
+    const baseY = t.heightAt(park.x, park.z) + 0.12;
+    const lawn = new THREE.Mesh(
+      own(new THREE.CircleGeometry(1, 40)),
+      own(mat(park.kind === "city-park" ? 0x78ad69 : 0x8fbb76)),
+    );
+    lawn.rotation.x = -Math.PI / 2;
+    lawn.rotation.z = park.rotationY;
+    lawn.scale.set(park.radiusX, park.radiusZ, 1);
+    lawn.position.set(park.x, baseY, park.z);
+    lawn.receiveShadow = true;
+    group.add(lawn);
+
+    // A pale walking loop breaks up the lawn and links both sides of the park.
+    const pathLine: Pt[] = [];
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      const x = Math.cos(a) * park.radiusX * 0.72;
+      const z = Math.sin(a) * park.radiusZ * 0.72;
+      const c = Math.cos(park.rotationY);
+      const s = Math.sin(park.rotationY);
+      pathLine.push({ x: park.x + x * c - z * s, z: park.z + x * s + z * c });
+    }
+    const parkPath = new THREE.Mesh(own(ribbon(pathLine, 1.25, 0.18, 0xdcccae, t.roadY)), vcMat);
+    group.add(parkPath);
+
+    if (park.pond) {
+      const pond = new THREE.Mesh(
+        own(new THREE.CircleGeometry(1, 40)),
+        own(mat(0x54b8d6)),
+      );
+      pond.rotation.x = -Math.PI / 2;
+      pond.scale.set(park.pond.radiusX, park.pond.radiusZ, 1);
+      pond.position.set(park.pond.x, t.heightAt(park.pond.x, park.pond.z) + 0.17, park.pond.z);
+      group.add(pond);
+      const shore = new THREE.Mesh(
+        own(new THREE.RingGeometry(0.96, 1.13, 40)),
+        own(mat(0xcbbd9d)),
+      );
+      shore.rotation.x = -Math.PI / 2;
+      shore.scale.set(park.pond.radiusX, park.pond.radiusZ, 1);
+      shore.position.copy(pond.position);
+      shore.position.y += 0.025;
+      group.add(shore);
+    }
+
+    // Benches and low park lamps provide human-scale detail.
+    const parkProps = new Builder();
+    for (const side of [-1, 1]) {
+      const x = park.x + Math.cos(park.rotationY) * side * park.radiusX * 0.48;
+      const z = park.z + Math.sin(park.rotationY) * side * park.radiusX * 0.48;
+      parkProps.box(2.1, 0.14, 0.58, x, baseY, z, 0x8c6847, park.rotationY);
+      parkProps.box(2.1, 0.68, 0.12, x, baseY + 0.12, z - 0.22, 0x9d7953, park.rotationY);
+      parkProps.cyl(0.04, 0.05, 1.8, x + 2.5, baseY, z, DARK, 6);
+      parkProps.sphere(0.13, x + 2.5, baseY + 1.78, z, 0xf5dfa0);
+    }
+    const propMesh = new THREE.Mesh(own(parkProps.build()), vcMat);
+    propMesh.castShadow = true;
+    group.add(propMesh);
   }
 
   // Central square: paving, the market bell, and the four civic buildings.
