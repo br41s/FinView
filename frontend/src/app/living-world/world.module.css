@@ -863,3 +863,28 @@
   text-transform: uppercase;
   letter-spacing: .035em;
 }
+
+
+.eventSourceLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 6px 2px 2px;
+  color: var(--lw-ink-soft);
+  font-size: 9px;
+}
+.eventSourceLine span:not(:last-child)::after {
+  content: "·";
+  margin-left: 10px;
+  color: rgba(95, 102, 119, .55);
+}
+@media (max-width: 760px) {
+  .eventSourceLine {
+    gap: 3px 7px;
+    font-size: 8px;
+  }
+  .eventSourceLine span:not(:last-child)::after {
+    margin-left: 7px;
+  }
+}
