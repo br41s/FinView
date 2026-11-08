@@ -245,7 +245,7 @@ export function createWorld(
   const setAssets = (assets: readonly WorldAsset[]) => {
     // Preserve the previous building scale so existing holdings can grow/shrink in place
     // when portfolio weights change. New holdings are introduced with a short build-up.
-    const previousScales = new Map([...sites.values()].map((e) => [e.asset.id, e.scale]));
+    const previousScales = new Map<string, number>([...sites.values()].map((e) => [e.asset.id, e.scale] as const));
     clearSites();
     if (town) {
       scene.remove(town.group);
