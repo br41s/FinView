@@ -297,7 +297,14 @@ export class AgentSystem {
         a.until = 2000 + rnd() * 6000;
         a.seed = seed;
         a.rnd = rnd;
-        this.place(a);
+        if (a.state === "walking" && a.walkRoute) {
+          const point = pointAlong(a.walkRoute, a.walkDistance);
+          a.x = point.x;
+          a.z = point.z;
+          a.heading = point.heading;
+        } else {
+          this.place(a);
+        }
         this.paint(idx);
       }
     }
