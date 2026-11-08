@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { WorldAsset, WorldEvent } from "../model/types";
 import s from "../world.module.css";
 
@@ -203,9 +204,11 @@ function EventGlyph({ type, accent }: { type: WorldEvent["eventType"]; accent: s
 }
 
 export function EventIllustration({ asset, event }: Readonly<Props>) {
+  const reactId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const archetype = asset?.archetype ?? "consumer";
   const p = PALETTES[archetype] ?? FALLBACK;
-  const id = event.id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "event";
+  const eventId = event.id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "event";
+  const id = eventId + "-" + reactId;
   const title = asset?.ticker ?? asset?.name ?? "FinView";
   return <svg className={s.eventArt} viewBox="0 0 760 286" role="img"
     aria-label={"Ilustración de "+title+": "+event.title} preserveAspectRatio="xMidYMid slice">
