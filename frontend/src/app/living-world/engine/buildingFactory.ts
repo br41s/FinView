@@ -11,7 +11,7 @@ import type { Archetype, WorldAsset } from "../model/types";
  */
 
 /** Footprint a tier is modelled at; the engine scales the group to the real footprint. */
-export const NOMINAL: Record<Tier, number> = { outpost: 3.4, small: 4.4, campus: 5.4, major: 6.8 };
+export const NOMINAL: Record<Tier, number> = { outpost: 3.6, small: 5.0, campus: 7.4, major: 10.4 };
 
 export interface Site {
   group: THREE.Group;
@@ -392,19 +392,127 @@ const RECIPES: Record<Archetype, (c: Ctx) => void> = {
   },
 };
 
-/** Company-specific accent so neighbours of one archetype are tellable apart. */
-export function accentFor(id: string): number {
+type CompanyIdentity = "iberdrola" | "bbva" | "santander";
+
+interface CompanyProfile {
+  identity: CompanyIdentity;
+  accent: number;
+  minComponents: number;
+}
+
+function companyProfile(asset: Pick<WorldAsset, "ticker" | "name">): CompanyProfile | null {
+  const name = asset.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  const ticker = (asset.ticker ?? "").toUpperCase().replace(/[^A-Z]/g, "");
+  if (name.includes("IBERDROLA") || ticker === "IBE") {
+    return { identity: "iberdrola", accent: 0x4b9d3f, minComponents: 7 };
+  }
+  if (name.includes("BBVA") || name.includes("BANCO BILBAO VIZCAYA") || ticker === "BBVA") {
+    return { identity: "bbva", accent: 0x0874c9, minComponents: 6 };
+  }
+  if (name.includes("SANTANDER") || name.includes("BANCO SANTANDER") || (ticker === "SAN" && name.includes("BANCO"))) {
+    return { identity: "santander", accent: 0xec0000, minComponents: 6 };
+  }
+  return null;
+}
+
+/** Company-specific corporate colours; other holdings receive a stable individual accent. */
+export function accentFor(id: string, asset?: Pick<WorldAsset, "ticker" | "name">): number {
+  const profile = asset ? companyProfile(asset) : null;
+  if (profile) return profile.accent;
   const h = (hashString(id) % 360) / 360;
   return hex(new THREE.Color().setHSL(h, 0.55, 0.52));
 }
 
+function iberdrolaCampus({ b, n, accent }: Ctx) {
+  // Iberdrola: a renewable-energy operating campus rather than a single windmill.
+  const green = accent;
+  const blue = 0x126a8b;
+  // Main energy-control building and two production halls.
+  b.box(n * 0.64, 1.25, n * 0.42, -n * 0.1, 0.12, -n * 0.12, 0xe8eee7);
+  b.box(n * 0.68, 0.12, n * 0.46, -n * 0.1, 1.4, -n * 0.12, green);
+  facadeWindows(b, 5, 1, n * 0.58, 0.2, 0.56, -n * 0.1, 0.32, n * 0.1, GLASS);
+  b.box(n * 0.32, 1.0, n * 0.27, n * 0.32, 0.12, -n * 0.28, 0xdfe8e4);
+  b.box(n * 0.34, 0.11, n * 0.29, n * 0.32, 1.14, -n * 0.28, blue);
+  b.box(n * 0.28, 0.84, n * 0.24, -n * 0.35, 0.12, n * 0.29, 0xe6ece7);
+  b.box(n * 0.3, 0.1, n * 0.26, -n * 0.35, 1.0, n * 0.29, green);
+  // Transformer yard, switchgear and pipe/cable racks.
+  for (let i = 0; i < 4; i++) {
+    const x = -n * 0.32 + i * n * 0.2;
+    b.box(0.52, 0.62, 0.48, x, 0.12, -n * 0.42, 0xb8c7c4);
+    b.cyl(0.045, 0.045, 0.48, x - 0.12, 0.74, -n * 0.42, blue, 6);
+    b.cyl(0.045, 0.045, 0.48, x + 0.12, 0.74, -n * 0.42, blue, 6);
+    b.box(0.68, 0.08, 0.08, x, 1.25, -n * 0.42, green);
+  }
+  for (let i = 0; i < 5; i++) b.cyl(0.045, 0.045, 0.9, -n * 0.36 + i * n * 0.18, 0.12, n * 0.42, blue, 6);
+  // Two wind turbines and a bank of photovoltaic panels.
+  for (const [x, z, h] of [[n * 0.34, n * 0.28, 3.8], [-n * 0.38, -n * 0.34, 3.1]] as const) {
+    b.cyl(0.07, 0.16, h, x, 0.12, z, WHITE, 8);
+    b.sphere(0.15, x, h + 0.02, z, blue);
+    for (let i = 0; i < 3; i++) b.tilted(0.1, 1.55, 0.045, x, h + 0.76, z + 0.17, green, (i * Math.PI * 2) / 3 + 0.4);
+  }
+  solarArray(b, -n * 0.28, n * 0.2, 4, 2, 0.42, 1.05, blue);
+  b.cyl(0.48, 0.48, 1.3, n * 0.38, 0.12, -n * 0.04, 0xc8d2cc, 16);
+  b.cyl(0.5, 0.5, 0.08, n * 0.38, 1.35, -n * 0.04, green, 16);
+}
+
+function bbvaFinancialCampus({ b, n, accent }: Ctx) {
+  // BBVA: blue-glass financial mini-city, several towers around a shared podium.
+  const cyan = 0x36b8e8;
+  b.box(n * 0.92, 0.35, n * 0.72, 0, 0.12, 0, 0xcedde8);
+  b.box(n * 0.94, 0.12, n * 0.74, 0, 0.48, 0, accent);
+  const towers = [
+    { x: -n * 0.25, z: -n * 0.16, h: 4.1, w: 0.25 },
+    { x: n * 0.08, z: -n * 0.12, h: 5.4, w: 0.28 },
+    { x: n * 0.31, z: n * 0.16, h: 3.6, w: 0.23 },
+  ];
+  for (const tower of towers) {
+    const width = n * tower.w;
+    b.box(width, tower.h, width * 0.82, tower.x, 0.6, tower.z, 0x8dc8e3);
+    b.box(width + 0.12, 0.12, width * 0.9, tower.x, tower.h + 0.6, tower.z, accent);
+    facadeWindows(b, 4, Math.max(3, Math.floor(tower.h / 0.8)), width * 0.82, 0.16, 0.28, tower.x, 0.82, tower.z + width * 0.42, 0xc9efff);
+    b.box(width * 0.82, 0.08, width * 0.76, tower.x, tower.h + 0.76, tower.z, 0xd9edf5);
+  }
+  // Financial plaza, bridge-like connector and rooftop helipad.
+  b.box(n * 0.48, 0.3, n * 0.22, -n * 0.05, 0.68, n * 0.25, 0xdce9ef);
+  b.cyl(0.58, 0.58, 0.06, -n * 0.25, 0.98, -n * 0.16, cyan, 20);
+  b.box(n * 0.18, 0.5, n * 0.14, n * 0.34, 0.6, -n * 0.32, 0xeff4f7);
+}
+
+function santanderFinancialCampus({ b, n, accent }: Ctx) {
+  // Santander: a broad, traditional financial headquarters, long wings and a colonnade.
+  const ivory = 0xf0e8d8;
+  b.box(n * 0.88, 1.75, n * 0.42, 0, 0.12, -n * 0.08, ivory);
+  b.box(n * 0.94, 0.16, n * 0.48, 0, 1.9, -n * 0.08, accent);
+  b.pyramid(n * 0.96, 0.48, 0, 2.05, -n * 0.08, 0x80766a);
+  // Classical portico spans the entire central facade.
+  for (let i = 0; i < 8; i++) {
+    const x = -n * 0.36 + i * n * 0.103;
+    b.cyl(0.105, 0.14, 1.68, x, 0.12, n * 0.15, 0xfaf5e9, 12);
+    b.cyl(0.17, 0.17, 0.09, x, 1.78, n * 0.15, 0xd8cbb4, 12);
+    b.cyl(0.17, 0.17, 0.09, x, 0.12, n * 0.15, 0xd8cbb4, 12);
+  }
+  b.box(n * 0.98, 0.16, 0.26, 0, 1.92, n * 0.15, 0xfaf5e9);
+  // Long side wings keep the complex wide and low instead of a single tower.
+  b.box(n * 0.26, 1.24, n * 0.7, -n * 0.36, 0.12, -n * 0.27, ivory);
+  b.box(n * 0.26, 1.24, n * 0.7, n * 0.36, 0.12, -n * 0.27, ivory);
+  b.box(n * 0.28, 0.12, n * 0.72, -n * 0.36, 1.38, -n * 0.27, accent);
+  b.box(n * 0.28, 0.12, n * 0.72, n * 0.36, 1.38, -n * 0.27, accent);
+  facadeWindows(b, 7, 1, n * 0.78, 0.32, 0.42, 0, 0.54, n * 0.205, GLASS);
+  b.box(n * 0.84, 0.12, n * 0.22, 0, 0.12, n * 0.42, 0xc8bba4);
+}
+
 export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Site {
   const nominal = NOMINAL[tier];
-  const accent = accentFor(asset.id);
+  const profile = companyProfile(asset);
+  const accent = accentFor(asset.id, asset);
   const b = new Builder();
-  const ctx: Ctx = { b, k: componentCount(tier), n: nominal, accent, rnd: seeded(hashString(asset.id)) };
+  const componentTotal = Math.max(componentCount(tier), profile?.minComponents ?? 1);
+  const ctx: Ctx = { b, k: componentTotal, n: nominal, accent, rnd: seeded(hashString(asset.id)) };
   plot(ctx);
-  RECIPES[asset.archetype](ctx);
+  if (profile?.identity === "iberdrola") iberdrolaCampus(ctx);
+  else if (profile?.identity === "bbva") bbvaFinancialCampus(ctx);
+  else if (profile?.identity === "santander") santanderFinancialCampus(ctx);
+  else RECIPES[asset.archetype](ctx);
 
   // A small roadside pylon anchors the plot in the town's street-level view.
   const sx = nominal * 0.5;

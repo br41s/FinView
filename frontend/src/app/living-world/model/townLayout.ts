@@ -48,25 +48,26 @@ export interface Lot {
   fz: number;
 }
 
+export type DistrictShape = "highrise" | "campus" | "industrial" | "high-street" | "garden";
+
 export interface DistrictLayout {
   id: DistrictId;
   slot: number;
   cx: number;
   cz: number;
-  /** Rotation of the district's street grid. */
+  /** Local orientation; each neighbourhood has its own street grain. */
   theta: number;
+  shape: DistrictShape;
   cols: number;
   rows: number;
-  /** Radius of the circle that encloses the district's lot grid. */
+  /** Conservative radius enclosing its organic parcel cluster. */
   extent: number;
   assetCount: number;
-  /** Half-sizes of the district's street grid (lots plus the outer street), in its own axes. */
   halfW: number;
   halfH: number;
-  /** Grid corner closest to the plaza, in world coordinates: where the boulevard meets it. */
+  /** Inner access point, joined to both the local street ring and the city arterial. */
   gateX: number;
   gateZ: number;
-  /** The same corner in the district's own axes. */
   gateLX: number;
   gateLZ: number;
 }
@@ -76,6 +77,21 @@ export interface RoadSegment {
   z1: number;
   x2: number;
   z2: number;
+  path: Pt[];
+  width: number;
+  kind: "arterial" | "boulevard" | "local" | "exit";
+  sidewalk: boolean;
+  districtId?: DistrictId;
+}
+
+export interface GreenSpace {
+  kind: "city-park" | "pocket-park" | "greenway";
+  x: number;
+  z: number;
+  radiusX: number;
+  radiusZ: number;
+  rotationY: number;
+  pond?: { x: number; z: number; radiusX: number; radiusZ: number };
 }
 
 export type CivicKind = "bank" | "newsKiosk" | "observatory" | "townHall";
@@ -107,6 +123,7 @@ export interface WorldLayout {
   roads: RoadSegment[];
   civic: CivicSite[];
   filler: FillerSpot[];
+  greenSpaces: GreenSpace[];
   terrain: Terrain;
   /** Expressways, railway and monorail. */
   infra: Infra;
@@ -210,238 +227,446 @@ function filler(kind: FillerKind, x: number, z: number, rotationY: number, seed:
 
 export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
   const byDistrict = new Map<DistrictId, string[]>();
-  for (const a of assets) {
-    const d = ARCHETYPE_DISTRICT[a.archetype];
-    const list = byDistrict.get(d);
-    if (list) list.push(a.id);
-    else byDistrict.set(d, [a.id]);
+  for (const asset of assets) {
+    const id = ARCHETYPE_DISTRICT[asset.archetype];
+    const bucket = byDistrict.get(id);
+    if (bucket) bucket.push(asset.id);
+    else byDistrict.set(id, [asset.id]);
   }
 
-  // Size of each compass slot; an absent district is a slot of zero size.
+  const shapeFor: Record<DistrictId, DistrictShape> = {
+    retail: "high-street",
+    tech: "campus",
+    industry: "industrial",
+    finance: "highrise",
+    health: "campus",
+    funds: "garden",
+    treasury: "garden",
+  };
+  const aspectFor: Record<DistrictId, Pt> = {
+    retail: { x: 1.34, z: 0.78 },
+    tech: { x: 1.05, z: 1.08 },
+    industry: { x: 1.48, z: 0.7 },
+    finance: { x: 1.18, z: 0.86 },
+    health: { x: 0.98, z: 1.12 },
+    funds: { x: 0.92, z: 1.18 },
+    treasury: { x: 0.82, z: 1.22 },
+  };
+
   const slots = DISTRICT_IDS.map((id, slot) => {
     const count = byDistrict.get(id)?.length ?? 0;
-    if (count === 0) return { id, slot, count, cap: 0, cols: 0, rows: 0, extent: 0 };
+    if (!count) return { id, slot, count, cap: 0, cols: 0, rows: 0, extent: 0 };
     const cap = capacityFor(count);
     const cols = Math.ceil(Math.sqrt(cap));
     const rows = Math.ceil(cap / cols);
-    return { id, slot, count, cap, cols, rows, extent: 0.5 * Math.hypot(cols * LOT_PITCH, rows * LOT_PITCH) };
+    const extent = 0.5 * Math.hypot(cols * LOT_PITCH * 1.12, rows * LOT_PITCH * 1.12);
+    return { id, slot, count, cap, cols, rows, extent };
   });
-  const maxExtent = Math.max(0, ...slots.map((s) => s.extent));
-
-  // Gap between slot k and k+1 on the ring; wider where the river or the cliff passes.
+  const maxExtent = Math.max(0, ...slots.map((slot) => slot.extent));
   const gapAfter = (k: number) => (k === 6 || k === 1 ? RIVER_GAP : k === 4 ? CLIFF_GAP : DISTRICT_GAP);
   const spacing = (k: number, ring: number) => {
     const next = slots[(k + 1) % SLOT_COUNT];
-    const need = slots[k].extent + next.extent + gapAfter(k);
-    return 2 * Math.asin(Math.min(1, need / (2 * ring)));
+    const needed = slots[k].extent + next.extent + gapAfter(k);
+    return 2 * Math.asin(Math.min(1, needed / (2 * ring)));
   };
   const clearance = Math.max(
-    PLAZA_RADIUS + 22,
-    ...slots.filter((s) => s.count > 0).map((s) => PLAZA_RADIUS + 22 + s.extent),
+    PLAZA_RADIUS + 24,
+    ...slots.filter((slot) => slot.count > 0).map((slot) => PLAZA_RADIUS + 24 + slot.extent),
   );
-  // Smallest ring at which the districts fit round the compass, then at least the clearance.
   let lo = clearance;
-  let hi = 2000;
-  for (let i = 0; i < 40; i++) {
+  let hi = 2200;
+  for (let i = 0; i < 44; i++) {
     const mid = (lo + hi) / 2;
-    const sum = slots.reduce((acc, _s, k) => acc + spacing(k, mid), 0);
-    if (sum > 2 * Math.PI) lo = mid;
+    const total = slots.reduce((sum, _slot, k) => sum + spacing(k, mid), 0);
+    if (total > Math.PI * 2) lo = mid;
     else hi = mid;
   }
-  const ring = Math.max(hi, clearance);
-  const raw = slots.map((_s, k) => spacing(k, ring));
-  const slack = (2 * Math.PI - raw.reduce((a, b) => a + b, 0)) / SLOT_COUNT;
+  const ring = Math.max(hi * 1.22, clearance * 1.1);
+  const raw = slots.map((_slot, k) => spacing(k, ring));
+  const slack = (Math.PI * 2 - raw.reduce((sum, n) => sum + n, 0)) / SLOT_COUNT;
+  const angleJitter = [0.02, -0.055, 0.075, -0.035, 0.06, -0.07, 0.04];
+  const radiusJitter = [1.02, 0.97, 1.045, 0.98, 1.035, 0.955, 1.015];
   const angles: number[] = [];
-  let a = BASE_ANGLE;
+  let angle = BASE_ANGLE;
   for (let k = 0; k < SLOT_COUNT; k++) {
-    angles.push(a);
-    a += raw[k] + slack;
+    angles.push(angle + angleJitter[k]);
+    angle += raw[k] + slack;
   }
 
-  const districts: DistrictLayout[] = [];
-  const lots = new Map<string, Lot>();
-  const free: Array<{ d: DistrictLayout; lx: number; lz: number; slot: number }> = [];
-
-  const radius = ring + maxExtentOr(maxExtent);
-
-  // Terrain first: it only needs the compass and the sizes, never the lots.
   const gapAngle = (k: number) => {
     const next = (k + 1) % SLOT_COUNT;
-    const to = angles[next] + (next === 0 ? 2 * Math.PI : 0);
-    // The middle of the free gap, not of the angle: a large district leaves less room beside it.
-    const w = (slots[k].extent + gapAfter(k) / 2) / (slots[k].extent + slots[next].extent + gapAfter(k));
-    return angles[k] + (to - angles[k]) * w;
+    const to = angles[next] + (next === 0 ? Math.PI * 2 : 0);
+    const left = slots[k].extent;
+    const right = slots[next].extent;
+    const ratio = (left + gapAfter(k) / 2) / Math.max(1, left + right + gapAfter(k));
+    return angles[k] + (to - angles[k]) * ratio;
   };
   const ps = gapAngle(4);
   const pe = gapAngle(6);
-  const funds = [slots[5].extent, slots[6].extent];
-  const fundsExt = Math.max(0, ...funds) || 24;
-  const rA = PLAZA_RADIUS + 11;
+  const fundsExt = Math.max(slots[5].extent, slots[6].extent, 24);
+  const radius = ring + maxExtentOr(maxExtent) + 74;
+
   const phi1 = pe;
   const phi2 = gapAngle(1);
-  const lakeDist = radius + 6;
+  const lakeDist = radius + 2;
   const riverRaw: Pt[] = [
-    polar(phi1 + 0.03, lakeDist),
-    polar(phi1 - 0.02, ring + 6),
-    polar(phi1 + 0.02, rA + 10),
+    polar(phi1 + 0.04, lakeDist),
+    polar(phi1 - 0.025, ring + 10),
+    polar(phi1 + 0.025, PLAZA_RADIUS + 26),
   ];
-  const steps = 10;
-  for (let i = 0; i <= steps; i++) riverRaw.push(polar(phi1 + ((phi2 - phi1) * i) / steps, rA + Math.sin(i * 1.3) * 1.2));
-  riverRaw.push(polar(phi2 - 0.02, rA + 10), polar(phi2 + 0.02, ring + 6), polar(phi2 - 0.03, radius + 26), polar(phi2 + 0.02, radius + 70));
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16;
+    const a = phi1 + (phi2 - phi1) * t;
+    const r = PLAZA_RADIUS + 24 + Math.sin(t * Math.PI * 2.2) * 2.1 + Math.sin(t * Math.PI * 5) * 0.7;
+    riverRaw.push(polar(a, r));
+  }
+  riverRaw.push(
+    polar(phi2 - 0.025, PLAZA_RADIUS + 26),
+    polar(phi2 + 0.025, ring + 10),
+    polar(phi2 - 0.035, radius + 28),
+    polar(phi2 + 0.02, radius + 76),
+  );
   const terrain = createTerrain({
     cityRadius: radius,
     plazaRadius: PLAZA_RADIUS,
     plateauAngle: (ps + pe) / 2,
     plateauHalfAngle: (pe - ps) / 2,
-    plateauInner: Math.max(PLAZA_RADIUS + 22, ring - fundsExt - 8),
-    plateauOuter: ring + fundsExt + 10,
+    plateauInner: Math.max(PLAZA_RADIUS + 30, ring - fundsExt - 22),
+    plateauOuter: ring + fundsExt + 24,
     river: chaikin(riverRaw, 3),
-    lake: { ...polar(phi1, lakeDist + 8), r: 15 },
-    seed: 7,
+    lake: { ...polar(phi1, lakeDist + 7), r: 18 },
+    seed: 17,
   });
 
-  const infra = computeInfra({ plaza: PLAZA_RADIUS, radius, gap: gapAngle, plateauStart: ps, plateauEnd: pe });
-  const corridors = [...infra.highways, infra.rail, infra.monorail];
-  /** Within a transport corridor (plus `extra`): nothing is built there. */
-  const nearInfra = (x: number, z: number, extra: number) => corridors.some((c) => distToPolyline(x, z, c.path) < c.clear / 2 + extra);
+  const districts: DistrictLayout[] = [];
+  const lots = new Map<string, Lot>();
+  const aspectForDistrict = aspectFor;
 
-  slots.forEach((s, k) => {
-    if (s.count === 0) return;
-    const p = polar(angles[k], ring);
-    const theta = (((k * 5 + 2) % 7) - 3) * 0.06;
-    const halfW = (s.cols * LOT_PITCH) / 2;
-    const halfH = (s.rows * LOT_PITCH) / 2;
-    // The grid corner nearest the origin, found in the district's own axes.
-    const base = { cx: p.x, cz: p.z, theta };
-    const o = toLocal(base, 0, 0);
-    const gateLX = (o.x >= 0 ? 1 : -1) * halfW;
-    const gateLZ = (o.z >= 0 ? 1 : -1) * halfH;
-    const gate = toWorld(base, gateLX, gateLZ);
-    const d: DistrictLayout = {
-      id: s.id,
+  slots.forEach((slot, k) => {
+    if (!slot.count) return;
+    const p = polar(angles[k], ring * radiusJitter[k]);
+    const theta = (((k * 5 + 2) % 7) - 3) * 0.09 + (k % 2 ? 0.035 : -0.025);
+    const aspect = aspectForDistrict[slot.id];
+    const halfW = slot.extent * 0.72 * aspect.x;
+    const halfH = slot.extent * 0.72 * aspect.z;
+    const center = { cx: p.x, cz: p.z, theta };
+    const gateAngle = Math.atan2(-p.z, -p.x);
+    const gateLX = Math.cos(gateAngle - theta) * (slot.extent + 5);
+    const gateLZ = Math.sin(gateAngle - theta) * (slot.extent + 5);
+    const gate = toWorld(center, gateLX, gateLZ);
+    districts.push({
+      id: slot.id,
       slot: k,
       cx: p.x,
       cz: p.z,
       theta,
-      cols: s.cols,
-      rows: s.rows,
-      extent: s.extent,
-      assetCount: s.count,
+      shape: shapeFor[slot.id],
+      cols: slot.cols,
+      rows: slot.rows,
+      extent: slot.extent,
+      assetCount: slot.count,
       halfW,
       halfH,
       gateX: gate.x,
       gateZ: gate.z,
       gateLX,
       gateLZ,
-    };
-    districts.push(d);
-
-    // Open addressing from a hash of the id; ids are visited in sorted order so the
-    // result does not depend on the order the holdings arrived in.
-    const taken = new Array<boolean>(s.cap).fill(false);
-    for (const id of [...byDistrict.get(s.id)!].sort()) {
-      let slot = hashString(id) % s.cap;
-      while (taken[slot]) slot = (slot + 1) % s.cap;
-      taken[slot] = true;
-      const col = slot % s.cols;
-      const row = Math.floor(slot / s.cols);
-      const lx = (col - (s.cols - 1) / 2) * LOT_PITCH;
-      const lz = (row - (s.rows - 1) / 2) * LOT_PITCH;
-      const w = toWorld(d, lx, lz);
-      // Face the square, in quarter turns of the district's own grid.
-      const toSquare = Math.atan2(-w.x, -w.z) + theta;
-      const quarter = Math.round(toSquare / (Math.PI / 2)) * (Math.PI / 2);
-      lots.set(id, {
-        assetId: id,
-        district: s.id,
-        x: w.x,
-        z: w.z,
-        rotationY: quarter - theta,
-        col,
-        row,
-        lx,
-        lz,
-        fx: Math.round(Math.sin(quarter)),
-        fz: Math.round(Math.cos(quarter)),
-      });
-    }
-    taken.forEach((t, slot) => {
-      if (!t) free.push({ d, lx: ((slot % s.cols) - (s.cols - 1) / 2) * LOT_PITCH, lz: (Math.floor(slot / s.cols) - (s.rows - 1) / 2) * LOT_PITCH, slot });
     });
   });
 
-  // One boulevard per district, from the plaza to the grid corner facing it.
-  const roads: RoadSegment[] = districts.map((d) => ({ x1: 0, z1: 0, x2: d.gateX, z2: d.gateZ }));
+  const greenSpaces: GreenSpace[] = [
+    {
+      kind: "city-park",
+      ...polar(gapAngle(0), ring * 0.56),
+      radiusX: 19,
+      radiusZ: 24,
+      rotationY: gapAngle(0) + 0.24,
+      pond: {
+        ...polar(gapAngle(0) + 0.16, ring * 0.56 + 3),
+        radiusX: 8.4,
+        radiusZ: 5.6,
+      },
+    },
+    {
+      kind: "pocket-park",
+      ...polar(gapAngle(3), ring * 0.58),
+      radiusX: 13,
+      radiusZ: 17,
+      rotationY: gapAngle(3) - 0.18,
+    },
+  ];
+
+  const inGreenSpace = (x: number, z: number, extra = 0) => greenSpaces.some((space) => {
+    const dx = x - space.x;
+    const dz = z - space.z;
+    const c = Math.cos(space.rotationY);
+    const s = Math.sin(space.rotationY);
+    const lx = dx * c + dz * s;
+    const lz = -dx * s + dz * c;
+    const rx = space.radiusX + extra;
+    const rz = space.radiusZ + extra;
+    return (lx * lx) / (rx * rx) + (lz * lz) / (rz * rz) < 1;
+  });
+
+  const loop: Pt[] = [];
+  const LOOP_STEPS = 112;
+  const loopRadius = ring * 0.72;
+  for (let i = 0; i <= LOOP_STEPS; i++) {
+    const a = (i / LOOP_STEPS) * Math.PI * 2;
+    const r = loopRadius * (1 + 0.055 * Math.sin(a * 3 + 0.7) + 0.028 * Math.sin(a * 5 - 0.4));
+    loop.push({ x: Math.cos(a) * r * 1.04, z: Math.sin(a) * r * 0.94 });
+  }
+  loop[loop.length - 1] = { ...loop[0] };
+
+  const nearestOnLoop = (target: Pt) => {
+    let best = loop[0];
+    let bestDistance = Infinity;
+    for (const point of loop) {
+      const distance = Math.hypot(point.x - target.x, point.z - target.z);
+      if (distance < bestDistance) {
+        best = point;
+        bestDistance = distance;
+      }
+    }
+    return { x: best.x, z: best.z };
+  };
+
+  const roads: RoadSegment[] = [];
+  const addRoad = (path: Pt[], width: number, kind: RoadSegment["kind"], sidewalk = true, districtId?: DistrictId) => {
+    const first = path[0];
+    const last = path[path.length - 1];
+    roads.push({
+      x1: first.x,
+      z1: first.z,
+      x2: last.x,
+      z2: last.z,
+      path,
+      width,
+      kind,
+      sidewalk,
+      districtId,
+    });
+  };
+  addRoad(loop, 8.4, "arterial");
+
+  const gateStops: Pt[] = [];
+  for (const district of districts) {
+    const gate = { x: district.gateX, z: district.gateZ };
+    gateStops.push(gate);
+    const anchor = nearestOnLoop(gate);
+    const mid = { x: (anchor.x + gate.x) / 2, z: (anchor.z + gate.z) / 2 };
+    const bend = {
+      x: mid.x + (gate.z - anchor.z) * 0.12,
+      z: mid.z - (gate.x - anchor.x) * 0.12,
+    };
+    addRoad(chaikin([anchor, bend, gate], 1), 6.6, "boulevard", true, district.id);
+
+    const gateAngle = Math.atan2(gate.z - district.cz, gate.x - district.cx);
+    const local: Pt[] = [];
+    const localRadius = district.extent + 5;
+    for (let i = 0; i <= 44; i++) {
+      const a = gateAngle + (i / 44) * Math.PI * 2;
+      local.push({
+        x: district.cx + Math.cos(a) * localRadius * (district.shape === "industrial" ? 1.18 : 1),
+        z: district.cz + Math.sin(a) * localRadius * (district.shape === "high-street" ? 0.84 : 0.96),
+      });
+    }
+    local[0] = { ...gate };
+    local[local.length - 1] = { ...gate };
+    addRoad(local, 4.6, "local", true, district.id);
+  }
+
+  for (const a of [-Math.PI * 0.48, Math.PI * 0.52]) {
+    const target = polar(a, loopRadius);
+    const anchor = nearestOnLoop(target);
+    const start = polar(a + 0.03, PLAZA_RADIUS - 1);
+    const p1 = polar(a - 0.045, PLAZA_RADIUS + 15);
+    const p2 = polar(a + 0.055, loopRadius * 0.44);
+    const p3 = polar(a - 0.025, loopRadius * 0.76);
+    addRoad(chaikin([start, p1, p2, p3, anchor], 1), 7.2, "boulevard");
+  }
+
+  for (const a of [0.18, Math.PI + 0.18]) {
+    const target = polar(a, loopRadius);
+    const anchor = nearestOnLoop(target);
+    const p1 = polar(a + 0.08, loopRadius + 18);
+    const p2 = polar(a - 0.07, ring + maxExtent + 34);
+    const end = polar(a + 0.03, radius + 64);
+    addRoad(chaikin([anchor, p1, p2, end], 1), 8.8, "exit");
+  }
+
+  const industry = districts.find((d) => d.id === "industry");
+  const railEnd = polar(Math.PI * 0.55, PLAZA_RADIUS + 7);
+  const railPath = industry
+    ? chaikin([
+        { x: industry.gateX, z: industry.gateZ },
+        { x: industry.cx * 0.58, z: industry.cz * 0.58 + 8 },
+        polar(Math.PI * 0.62, 35),
+        railEnd,
+      ], 1)
+    : [polar(Math.PI * 0.6, radius * 0.7), railEnd];
+
+  const highways = [
+    { path: loop, clear: 13.4 },
+    ...roads.filter((road) => road.kind === "exit").map((road) => ({ path: road.path, clear: 13.8 })),
+  ];
+  const infra = computeInfra({
+    plaza: PLAZA_RADIUS,
+    radius,
+    highways,
+    rail: railPath,
+    railTerminus: railEnd,
+    districtStops: gateStops,
+  });
+
+  const nearInfra = (x: number, z: number, extra: number) =>
+    [...infra.highways, infra.rail, infra.monorail].some((corridor) =>
+      distToPolyline(x, z, corridor.path) < corridor.clear / 2 + extra,
+    );
+  const nearRoad = (x: number, z: number, extra: number) =>
+    roads.some((road) => distToPolyline(x, z, road.path) < road.width / 2 + extra);
+  const onPlateau = (x: number, z: number) => terrain.heightAt(x, z) > PLATEAU_HEIGHT - 0.7;
+
+  const lotsByDistrict = new Map<DistrictId, Lot[]>();
+  for (const district of districts) {
+    const ids = [...(byDistrict.get(district.id) ?? [])].sort();
+    const aspect = aspectForDistrict[district.id];
+    const rx = district.extent * 0.82 * aspect.x;
+    const rz = district.extent * 0.82 * aspect.z;
+    const localLots: Lot[] = [];
+    for (const id of ids) {
+      const seed = hashString(id);
+      let accepted: Pt | null = null;
+      for (let attempt = 0; attempt < 5000 && !accepted; attempt++) {
+        const a = hash2(seed, attempt, district.slot + 101) * Math.PI * 2;
+        const radial = Math.sqrt(hash2(seed, attempt, district.slot + 211));
+        const wobble = 0.9 + hash2(seed, attempt, district.slot + 307) * 0.2;
+        const lx = Math.cos(a) * rx * radial * wobble;
+        const lz = Math.sin(a) * rz * radial * wobble;
+        const p = toWorld(district, lx, lz);
+        const highDistrict = district.id === "funds" || district.id === "treasury";
+        if (!terrain.buildable(p.x, p.z, 2.5)) continue;
+        if (highDistrict ? !onPlateau(p.x, p.z) : terrain.heightAt(p.x, p.z) > 1.4) continue;
+        if (inGreenSpace(p.x, p.z, 4) || nearRoad(p.x, p.z, LOT_PITCH * 0.24) || nearInfra(p.x, p.z, LOT_PITCH * 0.24)) continue;
+        if (localLots.some((lot) => Math.hypot(lot.x - p.x, lot.z - p.z) < LOT_PITCH)) continue;
+        accepted = p;
+      }
+      if (!accepted) {
+        for (let slot = 0; !accepted && slot < 2000; slot++) {
+          const col = slot % district.cols;
+          const row = Math.floor(slot / district.cols);
+          const lx = (col - (district.cols - 1) / 2) * LOT_PITCH + (row % 2) * LOT_PITCH * 0.19;
+          const lz = (row - (district.rows - 1) / 2) * LOT_PITCH * 0.94;
+          const p = toWorld(district, lx, lz);
+          const highDistrict = district.id === "funds" || district.id === "treasury";
+          if (!terrain.buildable(p.x, p.z, 1.8)) continue;
+          if (highDistrict ? !onPlateau(p.x, p.z) : terrain.heightAt(p.x, p.z) > 1.4) continue;
+          if (localLots.some((lot) => Math.hypot(lot.x - p.x, lot.z - p.z) < LOT_PITCH)) continue;
+          accepted = p;
+        }
+      }
+      if (!accepted) continue;
+      const local = toLocal(district, accepted.x, accepted.z);
+      const toAccess = Math.atan2(district.gateZ - accepted.z, district.gateX - accepted.x);
+      const quarter = Math.round((toAccess + district.theta) / (Math.PI / 2)) * (Math.PI / 2);
+      const col = Math.round(local.x / LOT_PITCH + (district.cols - 1) / 2);
+      const row = Math.round(local.z / LOT_PITCH + (district.rows - 1) / 2);
+      const lot: Lot = {
+        assetId: id,
+        district: district.id,
+        x: accepted.x,
+        z: accepted.z,
+        rotationY: quarter - district.theta,
+        col,
+        row,
+        lx: local.x,
+        lz: local.z,
+        fx: Math.round(Math.sin(quarter)),
+        fz: Math.round(Math.cos(quarter)),
+      };
+      lots.set(id, lot);
+      localLots.push(lot);
+    }
+    lotsByDistrict.set(district.id, localLots);
+  }
 
   const civicKinds: CivicKind[] = ["bank", "newsKiosk", "observatory", "townHall"];
   const civic = civicKinds.map((kind, i) => {
-    const ang = Math.PI / 4 + (i * Math.PI) / 2;
-    return { kind, x: Math.cos(ang) * 9, z: Math.sin(ang) * 9 };
+    const a = Math.PI / 4 + (i * Math.PI) / 2;
+    return { kind, x: Math.cos(a) * 9, z: Math.sin(a) * 9 };
   });
 
-  // --- generic buildings --------------------------------------------------------------
   const fillerSpots: FillerSpot[] = [];
-  const onPlateau = (x: number, z: number) => terrain.heightAt(x, z) > PLATEAU_HEIGHT - 0.4;
-  const cbdAt = (x: number, z: number, d: DistrictLayout | null) =>
-    Math.min(1, 1 - smooth(PLAZA_RADIUS + 4, PLAZA_RADIUS + 60, Math.hypot(x, z)) + (d?.id === "finance" ? 0.35 : 0));
-
-  // Empty slots of each district's own grid.
-  for (const f of free) {
-    const w = toWorld(f.d, f.lx, f.lz);
-    if (!terrain.buildable(w.x, w.z, 2.5) || nearInfra(w.x, w.z, 3)) continue;
-    const seed = `${f.d.id}:${f.slot}`;
-    const kind = pickKind(hash2(f.slot, f.d.slot, 11), {
-      cbd: cbdAt(w.x, w.z, f.d),
-      residential: RESIDENTIAL[f.d.id],
-      plateau: onPlateau(w.x, w.z),
-      industrial: f.d.id === "industry",
-    });
-    const quarter = Math.round((Math.atan2(-w.x, -w.z) + f.d.theta) / (Math.PI / 2)) * (Math.PI / 2);
-    fillerSpots.push(filler(kind, w.x, w.z, quarter - f.d.theta, seed, f.d.id));
-  }
-
-  // The land between districts: a looser grid, thinning out towards the edge of town.
-  const reach = radius + 18;
-  const half = Math.ceil(reach / FABRIC_PITCH);
-  for (let gx = -half; gx <= half; gx++) {
-    for (let gz = -half; gz <= half; gz++) {
-      const x = gx * FABRIC_PITCH + (hash2(gx, gz, 1) - 0.5) * 2;
-      const z = gz * FABRIC_PITCH + (hash2(gx, gz, 2) - 0.5) * 2;
-      const r = Math.hypot(x, z);
-      if (r < PLAZA_RADIUS + 3 || r > reach) continue;
-      const density = 1 - smooth(radius * 0.7, radius + 14, r);
-      if (hash2(gx, gz, 3) > 0.5 + 0.5 * density) continue;
-      if (districts.some((d) => {
-        const l = toLocal(d, x, z);
-        return Math.abs(l.x) < d.halfW + 2.5 && Math.abs(l.z) < d.halfH + 2.5;
-      })) continue;
-      if (roads.some((rd) => distToSegment(x, z, rd.x1, rd.z1, rd.x2, rd.z2) < 6)) continue;
-      if (!terrain.buildable(x, z, 3.2) || nearInfra(x, z, 3.5)) continue;
-      // Align with the nearest district's grid so neighbourhoods read as patches.
-      let near: DistrictLayout | null = null;
-      let best = Infinity;
-      for (const d of districts) {
-        const dd = Math.hypot(x - d.cx, z - d.cz);
-        if (dd < best) {
-          best = dd;
-          near = d;
-        }
+  const clearOfLots = (x: number, z: number, minDistance: number) =>
+    [...lots.values()].every((lot) => Math.hypot(lot.x - x, lot.z - z) >= minDistance);
+  const clearOfFillers = (x: number, z: number, minDistance: number) =>
+    fillerSpots.every((spot) => Math.hypot(spot.x - x, spot.z - z) >= minDistance);
+  const addFiller = (kind: FillerKind, x: number, z: number, seed: string, district: DistrictId | null) => {
+    const theta = (hashString(seed) / 0xffffffff) * Math.PI * 2;
+    fillerSpots.push(filler(kind, x, z, theta, seed, district));
+  };
+  for (const district of districts) {
+    const count = Math.max(9, Math.ceil(district.assetCount * 0.62));
+    const existing = lotsByDistrict.get(district.id) ?? [];
+    for (let i = 0; i < count; i++) {
+      const seed = hashString(district.id + ":fabric:" + i);
+      let found: Pt | null = null;
+      for (let attempt = 0; attempt < 160; attempt++) {
+        const a = hash2(seed, attempt, 711) * Math.PI * 2;
+        const radial = Math.sqrt(hash2(seed, attempt, 812));
+        const p = toWorld(
+          district,
+          Math.cos(a) * district.extent * 0.92 * radial,
+          Math.sin(a) * district.extent * 0.92 * radial,
+        );
+        if (!terrain.buildable(p.x, p.z, 2.1) || inGreenSpace(p.x, p.z, 1.5)) continue;
+        if (nearRoad(p.x, p.z, 2.6) || nearInfra(p.x, p.z, 2.8)) continue;
+        if (!clearOfLots(p.x, p.z, LOT_PITCH * 0.64)) continue;
+        if (!clearOfFillers(p.x, p.z, 5.8)) continue;
+        found = p;
+        break;
       }
-      const theta = near?.theta ?? 0;
-      const quarter = Math.round((Math.atan2(-x, -z) + theta) / (Math.PI / 2)) * (Math.PI / 2);
-      const kind = pickKind(hash2(gx, gz, 4), {
-        cbd: cbdAt(x, z, near),
-        residential: near ? RESIDENTIAL[near.id] : 0.6,
-        plateau: onPlateau(x, z),
-        industrial: near?.id === "industry" && best < (near?.extent ?? 0) + 14,
-      });
-      fillerSpots.push(filler(kind, x, z, quarter - theta, `f:${gx}:${gz}`, near?.id ?? null));
+      if (!found) continue;
+      const u = hash2(seed, i, 921);
+      const mix: Mix = {
+        cbd: district.id === "finance" ? 0.92 : district.id === "tech" ? 0.72 : 0.34,
+        residential: RESIDENTIAL[district.id],
+        plateau: onPlateau(found.x, found.z),
+        industrial: district.id === "industry",
+      };
+      addFiller(pickKind(u, mix), found.x, found.z, district.id + ":" + i, district.id);
     }
   }
 
-  return { lots, districts, roads, civic, filler: fillerSpots, terrain, infra, radius: districts.length === 0 ? PLAZA_RADIUS + 30 : radius };
-}
+  const reach = radius + 18;
+  const step = FABRIC_PITCH;
+  const half = Math.ceil(reach / step);
+  for (let gx = -half; gx <= half; gx++) {
+    for (let gz = -half; gz <= half; gz++) {
+      const seed = hash2(gx, gz, 909);
+      const x = gx * step + (seed - 0.5) * 5.2;
+      const z = gz * step + (hash2(gx, gz, 910) - 0.5) * 5.2;
+      const r = Math.hypot(x, z);
+      if (r < PLAZA_RADIUS + 7 || r > reach) continue;
+      const density = 1 - smooth(radius * 0.66, radius + 14, r);
+      if (hash2(gx, gz, 911) > 0.34 + 0.66 * density) continue;
+      if (districts.some((d) => Math.hypot(x - d.cx, z - d.cz) < d.extent + 4)) continue;
+      if (nearRoad(x, z, 3.4) || nearInfra(x, z, 3.4) || inGreenSpace(x, z, 3)) continue;
+      if (!terrain.buildable(x, z, 3.2)) continue;
+      if (!clearOfLots(x, z, 5.8) || !clearOfFillers(x, z, 5.8)) continue;
+      const near = [...districts].sort((a, b) => Math.hypot(x - a.cx, z - a.cz) - Math.hypot(x - b.cx, z - b.cz))[0] ?? null;
+      const mix: Mix = {
+        cbd: Math.max(0, 1 - smooth(PLAZA_RADIUS + 4, PLAZA_RADIUS + 90, r)) + (near?.id === "finance" ? 0.22 : 0),
+        residential: near ? RESIDENTIAL[near.id] : 0.65,
+        plateau: onPlateau(x, z),
+        industrial: near?.id === "industry",
+      };
+      addFiller(pickKind(hash2(gx, gz, 912), mix), x, z, "outer:" + gx + ":" + gz, near?.id ?? null);
+    }
+  }
 
+  return { lots, districts, roads, civic, filler: fillerSpots, greenSpaces, terrain, infra, radius };
+}
 function maxExtentOr(e: number): number {
   return e > 0 ? e : 0;
 }
