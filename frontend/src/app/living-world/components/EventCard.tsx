@@ -64,7 +64,7 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
   const assetName = asset?.name ?? (e.assetId ? "Empresa de la cartera" : "Actividad del pueblo");
 
   return (
-    <article className={s.eventCard} aria-label={\`Evento: \${e.title}\`}>
+    <article className={s.eventCard} aria-label={"Evento: " + e.title}>
       <header className={s.eventHeader}>
         <div className={s.eventIdentity}>
           <span className={s.eventTicker}>{identity.slice(0, 14).toUpperCase()}</span>
@@ -74,7 +74,7 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
           </div>
         </div>
         <div className={s.eventHeaderActions}>
-          <span className={\`\${s.eventSeverity} \${e.severity === "critical" ? s.eventSeverityCritical : e.severity === "important" ? s.eventSeverityImportant : ""}\`}>
+          <span className={s.eventSeverity + " " + (e.severity === "critical" ? s.eventSeverityCritical : e.severity === "important" ? s.eventSeverityImportant : "")}>
             {SEVERITY_LABEL[e.severity]}
           </span>
           <button className={s.btn} onClick={onClose} aria-label="Cerrar tarjeta" title="Cerrar">
@@ -93,7 +93,7 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
 
       {highlight && (
         <div className={s.eventImpact}>
-          <strong className={\`\${s.eventImpactValue} \${directionClass(e.direction)}\`}>
+          <strong className={s.eventImpactValue + " " + directionClass(e.direction)}>
             {highlight.value}
           </strong>
           <span className={s.eventImpactLabel}>{highlight.label}</span>
@@ -129,13 +129,13 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
       </details>
 
       <footer className={s.actions}>
-        <button className={\`\${s.btn} \${s.linkBtn}\`} onClick={onFocus} disabled={!e.assetId}>
+        <button className={s.btn + " " + s.linkBtn} onClick={onFocus} disabled={!e.assetId}>
           <Crosshair size={14} /> Enfocar
         </button>
         <button className={\`\${s.btn} \${s.linkBtn}\`} onClick={onReplay} disabled={!e.assetId}>
           <Play size={14} /> Ver escena
         </button>
-        <button className={\`\${s.btn} \${s.linkBtn} \${pinned ? s.btnOn : ""}\`} onClick={onPin} aria-pressed={pinned}>
+        <button className={s.btn + " " + s.linkBtn + " " + (pinned ? s.btnOn : "")} onClick={onPin} aria-pressed={pinned}>
           {pinned ? <PinOff size={14} /> : <Pin size={14} />} {pinned ? "Desfijar" : "Fijar"}
         </button>
       </footer>
