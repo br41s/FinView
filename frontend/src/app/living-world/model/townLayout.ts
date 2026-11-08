@@ -81,6 +81,7 @@ export interface RoadSegment {
   width: number;
   kind: "arterial" | "boulevard" | "local" | "exit";
   sidewalk: boolean;
+  districtId?: DistrictId;
 }
 
 export interface GreenSpace {
@@ -431,7 +432,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
   };
 
   const roads: RoadSegment[] = [];
-  const addRoad = (path: Pt[], width: number, kind: RoadSegment["kind"], sidewalk = true) => {
+  const addRoad = (path: Pt[], width: number, kind: RoadSegment["kind"], sidewalk = true, districtId?: DistrictId) => {
     const first = path[0];
     const last = path[path.length - 1];
     roads.push({
@@ -443,6 +444,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
       width,
       kind,
       sidewalk,
+      districtId,
     });
   };
   addRoad(loop, 8.4, "arterial");
@@ -457,7 +459,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
       x: mid.x + (gate.z - anchor.z) * 0.12,
       z: mid.z - (gate.x - anchor.x) * 0.12,
     };
-    addRoad(chaikin([anchor, bend, gate], 1), 6.6, "boulevard");
+    addRoad(chaikin([anchor, bend, gate], 1), 6.6, "boulevard", true, district.id);
 
     const gateAngle = Math.atan2(gate.z - district.cz, gate.x - district.cx);
     const local: Pt[] = [];
@@ -471,7 +473,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
     }
     local[0] = { ...gate };
     local[local.length - 1] = { ...gate };
-    addRoad(local, 4.6, "local");
+    addRoad(local, 4.6, "local", true, district.id);
   }
 
   for (const a of [-Math.PI * 0.48, Math.PI * 0.52]) {
