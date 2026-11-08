@@ -31,7 +31,8 @@
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
@@ -39,6 +40,7 @@
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-simple-maps": "^3.0.6",
+    "@types/three": "0.186.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.6",
     "postcss": "^8.5.8",

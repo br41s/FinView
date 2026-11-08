@@ -1,0 +1,88 @@
+"use client";
+
+import { Crosshair, Footprints, X } from "lucide-react";
+import { fmt, fmtPct, formatEur } from "@/lib/format";
+import { ARCHETYPE_LABEL } from "../model/archetypes";
+import type { WorldAsset, WorldEvent } from "../model/types";
+import s from "../world.module.css";
+import { ASSET_TYPE_LABEL, EVENT_TYPE_LABEL } from "./labels";
+
+interface Props {
+  asset: WorldAsset;
+  events: readonly WorldEvent[];
+  onClose: () => void;
+  onFocus: () => void;
+  onFollow: () => void;
+  onOpenEvent: (e: WorldEvent) => void;
+}
+
+const eur = (v: number | null) => (v === null ? "—" : formatEur(v));
+
+/**
+ * A light card, not a dashboard (spec §12.2). Cost and P/L appear only when FinView knows
+ * them; otherwise a dash, because an unknown cost is not a cost of zero.
+ */
+export function BuildingInspector({ asset: a, events, onClose, onFocus, onFollow, onOpenEvent }: Readonly<Props>) {
+  const recent = events.filter((e) => e.assetId === a.id).slice(0, 6);
+  return (
+    <aside className={`${s.card} ${s.inspector}`} aria-label={`Edificio: ${a.name}`}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <div>
+          <h2>{a.name}</h2>
+          <div className={s.meta}>
+            {a.ticker ?? "Sin ticker"} · {a.isin}
+          </div>
+        </div>
+        <button className={s.btn} onClick={onClose} aria-label="Cerrar inspector" title="Cerrar">
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className={s.tags} style={{ marginTop: 6 }}>
+        <span className={s.tag}>{ARCHETYPE_LABEL[a.archetype]}</span>
+        {ASSET_TYPE_LABEL[a.assetType] !== ARCHETYPE_LABEL[a.archetype] && (
+          <span className={s.tag}>{ASSET_TYPE_LABEL[a.assetType]}</span>
+        )}
+        {a.marketValueEur === null && <span className={`${s.tag} ${s.tagDemo}`}>Valoración desconocida</span>}
+      </div>
+
+      <dl className={s.kv}>
+        <dt>Valor</dt>
+        <dd>{eur(a.marketValueEur)}</dd>
+        <dt>Peso en cartera</dt>
+        <dd>{a.weightPct === null ? "—" : `${fmt(a.weightPct, 2)} %`}</dd>
+        <dt>Variación diaria</dt>
+        <dd>{fmtPct(a.dayChangePct, 2)}</dd>
+        <dt>Coste</dt>
+        <dd>{eur(a.totalCostEur)}</dd>
+        <dt>Resultado latente</dt>
+        <dd>{eur(a.unrealizedPlEur)}</dd>
+        <dt>Cuentas</dt>
+        <dd>{a.brokers.length} · {a.brokers.join(", ")}</dd>
+      </dl>
+
+      <div className={s.actions}>
+        <button className={`${s.btn} ${s.linkBtn}`} onClick={onFocus}>
+          <Crosshair size={14} /> Enfocar
+        </button>
+        <button className={`${s.btn} ${s.linkBtn}`} onClick={onFollow}>
+          <Footprints size={14} /> Seguir a un vecino
+        </button>
+      </div>
+      <p className={s.meta} style={{ margin: "8px 0 0" }}>
+        Datos ficticios: con tu cartera real, aquí aparecerán los enlaces a Cartera, Técnico y Derivados.
+      </p>
+
+      <div className={s.groupTitle} style={{ marginTop: 10 }}>
+        Actividad reciente
+      </div>
+      {recent.length === 0 && <p className={s.meta}>Sin eventos todavía.</p>}
+      {recent.map((e) => (
+        <button key={e.id} className={`${s.feedRow} ${s[`sev_${e.severity}`]}`} onClick={() => onOpenEvent(e)}>
+          <div className={s.feedTitle}>{EVENT_TYPE_LABEL[e.eventType]}</div>
+          <div className={s.meta}>{e.title}</div>
+        </button>
+      ))}
+    </aside>
+  );
+}

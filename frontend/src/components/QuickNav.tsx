@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { BarChart3, Briefcase, Activity, Target, Globe, Landmark, Upload } from "lucide-react";
+import { BarChart3, Briefcase, Activity, Target, Globe, Landmark, Castle, Upload } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/zonas-clave", label: "Técnico", Icon: Target },
   { href: "/geo-intel", label: "Ideas", Icon: Globe },
   { href: "/alt-investments", label: "Inversiones Alt.", Icon: Landmark },
+  { href: "/living-world", label: "Mundo vivo", Icon: Castle },
 ] as const;
 
 export type QuickNavPage = (typeof NAV_ITEMS)[number]["href"];
