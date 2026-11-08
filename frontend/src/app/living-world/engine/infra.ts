@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { HIGHWAY_DECK, HIGHWAY_WIDTH, MONORAIL_DECK, MONORAIL_WIDTH, RAIL_WIDTH } from "../model/infra";
+import { HIGHWAY_WIDTH, MONORAIL_DECK, MONORAIL_WIDTH, RAIL_WIDTH } from "../model/infra";
 import { pointAlong, routeLength, type Point } from "../model/routes";
 import { seeded } from "../model/rng";
 import type { WorldLayout } from "../model/townLayout";
@@ -94,6 +94,7 @@ interface Car {
   speed: number;
   lane: number;
   forward: boolean;
+  loop: boolean;
 }
 
 export function buildInfra(layout: WorldLayout): InfraSystem {
@@ -105,19 +106,12 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   const mat = own(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   let reduced = false;
 
-  const highwayY = (x: number, z: number) => Math.max(HIGHWAY_DECK, t.roadY(x, z) + 7);
+  // Highways follow the natural ground profile; no elevated deck/pillar transitions.
+  const highwayY = (x: number, z: number) => t.roadY(x, z) + 0.28;
   const monorailY = (x: number, z: number) => Math.max(MONORAIL_DECK, t.roadY(x, z) + 6);
 
-  // --- expressways ---------------------------------------------------------------
-  const hw = new Builder();
-  for (const c of infra.highways) {
-    deck(hw, c.path, HIGHWAY_WIDTH, 0.55, highwayY, { parapet: true });
-    pillars(hw, c.path, 13, 0.7, highwayY, t.heightAt);
-  }
-  const hwMesh = new THREE.Mesh(own(hw.build()), mat);
-  hwMesh.castShadow = true;
-  hwMesh.receiveShadow = true;
-  group.add(hwMesh);
+  // The actual connected surface roads are drawn with kerbs and sidewalks by buildTown.
+  // This layer supplies only moving traffic and never adds a second raised/stepped deck.
 
   // --- railway ---------------------------------------------------------------------
   const rb = new Builder();
@@ -168,7 +162,7 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   deck(mb, mono.path, MONORAIL_WIDTH, 0.8, monorailY, { top: 0x6b7280, slab: 0xd9dce0 });
   pillars(mb, mono.path, 11, 0.45, monorailY, t.heightAt);
   for (const st of mono.stations) {
-    const ry = Math.atan2(-Math.sin(st.angle), Math.cos(st.angle)); // tangent
+    const ry = st.angle; // station heading along the curved SkyTrain route
     stationAt(mb, st.x, st.z, monorailY(st.x, st.z) + 0.1, ry, 9, 4.2);
   }
   const monoMesh = new THREE.Mesh(own(mb.build()), mat);
@@ -185,7 +179,9 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     let r = rng() * totalLen;
     let line = 0;
     while (line < lens.length - 1 && r > lens[line]) r -= lens[line++];
-    cars.push({ line, dist: r, speed: 7 + rng() * 5, lane: rng() < 0.5 ? -1.3 : 1.3, forward: rng() < 0.5 });
+    const path = infra.highways[line].path;
+    const loop = Math.hypot(path[0].x - path[path.length - 1].x, path[0].z - path[path.length - 1].z) < 0.05;
+    cars.push({ line, dist: r, speed: 7 + rng() * 5, lane: rng() < 0.5 ? -1.3 : 1.3, forward: rng() < 0.5, loop });
   }
   const carGeo = own(carGeometry());
   const carMesh = new THREE.InstancedMesh(carGeo, mat, CARS);
@@ -255,7 +251,7 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     cars.forEach((c, i) => {
       const line = infra.highways[c.line].path;
       const len = lens[c.line];
-      const d = ((c.dist % len) + len) % len;
+      const d = c.loop ? ((c.dist % len) + len) % len : Math.min(len, Math.max(0, c.dist));
       const p = along(line, d, c.forward ? c.lane : -c.lane);
       place(carMesh, i, p.x, highwayY(p.x, p.z) + 0.1, p.z, c.forward ? p.heading : p.heading + Math.PI);
     });
@@ -287,7 +283,19 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     update(dtMs) {
       if (reduced) return;
       const dt = dtMs / 1000;
-      for (const c of cars) c.dist += (c.forward ? 1 : -1) * c.speed * dt;
+      for (const c of cars) {
+        const len = lens[c.line];
+        c.dist += (c.forward ? 1 : -1) * c.speed * dt;
+        if (c.loop) {
+          c.dist = ((c.dist % len) + len) % len;
+        } else if (c.dist >= len) {
+          c.dist = len;
+          c.forward = false;
+        } else if (c.dist <= 0) {
+          c.dist = 0;
+          c.forward = true;
+        }
+      }
       // The shuttle runs to one end, waits, and comes back.
       if (railWait > 0) railWait -= dt;
       else {
