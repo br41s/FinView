@@ -52,6 +52,8 @@ export interface WorldAsset {
   sector: string | null;
   industry: string | null;
   archetype: Archetype;
+  /** False when neither a stored listing, an annual report nor a curated override told us what it is. */
+  classified: boolean;
   brokers: string[];
   marketValueEur: number | null;
   weightPct: number | null;

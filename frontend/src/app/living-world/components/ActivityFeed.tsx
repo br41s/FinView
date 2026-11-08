@@ -17,6 +17,8 @@ interface Props {
   activeId: string | null;
   onOpen: (e: WorldEvent) => void;
   now: number;
+  /** Replaces the "no events" line, e.g. to say why the real town has none yet. */
+  emptyHint?: string;
 }
 
 function ago(iso: string, now: number): string {
@@ -28,7 +30,7 @@ function ago(iso: string, now: number): string {
 }
 
 /** The event list lives outside the scene, so it keeps working however busy the town is. */
-export function ActivityFeed({ events, assets, window: win, onWindow, activeId, onOpen, now }: Readonly<Props>) {
+export function ActivityFeed({ events, assets, window: win, onWindow, activeId, onOpen, now, emptyHint }: Readonly<Props>) {
   const [order, setOrder] = useState<Order>("recent");
   const rows = useMemo(() => {
     const list = [...events];
@@ -59,7 +61,7 @@ export function ActivityFeed({ events, assets, window: win, onWindow, activeId, 
         ))}
       </div>
       <div className={s.panelBody}>
-        {rows.length === 0 && <p className={s.meta}>Sin eventos en esta ventana con los filtros actuales.</p>}
+        {rows.length === 0 && <p className={s.meta}>{emptyHint ?? "Sin eventos en esta ventana con los filtros actuales."}</p>}
         {rows.map((e) => {
           const a = e.assetId ? assets.get(e.assetId) : null;
           return (

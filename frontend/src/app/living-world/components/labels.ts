@@ -50,7 +50,7 @@ export const CONFIDENCE_LABEL: Record<Confidence, string> = {
   verified: "Verificado",
   reported: "Comunicado por la fuente",
   derived: "Derivado",
-  demo: "Demostración (ficticio)",
+  demo: "Simulado (no es un hecho)",
 };
 
 export const ASSET_TYPE_LABEL: Record<AssetType, string> = {

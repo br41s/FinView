@@ -19,6 +19,7 @@ import type {
   FiscalProfile,
   ImportRecord,
   ImportResult,
+  LivingWorldResponse,
   ManualSavingsIncome,
   OptionAssignment,
   PatrimonioComposition,
@@ -655,6 +656,11 @@ export const api = {
     aiExposure: () => fetchJSON<AiExposure>("/portfolio/ai-exposure"),
     /** Same contract as `refreshExposure`, for what reports say about AI. */
     refreshAiExposure: () => send<ExposureRefresh>("POST", "/portfolio/ai-exposure/refresh"),
+  },
+
+  // Living World ("Mundo vivo"): read-only portfolio read model for the 3D town.
+  livingWorld: {
+    world: () => fetchJSON<LivingWorldResponse>("/living-world/world"),
   },
 
   // Direct broker connection (IBKR Flex). The token is write-only: it goes in

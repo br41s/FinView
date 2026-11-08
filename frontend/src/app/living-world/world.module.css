@@ -115,6 +115,11 @@
   white-space: nowrap;
 }
 
+.badgeInfo {
+  background: rgba(45, 51, 64, 0.09);
+  color: var(--lw-ink);
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

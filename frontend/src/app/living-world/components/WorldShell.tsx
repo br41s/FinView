@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { NOT_ADVICE } from "@/lib/legal";
 import type { Quality } from "../engine/quality";
-import { useNow, nowMs, usePrefersReducedMotion } from "../hooks/useClock";
+import { useNow, usePrefersReducedMotion } from "../hooks/useClock";
 import { supportsWebGL, useStats, useWorld, type StatsStore } from "../hooks/useWorld";
 import { useWorldFilters } from "../hooks/useWorldFilters";
 import { applyFilters, filterEvents } from "../model/filters";
-import { demoAssets, generateDemoEvents } from "../model/fixtures";
+import { generateDemoEvents, type DemoEventOptions } from "../model/fixtures";
 import type { WorldAsset, WorldEvent } from "../model/types";
+import { sceneSignature } from "../model/worldAssets";
+import type { WorldMeta } from "../hooks/useWorldData";
 import s from "../world.module.css";
 import { ActivityFeed } from "./ActivityFeed";
 import { BuildingInspector } from "./BuildingInspector";
@@ -24,16 +26,45 @@ const WEEK = 7 * 24 * 3_600_000;
 const MAX_EVENTS = 800;
 const MAX_PINNED = 3;
 
-/** Phase 0: every holding and every event is fictional and lives only in this component. */
-export default function WorldShell() {
-  const assets = useMemo<WorldAsset[]>(() => demoAssets(), []);
+interface Props {
+  assets: readonly WorldAsset[];
+  /** The fictional town (`?demo=1`): every holding and event is invented. */
+  demo: boolean;
+  meta: WorldMeta | null;
+  onRefresh: (() => void) | null;
+  refreshing: boolean;
+  refreshFailed: boolean;
+}
+
+const shortDate = (iso: string) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+
+/**
+ * The town for a set of assets: the user's portfolio, or the fictional one in demo. Events
+ * are still simulated in both (real ones arrive in a later phase): in the real town they
+ * start off, and anything simulated says so on its title, its card and the toolbar.
+ */
+export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, refreshFailed }: Readonly<Props>) {
+  // The scene is rebuilt only when what it draws changes, not on every data refresh: a
+  // price tick must not reset the camera. State set during render is React's pattern for
+  // "derive from a prop, but only when it changes".
+  const signature = sceneSignature(assets);
+  const [scene, setScene] = useState({ signature, assets });
+  if (scene.signature !== signature) setScene({ signature, assets });
+  const sceneAssets = scene.assets;
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const now = useNow();
   const reducedMotion = usePrefersReducedMotion();
 
-  const [events, setEvents] = useState<WorldEvent[]>(() =>
-    generateDemoEvents(assets, { nowMs: nowMs(), seed: 11, count: HISTORY_EVENTS, spanMs: WEEK, idPrefix: "hist" }),
-  );
+  // Simulated events: a title prefix in the real town, where they sit on real companies.
+  const simulate = (o: DemoEventOptions): WorldEvent[] => {
+    const batch = generateDemoEvents(assets, o);
+    return demo ? batch : batch.map((e) => ({ ...e, title: `Simulado · ${e.title}` }));
+  };
+  const history = (): WorldEvent[] =>
+    simulate({ nowMs: Date.now(), seed: 11, count: HISTORY_EVENTS, spanMs: WEEK, idPrefix: "hist" });
+
+  const [events, setEvents] = useState<WorldEvent[]>(() => (demo ? history() : []));
   const { filters, set, toggle, clear } = useWorldFilters();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
@@ -42,7 +73,7 @@ export default function WorldShell() {
   const [paused, setPaused] = useState(false);
   const [mode, setMode] = useState<ActivityMode>("normal");
   const [autoFocus, setAutoFocus] = useState(false);
-  const [live, setLive] = useState(true);
+  const [live, setLive] = useState(demo);
   const [quality, setQuality] = useState<Quality>(() =>
     typeof navigator !== "undefined" && (navigator.hardwareConcurrency ?? 8) <= 4 ? "low" : "medium",
   );
@@ -66,7 +97,7 @@ export default function WorldShell() {
     }),
     [],
   );
-  const { world, failed, ready, statsStore } = useWorld(host, { assets, quality, reducedMotion, callbacks });
+  const { world, failed, ready, statsStore } = useWorld(host, { assets: sceneAssets, quality, reducedMotion, callbacks });
 
   // Emitting an event is one action: it joins the history and queues for the stage.
   const emit = (batch: WorldEvent[]) => {
@@ -76,12 +107,12 @@ export default function WorldShell() {
 
   const burst = (n: number) => {
     counter.current += 1;
-    emit(generateDemoEvents(assets, { nowMs: Date.now(), seed: 1000 + counter.current, count: n, spanMs: 0, idPrefix: `burst${counter.current}` }));
+    emit(simulate({ nowMs: Date.now(), seed: 1000 + counter.current, count: n, spanMs: 0, idPrefix: `burst${counter.current}` }));
   };
 
   const liveTick = useEffectEvent(() => {
     counter.current += 1;
-    emit(generateDemoEvents(assets, { nowMs: Date.now(), seed: 5000 + counter.current, count: 1, spanMs: 0, idPrefix: `live${counter.current}` }));
+    emit(simulate({ nowMs: Date.now(), seed: 5000 + counter.current, count: 1, spanMs: 0, idPrefix: `live${counter.current}` }));
   });
 
   useEffect(() => {
@@ -89,6 +120,27 @@ export default function WorldShell() {
     const id = window.setInterval(liveTick, 7000);
     return () => window.clearInterval(id);
   }, [live]);
+
+  // In the real town the switch is the only source of events: turning it on seeds a
+  // week of history, turning it off takes everything simulated away again.
+  const setSimulating = (on: boolean) => {
+    setLive(on);
+    if (!demo) {
+      setEvents(on ? history() : []);
+      setOpenEventId(null);
+      setPinned([]);
+    }
+  };
+
+  // The scene was rebuilt (the set of assets changed): the new one knows nothing of the
+  // user's selection, so hand it back. Pause, mode, quality and filters are re-applied
+  // by the effects below, which depend on the same `sceneAssets`.
+  const reselect = useEffectEvent(() => {
+    world.current?.select(selectedId && byId.has(selectedId) ? selectedId : null);
+  });
+  useEffect(() => {
+    reselect();
+  }, [sceneAssets, world]);
 
   // Mode and auto-focus are director settings; pause freezes the whole simulation.
   useEffect(() => {
@@ -99,15 +151,15 @@ export default function WorldShell() {
           ? { quiet: false, maxNormal: 6, maxTotal: 12, autoFocus }
           : { quiet: false, maxNormal: 3, maxTotal: 6, autoFocus },
     );
-  }, [mode, autoFocus, world, assets]);
+  }, [mode, autoFocus, world, sceneAssets]);
   useEffect(() => {
     world.current?.setPaused(paused);
-  }, [paused, world, assets]);
+  }, [paused, world, sceneAssets]);
 
   const visibility = useMemo(() => applyFilters(assets, events, filters, now), [assets, events, filters, now]);
   useEffect(() => {
     world.current?.setVisibility(visibility);
-  }, [visibility, world, assets]);
+  }, [visibility, world, sceneAssets]);
 
   const feedEvents = useMemo(() => filterEvents(events, filters, now), [events, filters, now]);
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
@@ -166,7 +218,14 @@ export default function WorldShell() {
               <ChevronLeft size={16} /> Dashboard
             </Link>
             <span className={s.title}>Mundo vivo</span>
-            <span className={s.badge}>Datos ficticios</span>
+            {demo ? (
+              <span className={s.badge}>Datos ficticios</span>
+            ) : (
+              <span className={`${s.badge} ${s.badgeInfo}`}>
+                Tu cartera{meta?.pricesAsOf ? ` · precios del ${shortDate(meta.pricesAsOf)}` : ""}
+              </span>
+            )}
+            {!demo && live && <span className={s.badge}>Eventos simulados</span>}
           </div>
           <WorldSearch
             query={filters.query}
@@ -175,6 +234,9 @@ export default function WorldShell() {
             onPick={chooseAsset}
           />
           <WorldToolbar
+            demo={demo}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
             canBack={canBack}
             paused={paused}
             mode={mode}
@@ -190,7 +252,7 @@ export default function WorldShell() {
             onMode={setMode}
             onQuality={setQuality}
             onAutoFocus={setAutoFocus}
-            onLive={setLive}
+            onLive={setSimulating}
             onBurst={() => burst(25)}
             onPanel={setPanel}
           />
@@ -210,6 +272,7 @@ export default function WorldShell() {
           {selected && (
             <BuildingInspector
               asset={selected}
+              demo={demo}
               events={events}
               onClose={() => {
                 world.current?.select(null);
@@ -229,6 +292,11 @@ export default function WorldShell() {
               activeId={openEventId}
               onOpen={openFromFeed}
               now={now}
+              emptyHint={
+                demo || live
+                  ? undefined
+                  : "Aún no hay eventos reales: llegarán en una fase posterior. Activa «Simular eventos» para ver cómo reaccionaría el pueblo."
+              }
             />
           )}
         </div>
@@ -256,6 +324,13 @@ export default function WorldShell() {
 
         <div className={s.footer}>
           <span>{NOT_ADVICE.short}</span>
+          {meta && meta.unvalued > 0 && (
+            <span>
+              {meta.unvalued} sin valorar (sin precio): se dibujan pequeñas y marcadas, y los pesos se calculan sobre el resto
+            </span>
+          )}
+          {meta && meta.unclassified > 0 && <span>{meta.unclassified} sin clasificar</span>}
+          {refreshFailed && <span>No se pudo actualizar: se muestran los últimos datos</span>}
           <FpsLabel store={statsStore} />
         </div>
       </div>

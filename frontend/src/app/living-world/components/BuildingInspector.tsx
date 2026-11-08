@@ -1,6 +1,7 @@
 "use client";
 
 import { Crosshair, Footprints, X } from "lucide-react";
+import Link from "next/link";
 import { fmt, fmtPct, formatEur } from "@/lib/format";
 import { ARCHETYPE_LABEL } from "../model/archetypes";
 import type { WorldAsset, WorldEvent } from "../model/types";
@@ -9,6 +10,8 @@ import { ASSET_TYPE_LABEL, EVENT_TYPE_LABEL } from "./labels";
 
 interface Props {
   asset: WorldAsset;
+  /** Fictional holdings: there is no real position to link to. */
+  demo: boolean;
   events: readonly WorldEvent[];
   onClose: () => void;
   onFocus: () => void;
@@ -22,7 +25,7 @@ const eur = (v: number | null) => (v === null ? "—" : formatEur(v));
  * A light card, not a dashboard (spec §12.2). Cost and P/L appear only when FinView knows
  * them; otherwise a dash, because an unknown cost is not a cost of zero.
  */
-export function BuildingInspector({ asset: a, events, onClose, onFocus, onFollow, onOpenEvent }: Readonly<Props>) {
+export function BuildingInspector({ asset: a, demo, events, onClose, onFocus, onFollow, onOpenEvent }: Readonly<Props>) {
   const recent = events.filter((e) => e.assetId === a.id).slice(0, 6);
   return (
     <aside className={`${s.card} ${s.inspector}`} aria-label={`Edificio: ${a.name}`}>
@@ -43,6 +46,7 @@ export function BuildingInspector({ asset: a, events, onClose, onFocus, onFollow
         {ASSET_TYPE_LABEL[a.assetType] !== ARCHETYPE_LABEL[a.archetype] && (
           <span className={s.tag}>{ASSET_TYPE_LABEL[a.assetType]}</span>
         )}
+        {!a.classified && <span className={`${s.tag} ${s.tagDemo}`}>Sin clasificar</span>}
         {a.marketValueEur === null && <span className={`${s.tag} ${s.tagDemo}`}>Valoración desconocida</span>}
       </div>
 
@@ -69,9 +73,27 @@ export function BuildingInspector({ asset: a, events, onClose, onFocus, onFollow
           <Footprints size={14} /> Seguir a un vecino
         </button>
       </div>
-      <p className={s.meta} style={{ margin: "8px 0 0" }}>
-        Datos ficticios: con tu cartera real, aquí aparecerán los enlaces a Cartera, Técnico y Derivados.
-      </p>
+      {demo ? (
+        <p className={s.meta} style={{ margin: "8px 0 0" }}>
+          Datos ficticios: con tu cartera real, aquí aparecerán los enlaces a Cartera, Técnico y Derivados.
+        </p>
+      ) : (
+        <div className={s.actions} style={{ marginTop: 8 }}>
+          <Link className={`${s.btn} ${s.linkBtn}`} href="/portfolio">
+            Cartera
+          </Link>
+          {a.ticker && (
+            <>
+              <Link className={`${s.btn} ${s.linkBtn}`} href={`/zonas-clave?ticker=${encodeURIComponent(a.ticker)}`}>
+                Técnico
+              </Link>
+              <Link className={`${s.btn} ${s.linkBtn}`} href={`/options?ticker=${encodeURIComponent(a.ticker)}`}>
+                Derivados
+              </Link>
+            </>
+          )}
+        </div>
+      )}
 
       <div className={s.groupTitle} style={{ marginTop: 10 }}>
         Actividad reciente
