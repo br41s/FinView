@@ -532,6 +532,13 @@ export function createWorld(
         m.needsUpdate = true;
       }
       m.depthWrite = next > 0.5;
+      const brand = e.site.brandMaterial;
+      brand.opacity = next;
+      if (brand.transparent !== transparent) {
+        brand.transparent = transparent;
+        brand.needsUpdate = true;
+      }
+      brand.depthWrite = next > 0.5;
       e.site.group.visible = e.targetOpacity > 0 || next > 0.01;
       e.label.material.opacity = Math.max(0.25, next);
     }
