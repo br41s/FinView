@@ -40,60 +40,65 @@ const polar = (a: number, r: number): Pt => ({ x: Math.cos(a) * r, z: Math.sin(a
 
 export interface InfraSpec {
   plaza: number;
-  /** Radius of the outer town; the ring road runs just beyond it. */
   radius: number;
-  /** Angle of the middle of each gap between compass slots k and k+1. */
-  gap: (k: number) => number;
-  /** The plateau sector, in unwrapped angles (start < end). */
-  plateauStart: number;
-  plateauEnd: number;
+  /** Connected surface-road network: outer arterial loop and city exits. */
+  highways: Corridor[];
+  /** Ground railway from the industrial district to the central interchange. */
+  rail: Pt[];
+  railTerminus: Pt;
+  /** District entrances in their clockwise urban order; SkyTrain serves each of them. */
+  districtStops: Pt[];
+}
+
+function nearestPointOnPath(target: Pt, path: readonly Pt[]): { x: number; z: number; angle: number } {
+  let best = { x: path[0].x, z: path[0].z, angle: 0 };
+  let bestD = Infinity;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1];
+    const b = path[i];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len2 = dx * dx + dz * dz;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((target.x - a.x) * dx + (target.z - a.z) * dz) / len2));
+    const x = a.x + dx * t;
+    const z = a.z + dz * t;
+    const d = Math.hypot(target.x - x, target.z - z);
+    if (d < bestD) {
+      bestD = d;
+      best = { x, z, angle: Math.atan2(dx, dz) };
+    }
+  }
+  return best;
 }
 
 export function computeInfra(s: InfraSpec): Infra {
-  const rh = s.radius + 7;
-
-  // Ring road: everywhere except the plateau side.
-  const a0 = s.plateauEnd + 0.12;
-  const a1 = s.plateauStart + 2 * Math.PI - 0.12;
-  const ring: Pt[] = [];
-  const n = Math.max(8, Math.round(((a1 - a0) * rh) / 14));
-  for (let i = 0; i <= n; i++) {
-    const a = a0 + ((a1 - a0) * i) / n;
-    ring.push(polar(a, rh + Math.sin(i * 0.7) * 2.2));
+  const stops = [...s.districtStops].sort((a, b) => Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x));
+  let waypoints = stops;
+  if (waypoints.length < 3) {
+    const centre = waypoints[0] ?? { x: 0, z: 0 };
+    const r = Math.max(MONORAIL_RADIUS, s.radius * 0.22);
+    waypoints = [
+      { x: centre.x - r, z: centre.z - r * 0.5 },
+      { x: centre.x + r, z: centre.z - r * 0.35 },
+      { x: centre.x + r * 0.2, z: centre.z + r },
+    ];
   }
-
-  // The south expressway: out along the 2|3 gap, round the square at r = 24, out along the 4|5 gap.
-  const g1 = s.gap(2);
-  let g2 = s.gap(4);
-  if (g2 < g1) g2 += 2 * Math.PI;
-  const ru = s.plaza + 8;
-  const u: Pt[] = [polar(g1, rh), polar(g1, ru + 16)];
-  const m = 8;
-  for (let i = 0; i <= m; i++) u.push(polar(g1 + ((g2 - g1) * i) / m, ru));
-  u.push(polar(g2, ru + 16), polar(g2, rh));
-
-  // Railway: along the 3|4 gap from the coast to a terminus beside the square.
-  const gr = s.gap(3);
-  const terminus = polar(gr, s.plaza + 7);
-  const rail: Pt[] = [polar(gr, s.radius + 16), polar(gr, s.plaza + 8)];
-
-  // Monorail: a loop round the square with four stations.
-  const loop: Pt[] = [];
-  const steps = 36;
-  for (let i = 0; i < steps; i++) loop.push(polar((i / steps) * 2 * Math.PI + 0.35, MONORAIL_RADIUS));
-  loop.push(loop[0]);
-  const stations: MonorailStation[] = [0, 1, 2, 3].map((k) => {
-    const angle = 0.35 + (k * Math.PI) / 2 + Math.PI / 4;
-    return { ...polar(angle, MONORAIL_RADIUS), angle };
-  });
+  const closed = [...waypoints, waypoints[0]];
+  const loop = chaikin(closed, 2);
+  loop[loop.length - 1] = { ...loop[0] };
+  const stations = stops.length
+    ? stops.map((stop) => nearestPointOnPath(stop, loop))
+    : [nearestPointOnPath(waypoints[0], loop), nearestPointOnPath(waypoints[1], loop), nearestPointOnPath(waypoints[2], loop)];
 
   return {
-    highways: [
-      { path: chaikin(ring, 1), clear: HIGHWAY_WIDTH + 4 },
-      { path: chaikin(u, 2), clear: HIGHWAY_WIDTH + 2 },
-    ],
-    rail: { path: rail, clear: RAIL_WIDTH + 4 },
-    monorail: { path: loop, clear: MONORAIL_WIDTH + 3, stations, closed: true },
-    railTerminus: terminus,
+    highways: s.highways,
+    rail: { path: s.rail, clear: RAIL_WIDTH + 4 },
+    monorail: {
+      path: loop,
+      clear: MONORAIL_WIDTH + 4,
+      stations,
+      closed: true,
+    },
+    railTerminus: s.railTerminus,
   };
 }
