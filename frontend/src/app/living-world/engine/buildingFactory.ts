@@ -418,7 +418,7 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
 
   const canvas = document.createElement("canvas");
   canvas.width = 512;
-  canvas.height = 144;
+  canvas.height = 164;
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#" + new THREE.Color(accent).getHexString();
   ctx.beginPath();
@@ -437,12 +437,15 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
     signFontSize -= 2;
     ctx.font = "800 " + signFontSize + "px system-ui, sans-serif";
   }
-  ctx.fillText(ticker, 30, 70, 440);
+  ctx.fillText(ticker, 30, 68, 440);
+  ctx.fillStyle = "#c7d3e1";
+  ctx.font = "600 22px system-ui, sans-serif";
+  ctx.fillText(asset.name, 30, 124, 440);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   const brandMaterial = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
-  const brandPlate = new THREE.Mesh(new THREE.PlaneGeometry(1.72, 0.48), brandMaterial);
+  const brandPlate = new THREE.Mesh(new THREE.PlaneGeometry(1.72, 0.55), brandMaterial);
   brandPlate.position.set(0, Math.max(1.05, Math.min(b.top * 0.72, 2.2)), nominal * 0.27);
   brandPlate.renderOrder = 3;
 
