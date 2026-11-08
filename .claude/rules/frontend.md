@@ -168,3 +168,52 @@ silent no-op everywhere (URLs go stale, and a thrown error would be worse).
   only, shim rAF with `setTimeout` and override `document.hidden` in the page.
 - The copy is a joke about a bear market eating a garden and says so ("Es solo un juego.
   Aquí tampoco hay consejos de inversión"). Keep it that way: see the not-advice rule.
+
+---
+
+## Living World (`/living-world`, "Mundo vivo")
+
+Spec: `FinView_Living_World_Technical_Spec.md` (Brais's Downloads). A standalone 3D town for the
+portfolio, built in phases. **Phase 0 (this) is a visual prototype: every holding and event is
+fictional (`model/fixtures.ts`, ISINs start `ZZ`), nothing is fetched, saved or persisted.** The page
+says so permanently ("Datos ficticios"). Phases 1+ (real read model, event history) are not built.
+
+- **Same split as the garden game.** `model/` is pure TypeScript with colocated `*.test.ts`
+  (layout, scale, filters, priority, director, routes, fixtures); `engine/` is Three.js and is
+  not unit-tested (vitest runs in node, `.ts` only); `components/` is React controls and cards.
+  A rule changes in `model/` and its test, never in the renderer. Per-frame state never goes
+  through React: the render loop, agents and director live in `engine/scene.ts`.
+- **Do not name a file `layout.ts` (or `page`, `route`, `template`, `loading`, `error`, …) under
+  `app/`.** Next treats it as a special App Router file; `model/layout.ts` broke `tsc` with
+  "Property 'default' is missing". The town layout is `model/townLayout.ts`.
+- **Three.js is lazy**: only `LivingWorldClient.tsx` imports the shell, behind
+  `next/dynamic(..., { ssr: false })`, so no other route pays for it. Keep it that way: check
+  the `pnpm build` output when adding imports.
+- **One merged mesh per site** (`engine/buildingFactory.ts`, vertex colours, a `Builder` that
+  merges primitives) so ~100 companies stay ~100 draw calls; trees, people and vans are
+  `InstancedMesh`. `createSite` is the seam for authored glTF kits in a later phase.
+- **Layout is a pure function of asset ids** (hash slots in a grid per district). It never reads
+  weights, prices or events: a price refresh must not move a building. Lots have one pitch (the
+  largest footprint plus a street), so a building that grows a tier cannot collide.
+- **Size = portfolio weight, not price action** (`model/scale.ts`, piecewise-linear, tiers with
+  hysteresis). An unknown weight/valuation is drawn small *and marked* (yellow diamond), never
+  treated as zero. Events are acted out temporarily; only tier changes alter a building.
+- **Event priority is deterministic** (`model/priority.ts`: base × magnitude × relevance ×
+  confidence, every factor kept). `bucketFor` / `IMPORTANT_AT` / `CRITICAL_AT` decide how noisy
+  the town is — Brais's call, provisional values today.
+- **Material gotcha**: toggling `material.transparent` needs `material.needsUpdate = true`.
+  Opaque materials compile with alpha forced to 1, so fading buildings (filters mute to 22 %)
+  silently ignored `opacity` until the flag change triggered a recompile.
+- **Canvas lifecycle**: `hooks/useWorld.ts` creates a fresh `<canvas>` per mount. A canvas whose
+  context was released by `forceContextLoss()` cannot be reused, and React strict mode mounts
+  twice; the `webglcontextlost` listener is removed in `dispose()` or the first mount's
+  cleanup reports a "lost context" error to the second.
+- **Browser pane**: it reports `document.hidden = true`, so the loop (which stops when hidden)
+  renders nothing. For debugging, shim `requestAnimationFrame` with `setTimeout`, override
+  `document.hidden`, dispatch `visibilitychange`. In dev, `window.__livingWorld.stats()` returns
+  fps / draw calls / triangles.
+- No `localStorage`, cookies or third-party requests in Phase 0 (the cookie list in
+  `/legal/cookies` is unchanged). Any persisted preference in a later phase needs listing there.
+- Footer renders `NOT_ADVICE.short`. Nothing in the town tells anyone to buy or sell: arrows
+  and "A la baja" describe a market move, not an operating result or a recommendation.
+

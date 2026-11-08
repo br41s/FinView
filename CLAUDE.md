@@ -27,12 +27,12 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | Parsers | pdfplumber (PDF), openpyxl (XLSX), csv (IBKR) |
 | Options data | yfinance · MEFF HTML scraping · Eurex RDF |
 | AI | OpenRouter (hand-rolled httpx) — `settings.openrouter_model`, code default `deepseek/deepseek-v4-flash`, overridden in production by `FINVIEW_OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash` since 2026-10-10. One shared model for options analysis, the geo analyst and reading annual reports (segment notes, and what each says about AI). Every call goes through `llm_envelope.chat()`, which always sends `provider.data_collection: "deny"` (`PROVIDER_POLICY`; callers cannot override it). A call that sent `reasoning: none` and still spent its whole budget thinking is asked once more (`[reasoning-retry]` in the logs). |
-| Frontend | Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts (price/candles) · NextAuth · shadcn/ui |
+| Frontend | Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts (price/candles) · three (Living World, lazy-loaded) · NextAuth · shadcn/ui |
 | DB prod | Neon Postgres |
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1762 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 185 frontend tests |
+| Tests | pytest · 1762 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 250 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -262,11 +262,12 @@ reported 127 skips here against 159 there. Gate on a path built from
 is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
 the pure unit tests down with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 185 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 250 tests over pure logic: `src/lib/`
 (`aiExposure`, `brokerSync`, `exposure`, `optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis, tier grouping, ladder badge)
 plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options
-page's state reducer) and `src/game/garden/` (the rules of the landing page's garden game). **`vitest` must be installed**
+page's state reducer), `src/game/garden/` (the rules of the landing page's garden game) and
+`src/app/living-world/model/` (layout, scale, filters, priority, director, routes of the Living World town). **`vitest` must be installed**
 or `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.
 

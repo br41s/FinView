@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1762 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (185 frontend) · ESLint
+- **Tests:** pytest (1762 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (250 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -81,6 +81,7 @@ FinView/
 │       ├── app/page.tsx                 # Dashboard principal (5 tabs — inversiones)
 │       ├── app/options/page.tsx         # Monitor opciones (5 tabs)
 │       ├── app/alt-investments/page.tsx # Inversiones alternativas (banca privada)
+│       ├── app/living-world/            # Mundo vivo: la cartera como pueblo 3D (Three.js; Fase 0, datos ficticios)
 │       ├── components/                  # FileUpload, tablas, stats cards
 │       ├── components/charts/           # 8 componentes de gráficas
 │       └── lib/                         # API client + tipos TypeScript
