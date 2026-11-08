@@ -108,7 +108,7 @@ function shortestLoopArc(line: readonly Point[], from: Point, to: Point): Point[
  * delivery vans and event visitors, so they no longer cut across the city diagonally.
  */
 /** Offset a company-to-centre route onto the pavement beside each road segment. */
-export function sidewalkRoute(route: readonly Point[], roads: readonly RoadSegment[]): Point[] {
+export function sidewalkRoute(route: readonly Point[], roads: readonly RoadSegment[], side: 1 | -1 = 1): Point[] {
   if (route.length < 2 || roads.length === 0) return [...route];
   return route.map((point, i) => {
     const previous = route[Math.max(0, i - 1)];
@@ -128,8 +128,6 @@ export function sidewalkRoute(route: readonly Point[], roads: readonly RoadSegme
       }
     }
     const offset = (nearest?.width ?? 4.6) / 2 + 1.45;
-    // Alternate sides gently along the path to avoid every pedestrian sharing one line.
-    const side = i % 8 < 4 ? 1 : -1;
     return { x: point.x + normalX * offset * side, z: point.z + normalZ * offset * side };
   });
 }
