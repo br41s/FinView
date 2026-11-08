@@ -108,6 +108,8 @@ export class AgentSystem {
   readonly helmets: THREE.InstancedMesh;
   readonly backpacks: THREE.InstancedMesh;
   readonly briefcases: THREE.InstancedMesh;
+  readonly ties: THREE.InstancedMesh;
+  readonly clipboards: THREE.InstancedMesh;
   private agents: Agent[] = [];
   private ambientCount = 0;
   private vanList: Van[] = [];
@@ -124,10 +126,31 @@ export class AgentSystem {
 
   constructor(private capacity: number) {
     const total = capacity + TEMP_SLOTS;
-    const bodyGeo = new THREE.CylinderGeometry(0.16, 0.22, 0.62, 8);
-    bodyGeo.translate(0, 0.31, 0);
-    const headGeo = new THREE.SphereGeometry(0.17, 8, 6);
-    headGeo.translate(0, 0.78, 0);
+    // A compact low-poly body with shoulders, arms, legs and shoes reads as a person
+    // at town zoom while staying in one instanced draw call.
+    const bodyParts: THREE.BufferGeometry[] = [];
+    const torso = new THREE.BoxGeometry(0.36, 0.43, 0.23);
+    torso.translate(0, 0.37, 0);
+    bodyParts.push(torso);
+    const shoulders = new THREE.BoxGeometry(0.48, 0.14, 0.25);
+    shoulders.translate(0, 0.57, 0);
+    bodyParts.push(shoulders);
+    for (const side of [-1, 1]) {
+      const arm = new THREE.CylinderGeometry(0.065, 0.08, 0.34, 6);
+      arm.rotateZ(side * 0.12);
+      arm.translate(side * 0.24, 0.37, 0);
+      bodyParts.push(arm);
+      const leg = new THREE.CylinderGeometry(0.07, 0.08, 0.28, 6);
+      leg.translate(side * 0.105, 0.1, 0);
+      bodyParts.push(leg);
+      const shoe = new THREE.BoxGeometry(0.15, 0.075, 0.24);
+      shoe.translate(side * 0.105, 0.038, 0.045);
+      bodyParts.push(shoe);
+    }
+    const bodyGeo = mergeGeometries(bodyParts, false);
+    bodyParts.forEach((part) => part.dispose());
+    const headGeo = new THREE.SphereGeometry(0.18, 10, 8);
+    headGeo.translate(0, 0.79, 0);
     const flat = (vc: boolean) => new THREE.MeshLambertMaterial({ flatShading: true, vertexColors: vc });
     this.bodies = new THREE.InstancedMesh(bodyGeo, flat(false), total);
     this.heads = new THREE.InstancedMesh(headGeo, flat(false), total);
@@ -184,10 +207,27 @@ export class AgentSystem {
     const briefcaseGeo = mergeGeometries([briefcaseBody, briefcaseHandle], false);
     briefcaseBody.dispose();
     briefcaseHandle.dispose();
+    const tieKnot = new THREE.BoxGeometry(0.1, 0.08, 0.07);
+    tieKnot.translate(0, 0.59, 0.15);
+    const tieTail = new THREE.ConeGeometry(0.075, 0.28, 4);
+    tieTail.rotateX(Math.PI);
+    tieTail.translate(0, 0.42, 0.16);
+    const tieGeo = mergeGeometries([tieKnot, tieTail], false);
+    tieKnot.dispose();
+    tieTail.dispose();
+    const clipboardBody = new THREE.BoxGeometry(0.2, 0.31, 0.035);
+    clipboardBody.translate(-0.2, 0.5, 0.15);
+    const clipboardClip = new THREE.BoxGeometry(0.075, 0.045, 0.045);
+    clipboardClip.translate(-0.2, 0.67, 0.17);
+    const clipboardGeo = mergeGeometries([clipboardBody, clipboardClip], false);
+    clipboardBody.dispose();
+    clipboardClip.dispose();
     this.helmets = new THREE.InstancedMesh(helmetGeo, flat(false), total);
     this.backpacks = new THREE.InstancedMesh(backpackGeo, flat(false), total);
     this.briefcases = new THREE.InstancedMesh(briefcaseGeo, flat(false), total);
-    for (const prop of [this.helmets, this.backpacks, this.briefcases]) {
+    this.ties = new THREE.InstancedMesh(tieGeo, flat(false), total);
+    this.clipboards = new THREE.InstancedMesh(clipboardGeo, flat(false), total);
+    for (const prop of [this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
       prop.castShadow = true;
       prop.frustumCulled = false;
     }
@@ -360,7 +400,9 @@ export class AgentSystem {
     this.helmets.setColorAt(i, this.c.set(a.role === "crew" ? 0xf28b24 : 0xf0c84e));
     this.backpacks.setColorAt(i, this.c.set(a.role === "courier" ? 0xe3a437 : 0x6b7884));
     this.briefcases.setColorAt(i, this.c.set(a.role === "analyst" ? 0x345f91 : 0x433e52));
-    for (const mesh of [this.bodies, this.heads, this.helmets, this.backpacks, this.briefcases]) {
+    this.ties.setColorAt(i, this.c.set(0xb94e57));
+    this.clipboards.setColorAt(i, this.c.set(0x9eafbc));
+    for (const mesh of [this.bodies, this.heads, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
   }
@@ -501,6 +543,8 @@ export class AgentSystem {
         this.helmets.setMatrixAt(i, this.m);
         this.backpacks.setMatrixAt(i, this.m);
         this.briefcases.setMatrixAt(i, this.m);
+        this.ties.setMatrixAt(i, this.m);
+        this.clipboards.setMatrixAt(i, this.m);
         continue;
       }
       const st = a.override ?? a.state;
@@ -531,7 +575,9 @@ export class AgentSystem {
 
       const helmetRole = a.role === "worker" || a.role === "crew";
       const courierRole = a.role === "courier";
-      const professionalRole = a.role === "manager" || a.role === "analyst";
+      const managerRole = a.role === "manager";
+      const analystRole = a.role === "analyst";
+      const professionalRole = managerRole || analystRole;
       this.s.set(helmetRole ? AGENT_SCALE : 0, helmetRole ? AGENT_SCALE : 0, helmetRole ? AGENT_SCALE : 0);
       this.m.compose(this.p, this.q, this.s);
       this.helmets.setMatrixAt(i, this.m);
@@ -541,6 +587,12 @@ export class AgentSystem {
       this.s.set(professionalRole ? AGENT_SCALE : 0, professionalRole ? AGENT_SCALE : 0, professionalRole ? AGENT_SCALE : 0);
       this.m.compose(this.p, this.q, this.s);
       this.briefcases.setMatrixAt(i, this.m);
+      this.s.set(managerRole ? AGENT_SCALE : 0, managerRole ? AGENT_SCALE : 0, managerRole ? AGENT_SCALE : 0);
+      this.m.compose(this.p, this.q, this.s);
+      this.ties.setMatrixAt(i, this.m);
+      this.s.set(analystRole ? AGENT_SCALE : 0, analystRole ? AGENT_SCALE : 0, analystRole ? AGENT_SCALE : 0);
+      this.m.compose(this.p, this.q, this.s);
+      this.clipboards.setMatrixAt(i, this.m);
       // Restore the shared pose matrix scales before the next agent.
       this.s.set(AGENT_SCALE, AGENT_SCALE * sy, AGENT_SCALE);
       this.m.compose(this.p, this.q, this.s);
@@ -550,6 +602,8 @@ export class AgentSystem {
     this.helmets.instanceMatrix.needsUpdate = true;
     this.backpacks.instanceMatrix.needsUpdate = true;
     this.briefcases.instanceMatrix.needsUpdate = true;
+    this.ties.instanceMatrix.needsUpdate = true;
+    this.clipboards.instanceMatrix.needsUpdate = true;
 
     this.vans.count = this.vanList.length;
     this.vanList.forEach((v, i) => {
@@ -565,7 +619,7 @@ export class AgentSystem {
   }
 
   dispose() {
-    for (const m of [this.bodies, this.heads, this.vans, this.helmets, this.backpacks, this.briefcases]) {
+    for (const m of [this.bodies, this.heads, this.vans, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
       m.dispose();
