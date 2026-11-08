@@ -282,8 +282,9 @@ export function createWorld(
       site.group.rotation.y = lot.rotationY;
       site.group.scale.setScalar(startScale);
       site.mesh.userData.assetId = asset.id;
+      site.brandPlate.userData.assetId = asset.id;
       scene.add(site.group);
-      siteMeshes.push(site.mesh);
+      siteMeshes.push(site.mesh, site.brandPlate);
 
       const label = makeBrandLabel(asset);
       label.position.set(lot.x, groundY + site.top * startScale + 0.72, lot.z);
