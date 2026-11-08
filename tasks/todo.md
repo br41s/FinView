@@ -1,5 +1,27 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Mundo vivo — Fase 1: la cartera real (rama `feat/living-world-real-portfolio`)
+
+Origen: 2026-11-08. Fase 0 (PR #362) era un pueblo con 100 posiciones ficticias; la Fase 1 lo alimenta con la
+cartera real sin cambiar el motor 3D. Decisiones de Brais: eventos vacíos + interruptor «Simular eventos»;
+variación diaria en «—» hasta guardar el cierre previo (Fase 2); sector solo desde lo ya guardado.
+
+- [x] `GET /api/living-world/world` sobre `get_open_positions`: un edificio por ISIN, `null` en lo desconocido,
+      total fail-closed, sin Yahoo (`services/living_world.py`, `api/living_world.py`).
+- [x] Clasificación sin red: `listing_profiles` (tipo + sector Yahoo) → sector dominante del último informe anual →
+      `classified=false`. `ARCHETYPE_OVERRIDES` vacío a propósito (repo público).
+- [x] Tests del backend (`test_living_world.py`, 11): vacía, dos brokers = un edificio, coste/precio desconocido,
+      sin sector, ETF, informe anual, override, aislamiento entre usuarios, sin llamadas a Yahoo, 401.
+- [x] Frontend: `api.livingWorld.world()`, `model/worldAssets.ts` (+10 tests), `hooks/useWorldData.ts`,
+      estados cargando/error/vacío, modo demo en `?demo=1`, «Simular eventos», botón Actualizar, enlaces en el inspector.
+- [x] La escena solo se reconstruye si cambia `sceneSignature`; al reconstruir se conservan calidad, pausa, modo y selección.
+- [x] Verificado en navegador con una copia de la BD local (71 posiciones, 43 valoradas): real, vacía, error, demo,
+      eventos simulados y refresco con cambio de sector.
+- [ ] Seguimiento (Fase 2): eventos reales (libro de operaciones + movimientos de precio), `previous_close` en
+      `price_cache`, favoritos y overrides manuales por usuario, efectivo y alternativas en la meseta,
+      bonos/ISIN sin ticker (hoy «sin clasificar»), `industry` por ISIN (coches caen en «Comercio y moda»).
+
+
 ## Conexión directa con IBKR (Flex Web Service) — rama `feat/ibkr-flex-sync`
 
 Origen: 2026-10-15, Brais pide que FinView lea los datos de los brokers directamente, empezando por IBKR,

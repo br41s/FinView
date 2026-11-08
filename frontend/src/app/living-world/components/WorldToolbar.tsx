@@ -7,6 +7,7 @@ import {
   Maximize,
   Pause,
   Play,
+  RefreshCw,
   RotateCcw,
   RotateCw,
   Sparkles,
@@ -21,6 +22,8 @@ export type ActivityMode = "quiet" | "normal" | "busy";
 export type Panel = "filters" | "feed" | null;
 
 interface Props {
+  /** The fictional town: its event generator is the whole point, so it stays on offer. */
+  demo: boolean;
   canBack: boolean;
   paused: boolean;
   mode: ActivityMode;
@@ -39,6 +42,9 @@ interface Props {
   onLive: (v: boolean) => void;
   onBurst: () => void;
   onPanel: (p: Panel) => void;
+  /** null in demo: there is nothing to refresh. */
+  onRefresh: (() => void) | null;
+  refreshing: boolean;
 }
 
 function IconBtn({
@@ -71,6 +77,11 @@ export function WorldToolbar(p: Readonly<Props>) {
       <IconBtn label="Actividad" on={p.panel === "feed"} onClick={() => p.onPanel(p.panel === "feed" ? null : "feed")}>
         <List size={16} /> Actividad
       </IconBtn>
+      {p.onRefresh && (
+        <IconBtn label={p.refreshing ? "Actualizando…" : "Actualizar datos de la cartera"} onClick={p.onRefresh} disabled={p.refreshing}>
+          <RefreshCw size={16} />
+        </IconBtn>
+      )}
       <span className={s.sep} />
       <IconBtn label="Ver todo el pueblo (Inicio)" onClick={p.onFit}>
         <Maximize size={16} />
@@ -103,12 +114,18 @@ export function WorldToolbar(p: Readonly<Props>) {
         <Crosshair size={16} /> Auto-foco
       </IconBtn>
       <span className={s.sep} />
-      <IconBtn label="Eventos de demostración en vivo" on={p.live} onClick={() => p.onLive(!p.live)}>
-        <Sparkles size={16} /> Demo
+      <IconBtn
+        label={p.demo ? "Eventos de demostración en vivo" : "Simular eventos sobre tu cartera (no son reales)"}
+        on={p.live}
+        onClick={() => p.onLive(!p.live)}
+      >
+        <Sparkles size={16} /> {p.demo ? "Demo" : "Simular eventos"}
       </IconBtn>
-      <button className={s.btn} onClick={p.onBurst} title="Lanza 25 eventos de golpe">
-        Ráfaga
-      </button>
+      {(p.demo || p.live) && (
+        <button className={s.btn} onClick={p.onBurst} title="Lanza 25 eventos de golpe">
+          Ráfaga
+        </button>
+      )}
       <select className={s.select} value={p.quality} onChange={(e) => p.onQuality(e.target.value as Quality)} aria-label="Calidad gráfica">
         {(Object.keys(QUALITY_LABEL) as Quality[]).map((q) => (
           <option key={q} value={q}>

@@ -287,3 +287,37 @@ export interface SavingsEstimate {
   brackets: { from: string; to: string; rate: string; tax: string }[];
   casillas: Record<string, string>;
 }
+
+// Living World ("Mundo vivo"): GET /api/living-world/world. Unknown figures are null, never 0.
+export interface LivingWorldAsset {
+  isin: string;
+  ticker: string | null;
+  name: string;
+  country: string | null;
+  brokers: string[];
+  asset_type: string;
+  sector: string | null;
+  classified: boolean;
+  archetype_override: string | null;
+  market_value_eur: number | null;
+  weight_pct: number | null;
+  total_cost_eur: number | null;
+  unrealized_pl_eur: number | null;
+  day_change_pct: number | null;
+}
+
+export interface LivingWorldSummary {
+  positions: number;
+  valued: number;
+  cost_known: number;
+  valuation_complete: boolean;
+  total_market_value: number | null;
+  classified: number;
+  /** ISO date of the newest cached price. */
+  prices_as_of: string | null;
+}
+
+export interface LivingWorldResponse {
+  summary: LivingWorldSummary;
+  assets: LivingWorldAsset[];
+}

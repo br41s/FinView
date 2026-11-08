@@ -174,9 +174,32 @@ silent no-op everywhere (URLs go stale, and a thrown error would be worse).
 ## Living World (`/living-world`, "Mundo vivo")
 
 Spec: `FinView_Living_World_Technical_Spec.md` (Brais's Downloads). A standalone 3D town for the
-portfolio, built in phases. **Phase 0 (this) is a visual prototype: every holding and event is
-fictional (`model/fixtures.ts`, ISINs start `ZZ`), nothing is fetched, saved or persisted.** The page
-says so permanently ("Datos ficticios"). Phases 1+ (real read model, event history) are not built.
+portfolio, built in phases. **Phase 1 (current): the buildings are the user's real portfolio; every
+event is still simulated.** `/living-world?demo=1` keeps the Phase 0 fictional town (`model/fixtures.ts`,
+ISINs start `ZZ`, nothing fetched) and says "Datos ficticios"; the real town says "Tu cartera · precios
+del …". Phase 2 (real event history, previous close for price moves) is not built.
+
+- **Real data = one read-only endpoint.** `GET /api/living-world/world` (`backend/services/living_world.py`)
+  is `get_open_positions` plus classification; it values, converts and reconciles nothing. Unknown cost,
+  price or weight is `null` (the summary's `total_market_value` is `null` unless every position is priced);
+  the town draws an unpriced holding small and marked, and the footer says how many. No Yahoo call: asset
+  type and sector are read from what the portfolio's exposure refresh already stored (`listing_profiles`,
+  else the dominant sector of the latest `segment_reports`); what is not there yet is `classified: false`
+  ("Sin clasificar", default building) and fills in once Cartera has run its refresh. `ARCHETYPE_OVERRIDES`
+  (curated ISIN → archetype) is **empty on purpose**: this repo is public and the list would be someone's
+  holdings. `day_change_pct` is always `null`: two `price_cache` snapshots (taken whenever the portfolio
+  was first opened that day) are not a daily move; Phase 2 stores the previous close.
+- **Frontend load is `hooks/useWorldData.ts`** through `api.livingWorld.world()` (`request()`, never
+  `fetch`): loading / error (Spanish, retry, link to demo) / empty (link to import) / ready. A refresh
+  keeps the town on screen and, if it fails, says so in the footer and keeps the old data.
+- **The scene rebuilds only when `sceneSignature(assets)` changes** (id, name, archetype, type, weight
+  rounded to 0.1). `WorldShell` keeps the latest assets for the inspector and filters and hands the renderer
+  a stable copy (set-state-during-render). On a real rebuild the camera refits; quality, pause, director
+  mode and filters are re-applied by effects keyed on the scene's assets, and the selection is handed back
+  by `reselect`. Add any new "survive a rebuild" state to that list.
+- **Events in the real town start empty.** «Simular eventos» (off) seeds a week of demo history and a live
+  trickle; every simulated event has confidence `demo` (tag «Simulado»), a «Simulado · » title prefix and
+  a banner. Turning it off clears them. Never present a generated event as a fact about a real company.
 
 - **Same split as the garden game.** `model/` is pure TypeScript with colocated `*.test.ts`
   (layout, scale, filters, priority, director, routes, fixtures); `engine/` is Three.js and is

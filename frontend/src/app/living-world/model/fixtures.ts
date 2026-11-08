@@ -118,6 +118,7 @@ export function demoAssets(seed = 7): WorldAsset[] {
       sector: p.sector,
       industry: p.industry,
       archetype: "consumer", // replaced below by the real classifier
+      classified: true,
       brokers,
       marketValueEur,
       weightPct,

@@ -50,7 +50,7 @@ export function EventCard({ event: e, assetName, pinned, onPin, onClose, onFocus
           <span className={`${s.tag} ${directionClass(e.direction)}`}>
             {DIRECTION_MARK[e.direction]} {DIRECTION_LABEL[e.direction]}
           </span>
-          {e.confidence === "demo" && <span className={`${s.tag} ${s.tagDemo}`}>Ficticio</span>}
+          {e.confidence === "demo" && <span className={`${s.tag} ${s.tagDemo}`}>Simulado</span>}
         </div>
         <button className={s.btn} onClick={onClose} aria-label="Cerrar tarjeta" title="Cerrar">
           <X size={14} />

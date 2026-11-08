@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-export default function LivingWorldPage() {
-  return <LivingWorldClient />;
+export default async function LivingWorldPage({
+  searchParams,
+}: Readonly<{ searchParams: Promise<Record<string, string | string[] | undefined>> }>) {
+  const { demo } = await searchParams;
+  return <LivingWorldClient demo={demo !== undefined} />;
 }
