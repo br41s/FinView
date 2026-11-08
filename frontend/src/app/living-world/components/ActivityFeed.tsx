@@ -70,14 +70,16 @@ export function ActivityFeed({ events, assets, window: win, onWindow, activeId, 
               className={`${s.feedRow} ${s[`sev_${e.severity}`]} ${activeId === e.id ? s.feedRowActive : ""}`}
               onClick={() => onOpen(e)}
             >
-              <div className={s.feedTitle}>
-                <span className={directionClass(e.direction)} aria-hidden>
-                  {DIRECTION_MARK[e.direction]}
-                </span>{" "}
-                {e.title}
+              <div className={s.feedRowTop}>
+                {a?.ticker && <span className={s.feedTickerSmall}>{a.ticker.slice(0, 10).toUpperCase()}</span>}
+                <span className={s.feedTitle}>
+                  <span className={directionClass(e.direction)} aria-hidden>{DIRECTION_MARK[e.direction]}</span>{" "}
+                  {e.title}
+                </span>
+                <span className={s.feedSeverity}>{SEVERITY_LABEL[e.severity]}</span>
               </div>
               <div className={s.meta}>
-                {a?.name ?? "Pueblo"} · {SEVERITY_LABEL[e.severity]} · {ago(e.occurredAt, now)}
+                {a?.name ?? "Actividad del pueblo"} · {ago(e.occurredAt, now)}
               </div>
             </button>
           );
