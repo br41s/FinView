@@ -117,7 +117,7 @@ export function createWorld(
   let agents = new AgentSystem(QUALITY[quality].maxAgents);
   agents.setReducedMotion(reduced);
   agents.setGround(layout.terrain.roadY);
-  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases);
+  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
   let director: DirectorState = createDirector();
@@ -222,12 +222,12 @@ export function createWorld(
   };
 
   const rebuildAgents = () => {
-    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases);
+    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
     agents.dispose();
     agents = new AgentSystem(QUALITY[quality].maxAgents);
     agents.setReducedMotion(reduced);
     agents.setGround(layout.terrain.roadY);
-    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases);
+    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
