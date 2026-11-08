@@ -826,3 +826,40 @@
   font-size: 9px;
   line-height: 1.35;
 }
+
+
+.feedRowTop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.feedTickerSmall {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 36px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  background: #24394b;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .035em;
+}
+.feedRowTop .feedTitle {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feedSeverity {
+  flex: 0 0 auto;
+  color: var(--lw-ink-soft);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+}
