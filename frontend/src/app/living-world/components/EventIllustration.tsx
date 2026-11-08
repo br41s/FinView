@@ -1,4 +1,5 @@
 import type { WorldAsset, WorldEvent } from "../model/types";
+import s from "../world.module.css";
 
 interface Props { asset: WorldAsset | null; event: WorldEvent }
 type Palette = { sky: string; ground: string; wall: string; roof: string; accent: string; glass: string };
@@ -174,7 +175,7 @@ export function EventIllustration({ asset, event }: Readonly<Props>) {
   const p = PALETTES[archetype] ?? FALLBACK;
   const id = event.id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "event";
   const title = asset?.ticker ?? asset?.name ?? "FinView";
-  return <svg className="lw-event-art" viewBox="0 0 760 286" role="img"
+  return <svg className={s.eventArt} viewBox="0 0 760 286" role="img"
     aria-label={"Ilustración de "+title+": "+event.title} preserveAspectRatio="xMidYMid slice">
     <defs>
       <linearGradient id={"sky-"+id} x1="0" x2="1" y1="0" y2="1">
