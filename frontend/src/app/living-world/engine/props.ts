@@ -3,7 +3,8 @@ import { DISTRICT_LABEL } from "../model/archetypes";
 import { seeded, valueNoise } from "../model/rng";
 import { WATER_Y, type Pt, type Terrain } from "../model/terrain";
 import { LOT_PITCH, PLAZA_RADIUS, toWorld, type CivicKind, type WorldLayout } from "../model/townLayout";
-import { Builder } from "./buildingFactory";
+import { accentFor, Builder } from "./buildingFactory";
+import type { WorldAsset } from "../model/types";
 import { buildFillers, type Fillers } from "./fillers";
 
 /** Land, water, streets, plaza, civic buildings, trees and text labels: the static stage. */
@@ -54,6 +55,80 @@ export function makeLabel(text: string, opts: { font?: number; bg?: string; fg?:
   sprite.userData.aspect = w / h;
   sprite.scale.set((w / h) * 1, 1, 1);
   sprite.renderOrder = 10;
+  return sprite;
+}
+
+
+/**
+ * Camera-facing illuminated company sign generated locally from its ticker/name and
+ * deterministic site accent. It uses no external logo assets or network requests.
+ */
+export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
+  const width = 640;
+  const height = 184;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  const accent = new THREE.Color(accentFor(asset.id));
+  const accentCss = "#" + accent.getHexString();
+  const ticker = (asset.ticker?.trim() || asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("") || "•")
+    .toUpperCase()
+    .slice(0, 12);
+  const initials = asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || ticker.slice(0, 1);
+
+  // Coloured luminous frame.
+  ctx.shadowColor = accentCss;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = accentCss;
+  ctx.beginPath();
+  ctx.roundRect(7, 7, width - 14, height - 14, 30);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Dark enamel face, illuminated accent rail and initials medallion.
+  ctx.fillStyle = "#172638";
+  ctx.beginPath();
+  ctx.roundRect(15, 15, width - 30, height - 30, 24);
+  ctx.fill();
+  ctx.fillStyle = accentCss;
+  ctx.beginPath();
+  ctx.roundRect(15, 15, 14, height - 30, 7);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(91, 92, 54, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "800 58px system-ui, sans-serif";
+  ctx.fillText(initials.slice(0, 2), 91, 94, 88);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  let fontSize = 66;
+  ctx.font = "800 " + fontSize + "px system-ui, sans-serif";
+  while (fontSize > 42 && ctx.measureText(ticker).width > 430) {
+    fontSize -= 2;
+    ctx.font = "800 " + fontSize + "px system-ui, sans-serif";
+  }
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(ticker, 166, 91, 430);
+
+  ctx.fillStyle = "#c7d3e1";
+  ctx.font = "600 27px system-ui, sans-serif";
+  ctx.fillText(asset.name, 168, 139, 430);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false }),
+  );
+  sprite.userData.aspect = width / height;
+  sprite.scale.set((width / height) * 0.82, 0.82, 1);
+  sprite.renderOrder = 11;
   return sprite;
 }
 
