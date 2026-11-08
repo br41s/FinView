@@ -332,13 +332,13 @@ export function createWorld(
 
   const labelShouldShow = (e: SiteEntry, dist: number) => {
     const tier = tierFor(e.asset.weightPct);
-    const visibleByDistance = dist > 105
-      ? false
-      : dist > 70
-        ? tier === "campus" || tier === "major"
-        : dist > 42
-          ? tier !== "outpost"
-          : true;
+    const visibleByDistance = dist > 70 && dist <= 105
+      ? tier === "campus" || tier === "major"
+      : dist > 42 && dist <= 70
+        ? tier !== "outpost"
+        : false;
+    // Close-up identity lives on the facade itself; floating labels are reserved for
+    // important landmarks or the one building currently under inspection.
     return (visibleByDistance || e.asset.id === selected || e.asset.id === hovered) && e.site.group.visible;
   };
 
