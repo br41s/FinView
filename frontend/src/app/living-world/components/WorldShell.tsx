@@ -6,7 +6,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { NOT_ADVICE } from "@/lib/legal";
 import type { Quality } from "../engine/quality";
 import { useNow, nowMs, usePrefersReducedMotion } from "../hooks/useClock";
-import { supportsWebGL, useWorld } from "../hooks/useWorld";
+import { supportsWebGL, useStats, useWorld, type StatsStore } from "../hooks/useWorld";
 import { useWorldFilters } from "../hooks/useWorldFilters";
 import { applyFilters, filterEvents } from "../model/filters";
 import { demoAssets, generateDemoEvents } from "../model/fixtures";
@@ -46,6 +46,7 @@ export default function WorldShell() {
   const [quality, setQuality] = useState<Quality>(() =>
     typeof navigator !== "undefined" && (navigator.hardwareConcurrency ?? 8) <= 4 ? "low" : "medium",
   );
+  const [canBack, setCanBack] = useState(false);
   const [webgl] = useState(supportsWebGL);
   const host = useRef<HTMLDivElement | null>(null);
   const counter = useRef(0);
@@ -61,10 +62,11 @@ export default function WorldShell() {
       onFocusKey: () => undefined,
       onPerformance: () => undefined,
       onStats: () => undefined,
+      onCanBack: setCanBack,
     }),
     [],
   );
-  const { world, failed, stats } = useWorld(host, { assets, quality, reducedMotion, callbacks });
+  const { world, failed, ready, statsStore } = useWorld(host, { assets, quality, reducedMotion, callbacks });
 
   // Emitting an event is one action: it joins the history and queues for the stage.
   const emit = (batch: WorldEvent[]) => {
@@ -150,7 +152,7 @@ export default function WorldShell() {
   return (
     <div className={s.root}>
       <div ref={host} className={s.host} />
-      {!stats && (
+      {!ready && (
         <div className={s.center} aria-live="polite">
           <div className={s.card}>Construyendo el pueblo…</div>
         </div>
@@ -173,7 +175,7 @@ export default function WorldShell() {
             onPick={chooseAsset}
           />
           <WorldToolbar
-            canBack={world.current?.canGoBack() ?? false}
+            canBack={canBack}
             paused={paused}
             mode={mode}
             quality={quality}
@@ -254,13 +256,20 @@ export default function WorldShell() {
 
         <div className={s.footer}>
           <span>{NOT_ADVICE.short}</span>
-          {stats && (
-            <span aria-label="Rendimiento">
-              {stats.fps} FPS · {stats.sites} edificios
-            </span>
-          )}
+          <FpsLabel store={statsStore} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Subscribes on its own, so the 500 ms stats sample does not re-render the shell. */
+function FpsLabel({ store }: Readonly<{ store: StatsStore }>) {
+  const stats = useStats(store);
+  if (!stats) return null;
+  return (
+    <span aria-label="Rendimiento">
+      {stats.fps} FPS · {stats.sites} edificios
+    </span>
   );
 }

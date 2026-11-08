@@ -179,7 +179,8 @@ export class AgentSystem {
         const want = 1 + ["outpost", "small", "campus", "major"].indexOf(s.tier);
         if (round >= want) continue;
         if (n >= this.capacity) break outer;
-        const a = this.agents[n++];
+        const idx = n++;
+        const a = this.agents[idx];
         const seed = hashString(`${s.assetId}:${round}`);
         const rnd = seeded(seed);
         a.active = true;
@@ -196,6 +197,7 @@ export class AgentSystem {
         a.seed = seed;
         a.rnd = rnd;
         this.place(a);
+        this.paint(idx);
       }
     }
     this.ambientCount = n;
@@ -262,6 +264,7 @@ export class AgentSystem {
       a.rnd = seeded(a.seed);
       a.x = path[0].x;
       a.z = path[0].z;
+      this.paint(i);
       return i;
     }
     return -1;
@@ -294,6 +297,22 @@ export class AgentSystem {
   stateOf(id: number): AgentState | null {
     const a = this.agents[id];
     return a?.active ? (a.override ?? a.state) : null;
+  }
+
+  /** Colour depends only on role and seed, so it is written once, not every frame. */
+  private paint(i: number) {
+    const a = this.agents[i];
+    this.bodies.setColorAt(i, this.c.set(ROLE_COLOR[a.role]));
+    this.heads.setColorAt(i, this.c.set(SKIN[a.seed % SKIN.length]));
+    if (this.bodies.instanceColor) this.bodies.instanceColor.needsUpdate = true;
+    if (this.heads.instanceColor) this.heads.instanceColor.needsUpdate = true;
+  }
+
+  /** Inhabitants currently on stage (ambient plus event actors). */
+  activeCount(): number {
+    let n = 0;
+    for (const a of this.agents) if (a.active) n++;
+    return n;
   }
 
   private place(a: Agent) {
@@ -443,13 +462,9 @@ export class AgentSystem {
       this.m.compose(this.p, this.q, this.s);
       this.bodies.setMatrixAt(i, this.m);
       this.heads.setMatrixAt(i, this.m);
-      this.bodies.setColorAt(i, this.c.set(ROLE_COLOR[a.role]));
-      this.heads.setColorAt(i, this.c.set(SKIN[a.seed % SKIN.length]));
     }
     this.bodies.instanceMatrix.needsUpdate = true;
     this.heads.instanceMatrix.needsUpdate = true;
-    if (this.bodies.instanceColor) this.bodies.instanceColor.needsUpdate = true;
-    if (this.heads.instanceColor) this.heads.instanceColor.needsUpdate = true;
 
     this.vans.count = this.vanList.length;
     this.vanList.forEach((v, i) => {

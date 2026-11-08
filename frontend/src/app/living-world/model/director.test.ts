@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_SEEN,
+  QUEUE_TTL_MS,
   createDirector,
   enqueue,
   replay,
@@ -140,6 +142,29 @@ describe("pause, quiet and camera", () => {
     expect(off.some((p) => p.requestFocus)).toBe(false);
     const on = tick(enqueue(createDirector({ autoFocus: true }), events), 100).state.active;
     expect(on.filter((p) => p.requestFocus).map((p) => p.severity)).toEqual(["critical"]);
+  });
+});
+
+describe("queue expiry and dedupe memory", () => {
+  it("drops an event that waited longer than the TTL instead of acting it late", () => {
+    // One slot, long scenes: the second Normal event cannot start and goes stale.
+    let s = enqueue(createDirector({ maxNormal: 1, maxTotal: 1 }), [
+      ev("1", "A1", "normal", 5, 400_000),
+      ev("2", "A2", "normal", 1, 10_000),
+    ]);
+    const r = run(s, QUEUE_TTL_MS + 1_000);
+    s = r.state;
+    expect(r.started).toEqual(["perf:1"]);
+    expect(s.queue).toHaveLength(0);
+    expect(s.queuedAt.size).toBe(0);
+  });
+
+  it("forgets the oldest dedupe keys past the cap", () => {
+    const many = Array.from({ length: MAX_SEEN + 5 }, (_, i) => ev(`x${i}`, null));
+    const s = enqueue(createDirector({ quiet: true }), many);
+    expect(s.seen.size).toBe(MAX_SEEN);
+    expect(s.seen.has("k:x0")).toBe(false);
+    expect(s.seen.has(`k:x${MAX_SEEN + 4}`)).toBe(true);
   });
 });
 

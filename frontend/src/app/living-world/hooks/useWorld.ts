@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import type { Quality } from "../engine/quality";
 import { createWorld, type WorldCallbacks, type WorldHandle, type WorldStats } from "../engine/scene";
 import type { WorldAsset } from "../model/types";
@@ -10,6 +10,36 @@ export function supportsWebGL(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Latest renderer stats outside React state: the footer label subscribes, so a sample every
+ * 500 ms re-renders that label and not the whole shell.
+ */
+export interface StatsStore {
+  get(): WorldStats | null;
+  set(s: WorldStats): void;
+  subscribe(fn: () => void): () => void;
+}
+
+function createStatsStore(): StatsStore {
+  let value: WorldStats | null = null;
+  const subs = new Set<() => void>();
+  return {
+    get: () => value,
+    set(s) {
+      value = s;
+      subs.forEach((fn) => fn());
+    },
+    subscribe(fn) {
+      subs.add(fn);
+      return () => void subs.delete(fn);
+    },
+  };
+}
+
+export function useStats(store: StatsStore): WorldStats | null {
+  return useSyncExternalStore(store.subscribe, store.get, () => null);
 }
 
 interface Options {
@@ -27,12 +57,16 @@ interface Options {
 export function useWorld(host: RefObject<HTMLDivElement | null>, o: Options) {
   const world = useRef<WorldHandle | null>(null);
   const cb = useRef(o.callbacks);
-  const initial = useRef({ quality: o.quality, reducedMotion: o.reducedMotion });
+  // The scene is rebuilt when the assets change; it must come back with the user's current
+  // quality and motion preference, not the ones from first mount.
+  const latest = useRef({ quality: o.quality, reducedMotion: o.reducedMotion });
   const [failed, setFailed] = useState<string | null>(null);
-  const [stats, setStats] = useState<WorldStats | null>(null);
+  const [ready, setReady] = useState(false);
+  const [statsStore] = useState(createStatsStore);
 
   useEffect(() => {
     cb.current = o.callbacks;
+    latest.current = { quality: o.quality, reducedMotion: o.reducedMotion };
   });
 
   useEffect(() => {
@@ -45,14 +79,16 @@ export function useWorld(host: RefObject<HTMLDivElement | null>, o: Options) {
     el.appendChild(canvas);
     let handle: WorldHandle;
     try {
-      handle = createWorld(canvas, initial.current, {
+      handle = createWorld(canvas, latest.current, {
         onSelect: (id) => cb.current.onSelect(id),
         onHover: (id) => cb.current.onHover(id),
         onFocusKey: () => cb.current.onFocusKey(),
         onPerformance: (k, p) => cb.current.onPerformance(k, p),
         onContextLost: () => setFailed("Se ha perdido el contexto gráfico (WebGL)."),
+        onCanBack: (can) => cb.current.onCanBack(can),
         onStats: (s) => {
-          setStats(s);
+          statsStore.set(s);
+          setReady(true);
           cb.current.onStats(s);
         },
       });
@@ -72,7 +108,7 @@ export function useWorld(host: RefObject<HTMLDivElement | null>, o: Options) {
       canvas.remove();
     };
     // The renderer is rebuilt only when the set of assets changes.
-  }, [host, o.assets]);
+  }, [host, o.assets, statsStore]);
 
   useEffect(() => {
     world.current?.setQuality(o.quality);
@@ -82,5 +118,5 @@ export function useWorld(host: RefObject<HTMLDivElement | null>, o: Options) {
     world.current?.setReducedMotion(o.reducedMotion);
   }, [o.reducedMotion]);
 
-  return { world, failed, stats };
+  return { world, failed, ready, statsStore };
 }

@@ -40,11 +40,18 @@ export interface Performance {
   requestFocus: boolean;
 }
 
+/** A queued event that has waited this long is no longer "live" and is dropped, not acted late. */
+export const QUEUE_TTL_MS = 180_000;
+/** Remembered dedupe keys; the oldest are forgotten past this, so a long session stays flat. */
+export const MAX_SEEN = 2000;
+
 export interface DirectorState {
   config: DirectorConfig;
   clock: number;
   paused: boolean;
   queue: WorldEvent[];
+  /** Director clock at which each queued event (by id) was accepted, for the TTL. */
+  queuedAt: ReadonlyMap<string, number>;
   active: Performance[];
   /** dedupeKeys already accepted, so polling the same observation twice acts it once. */
   seen: ReadonlySet<string>;
@@ -66,6 +73,7 @@ export function createDirector(config: Partial<DirectorConfig> = {}): DirectorSt
     clock: 0,
     paused: false,
     queue: [],
+    queuedAt: new Map(),
     active: [],
     seen: new Set(),
   };
@@ -87,9 +95,16 @@ export function enqueue(state: DirectorState, events: readonly WorldEvent[]): Di
     seen.add(e.dedupeKey);
     fresh.push(e);
   }
+  // A Set iterates in insertion order, so the first keys are the oldest.
+  for (const k of seen) {
+    if (seen.size <= MAX_SEEN) break;
+    seen.delete(k);
+  }
   // Quiet mode still records the observation so leaving quiet does not replay a backlog.
   if (state.config.quiet || fresh.length === 0) return { ...state, seen };
-  return { ...state, seen, queue: [...state.queue, ...fresh].sort(compareEvents) };
+  const queuedAt = new Map(state.queuedAt);
+  for (const e of fresh) queuedAt.set(e.id, state.clock);
+  return { ...state, seen, queuedAt, queue: [...state.queue, ...fresh].sort(compareEvents) };
 }
 
 export function setPaused(state: DirectorState, paused: boolean): DirectorState {
@@ -99,7 +114,9 @@ export function setPaused(state: DirectorState, paused: boolean): DirectorState 
 export function setConfig(state: DirectorState, patch: Partial<DirectorConfig>): DirectorState {
   const config = { ...state.config, ...patch };
   // Entering quiet mode drops what was waiting; running performances play out.
-  return { ...state, config, queue: config.quiet ? [] : state.queue };
+  return config.quiet
+    ? { ...state, config, queue: [], queuedAt: new Map() }
+    : { ...state, config };
 }
 
 function wantsFocus(config: DirectorConfig, severity: Severity): boolean {
@@ -151,8 +168,11 @@ export function tick(state: DirectorState, dtMs: number): TickResult {
   const started: Performance[] = [];
   const merged = new Map<string, Performance>();
   const waiting: WorldEvent[] = [];
+  const queuedAt = new Map<string, number>();
 
   for (const e of state.queue) {
+    const since = state.queuedAt.get(e.id) ?? state.clock;
+    if (clock - since > QUEUE_TTL_MS) continue;
     // Several events about one company become one scene; every card is kept.
     const i = e.assetId === null ? -1 : active.findIndex((p) => p.assetId === e.assetId);
     if (i >= 0) {
@@ -167,6 +187,7 @@ export function tick(state: DirectorState, dtMs: number): TickResult {
       started.push(p);
     } else {
       waiting.push(e);
+      queuedAt.set(e.id, since);
     }
   }
 
@@ -176,7 +197,7 @@ export function tick(state: DirectorState, dtMs: number): TickResult {
   const mergedOnly = [...merged.values()].filter((p) => !startedIds.has(p.id));
 
   return {
-    state: { ...state, clock, queue: waiting, active },
+    state: { ...state, clock, queue: waiting, queuedAt, active },
     started: startedNow,
     merged: mergedOnly,
     ended,

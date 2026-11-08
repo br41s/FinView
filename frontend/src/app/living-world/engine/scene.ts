@@ -33,6 +33,8 @@ export interface WorldCallbacks {
   onPerformance(kind: "start" | "end", p: Performance): void;
   onContextLost(): void;
   onStats(s: WorldStats): void;
+  /** Whether "back" has somewhere to go; pushed when it changes so the UI never polls the engine. */
+  onCanBack(can: boolean): void;
 }
 
 export interface WorldStats {
@@ -212,6 +214,8 @@ export function createWorld(
     const perDistrict = new Map<string, Point[]>();
     for (const e of sites.values()) if (!perDistrict.has(e.lot.district)) perDistrict.set(e.lot.district, e.route);
     agents.populate(spots, [...perDistrict.values()]);
+    // Scenes still running in the director would otherwise vanish with the old stage.
+    for (const p of director.active) choreo.start(p);
   };
 
   const setAssets = (assets: readonly WorldAsset[]) => {
@@ -292,7 +296,8 @@ export function createWorld(
     }
     // Inhabitants can be followed: a click on a person picks them up.
     setRay(cx, cy);
-    const hit = ray.intersectObject(agents.bodies, false)[0];
+    // Raycasting ignores `visible`: zoomed out (LOD hides people) a click must not pick one.
+    const hit = agents.bodies.visible ? ray.intersectObject(agents.bodies, false)[0] : undefined;
     if (hit && hit.instanceId !== undefined) {
       const idx = hit.instanceId;
       ctrl.follow(() => agents.position(idx));
@@ -324,6 +329,9 @@ export function createWorld(
   let acc = 0;
   let fps = 0;
   let lastLod = -1;
+  let canBack = false;
+  /** Performances the camera was already sent to, so a merge does not fly there twice. */
+  const focusedPerf = new Set<string>();
 
   const lod = (dist: number) => {
     if (town) {
@@ -369,6 +377,11 @@ export function createWorld(
     }
 
     ctrl.update(dt);
+    const back = ctrl.canGoBack();
+    if (back !== canBack) {
+      canBack = back;
+      cb.onCanBack(back);
+    }
     const simDt = paused ? 0 : dt;
     if (simDt > 0) {
       const r = tick(director, simDt);
@@ -376,11 +389,22 @@ export function createWorld(
       for (const p of r.started) {
         choreo.start(p);
         cb.onPerformance("start", p);
-        if (p.requestFocus && p.assetId) focusAsset(p.assetId);
+        if (p.requestFocus && p.assetId) {
+          focusedPerf.add(p.id);
+          focusAsset(p.assetId);
+        }
       }
-      for (const p of r.merged) choreo.extend(p);
+      for (const p of r.merged) {
+        choreo.extend(p, director.clock);
+        // An escalation to Critical after the scene began still earns its focus, once.
+        if (p.requestFocus && p.assetId && !focusedPerf.has(p.id)) {
+          focusedPerf.add(p.id);
+          focusAsset(p.assetId);
+        }
+      }
       for (const p of r.ended) {
         choreo.stop(p.id);
+        focusedPerf.delete(p.id);
         cb.onPerformance("end", p);
       }
       agents.update(simDt);
@@ -443,7 +467,7 @@ export function createWorld(
       fps,
       drawCalls: renderer.info.render.calls,
       triangles: renderer.info.render.triangles,
-      agents: agents.bodies.count,
+      agents: agents.activeCount(),
       sites: sites.size,
       distance: ctrl.distance,
     };
@@ -481,7 +505,7 @@ export function createWorld(
         choreo.start(p);
         cb.onPerformance("start", p);
       }
-      for (const p of r.merged) choreo.extend(p);
+      for (const p of r.merged) choreo.extend(p, director.clock);
     },
     setDirector(patch) {
       director = setConfig(director, patch);

@@ -11,7 +11,7 @@ const WINDOW_MS = { live: 15 * 60_000, "24h": 24 * 3_600_000, "7d": 7 * 24 * 3_6
 export function normalise(s: string): string {
   return s
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
 }
@@ -26,10 +26,16 @@ export function matchesQuery(asset: WorldAsset, query: string): boolean {
   );
 }
 
+/**
+ * The UI clock ticks every 15 s (`useClock`), so "now" can trail the real time by that much:
+ * an event emitted a second ago is later than the last tick and must not read as the future.
+ */
+export const CLOCK_SKEW_MS = 15_000;
+
 function inWindow(e: WorldEvent, filters: WorldFilters, nowMs: number): boolean {
   const t = Date.parse(e.occurredAt);
   if (Number.isNaN(t)) return false;
-  return t <= nowMs && nowMs - t <= WINDOW_MS[filters.window];
+  return t <= nowMs + CLOCK_SKEW_MS && nowMs - t <= WINDOW_MS[filters.window];
 }
 
 function hasEventConstraint(f: WorldFilters): boolean {

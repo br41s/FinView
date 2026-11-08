@@ -95,6 +95,7 @@ interface Marker {
   spin: boolean;
   baseY: number;
   glow: boolean;
+  kind: MarkerKind;
 }
 
 const geoCache = new Map<MarkerKind, THREE.BufferGeometry>();
@@ -165,17 +166,34 @@ export class Choreographer {
 
     for (const t of types) this.act(p, t, site, ms);
 
-    if (p.severity !== "normal") {
-      this.addMarker(p.severity === "critical" ? "beaconCritical" : "beaconImportant", p.id, site.x, 0, site.z, ms, { beacon: true });
-    }
+    if (p.severity !== "normal") this.beacon(p, site, ms);
   }
 
-  /** A performance absorbed another event of the same company: act the new one too. */
-  extend(p: Performance) {
+  /** One beacon per performance; an escalation swaps a weaker one for the stronger kind. */
+  private beacon(p: Performance, site: SiteInfo, ms: number) {
+    const kind: MarkerKind = p.severity === "critical" ? "beaconCritical" : "beaconImportant";
+    const have = this.markers.find((m) => m.key === p.id && m.glow);
+    if (have?.kind === kind) {
+      have.ttl = Math.max(have.ttl, ms);
+      return;
+    }
+    if (have) have.ttl = 0;
+    this.addMarker(kind, p.id, site.x, 0, site.z, ms, { beacon: true });
+  }
+
+  /**
+   * A performance absorbed another event of the same company: act the new one too.
+   * `clock` is the director's clock (the one `endsAt` is on), and a performance that
+   * escalated to Important/Critical gets the beacon it did not have when it started.
+   */
+  extend(p: Performance, clock: number) {
     if (!p.assetId) return;
     const site = this.stage.site(p.assetId);
     const last = p.events[p.events.length - 1];
-    if (site && last) this.act(p, last.eventType, site, Math.max(4000, p.endsAt - this.time));
+    if (!site || !last) return;
+    const ms = Math.max(4000, p.endsAt - clock);
+    this.act(p, last.eventType, site, ms);
+    if (p.severity !== "normal") this.beacon(p, site, ms);
   }
 
   stop(id: string) {
@@ -222,7 +240,7 @@ export class Choreographer {
     mesh.position.set(x, y, z);
     mesh.renderOrder = o.beacon ? 5 : 6;
     this.stage.scene.add(mesh);
-    this.markers.push({ mesh, key, ttl: ttlMs, spin: !!o.spin, baseY: y, glow: !!o.beacon });
+    this.markers.push({ mesh, key, ttl: ttlMs, spin: !!o.spin, baseY: y, glow: !!o.beacon, kind });
   }
 
   update(dtMs: number) {

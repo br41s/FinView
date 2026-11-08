@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFilters, filterEvents, hasActiveFilters, matchesQuery, normalise } from "./filters";
+import { CLOCK_SKEW_MS, applyFilters, filterEvents, hasActiveFilters, matchesQuery, normalise } from "./filters";
 import { demoAssets, generateDemoEvents } from "./fixtures";
 import { EMPTY_FILTERS, type WorldFilters } from "./types";
 
@@ -74,10 +74,17 @@ describe("filterEvents", () => {
       const span = { live: 15 * 60_000, "24h": 86_400_000, "7d": 7 * 86_400_000 }[w];
       for (const e of filterEvents(events, f({ window: w }), NOW)) {
         const t = Date.parse(e.occurredAt);
-        expect(t).toBeLessThanOrEqual(NOW);
+        expect(t).toBeLessThanOrEqual(NOW + CLOCK_SKEW_MS);
         expect(NOW - t).toBeLessThanOrEqual(span);
       }
     }
+  });
+
+  it("keeps an event emitted after the last clock tick", () => {
+    const fresh = { ...events[0], occurredAt: new Date(NOW + 4_000).toISOString() };
+    expect(filterEvents([fresh], f({ window: "live" }), NOW)).toHaveLength(1);
+    const future = { ...events[0], occurredAt: new Date(NOW + 60_000).toISOString() };
+    expect(filterEvents([future], f({ window: "live" }), NOW)).toHaveLength(0);
   });
 
   it("narrows monotonically: live ⊆ 24h ⊆ 7d", () => {
