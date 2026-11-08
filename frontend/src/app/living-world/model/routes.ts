@@ -107,6 +107,33 @@ function shortestLoopArc(line: readonly Point[], from: Point, to: Point): Point[
  * boulevard, the arterial ring and a central boulevard. This is also the route used by
  * delivery vans and event visitors, so they no longer cut across the city diagonally.
  */
+/** Offset a company-to-centre route onto the pavement beside each road segment. */
+export function sidewalkRoute(route: readonly Point[], roads: readonly RoadSegment[]): Point[] {
+  if (route.length < 2 || roads.length === 0) return [...route];
+  return route.map((point, i) => {
+    const previous = route[Math.max(0, i - 1)];
+    const next = route[Math.min(route.length - 1, i + 1)];
+    const dx = next.x - previous.x;
+    const dz = next.z - previous.z;
+    const length = Math.hypot(dx, dz) || 1;
+    const normalX = -dz / length;
+    const normalZ = dx / length;
+    let nearest: RoadSegment | null = null;
+    let nearestDistance = Infinity;
+    for (const road of roads) {
+      const candidate = project(road.path, point);
+      if (candidate.distance < nearestDistance) {
+        nearestDistance = candidate.distance;
+        nearest = road;
+      }
+    }
+    const offset = (nearest?.width ?? 4.6) / 2 + 1.45;
+    // Alternate sides gently along the path to avoid every pedestrian sharing one line.
+    const side = i % 8 < 4 ? 1 : -1;
+    return { x: point.x + normalX * offset * side, z: point.z + normalZ * offset * side };
+  });
+}
+
 export function routeToPlaza(lot: Lot, district: DistrictLayout, roads: readonly RoadSegment[] = []): Point[] {
   const local = roads.find((road) => road.kind === "local" && road.districtId === district.id);
   const districtBoulevard = roads.find((road) => road.kind === "boulevard" && road.districtId === district.id);
