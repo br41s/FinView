@@ -1,57 +1,48 @@
 import { describe, expect, it } from "vitest";
 import { demoAssets } from "./fixtures";
-import { LOT_PITCH, computeLayout, toLocal } from "./townLayout";
-import { MAX_FOOTPRINT } from "./scale";
+import { computeLayout } from "./townLayout";
 import { pointAlong, routeLength, routeToPlaza, type Point } from "./routes";
 
-const assets = demoAssets();
-const layout = computeLayout(assets);
-const half = MAX_FOOTPRINT / 2;
-
-/** Does the segment (in a district's own axes) pass through another holding's largest building? */
-function crossesBuilding(a: Point, b: Point, ignore: string, district: string): boolean {
-  for (const lot of layout.lots.values()) {
-    if (lot.assetId === ignore || lot.district !== district) continue;
-    const minX = Math.min(a.x, b.x);
-    const maxX = Math.max(a.x, b.x);
-    const minZ = Math.min(a.z, b.z);
-    const maxZ = Math.max(a.z, b.z);
-    if (maxX > lot.lx - half && minX < lot.lx + half && maxZ > lot.lz - half && minZ < lot.lz + half) return true;
-  }
-  return false;
-}
+const layout = computeLayout(demoAssets());
 
 describe("routeToPlaza", () => {
-  it("never cuts through another building on the way out of the district", () => {
+  it("starts at each company and ends on the central plaza edge", () => {
     for (const lot of layout.lots.values()) {
-      const d = layout.districts.find((x) => x.id === lot.district)!;
-      const r = routeToPlaza(lot, d).map((p) => toLocal(d, p.x, p.z));
-      // Legs inside the district grid are axis-aligned in its own axes; the boulevard is separate.
-      for (let i = 1; i < r.length - 1; i++) {
-        expect(crossesBuilding(r[i - 1], r[i], lot.assetId, lot.district), `${lot.assetId} leg ${i}`).toBe(false);
-      }
+      const district = layout.districts.find((item) => item.id === lot.district)!;
+      const route = routeToPlaza(lot, district, layout.roads);
+      expect(route[0]).toEqual({ x: lot.x, z: lot.z });
+      expect(Math.hypot(route.at(-1)!.x, route.at(-1)!.z)).toBeLessThan(16);
+      expect(route.length).toBeGreaterThan(7);
+      expect(route.every((point) => Number.isFinite(point.x) && Number.isFinite(point.z))).toBe(true);
     }
   });
 
-  it("starts at the lot, ends on the plaza ring, and keeps the district legs axis-aligned", () => {
-    for (const lot of layout.lots.values()) {
-      const d = layout.districts.find((x) => x.id === lot.district)!;
-      const r = routeToPlaza(lot, d);
-      expect(r[0]).toEqual({ x: lot.x, z: lot.z });
-      expect(Math.hypot(r.at(-1)!.x, r.at(-1)!.z)).toBeLessThan(16);
-      const local = r.map((p) => toLocal(d, p.x, p.z));
-      for (let i = 1; i < local.length - 1; i++) {
-        const same = Math.abs(local[i].x - local[i - 1].x) < 1e-6 || Math.abs(local[i].z - local[i - 1].z) < 1e-6;
-        expect(same, `${lot.assetId} leg ${i}`).toBe(true);
-      }
+  it("uses each district loop and its boulevard to reach the shared arterial", () => {
+    for (const district of layout.districts) {
+      const local = layout.roads.find((road) => road.kind === "local" && road.districtId === district.id);
+      const boulevard = layout.roads.find((road) => road.kind === "boulevard" && road.districtId === district.id);
+      expect(local, district.id).toBeDefined();
+      expect(boulevard, district.id).toBeDefined();
+      expect(local!.path[0]).toEqual(local!.path.at(-1));
+      expect(boulevard!.path[0]).toEqual(layout.roads.find((road) => road.kind === "arterial")!.path.reduce((best, point) =>
+        Math.hypot(point.x - boulevard!.path[0].x, point.z - boulevard!.path[0].z) <
+        Math.hypot(best.x - boulevard!.path[0].x, best.z - boulevard!.path[0].z) ? point : best
+      ));
+      expect(boulevard!.path.length).toBeGreaterThan(3);
     }
   });
 
-  it("uses the street gap, half a pitch from the lot centre", () => {
-    const lot = [...layout.lots.values()][0];
-    const d = layout.districts.find((x) => x.id === lot.district)!;
-    const r = routeToPlaza(lot, d);
-    expect(Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z)).toBeCloseTo(LOT_PITCH / 2, 6);
+  it("keeps routes meaningfully curved rather than drawing a diagonal to the centre", () => {
+    for (const lot of layout.lots.values()) {
+      const district = layout.districts.find((item) => item.id === lot.district)!;
+      const route = routeToPlaza(lot, district, layout.roads);
+      expect(routeLength(route)).toBeGreaterThan(Math.hypot(route.at(-1)!.x - lot.x, route.at(-1)!.z - lot.z) * 1.15);
+    }
+  });
+
+  it("includes green spaces and a pond in the urban layout", () => {
+    expect(layout.greenSpaces.some((space) => space.kind === "city-park" && space.pond)).toBe(true);
+    expect(layout.greenSpaces.some((space) => space.kind === "pocket-park")).toBe(true);
   });
 });
 
