@@ -43,6 +43,7 @@ export interface SiteSpot {
   rotationY: number;
   footprint: number;
   tier: Tier;
+  walkRoute?: Point[];
 }
 
 interface Agent {
@@ -58,6 +59,9 @@ interface Agent {
   angle: number;
   angVel: number;
   frontAngle: number;
+  walkRoute: Point[] | null;
+  walkDistance: number;
+  walkDirection: 1 | -1;
   // timers
   until: number;
   override: AgentState | null;
@@ -96,6 +100,7 @@ interface Van {
 const blank = (): Agent => ({
   active: false, temp: false, role: "worker", state: "idle", assetId: null,
   cx: 0, cz: 0, radius: 0, angle: 0, angVel: 0, frontAngle: 0,
+  walkRoute: null, walkDistance: 0, walkDirection: 1,
   until: 0, override: null, overrideUntil: 0,
   path: null, dist: 0, speed: 0, phase: "in", holdState: "idle", holdUntil: 0, holdMs: 0,
   x: 0, z: 0, heading: 0, seed: 0, rnd: () => 0.5,
@@ -285,6 +290,9 @@ export class AgentSystem {
         a.angle = rnd() * Math.PI * 2;
         a.angVel = (0.25 + rnd() * 0.25) / Math.max(1, a.radius * 0.45) * (rnd() < 0.5 ? -1 : 1);
         a.frontAngle = Math.atan2(Math.cos(s.rotationY), Math.sin(s.rotationY));
+        a.walkRoute = s.walkRoute && s.walkRoute.length > 1 ? s.walkRoute : null;
+        a.walkDistance = 0;
+        a.walkDirection = 1;
         a.state = rnd() < 0.5 ? "working" : "walking";
         a.until = 2000 + rnd() * 6000;
         a.seed = seed;
@@ -455,13 +463,29 @@ export class AgentSystem {
       a.until = 2600 + a.rnd() * 7600;
     }
     const current = a.override ?? a.state;
-    if (current === "walking") {
+    if (current === "walking" && a.walkRoute && a.walkRoute.length > 1) {
+      const length = routeLength(a.walkRoute);
+      a.walkDistance += a.walkDirection * (1.25 + a.rnd() * 0.35) * dt;
+      if (a.walkDistance >= length) {
+        a.walkDistance = length;
+        a.walkDirection = -1;
+      } else if (a.walkDistance <= 0) {
+        a.walkDistance = 0;
+        a.walkDirection = 1;
+      }
+      const point = pointAlong(a.walkRoute, a.walkDistance);
+      a.x = point.x;
+      a.z = point.z;
+      a.heading = a.walkDirection === 1 ? point.heading : point.heading + Math.PI;
+    } else if (current === "walking") {
       a.angle += a.angVel * dt;
       this.place(a);
       a.heading = Math.atan2(-Math.sin(a.angle) * Math.sign(a.angVel), Math.cos(a.angle) * Math.sign(a.angVel));
     } else if (current === "idle") {
+      this.place(a);
       a.heading = Math.atan2(a.cx - a.x, a.cz - a.z) + Math.sin(this.time / 1700 + a.seed) * 0.12;
     } else {
+      this.place(a);
       a.heading = Math.atan2(a.cx - a.x, a.cz - a.z);
     }
   }
