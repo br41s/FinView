@@ -77,6 +77,11 @@ interface SiteEntry {
   /** Ground height under the building. */
   groundY: number;
   scale: number;
+  scaleFrom: number;
+  scaleTarget: number;
+  scaleElapsedMs: number;
+  scaleDelayMs: number;
+  scaleDurationMs: number;
   opacity: number;
   /** Last opacity written to the material, so a jump (reduced motion) is still applied. */
   applied: number;
@@ -238,6 +243,9 @@ export function createWorld(
   };
 
   const setAssets = (assets: readonly WorldAsset[]) => {
+    // Preserve the previous building scale so existing holdings can grow/shrink in place
+    // when portfolio weights change. New holdings are introduced with a short build-up.
+    const previousScales = new Map([...sites.values()].map((e) => [e.asset.id, e.scale]));
     clearSites();
     if (town) {
       scene.remove(town.group);
@@ -258,27 +266,45 @@ export function createWorld(
     const bank = town.civic.get("bank");
     stage.bank = bank ? { x: bank.x, z: bank.z } : { x: 0, z: 0 };
 
-    for (const asset of assets) {
+    for (const [assetIndex, asset] of assets.entries()) {
       const lot = layout.lots.get(asset.id)!;
       const d = layout.districts.find((x) => x.id === lot.district)!;
       const tier = tierFor(asset.weightPct);
       const site = createSite(asset, tier, asset.marketValueEur === null);
       const footprint = footprintFor(asset.weightPct);
       // Portfolio holdings are the landmarks; give them extra visual mass.
-      const scale = (footprint / NOMINAL[tier]) * 1.12;
+      const targetScale = (footprint / NOMINAL[tier]) * 1.12;
+      const previousScale = previousScales.get(asset.id);
+      const shouldAnimate = !reduced && (previousScale === undefined || Math.abs(previousScale - targetScale) > 0.015);
+      const startScale = reduced ? targetScale : previousScale ?? targetScale * 0.52;
       const groundY = layout.terrain.heightAt(lot.x, lot.z);
       site.group.position.set(lot.x, groundY, lot.z);
       site.group.rotation.y = lot.rotationY;
-      site.group.scale.setScalar(scale);
+      site.group.scale.setScalar(startScale);
       site.mesh.userData.assetId = asset.id;
       scene.add(site.group);
       siteMeshes.push(site.mesh);
 
       const label = makeBrandLabel(asset);
-      label.position.set(lot.x, groundY + site.top * scale + 0.72, lot.z);
+      label.position.set(lot.x, groundY + site.top * startScale + 0.72, lot.z);
       scene.add(label);
       sites.set(asset.id, {
-        asset, lot, site, label, footprint, groundY, scale, opacity: 1, applied: 1, targetOpacity: 1, route: routeToPlaza(lot, d),
+        asset,
+        lot,
+        site,
+        label,
+        footprint,
+        groundY,
+        scale: startScale,
+        scaleFrom: startScale,
+        scaleTarget: targetScale,
+        scaleElapsedMs: shouldAnimate ? 0 : 900,
+        scaleDelayMs: shouldAnimate && previousScale === undefined ? (assetIndex % 16) * 42 : 0,
+        scaleDurationMs: 900,
+        opacity: 1,
+        applied: 1,
+        targetOpacity: 1,
+        route: routeToPlaza(lot, d),
       });
     }
     frameSun();
@@ -472,6 +498,23 @@ export function createWorld(
       agents.update(simDt);
       infra?.update(simDt);
       choreo.update(simDt);
+    }
+
+    // Portfolio evolution: new companies rise into view; position changes gently grow or
+    // shrink the existing building. Staggering the initial build gives the town a reveal.
+    for (const e of sites.values()) {
+      if (e.scaleElapsedMs < e.scaleDurationMs) {
+        if (e.scaleDelayMs > 0) {
+          e.scaleDelayMs = Math.max(0, e.scaleDelayMs - dt);
+        } else {
+          e.scaleElapsedMs = Math.min(e.scaleDurationMs, e.scaleElapsedMs + dt);
+          const t = e.scaleElapsedMs / e.scaleDurationMs;
+          const eased = 1 - Math.pow(1 - t, 3);
+          e.scale = e.scaleFrom + (e.scaleTarget - e.scaleFrom) * eased;
+          e.site.group.scale.setScalar(e.scale);
+          e.label.position.y = e.groundY + e.site.top * e.scale + 0.72;
+        }
+      }
     }
 
     // Muting fades; hidden sites switch off once fully transparent.
