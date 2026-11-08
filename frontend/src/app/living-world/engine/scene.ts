@@ -641,6 +641,15 @@ export function createWorld(
       reduced = v;
       agents.setReducedMotion(v);
       infra?.setReducedMotion(v);
+      if (v) {
+        for (const e of sites.values()) {
+          e.scale = e.scaleTarget;
+          e.scaleElapsedMs = e.scaleDurationMs;
+          e.scaleDelayMs = 0;
+          e.site.group.scale.setScalar(e.scaleTarget);
+          e.label.position.y = e.groundY + e.site.top * e.scaleTarget + 0.72;
+        }
+      }
     },
     stats,
     dispose() {
