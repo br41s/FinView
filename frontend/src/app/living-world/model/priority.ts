@@ -86,11 +86,11 @@ export const IMPORTANT_AT = 2;
 export const CRITICAL_AT = 6;
 
 /**
- * TODO(brais): this is the one place where "how much noise do I want with ~100
- * holdings" is decided. The provisional thresholds above give roughly: a 3 % move on a
- * 2 % position ≈ 1.2 (normal), a 6 % move on a 5 % position ≈ 3.5 (important), a large
- * earnings miss on a big position ≈ 8 (critical). Adjust IMPORTANT_AT / CRITICAL_AT,
- * or replace this body if you want a non-linear rule (e.g. percentile of recent scores).
+ * The one place where "how much noise with ~100 holdings" is decided. Brais confirmed the
+ * 2 / 6 thresholds (2026-11-08). They give roughly: a 3 % move on a 2 % position ≈ 1.2
+ * (normal), a 6 % move on a 5 % position ≈ 3.5 (important), a large earnings miss on a big
+ * position ≈ 8 (critical). Revisit with real event volumes in Phase 1; a non-linear rule
+ * (percentile of recent scores) is the alternative if the real stream is too loud.
  */
 export function bucketFor(score: number): Severity {
   if (score >= CRITICAL_AT) return "critical";

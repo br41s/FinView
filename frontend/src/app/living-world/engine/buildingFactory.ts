@@ -58,6 +58,10 @@ export class Builder {
   cone(r: number, h: number, x: number, y: number, z: number, hex: number, seg = 8) {
     this.push(new THREE.ConeGeometry(r, h, seg), x, y + h / 2, z, hex);
   }
+  /** A four-sided pyramid roof with a square base of side `base`. */
+  pyramid(base: number, h: number, x: number, y: number, z: number, hex: number) {
+    this.push(new THREE.ConeGeometry(base / Math.SQRT2, h, 4), x, y + h / 2, z, hex, Math.PI / 4);
+  }
   sphere(r: number, x: number, y: number, z: number, hex: number) {
     this.push(new THREE.SphereGeometry(r, 10, 8), x, y + r, z, hex);
   }

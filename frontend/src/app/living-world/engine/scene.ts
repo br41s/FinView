@@ -17,6 +17,7 @@ import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
 import { AgentSystem, type SiteSpot } from "./agents";
 import { NOMINAL, createSite, disposeSite, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
+import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
 import { buildTown, disposeLabel, makeLabel, type Town } from "./props";
@@ -73,6 +74,8 @@ interface SiteEntry {
   site: Site;
   label: THREE.Sprite;
   footprint: number;
+  /** Ground height under the building. */
+  groundY: number;
   scale: number;
   opacity: number;
   /** Last opacity written to the material, so a jump (reduced motion) is still applied. */
@@ -105,8 +108,10 @@ export function createWorld(
 
   let layout: WorldLayout = computeLayout([]);
   let town: Town | null = null;
+  let infra: InfraSystem | null = null;
   let agents = new AgentSystem(QUALITY[quality].maxAgents);
   agents.setReducedMotion(reduced);
+  agents.setGround(layout.terrain.roadY);
   scene.add(agents.bodies, agents.heads, agents.vans);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
@@ -130,13 +135,14 @@ export function createWorld(
     bank: { x: 0, z: 0 } as Point,
     site(id: string) {
       const e = sites.get(id);
-      return e ? { x: e.lot.x, z: e.lot.z, markerY: e.site.top * e.scale + 1.6, route: e.route } : null;
+      return e ? { x: e.lot.x, z: e.lot.z, groundY: e.groundY, markerY: e.groundY + e.site.top * e.scale + 1.6, route: e.route } : null;
     },
   };
   let choreo = new Choreographer(stage);
 
   const ctrl = new CameraController(camera, canvas, {
     radius: () => layout.radius,
+    groundY: (x, z) => layout.terrain.heightAt(x, z),
     reducedMotion: () => reduced,
     onClick: (x, y) => pick(x, y),
     onUserMove: () => undefined,
@@ -203,6 +209,7 @@ export function createWorld(
     agents.dispose();
     agents = new AgentSystem(QUALITY[quality].maxAgents);
     agents.setReducedMotion(reduced);
+    agents.setGround(layout.terrain.roadY);
     scene.add(agents.bodies, agents.heads, agents.vans);
     stage.agents = agents;
     choreo.dispose();
@@ -227,7 +234,15 @@ export function createWorld(
     layout = computeLayout(assets);
     town = buildTown(layout, QUALITY[quality].trees);
     town.setTreeCount(QUALITY[quality].trees);
+    town.fillers.setDensity(QUALITY[quality].fillerDensity);
     scene.add(town.group);
+    if (infra) {
+      scene.remove(infra.group);
+      infra.dispose();
+    }
+    infra = buildInfra(layout);
+    infra.setReducedMotion(reduced);
+    scene.add(infra.group);
     const bank = town.civic.get("bank");
     stage.bank = bank ? { x: bank.x, z: bank.z } : { x: 0, z: 0 };
 
@@ -238,7 +253,8 @@ export function createWorld(
       const site = createSite(asset, tier, asset.marketValueEur === null);
       const footprint = footprintFor(asset.weightPct);
       const scale = footprint / NOMINAL[tier];
-      site.group.position.set(lot.x, 0, lot.z);
+      const groundY = layout.terrain.heightAt(lot.x, lot.z);
+      site.group.position.set(lot.x, groundY, lot.z);
       site.group.rotation.y = lot.rotationY;
       site.group.scale.setScalar(scale);
       site.mesh.userData.assetId = asset.id;
@@ -246,10 +262,10 @@ export function createWorld(
       siteMeshes.push(site.mesh);
 
       const label = makeLabel(asset.name, { font: 28 });
-      label.position.set(lot.x, site.top * scale + 1.1, lot.z);
+      label.position.set(lot.x, groundY + site.top * scale + 1.1, lot.z);
       scene.add(label);
       sites.set(asset.id, {
-        asset, lot, site, label, footprint, scale, opacity: 1, applied: 1, targetOpacity: 1, route: routeToPlaza(lot, d),
+        asset, lot, site, label, footprint, groundY, scale, opacity: 1, applied: 1, targetOpacity: 1, route: routeToPlaza(lot, d),
       });
     }
     frameSun();
@@ -280,8 +296,7 @@ export function createWorld(
     const e = id ? sites.get(id) : null;
     selectRing.visible = !!e;
     if (e) {
-      selectRing.position.x = e.lot.x;
-      selectRing.position.z = e.lot.z;
+      selectRing.position.set(e.lot.x, e.groundY + 0.3, e.lot.z);
       selectRing.scale.setScalar(e.footprint * 0.78);
     }
     for (const s of sites.values()) s.site.material.emissive.setHex(s.asset.id === id ? 0x2a2410 : 0x000000);
@@ -408,6 +423,7 @@ export function createWorld(
         cb.onPerformance("end", p);
       }
       agents.update(simDt);
+      infra?.update(simDt);
       choreo.update(simDt);
     }
 
@@ -520,12 +536,14 @@ export function createWorld(
       resize();
       applyShadows();
       town?.setTreeCount(QUALITY[q].trees);
+      town?.fillers.setDensity(QUALITY[q].fillerDensity);
       rebuildAgents();
     },
     setReducedMotion(v) {
       if (v === reduced) return;
       reduced = v;
       agents.setReducedMotion(v);
+      infra?.setReducedMotion(v);
     },
     stats,
     dispose() {
@@ -540,6 +558,7 @@ export function createWorld(
       clearSites();
       choreo.dispose();
       town?.dispose();
+      infra?.dispose();
       agents.dispose();
       selectRing.geometry.dispose();
       (selectRing.material as THREE.Material).dispose();

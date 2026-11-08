@@ -1,10 +1,11 @@
-import { LOT_PITCH, PLAZA_RADIUS, type DistrictLayout, type Lot } from "./townLayout";
+import { LOT_PITCH, PLAZA_RADIUS, toWorld, type DistrictLayout, type Lot } from "./townLayout";
 
 /**
- * Street routing for vehicles and couriers. Lots sit on a grid with a street between
- * every row and column, so a route is: out of the door onto the street, along it to the
- * district's outer street, round to the corner facing the plaza, then down the boulevard.
- * Pure, so a test can prove no route ever cuts through a building.
+ * Street routing for vehicles and couriers. A district is a street grid with a street
+ * between every row and column, so a route is: out of the door onto the street, along it to
+ * the grid's outer street, round to the corner facing the plaza, then down the boulevard.
+ * The legs inside a district are axis-aligned in the district's own axes (the grid is
+ * rotated in the world). Pure, so a test can prove no route ever cuts through a building.
  */
 
 export interface Point {
@@ -12,22 +13,18 @@ export interface Point {
   z: number;
 }
 
-/** Unit vector of the lot's front (+Z rotated by rotationY), snapped to an axis. */
-export function frontOf(lot: Lot): Point {
-  return { x: Math.round(Math.sin(lot.rotationY)), z: Math.round(Math.cos(lot.rotationY)) };
-}
-
 /** Lot door → plaza edge. The last point sits on the plaza ring, not inside the buildings there. */
 export function routeToPlaza(lot: Lot, d: DistrictLayout): Point[] {
-  const f = frontOf(lot);
-  const s: Point = { x: lot.x + (f.x * LOT_PITCH) / 2, z: lot.z + (f.z * LOT_PITCH) / 2 };
-  const out: Point[] = [{ x: lot.x, z: lot.z }, s];
-  if (f.x !== 0) {
-    // Front faces ±X: the street in front runs along Z.
-    out.push({ x: s.x, z: d.gateZ }, { x: d.gateX, z: d.gateZ });
+  const s = { x: lot.lx + (lot.fx * LOT_PITCH) / 2, z: lot.lz + (lot.fz * LOT_PITCH) / 2 };
+  const local: Point[] = [{ x: lot.lx, z: lot.lz }, s];
+  if (lot.fx !== 0) {
+    // Front faces ±X of the grid: the street in front runs along Z.
+    local.push({ x: s.x, z: d.gateLZ }, { x: d.gateLX, z: d.gateLZ });
   } else {
-    out.push({ x: d.gateX, z: s.z }, { x: d.gateX, z: d.gateZ });
+    local.push({ x: d.gateLX, z: s.z }, { x: d.gateLX, z: d.gateLZ });
   }
+  const out: Point[] = local.map((p) => toWorld(d, p.x, p.z));
+  out[0] = { x: lot.x, z: lot.z };
   const len = Math.hypot(d.gateX, d.gateZ) || 1;
   const k = (PLAZA_RADIUS - 2) / len;
   out.push({ x: d.gateX * k, z: d.gateZ * k });

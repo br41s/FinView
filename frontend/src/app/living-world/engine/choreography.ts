@@ -19,6 +19,8 @@ import { Builder } from "./buildingFactory";
 export interface SiteInfo {
   x: number;
   z: number;
+  /** Ground height under the building (plateau sites sit above the plain). */
+  groundY: number;
   /** Y above the roof where markers float. */
   markerY: number;
   /** Door-to-plaza route (already computed from the layout). */
@@ -178,7 +180,7 @@ export class Choreographer {
       return;
     }
     if (have) have.ttl = 0;
-    this.addMarker(kind, p.id, site.x, 0, site.z, ms, { beacon: true });
+    this.addMarker(kind, p.id, site.x, site.groundY, site.z, ms, { beacon: true });
   }
 
   /**

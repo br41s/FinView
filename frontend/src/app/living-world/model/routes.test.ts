@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoAssets } from "./fixtures";
-import { LOT_PITCH, computeLayout } from "./townLayout";
+import { LOT_PITCH, computeLayout, toLocal } from "./townLayout";
 import { MAX_FOOTPRINT } from "./scale";
 import { pointAlong, routeLength, routeToPlaza, type Point } from "./routes";
 
@@ -8,15 +8,15 @@ const assets = demoAssets();
 const layout = computeLayout(assets);
 const half = MAX_FOOTPRINT / 2;
 
-/** Does the axis-aligned segment pass through the interior of a lot's largest building? */
-function crossesBuilding(a: Point, b: Point, ignore: string): boolean {
+/** Does the segment (in a district's own axes) pass through another holding's largest building? */
+function crossesBuilding(a: Point, b: Point, ignore: string, district: string): boolean {
   for (const lot of layout.lots.values()) {
-    if (lot.assetId === ignore) continue;
+    if (lot.assetId === ignore || lot.district !== district) continue;
     const minX = Math.min(a.x, b.x);
     const maxX = Math.max(a.x, b.x);
     const minZ = Math.min(a.z, b.z);
     const maxZ = Math.max(a.z, b.z);
-    if (maxX > lot.x - half && minX < lot.x + half && maxZ > lot.z - half && minZ < lot.z + half) return true;
+    if (maxX > lot.lx - half && minX < lot.lx + half && maxZ > lot.lz - half && minZ < lot.lz + half) return true;
   }
   return false;
 }
@@ -25,10 +25,10 @@ describe("routeToPlaza", () => {
   it("never cuts through another building on the way out of the district", () => {
     for (const lot of layout.lots.values()) {
       const d = layout.districts.find((x) => x.id === lot.district)!;
-      const r = routeToPlaza(lot, d);
-      // Legs inside the district pad are axis-aligned; the boulevard is checked separately.
+      const r = routeToPlaza(lot, d).map((p) => toLocal(d, p.x, p.z));
+      // Legs inside the district grid are axis-aligned in its own axes; the boulevard is separate.
       for (let i = 1; i < r.length - 1; i++) {
-        expect(crossesBuilding(r[i - 1], r[i], lot.assetId), `${lot.assetId} leg ${i}`).toBe(false);
+        expect(crossesBuilding(r[i - 1], r[i], lot.assetId, lot.district), `${lot.assetId} leg ${i}`).toBe(false);
       }
     }
   });
@@ -39,8 +39,10 @@ describe("routeToPlaza", () => {
       const r = routeToPlaza(lot, d);
       expect(r[0]).toEqual({ x: lot.x, z: lot.z });
       expect(Math.hypot(r.at(-1)!.x, r.at(-1)!.z)).toBeLessThan(16);
-      for (let i = 1; i < r.length - 1; i++) {
-        expect(r[i].x === r[i - 1].x || r[i].z === r[i - 1].z).toBe(true);
+      const local = r.map((p) => toLocal(d, p.x, p.z));
+      for (let i = 1; i < local.length - 1; i++) {
+        const same = Math.abs(local[i].x - local[i - 1].x) < 1e-6 || Math.abs(local[i].z - local[i - 1].z) < 1e-6;
+        expect(same, `${lot.assetId} leg ${i}`).toBe(true);
       }
     }
   });

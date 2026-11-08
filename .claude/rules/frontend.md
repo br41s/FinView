@@ -192,15 +192,35 @@ says so permanently ("Datos ficticios"). Phases 1+ (real read model, event histo
 - **One merged mesh per site** (`engine/buildingFactory.ts`, vertex colours, a `Builder` that
   merges primitives) so ~100 companies stay ~100 draw calls; trees, people and vans are
   `InstancedMesh`. `createSite` is the seam for authored glTF kits in a later phase.
-- **Layout is a pure function of asset ids** (hash slots in a grid per district). It never reads
+- **Layout is a pure function of asset ids** (hash slots in a district grid). It never reads
   weights, prices or events: a price refresh must not move a building. Lots have one pitch (the
   largest footprint plus a street), so a building that grows a tier cannot collide.
+- **The city is organic, not a set of pads** (`model/townLayout.ts`, `terrain.ts`, `infra.ts`).
+  Districts keep a **fixed compass slot** (their index in `DISTRICT_IDS`), so adding a holding
+  never turns the town; each is a street grid rotated a few degrees from its neighbours. The
+  land is a heightfield: sea, a lake and a river that bends round the square, a **plateau for
+  the funds and treasury districts** with mountains behind it. Terrain is a function of the
+  compass and the district sizes only (never of weights), so a hill cannot move either.
+- **Holdings are landmarks, the rest is scenery.** `FillerSpot`s (homes, towers, skyscrapers,
+  villas on the plateau, sheds) fill free slots and the land between districts; they are pale,
+  never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
+  `townLayout.ts`) or "size = weight" stops meaning anything. Homes exist in every district
+  (fewer downtown, villas only on the plateau): pinned in `townLayout.test.ts`.
+- **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`;
+  `roadY` is the ground but flat across water, i.e. a bridge). Sites, labels, markers, agents,
+  vans and the camera target all do; a new object placed at y = 0 will sink on the plateau.
+- **Transport** (`model/infra.ts`, `engine/infra.ts`): an elevated expressway ring, an
+  expressway round the square, a surface railway with a shuttle, and a monorail loop on pillars.
+  They run in the corridors between districts and the layout keeps buildings out of them
+  (`nearInfra`, tested). Traffic is scenery for now: it does not act out events.
+- **A ribbon's index order matters**: `ribbon()` strips that wind clockwise face down and are
+  culled, so roads looked missing while their bridges showed. Check roads from above.
 - **Size = portfolio weight, not price action** (`model/scale.ts`, piecewise-linear, tiers with
   hysteresis). An unknown weight/valuation is drawn small *and marked* (yellow diamond), never
   treated as zero. Events are acted out temporarily; only tier changes alter a building.
 - **Event priority is deterministic** (`model/priority.ts`: base × magnitude × relevance ×
   confidence, every factor kept). `bucketFor` / `IMPORTANT_AT` / `CRITICAL_AT` decide how noisy
-  the town is — Brais's call, provisional values today.
+  the town is. Brais confirmed 2 / 6 (2026-11-08); revisit with real event volumes in Phase 1.
 - **Material gotcha**: toggling `material.transparent` needs `material.needsUpdate = true`.
   Opaque materials compile with alpha forced to 1, so fading buildings (filters mute to 22 %)
   silently ignored `opacity` until the flag change triggered a recompile.

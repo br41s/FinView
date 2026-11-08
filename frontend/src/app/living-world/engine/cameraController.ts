@@ -22,6 +22,8 @@ const DRAG_PX = 4;
 export interface CameraOptions {
   /** Radius of the town, for the fit view and the pan/zoom limits. */
   radius: () => number;
+  /** Ground height at a point, so the camera orbits the terrain rather than sea level. */
+  groundY?: (x: number, z: number) => number;
   reducedMotion: () => boolean;
   onClick: (clientX: number, clientY: number) => void;
   /** The user took the camera: cancels follow mode, never auto-focus. */
@@ -33,6 +35,7 @@ export class CameraController {
   private cur: View;
   private want: View;
   private history: View[] = [];
+  private gy = 0;
   private pointers = new Map<number, { x: number; y: number }>();
   private downAt: { x: number; y: number; button: number } | null = null;
   private moved = false;
@@ -142,13 +145,15 @@ export class CameraController {
     c.pitch += (w.pitch - c.pitch) * k;
     c.dist += (w.dist - c.dist) * k;
 
+    const gy = this.o.groundY ? Math.max(0, this.o.groundY(c.tx, c.tz)) : 0;
+    this.gy += (gy - this.gy) * k;
     const cp = Math.cos(c.pitch);
     this.camera.position.set(
       c.tx + Math.sin(c.yaw) * cp * c.dist,
-      Math.sin(c.pitch) * c.dist,
+      this.gy + Math.sin(c.pitch) * c.dist,
       c.tz + Math.cos(c.yaw) * cp * c.dist,
     );
-    this.camera.lookAt(c.tx, 0, c.tz);
+    this.camera.lookAt(c.tx, this.gy, c.tz);
   }
 
   // --- internals --------------------------------------------------------------

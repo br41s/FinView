@@ -115,6 +115,7 @@ export class AgentSystem {
   private up = new THREE.Vector3(0, 1, 0);
   private c = new THREE.Color();
   private ambientRoutes: Point[][] = [];
+  private ground: (x: number, z: number) => number = () => 0;
 
   constructor(private capacity: number) {
     const total = capacity + TEMP_SLOTS;
@@ -161,6 +162,11 @@ export class AgentSystem {
     this.vans.count = 0;
 
     for (let i = 0; i < total; i++) this.agents.push(blank());
+  }
+
+  /** Height of the road or ground at a point, so people and vans follow hills and bridges. */
+  setGround(fn: (x: number, z: number) => number) {
+    this.ground = fn;
   }
 
   setReducedMotion(v: boolean) {
@@ -443,13 +449,13 @@ export class AgentSystem {
       const st = a.override ?? a.state;
       const moving = st === "walking" || st === "delivering" || st === "returning";
       const ph = t * (moving ? 7 : 2.2) + a.seed;
-      let y = 0;
+      let y = this.ground(a.x, a.z);
       let sy = 1;
       let yaw = a.heading;
       if (!this.reduced) {
-        if (moving) y = Math.abs(Math.sin(ph)) * 0.07;
-        else if (st === "working") y = Math.abs(Math.sin(ph * 1.6)) * 0.05;
-        else if (st === "celebrating") y = Math.abs(Math.sin(t * 6 + a.seed)) * 0.38;
+        if (moving) y += Math.abs(Math.sin(ph)) * 0.07;
+        else if (st === "working") y += Math.abs(Math.sin(ph * 1.6)) * 0.05;
+        else if (st === "celebrating") y += Math.abs(Math.sin(t * 6 + a.seed)) * 0.38;
         else if (st === "concerned") {
           sy = 0.93;
           yaw += Math.sin(t * 1.4 + a.seed) * 0.45;
@@ -469,7 +475,7 @@ export class AgentSystem {
     this.vans.count = this.vanList.length;
     this.vanList.forEach((v, i) => {
       this.q.setFromAxisAngle(this.up, v.heading - Math.PI / 2);
-      this.p.set(v.x, 0.1, v.z);
+      this.p.set(v.x, this.ground(v.x, v.z) + 0.1, v.z);
       this.s.set(1.1, 1.1, 1.1);
       this.m.compose(this.p, this.q, this.s);
       this.vans.setMatrixAt(i, this.m);
