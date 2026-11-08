@@ -11,7 +11,7 @@ import {
   type Performance,
 } from "../model/director";
 import { computeLayout, type Lot, type WorldLayout } from "../model/townLayout";
-import { routeToPlaza, type Point } from "../model/routes";
+import { routeToPlaza, sidewalkRoute, type Point } from "../model/routes";
 import { approach, footprintFor, tierFor } from "../model/scale";
 import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
 import { AgentSystem, type SiteSpot } from "./agents";
@@ -232,7 +232,14 @@ export function createWorld(
     choreo.dispose();
     choreo = new Choreographer(stage);
     const spots: SiteSpot[] = [...sites.values()].map((e) => ({
-      assetId: e.asset.id, archetype: e.asset.archetype, x: e.lot.x, z: e.lot.z, rotationY: e.lot.rotationY, footprint: e.footprint, tier: tierFor(e.asset.weightPct),
+      assetId: e.asset.id,
+      archetype: e.asset.archetype,
+      x: e.lot.x,
+      z: e.lot.z,
+      rotationY: e.lot.rotationY,
+      footprint: e.footprint,
+      tier: tierFor(e.asset.weightPct),
+      walkRoute: sidewalkRoute(e.route, layout.roads, e.asset.id.length % 2 === 0 ? 1 : -1),
     }));
     // One representative route per district, for the vans that always drive the boulevards.
     const perDistrict = new Map<string, Point[]>();
