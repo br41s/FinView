@@ -307,7 +307,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
             <EventCard
               key={e.id}
               event={e}
-              assetName={e.assetId ? (byId.get(e.assetId)?.name ?? null) : null}
+              asset={e.assetId ? (byId.get(e.assetId) ?? null) : null}
               pinned={pinned.includes(e.id)}
               onPin={() =>
                 setPinned((p) => (p.includes(e.id) ? p.filter((x) => x !== e.id) : [...p, e.id].slice(-MAX_PINNED)))
