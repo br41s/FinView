@@ -106,6 +106,12 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
       <h3 className={s.eventTitle}>{e.title}</h3>
       <p className={s.eventSummary}>{e.summary}</p>
 
+      <div className={s.eventSourceLine}>
+        <span>{SOURCE_LABEL[e.sourceType] ?? e.sourceType}</span>
+        <span>{fmtDateTime(e.observedAt)}</span>
+        <span>{CONFIDENCE_LABEL[e.confidence]}</span>
+      </div>
+
       {asset && (
         <section className={s.eventPortfolioSnapshot} aria-label="Situación actual de la posición">
           <div className={s.eventSnapshotHeading}>Situación actual de la posición</div>
