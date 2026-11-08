@@ -1,7 +1,7 @@
 "use client";
 
 import { Crosshair, Pin, PinOff, Play, X } from "lucide-react";
-import { fmt, fmtDateTime } from "@/lib/format";
+import { fmt, fmtDateTime, formatEur } from "@/lib/format";
 import type { WorldAsset, WorldEvent } from "../model/types";
 import s from "../world.module.css";
 import { EventIllustration } from "./EventIllustration";
@@ -105,6 +105,29 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
 
       <h3 className={s.eventTitle}>{e.title}</h3>
       <p className={s.eventSummary}>{e.summary}</p>
+
+      {asset && (
+        <section className={s.eventPortfolioSnapshot} aria-label="Situación actual de la posición">
+          <div className={s.eventSnapshotHeading}>Situación actual de la posición</div>
+          <div className={s.eventSnapshotGrid}>
+            <div>
+              <span>Valor</span>
+              <strong>{asset.marketValueEur === null ? "—" : formatEur(asset.marketValueEur)}</strong>
+            </div>
+            <div>
+              <span>Peso</span>
+              <strong>{asset.weightPct === null ? "—" : fmt(asset.weightPct, 2) + " %"}</strong>
+            </div>
+            <div>
+              <span>Variación diaria</span>
+              <strong className={directionClass(asset.dayChangePct === null ? "neutral" : asset.dayChangePct > 0 ? "positive" : asset.dayChangePct < 0 ? "negative" : "neutral")}>
+                {asset.dayChangePct === null ? "—" : (asset.dayChangePct > 0 ? "+" : "") + fmt(asset.dayChangePct, 2) + " %"}
+              </strong>
+            </div>
+          </div>
+          <div className={s.eventSnapshotNote}>Datos actuales de cartera; no representan necesariamente el impacto histórico del evento.</div>
+        </section>
+      )}
 
       <details className={s.eventDetails}>
         <summary>Detalles y procedencia</summary>
