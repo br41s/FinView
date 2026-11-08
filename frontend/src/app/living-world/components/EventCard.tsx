@@ -132,7 +132,7 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
         <button className={s.btn + " " + s.linkBtn} onClick={onFocus} disabled={!e.assetId}>
           <Crosshair size={14} /> Enfocar
         </button>
-        <button className={\`\${s.btn} \${s.linkBtn}\`} onClick={onReplay} disabled={!e.assetId}>
+        <button className={s.btn + " " + s.linkBtn} onClick={onReplay} disabled={!e.assetId}>
           <Play size={14} /> Ver escena
         </button>
         <button className={s.btn + " " + s.linkBtn + " " + (pinned ? s.btnOn : "")} onClick={onPin} aria-pressed={pinned}>
