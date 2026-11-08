@@ -3,7 +3,8 @@ import { DISTRICT_LABEL } from "../model/archetypes";
 import { seeded, valueNoise } from "../model/rng";
 import { WATER_Y, type Pt, type Terrain } from "../model/terrain";
 import { LOT_PITCH, PLAZA_RADIUS, toWorld, type CivicKind, type WorldLayout } from "../model/townLayout";
-import { Builder } from "./buildingFactory";
+import { accentFor, Builder } from "./buildingFactory";
+import type { WorldAsset } from "../model/types";
 import { buildFillers, type Fillers } from "./fillers";
 
 /** Land, water, streets, plaza, civic buildings, trees and text labels: the static stage. */
@@ -54,6 +55,80 @@ export function makeLabel(text: string, opts: { font?: number; bg?: string; fg?:
   sprite.userData.aspect = w / h;
   sprite.scale.set((w / h) * 1, 1, 1);
   sprite.renderOrder = 10;
+  return sprite;
+}
+
+
+/**
+ * Camera-facing illuminated company sign generated locally from its ticker/name and
+ * deterministic site accent. It uses no external logo assets or network requests.
+ */
+export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
+  const width = 640;
+  const height = 184;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  const accent = new THREE.Color(accentFor(asset.id));
+  const accentCss = "#" + accent.getHexString();
+  const ticker = (asset.ticker?.trim() || asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("") || "•")
+    .toUpperCase()
+    .slice(0, 12);
+  const initials = asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || ticker.slice(0, 1);
+
+  // Coloured luminous frame.
+  ctx.shadowColor = accentCss;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = accentCss;
+  ctx.beginPath();
+  ctx.roundRect(7, 7, width - 14, height - 14, 30);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Dark enamel face, illuminated accent rail and initials medallion.
+  ctx.fillStyle = "#172638";
+  ctx.beginPath();
+  ctx.roundRect(15, 15, width - 30, height - 30, 24);
+  ctx.fill();
+  ctx.fillStyle = accentCss;
+  ctx.beginPath();
+  ctx.roundRect(15, 15, 14, height - 30, 7);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(91, 92, 54, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "800 58px system-ui, sans-serif";
+  ctx.fillText(initials.slice(0, 2), 91, 94, 88);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  let fontSize = 66;
+  ctx.font = "800 " + fontSize + "px system-ui, sans-serif";
+  while (fontSize > 42 && ctx.measureText(ticker).width > 430) {
+    fontSize -= 2;
+    ctx.font = "800 " + fontSize + "px system-ui, sans-serif";
+  }
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(ticker, 166, 91, 430);
+
+  ctx.fillStyle = "#c7d3e1";
+  ctx.font = "600 27px system-ui, sans-serif";
+  ctx.fillText(asset.name, 168, 139, 430);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false }),
+  );
+  sprite.userData.aspect = width / height;
+  sprite.scale.set((width / height) * 0.82, 0.82, 1);
+  sprite.renderOrder = 11;
   return sprite;
 }
 
@@ -270,11 +345,51 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   }
 
   // Boulevards from the square, draped over the ground; bridges where they cross the river.
+  // A single merged detail mesh adds road dashes, crosswalks and warm street lamps without
+  // creating dozens of extra draw calls.
+  const streetDetails = new Builder();
   for (const r of layout.roads) {
     const line = [{ x: r.x1, z: r.z1 }, { x: r.x2, z: r.z2 }];
     const road = new THREE.Mesh(own(ribbon(line, 4.2, 0.1, STREET, t.roadY)), vcMat);
     road.receiveShadow = true;
     group.add(road);
+    const dx = r.x2 - r.x1;
+    const dz = r.z2 - r.z1;
+    const length = Math.hypot(dx, dz) || 1;
+    const ux = dx / length;
+    const uz = dz / length;
+    const px = uz;
+    const pz = -ux;
+    const roadAngle = Math.atan2(-uz, ux);
+
+    // Broken centre line, stopped before the plaza and before the district entrance.
+    for (let d = 5; d < length - 10; d += 4.2) {
+      const x = r.x1 + ux * d;
+      const z = r.z1 + uz * d;
+      streetDetails.box(0.82, 0.035, 0.11, x, t.roadY(x, z) + 0.17, z, 0xf1eee4, roadAngle);
+    }
+
+    // Zebra crossing at the district gate.
+    const crossingAt = Math.max(4, length - 6.2);
+    for (let i = -3; i <= 3; i++) {
+      const d = crossingAt + i * 0.58;
+      const x = r.x1 + ux * d;
+      const z = r.z1 + uz * d;
+      streetDetails.box(0.34, 0.04, 3.55, x, t.roadY(x, z) + 0.17, z, 0xf4f0e5, roadAngle);
+    }
+
+    // Paired lamps along both pavements; each is built into the merged street-detail mesh.
+    for (const d of [length * 0.24, length * 0.48, length * 0.72]) {
+      for (const side of [-1, 1]) {
+        const x = r.x1 + ux * d + px * side * 2.75;
+        const z = r.z1 + uz * d + pz * side * 2.75;
+        const y = t.roadY(x, z);
+        streetDetails.cyl(0.045, 0.055, 2.15, x, y + 0.08, z, DARK, 6);
+        streetDetails.box(0.5, 0.07, 0.07, x + ux * 0.18, y + 2.15, z + uz * 0.18, DARK, roadAngle);
+        streetDetails.sphere(0.13, x + ux * 0.38, y + 2.1, z + uz * 0.38, 0xf7df9e);
+      }
+    }
+
     const bridge = bridges(line, t, 4.2);
     if (bridge) {
       const bm = new THREE.Mesh(own(bridge), vcMat);
@@ -282,6 +397,12 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       bm.receiveShadow = true;
       group.add(bm);
     }
+  }
+  if (layout.roads.length > 0) {
+    const details = new THREE.Mesh(own(streetDetails.build()), vcMat);
+    details.castShadow = true;
+    details.receiveShadow = true;
+    group.add(details);
   }
 
   // Central square: paving, the market bell, and the four civic buildings.

@@ -20,7 +20,7 @@ import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
-import { buildTown, disposeLabel, makeLabel, type Town } from "./props";
+import { buildTown, disposeLabel, makeBrandLabel, type Town } from "./props";
 
 /**
  * The renderer. React owns controls and cards; everything that changes per frame lives
@@ -77,6 +77,11 @@ interface SiteEntry {
   /** Ground height under the building. */
   groundY: number;
   scale: number;
+  scaleFrom: number;
+  scaleTarget: number;
+  scaleElapsedMs: number;
+  scaleDelayMs: number;
+  scaleDurationMs: number;
   opacity: number;
   /** Last opacity written to the material, so a jump (reduced motion) is still applied. */
   applied: number;
@@ -112,7 +117,7 @@ export function createWorld(
   let agents = new AgentSystem(QUALITY[quality].maxAgents);
   agents.setReducedMotion(reduced);
   agents.setGround(layout.terrain.roadY);
-  scene.add(agents.bodies, agents.heads, agents.vans);
+  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
   let director: DirectorState = createDirector();
@@ -128,6 +133,16 @@ export function createWorld(
   selectRing.visible = false;
   selectRing.renderOrder = 4;
   scene.add(selectRing);
+
+  const hoverRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.82, 0.94, 48),
+    new THREE.MeshBasicMaterial({ color: 0x48b9d1, side: THREE.DoubleSide, transparent: true, opacity: 0.82, depthWrite: false }),
+  );
+  hoverRing.rotation.x = -Math.PI / 2;
+  hoverRing.position.y = 0.34;
+  hoverRing.visible = false;
+  hoverRing.renderOrder = 3;
+  scene.add(hoverRing);
 
   const stage = {
     scene,
@@ -195,6 +210,8 @@ export function createWorld(
 
   // --- building the town ---------------------------------------------------------
   const clearSites = () => {
+    hovered = null;
+    hoverRing.visible = false;
     for (const e of sites.values()) {
       scene.remove(e.site.group, e.label);
       disposeSite(e.site);
@@ -205,17 +222,17 @@ export function createWorld(
   };
 
   const rebuildAgents = () => {
-    scene.remove(agents.bodies, agents.heads, agents.vans);
+    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
     agents.dispose();
     agents = new AgentSystem(QUALITY[quality].maxAgents);
     agents.setReducedMotion(reduced);
     agents.setGround(layout.terrain.roadY);
-    scene.add(agents.bodies, agents.heads, agents.vans);
+    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
     const spots: SiteSpot[] = [...sites.values()].map((e) => ({
-      assetId: e.asset.id, x: e.lot.x, z: e.lot.z, rotationY: e.lot.rotationY, footprint: e.footprint, tier: tierFor(e.asset.weightPct),
+      assetId: e.asset.id, archetype: e.asset.archetype, x: e.lot.x, z: e.lot.z, rotationY: e.lot.rotationY, footprint: e.footprint, tier: tierFor(e.asset.weightPct),
     }));
     // One representative route per district, for the vans that always drive the boulevards.
     const perDistrict = new Map<string, Point[]>();
@@ -226,6 +243,9 @@ export function createWorld(
   };
 
   const setAssets = (assets: readonly WorldAsset[]) => {
+    // Preserve the previous building scale so existing holdings can grow/shrink in place
+    // when portfolio weights change. New holdings are introduced with a short build-up.
+    const previousScales = new Map<string, number>([...sites.values()].map((e) => [e.asset.id, e.scale] as const));
     clearSites();
     if (town) {
       scene.remove(town.group);
@@ -246,26 +266,46 @@ export function createWorld(
     const bank = town.civic.get("bank");
     stage.bank = bank ? { x: bank.x, z: bank.z } : { x: 0, z: 0 };
 
-    for (const asset of assets) {
+    for (const [assetIndex, asset] of assets.entries()) {
       const lot = layout.lots.get(asset.id)!;
       const d = layout.districts.find((x) => x.id === lot.district)!;
       const tier = tierFor(asset.weightPct);
       const site = createSite(asset, tier, asset.marketValueEur === null);
       const footprint = footprintFor(asset.weightPct);
-      const scale = footprint / NOMINAL[tier];
+      // Portfolio holdings are the landmarks; give them extra visual mass.
+      const targetScale = (footprint / NOMINAL[tier]) * 1.12;
+      const previousScale = previousScales.get(asset.id);
+      const shouldAnimate = !reduced && (previousScale === undefined || Math.abs(previousScale - targetScale) > 0.015);
+      const startScale = reduced ? targetScale : previousScale ?? targetScale * 0.52;
       const groundY = layout.terrain.heightAt(lot.x, lot.z);
       site.group.position.set(lot.x, groundY, lot.z);
       site.group.rotation.y = lot.rotationY;
-      site.group.scale.setScalar(scale);
+      site.group.scale.setScalar(startScale);
       site.mesh.userData.assetId = asset.id;
+      site.brandPlate.userData.assetId = asset.id;
       scene.add(site.group);
-      siteMeshes.push(site.mesh);
+      siteMeshes.push(site.mesh, site.brandPlate);
 
-      const label = makeLabel(asset.name, { font: 28 });
-      label.position.set(lot.x, groundY + site.top * scale + 1.1, lot.z);
+      const label = makeBrandLabel(asset);
+      label.position.set(lot.x, groundY + site.top * startScale + 0.72, lot.z);
       scene.add(label);
       sites.set(asset.id, {
-        asset, lot, site, label, footprint, groundY, scale, opacity: 1, applied: 1, targetOpacity: 1, route: routeToPlaza(lot, d),
+        asset,
+        lot,
+        site,
+        label,
+        footprint,
+        groundY,
+        scale: startScale,
+        scaleFrom: startScale,
+        scaleTarget: targetScale,
+        scaleElapsedMs: shouldAnimate ? 0 : 900,
+        scaleDelayMs: shouldAnimate && previousScale === undefined ? (assetIndex % 16) * 42 : 0,
+        scaleDurationMs: 900,
+        opacity: 1,
+        applied: 1,
+        targetOpacity: 1,
+        route: routeToPlaza(lot, d),
       });
     }
     frameSun();
@@ -291,6 +331,34 @@ export function createWorld(
     return hit ? (hit.object.userData.assetId as string) : null;
   };
 
+  const labelShouldShow = (e: SiteEntry, dist: number) => {
+    const tier = tierFor(e.asset.weightPct);
+    const visibleByDistance = dist > 70 && dist <= 105
+      ? tier === "campus" || tier === "major"
+      : dist > 42 && dist <= 70
+        ? tier !== "outpost"
+        : false;
+    // Close-up identity lives on the facade itself; floating labels are reserved for
+    // important landmarks or the one building currently under inspection.
+    return (visibleByDistance || e.asset.id === selected || e.asset.id === hovered) && e.site.group.visible;
+  };
+
+  const syncHighlights = () => {
+    const dist = ctrl.distance;
+    for (const s of sites.values()) {
+      const active = s.asset.id === selected;
+      const over = s.asset.id === hovered;
+      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : 0x000000);
+      s.label.visible = labelShouldShow(s, dist);
+    }
+    const e = hovered && hovered !== selected ? sites.get(hovered) : null;
+    hoverRing.visible = !!e;
+    if (e) {
+      hoverRing.position.set(e.lot.x, e.groundY + 0.34, e.lot.z);
+      hoverRing.scale.setScalar(e.footprint * 0.86);
+    }
+  };
+
   function select(id: string | null) {
     selected = id;
     const e = id ? sites.get(id) : null;
@@ -299,7 +367,7 @@ export function createWorld(
       selectRing.position.set(e.lot.x, e.groundY + 0.3, e.lot.z);
       selectRing.scale.setScalar(e.footprint * 0.78);
     }
-    for (const s of sites.values()) s.site.material.emissive.setHex(s.asset.id === id ? 0x2a2410 : 0x000000);
+    syncHighlights();
   }
 
   function pick(cx: number, cy: number) {
@@ -330,10 +398,18 @@ export function createWorld(
     if (id !== hovered) {
       hovered = id;
       canvas.style.cursor = id ? "pointer" : "grab";
+      syncHighlights();
       cb.onHover(id);
     }
   };
+  const onLeave = () => {
+    hovered = null;
+    canvas.style.cursor = "grab";
+    syncHighlights();
+    cb.onHover(null);
+  };
   canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointerleave", onLeave);
   canvas.style.cursor = "grab";
 
   // --- loop ------------------------------------------------------------------------
@@ -356,11 +432,9 @@ export function createWorld(
         s.scale.set(s.userData.aspect * h, h, 1);
       }
     }
-    const h = Math.min(2.4, Math.max(0.8, dist * 0.02));
+    const h = Math.min(1.35, Math.max(0.68, dist * 0.014));
     for (const e of sites.values()) {
-      const tier = tierFor(e.asset.weightPct);
-      const bigEnough = dist > 95 ? false : dist > 55 ? tier === "campus" || tier === "major" : dist > 35 ? tier !== "outpost" : true;
-      e.label.visible = bigEnough && e.site.group.visible;
+      e.label.visible = labelShouldShow(e, dist);
       e.label.scale.set(e.label.userData.aspect * h, h, 1);
     }
     const near = dist < 140;
@@ -427,6 +501,23 @@ export function createWorld(
       choreo.update(simDt);
     }
 
+    // Portfolio evolution: new companies rise into view; position changes gently grow or
+    // shrink the existing building. Staggering the initial build gives the town a reveal.
+    for (const e of sites.values()) {
+      if (e.scaleElapsedMs < e.scaleDurationMs) {
+        if (e.scaleDelayMs > 0) {
+          e.scaleDelayMs = Math.max(0, e.scaleDelayMs - dt);
+        } else {
+          e.scaleElapsedMs = Math.min(e.scaleDurationMs, e.scaleElapsedMs + dt);
+          const t = e.scaleElapsedMs / e.scaleDurationMs;
+          const eased = 1 - Math.pow(1 - t, 3);
+          e.scale = e.scaleFrom + (e.scaleTarget - e.scaleFrom) * eased;
+          e.site.group.scale.setScalar(e.scale);
+          e.label.position.y = e.groundY + e.site.top * e.scale + 0.72;
+        }
+      }
+    }
+
     // Muting fades; hidden sites switch off once fully transparent.
     for (const e of sites.values()) {
       const next = reduced ? e.targetOpacity : approach(e.opacity, e.targetOpacity, dt, 120);
@@ -442,7 +533,15 @@ export function createWorld(
         m.needsUpdate = true;
       }
       m.depthWrite = next > 0.5;
+      const brand = e.site.brandMaterial;
+      brand.opacity = next;
+      if (brand.transparent !== transparent) {
+        brand.transparent = transparent;
+        brand.needsUpdate = true;
+      }
+      brand.depthWrite = next > 0.5;
       e.site.group.visible = e.targetOpacity > 0 || next > 0.01;
+      e.label.visible = labelShouldShow(e, ctrl.distance);
       e.label.material.opacity = Math.max(0.25, next);
     }
 
@@ -544,6 +643,15 @@ export function createWorld(
       reduced = v;
       agents.setReducedMotion(v);
       infra?.setReducedMotion(v);
+      if (v) {
+        for (const e of sites.values()) {
+          e.scale = e.scaleTarget;
+          e.scaleElapsedMs = e.scaleDurationMs;
+          e.scaleDelayMs = 0;
+          e.site.group.scale.setScalar(e.scaleTarget);
+          e.label.position.y = e.groundY + e.site.top * e.scaleTarget + 0.72;
+        }
+      }
     },
     stats,
     dispose() {
@@ -553,6 +661,7 @@ export function createWorld(
       ro.disconnect();
       document.removeEventListener("visibilitychange", wake);
       canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerleave", onLeave);
       canvas.removeEventListener("webglcontextlost", onLost);
       ctrl.dispose();
       clearSites();
@@ -562,6 +671,8 @@ export function createWorld(
       agents.dispose();
       selectRing.geometry.dispose();
       (selectRing.material as THREE.Material).dispose();
+      hoverRing.geometry.dispose();
+      (hoverRing.material as THREE.Material).dispose();
       renderer.dispose();
       // Frees the GPU context now instead of waiting for GC; React strict mode remounts.
       renderer.forceContextLoss();
