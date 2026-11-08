@@ -112,7 +112,7 @@ export function createWorld(
   let agents = new AgentSystem(QUALITY[quality].maxAgents);
   agents.setReducedMotion(reduced);
   agents.setGround(layout.terrain.roadY);
-  scene.add(agents.bodies, agents.heads, agents.vans);
+  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
   let director: DirectorState = createDirector();
@@ -217,17 +217,17 @@ export function createWorld(
   };
 
   const rebuildAgents = () => {
-    scene.remove(agents.bodies, agents.heads, agents.vans);
+    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases);
     agents.dispose();
     agents = new AgentSystem(QUALITY[quality].maxAgents);
     agents.setReducedMotion(reduced);
     agents.setGround(layout.terrain.roadY);
-    scene.add(agents.bodies, agents.heads, agents.vans);
+    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases);
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
     const spots: SiteSpot[] = [...sites.values()].map((e) => ({
-      assetId: e.asset.id, x: e.lot.x, z: e.lot.z, rotationY: e.lot.rotationY, footprint: e.footprint, tier: tierFor(e.asset.weightPct),
+      assetId: e.asset.id, archetype: e.asset.archetype, x: e.lot.x, z: e.lot.z, rotationY: e.lot.rotationY, footprint: e.footprint, tier: tierFor(e.asset.weightPct),
     }));
     // One representative route per district, for the vans that always drive the boulevards.
     const perDistrict = new Map<string, Point[]>();
