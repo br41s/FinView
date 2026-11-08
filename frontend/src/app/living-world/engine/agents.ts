@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hashString, seeded } from "../model/rng";
 import { pointAlong, routeLength, type Point } from "../model/routes";
+import type { Archetype } from "../model/types";
 import type { Tier } from "../model/scale";
 
 /**
@@ -36,6 +37,7 @@ const MAX_VANS = 28;
 
 export interface SiteSpot {
   assetId: string;
+  archetype: Archetype;
   x: number;
   z: number;
   rotationY: number;
@@ -103,6 +105,9 @@ export class AgentSystem {
   readonly bodies: THREE.InstancedMesh;
   readonly heads: THREE.InstancedMesh;
   readonly vans: THREE.InstancedMesh;
+  readonly helmets: THREE.InstancedMesh;
+  readonly backpacks: THREE.InstancedMesh;
+  readonly briefcases: THREE.InstancedMesh;
   private agents: Agent[] = [];
   private ambientCount = 0;
   private vanList: Van[] = [];
@@ -161,6 +166,32 @@ export class AgentSystem {
     this.vans.frustumCulled = false;
     this.vans.count = 0;
 
+    // Small role props make the crowd legible at town zoom: hard hats, delivery packs,
+    // and professional folios. They remain instanced to keep draw calls bounded.
+    const helmetTop = new THREE.SphereGeometry(0.2, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+    helmetTop.translate(0, 1.0, 0);
+    const helmetBrim = new THREE.CylinderGeometry(0.23, 0.23, 0.045, 8);
+    helmetBrim.translate(0, 0.96, 0);
+    const helmetGeo = mergeGeometries([helmetTop, helmetBrim], false);
+    helmetTop.dispose();
+    helmetBrim.dispose();
+    const backpackGeo = new THREE.BoxGeometry(0.28, 0.34, 0.16);
+    backpackGeo.translate(0, 0.55, -0.21);
+    const briefcaseBody = new THREE.BoxGeometry(0.28, 0.18, 0.09);
+    briefcaseBody.translate(0.22, 0.43, 0.13);
+    const briefcaseHandle = new THREE.BoxGeometry(0.12, 0.035, 0.045);
+    briefcaseHandle.translate(0.22, 0.54, 0.13);
+    const briefcaseGeo = mergeGeometries([briefcaseBody, briefcaseHandle], false);
+    briefcaseBody.dispose();
+    briefcaseHandle.dispose();
+    this.helmets = new THREE.InstancedMesh(helmetGeo, flat(false), total);
+    this.backpacks = new THREE.InstancedMesh(backpackGeo, flat(false), total);
+    this.briefcases = new THREE.InstancedMesh(briefcaseGeo, flat(false), total);
+    for (const prop of [this.helmets, this.backpacks, this.briefcases]) {
+      prop.castShadow = true;
+      prop.frustumCulled = false;
+    }
+
     for (let i = 0; i < total; i++) this.agents.push(blank());
   }
 
@@ -179,7 +210,22 @@ export class AgentSystem {
     for (let i = 0; i < this.agents.length; i++) this.agents[i] = blank();
     const order = [...sites].sort((a, b) => b.footprint - a.footprint || (a.assetId < b.assetId ? -1 : 1));
     let n = 0;
-    const roles: Role[] = ["worker", "worker", "visitor", "manager", "worker", "visitor"];
+    const roleMix: Record<Archetype, Role[]> = {
+      retail: ["worker", "visitor", "visitor", "manager", "courier"],
+      consumer: ["worker", "worker", "visitor", "courier"],
+      tech: ["analyst", "manager", "worker", "courier"],
+      semis: ["crew", "worker", "analyst", "crew"],
+      energy: ["crew", "worker", "courier", "manager"],
+      mining: ["crew", "crew", "worker", "courier"],
+      banking: ["manager", "analyst", "analyst", "visitor"],
+      health: ["worker", "analyst", "manager", "worker"],
+      telecom: ["crew", "analyst", "courier"],
+      utilities: ["crew", "worker", "courier"],
+      realestate: ["manager", "worker", "visitor"],
+      fund: ["manager", "analyst", "visitor"],
+      cash: ["manager", "courier"],
+      crypto: ["analyst", "courier", "manager"],
+    };
     outer: for (let round = 0; round < 4; round++) {
       for (const s of order) {
         const want = 1 + ["outpost", "small", "campus", "major"].indexOf(s.tier);
@@ -191,6 +237,7 @@ export class AgentSystem {
         const rnd = seeded(seed);
         a.active = true;
         a.assetId = s.assetId;
+        const roles = roleMix[s.archetype];
         a.role = roles[Math.floor(rnd() * roles.length)];
         a.cx = s.x;
         a.cz = s.z;
@@ -310,8 +357,12 @@ export class AgentSystem {
     const a = this.agents[i];
     this.bodies.setColorAt(i, this.c.set(ROLE_COLOR[a.role]));
     this.heads.setColorAt(i, this.c.set(SKIN[a.seed % SKIN.length]));
-    if (this.bodies.instanceColor) this.bodies.instanceColor.needsUpdate = true;
-    if (this.heads.instanceColor) this.heads.instanceColor.needsUpdate = true;
+    this.helmets.setColorAt(i, this.c.set(a.role === "crew" ? 0xf28b24 : 0xf0c84e));
+    this.backpacks.setColorAt(i, this.c.set(a.role === "courier" ? 0xe3a437 : 0x6b7884));
+    this.briefcases.setColorAt(i, this.c.set(a.role === "analyst" ? 0x345f91 : 0x433e52));
+    for (const mesh of [this.bodies, this.heads, this.helmets, this.backpacks, this.briefcases]) {
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
   }
 
   /** Inhabitants currently on stage (ambient plus event actors). */
@@ -357,14 +408,17 @@ export class AgentSystem {
     }
     a.until -= dtMs;
     if (a.until <= 0) {
-      a.state = a.state === "working" ? "walking" : "working";
-      a.until = 3000 + a.rnd() * 7000;
+      const roll = a.rnd();
+      a.state = roll < 0.42 ? "walking" : roll < 0.82 ? "working" : "idle";
+      a.until = 2600 + a.rnd() * 7600;
     }
-    if (st === "walking") {
+    const current = a.override ?? a.state;
+    if (current === "walking") {
       a.angle += a.angVel * dt;
       this.place(a);
-      // Face the direction of travel (tangent of the ring).
       a.heading = Math.atan2(-Math.sin(a.angle) * Math.sign(a.angVel), Math.cos(a.angle) * Math.sign(a.angVel));
+    } else if (current === "idle") {
+      a.heading = Math.atan2(a.cx - a.x, a.cz - a.z) + Math.sin(this.time / 1700 + a.seed) * 0.12;
     } else {
       a.heading = Math.atan2(a.cx - a.x, a.cz - a.z);
     }
@@ -444,6 +498,9 @@ export class AgentSystem {
         this.m.compose(this.p, this.q, this.s);
         this.bodies.setMatrixAt(i, this.m);
         this.heads.setMatrixAt(i, this.m);
+        this.helmets.setMatrixAt(i, this.m);
+        this.backpacks.setMatrixAt(i, this.m);
+        this.briefcases.setMatrixAt(i, this.m);
         continue;
       }
       const st = a.override ?? a.state;
@@ -468,9 +525,31 @@ export class AgentSystem {
       this.m.compose(this.p, this.q, this.s);
       this.bodies.setMatrixAt(i, this.m);
       this.heads.setMatrixAt(i, this.m);
+      this.helmets.setMatrixAt(i, this.m);
+      this.backpacks.setMatrixAt(i, this.m);
+      this.briefcases.setMatrixAt(i, this.m);
+
+      const helmetRole = a.role === "worker" || a.role === "crew";
+      const courierRole = a.role === "courier";
+      const professionalRole = a.role === "manager" || a.role === "analyst";
+      this.s.set(helmetRole ? AGENT_SCALE : 0, helmetRole ? AGENT_SCALE : 0, helmetRole ? AGENT_SCALE : 0);
+      this.m.compose(this.p, this.q, this.s);
+      this.helmets.setMatrixAt(i, this.m);
+      this.s.set(courierRole ? AGENT_SCALE : 0, courierRole ? AGENT_SCALE : 0, courierRole ? AGENT_SCALE : 0);
+      this.m.compose(this.p, this.q, this.s);
+      this.backpacks.setMatrixAt(i, this.m);
+      this.s.set(professionalRole ? AGENT_SCALE : 0, professionalRole ? AGENT_SCALE : 0, professionalRole ? AGENT_SCALE : 0);
+      this.m.compose(this.p, this.q, this.s);
+      this.briefcases.setMatrixAt(i, this.m);
+      // Restore the shared pose matrix scales before the next agent.
+      this.s.set(AGENT_SCALE, AGENT_SCALE * sy, AGENT_SCALE);
+      this.m.compose(this.p, this.q, this.s);
     }
     this.bodies.instanceMatrix.needsUpdate = true;
     this.heads.instanceMatrix.needsUpdate = true;
+    this.helmets.instanceMatrix.needsUpdate = true;
+    this.backpacks.instanceMatrix.needsUpdate = true;
+    this.briefcases.instanceMatrix.needsUpdate = true;
 
     this.vans.count = this.vanList.length;
     this.vanList.forEach((v, i) => {
@@ -486,7 +565,7 @@ export class AgentSystem {
   }
 
   dispose() {
-    for (const m of [this.bodies, this.heads, this.vans]) {
+    for (const m of [this.bodies, this.heads, this.vans, this.helmets, this.backpacks, this.briefcases]) {
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
       m.dispose();
