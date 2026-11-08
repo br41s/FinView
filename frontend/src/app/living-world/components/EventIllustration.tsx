@@ -25,7 +25,6 @@ const FALLBACK = PALETTES.consumer;
 function SiteArchitecture({ archetype, p }: { archetype: string; p: Palette }) {
   switch (archetype) {
     case "retail":
-    case "consumer":
       return <g>
         <path d="M208 210V130l66-37 69 37v80Z" fill={p.wall} stroke="#52616a" strokeWidth="3"/>
         <path d="m208 130 66-38 69 38-69 36Z" fill={p.roof}/>
@@ -45,6 +44,24 @@ function SiteArchitecture({ archetype, p }: { archetype: string; p: Palette }) {
         <rect x="439" y="193" width="27" height="13" rx="2" fill={p.glass}/>
         <circle cx="443" cy="218" r="6" fill="#46505b"/><circle cx="478" cy="218" r="6" fill="#46505b"/>
       </g>;
+    case "consumer":
+      return <g>
+        <path d="M178 210V130l87-48 87 48v80Z" fill={p.wall} stroke="#65747b" strokeWidth="3"/>
+        <path d="m178 130 87-48 87 48-87 49Z" fill={p.roof}/>
+        <path d="M197 153h135v42H197Z" fill={p.glass} stroke="#627b83" strokeWidth="3"/>
+        <path d="M197 168h135m-67-15v42" stroke="#f6f4e7" strokeWidth="4"/>
+        <path d="M202 122h127v9H202Z" fill={p.accent}/>
+        <path d="M365 210v-52c0-19 21-29 40-29s40 10 40 29v52Z" fill="#e8eae1" stroke="#66777c" strokeWidth="3"/>
+        <ellipse cx="405" cy="158" rx="40" ry="14" fill="#fff" stroke="#66777c" strokeWidth="3"/>
+        <path d="M374 180h62" stroke={p.accent} strokeWidth="8"/>
+        <path d="M466 207v-38c0-13 15-20 27-20s27 7 27 20v38Z" fill="#e8eae1" stroke="#66777c" strokeWidth="3"/>
+        <ellipse cx="493" cy="169" rx="27" ry="10" fill="#fff" stroke="#66777c" strokeWidth="3"/>
+        <path d="M170 222h392" stroke="#596b70" strokeWidth="8"/>
+        <path d="M224 225h58v-22h-58Z" fill={p.accent}/><path d="M231 203v-8h17v8" stroke="#f7ead2" strokeWidth="3" fill="none"/>
+        <path d="M538 190h63v28h-63Z" fill="#f0f1e9" stroke="#617078" strokeWidth="3"/>
+        <path d="M550 190v-14h27v14" fill={p.glass}/>
+        <circle cx="552" cy="223" r="7" fill="#46505b"/><circle cx="588" cy="223" r="7" fill="#46505b"/>
+      </g>;
     case "tech":
     case "semis":
       return <g>
@@ -62,7 +79,6 @@ function SiteArchitecture({ archetype, p }: { archetype: string; p: Palette }) {
         <path d="M178 209h320" stroke="#667f91" strokeWidth="7" strokeLinecap="round"/>
       </g>;
     case "energy":
-    case "utilities":
       return <g>
         <path d="M194 210V170h294v40Z" fill={p.wall} stroke="#6b7574" strokeWidth="3"/>
         <path d="M220 170V119c0-17 23-27 44-27s44 10 44 27v51Z" fill={p.wall} stroke="#6a7472" strokeWidth="3"/>
@@ -76,6 +92,22 @@ function SiteArchitecture({ archetype, p }: { archetype: string; p: Palette }) {
         <path d="M270 85v-18h48v18m-48-8h48" stroke={p.accent} strokeWidth="4" fill="none"/>
         <path d="M457 177h31v-35" stroke="#6d7b78" strokeWidth="7" fill="none"/>
         <circle cx="482" cy="139" r="5" fill={p.accent}/>
+      </g>;
+    case "utilities":
+      return <g>
+        <path d="M158 214h435v11H158Z" fill="#667c84"/>
+        <path d="M196 206 234 116h12l38 90Z" fill="#dbe7e7" stroke="#6f838c" strokeWidth="3"/>
+        <path d="M242 116v-35m-30 17 30 18 30-18m-48 42 18-24 18 24" stroke={p.accent} strokeWidth="5" fill="none" strokeLinecap="round"/>
+        <path d="M349 206 387 119h12l38 87Z" fill="#dbe7e7" stroke="#6f838c" strokeWidth="3"/>
+        <path d="M393 119V82m-30 18 30 19 30-19m-48 42 18-23 18 23" stroke={p.accent} strokeWidth="5" fill="none" strokeLinecap="round"/>
+        <path d="M470 204V139h81v65Z" fill={p.wall} stroke="#63777d" strokeWidth="3"/>
+        <path d="M462 139 510 111l49 28Z" fill={p.roof}/>
+        <path d="M484 152h18v22h-18Zm31 0h18v22h-18Z" fill={p.glass}/>
+        <path d="M290 225 318 176 346 225Z" fill="#5c7491" stroke="#354a63" strokeWidth="3"/>
+        <path d="M297 213h42m-31-25 21 37" stroke="#9ec8df" strokeWidth="3"/>
+        <path d="M280 212h-22m142 0h-22m144 0h-22" stroke="#60727b" strokeWidth="4"/>
+        <path d="M258 143h96m-48-19v38m96 7h57" stroke="#697b82" strokeWidth="4" fill="none"/>
+        <circle cx="258" cy="143" r="5" fill={p.accent}/><circle cx="402" cy="169" r="5" fill={p.accent}/>
       </g>;
     case "mining":
       return <g>
