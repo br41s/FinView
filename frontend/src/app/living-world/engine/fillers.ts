@@ -18,6 +18,17 @@ const GLASS_LIGHT = 0x8aa2b8;
 const SLAB = 0xf4f1ea;
 const ROOF = 0xc9694f;
 
+// Portfolio holdings are the landmarks. Keep decorative buildings clearly subordinate.
+const WIDTH_SCALE = 0.86;
+const HEIGHT_SCALE: Record<FillerKind, number> = {
+  skyscraper: 0.08,
+  tower: 0.2,
+  block: 0.3,
+  house: 0.45,
+  villa: 0.42,
+  shed: 0.38,
+};
+
 /** Floors as alternating glass and slab, so a stretched tower still reads as storeys. */
 function storeys(b: Builder, w: number, y0: number, floors: number, floorH: number, glass = GLASS) {
   for (let i = 0; i < floors; i++) {
@@ -117,7 +128,7 @@ export function buildFillers(spots: readonly FillerSpot[], terrain: Terrain): Fi
     items.forEach((s, i) => {
       q.setFromAxisAngle(up, s.rotationY);
       pos.set(s.x, terrain.heightAt(s.x, s.z), s.z);
-      sc.set(s.width, s.tall, s.width);
+      sc.set(s.width * WIDTH_SCALE, s.tall * HEIGHT_SCALE[kind], s.width * WIDTH_SCALE);
       m4.compose(pos, q, sc);
       mesh.setMatrixAt(i, m4);
       const palette = TINTS[kind];
