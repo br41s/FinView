@@ -48,25 +48,26 @@ export interface Lot {
   fz: number;
 }
 
+export type DistrictShape = "highrise" | "campus" | "industrial" | "high-street" | "garden";
+
 export interface DistrictLayout {
   id: DistrictId;
   slot: number;
   cx: number;
   cz: number;
-  /** Rotation of the district's street grid. */
+  /** Local orientation; each neighbourhood has its own street grain. */
   theta: number;
+  shape: DistrictShape;
   cols: number;
   rows: number;
-  /** Radius of the circle that encloses the district's lot grid. */
+  /** Conservative radius enclosing its organic parcel cluster. */
   extent: number;
   assetCount: number;
-  /** Half-sizes of the district's street grid (lots plus the outer street), in its own axes. */
   halfW: number;
   halfH: number;
-  /** Grid corner closest to the plaza, in world coordinates: where the boulevard meets it. */
+  /** Inner access point, joined to both the local street ring and the city arterial. */
   gateX: number;
   gateZ: number;
-  /** The same corner in the district's own axes. */
   gateLX: number;
   gateLZ: number;
 }
@@ -76,6 +77,20 @@ export interface RoadSegment {
   z1: number;
   x2: number;
   z2: number;
+  path: Pt[];
+  width: number;
+  kind: "arterial" | "boulevard" | "local" | "exit";
+  sidewalk: boolean;
+}
+
+export interface GreenSpace {
+  kind: "city-park" | "pocket-park" | "greenway";
+  x: number;
+  z: number;
+  radiusX: number;
+  radiusZ: number;
+  rotationY: number;
+  pond?: { x: number; z: number; radiusX: number; radiusZ: number };
 }
 
 export type CivicKind = "bank" | "newsKiosk" | "observatory" | "townHall";
@@ -107,6 +122,7 @@ export interface WorldLayout {
   roads: RoadSegment[];
   civic: CivicSite[];
   filler: FillerSpot[];
+  greenSpaces: GreenSpace[];
   terrain: Terrain;
   /** Expressways, railway and monorail. */
   infra: Infra;
