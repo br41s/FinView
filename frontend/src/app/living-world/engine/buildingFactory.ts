@@ -97,6 +97,7 @@ const DARK = 0x4a4f5a;
 const GLASS = 0x8fc7e8;
 const ROOF_RED = 0xc9604f;
 const GROUND_PAD = 0xd9d2bd;
+const GOLD = 0xd5ac53;
 
 /** A paved plot every site stands on, so a building reads as a lot and not as a prop. */
 function plot(c: Ctx) {
@@ -427,28 +428,28 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 164;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#" + new THREE.Color(accent).getHexString();
-  ctx.beginPath();
-  ctx.roundRect(4, 4, 504, 136, 22);
-  ctx.fill();
-  ctx.fillStyle = "#172638";
-  ctx.beginPath();
-  ctx.roundRect(12, 12, 488, 120, 17);
-  ctx.fill();
+  const canvasCtx = canvas.getContext("2d")!;
+  canvasCtx.fillStyle = "#" + new THREE.Color(accent).getHexString();
+  canvasCtx.beginPath();
+  canvasCtx.roundRect(4, 4, 504, 136, 22);
+  canvasCtx.fill();
+  canvasCtx.fillStyle = "#172638";
+  canvasCtx.beginPath();
+  canvasCtx.roundRect(12, 12, 488, 120, 17);
+  canvasCtx.fill();
   const ticker = (asset.ticker?.trim() || asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("") || "•").toUpperCase().slice(0, 12);
-  ctx.fillStyle = "#ffffff";
-  ctx.textBaseline = "middle";
+  canvasCtx.fillStyle = "#ffffff";
+  canvasCtx.textBaseline = "middle";
   let signFontSize = 62;
-  ctx.font = "800 " + signFontSize + "px system-ui, sans-serif";
-  while (signFontSize > 28 && ctx.measureText(ticker).width > 440) {
+  canvasCtx.font = "800 " + signFontSize + "px system-ui, sans-serif";
+  while (signFontSize > 28 && canvasCtx.measureText(ticker).width > 440) {
     signFontSize -= 2;
-    ctx.font = "800 " + signFontSize + "px system-ui, sans-serif";
+    canvasCtx.font = "800 " + signFontSize + "px system-ui, sans-serif";
   }
-  ctx.fillText(ticker, 30, 68, 440);
-  ctx.fillStyle = "#c7d3e1";
-  ctx.font = "600 22px system-ui, sans-serif";
-  ctx.fillText(asset.name, 30, 124, 440);
+  canvasCtx.fillText(ticker, 30, 68, 440);
+  canvasCtx.fillStyle = "#c7d3e1";
+  canvasCtx.font = "600 22px system-ui, sans-serif";
+  canvasCtx.fillText(asset.name, 30, 124, 440);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
