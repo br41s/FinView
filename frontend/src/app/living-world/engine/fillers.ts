@@ -19,14 +19,14 @@ const SLAB = 0xf4f1ea;
 const ROOF = 0xc9694f;
 
 // Portfolio holdings are the landmarks. Keep decorative buildings clearly subordinate.
-const WIDTH_SCALE = 0.86;
+const WIDTH_SCALE = 0.72;
 const HEIGHT_SCALE: Record<FillerKind, number> = {
-  skyscraper: 0.08,
-  tower: 0.2,
-  block: 0.3,
-  house: 0.45,
-  villa: 0.42,
-  shed: 0.38,
+  skyscraper: 0.045,
+  tower: 0.12,
+  block: 0.18,
+  house: 0.32,
+  villa: 0.3,
+  shed: 0.28,
 };
 
 /** Floors as alternating glass and slab, so a stretched tower still reads as storeys. */
