@@ -100,6 +100,15 @@ interface Marker {
   kind: MarkerKind;
 }
 
+interface SitePulse {
+  key: string;
+  light: THREE.PointLight;
+  ttl: number;
+  duration: number;
+  intensity: number;
+  phase: number;
+}
+
 const geoCache = new Map<MarkerKind, THREE.BufferGeometry>();
 
 function geometry(kind: MarkerKind): THREE.BufferGeometry {
@@ -120,7 +129,8 @@ const ACTORS: Partial<Record<EventType, { role: Role; hold: AgentState; n: numbe
   price_move_down: { role: "analyst", hold: "investigating", n: 2 },
   earnings_beat: { role: "manager", hold: "celebrating", n: 1 },
   earnings_miss: { role: "analyst", hold: "investigating", n: 1 },
-  dividend_declared: { role: "visitor", hold: "investigating", n: 1 },
+  dividend_declared: { role: "manager", hold: "investigating", n: 1 },
+  dividend_paid: { role: "courier", hold: "delivering", n: 1 },
   site_expansion: { role: "crew", hold: "working", n: 3 },
   technical_signal: { role: "analyst", hold: "investigating", n: 1 },
   options_alert: { role: "analyst", hold: "investigating", n: 1 },
@@ -143,6 +153,7 @@ const MARKERS: Partial<Record<EventType, MarkerKind>> = {
   earnings_beat: "flagGood",
   earnings_miss: "flagBad",
   dividend_declared: "notice",
+  dividend_paid: "coin",
   site_expansion: "crane",
   technical_signal: "board",
   options_alert: "diamond",
@@ -153,6 +164,7 @@ const MARKERS: Partial<Record<EventType, MarkerKind>> = {
 
 export class Choreographer {
   private markers: Marker[] = [];
+  private pulses = new Map<string, SitePulse>();
   private mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
   private beaconMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, fog: false });
   private time = 0;
@@ -166,6 +178,7 @@ export class Choreographer {
     const ms = Math.max(4000, p.endsAt - p.startedAt);
     const types = [...new Set(p.events.map((e) => e.eventType))];
 
+    this.pulse(p, site, ms);
     for (const t of types) this.act(p, t, site, ms);
 
     if (p.severity !== "normal") this.beacon(p, site, ms);
@@ -194,12 +207,43 @@ export class Choreographer {
     const last = p.events[p.events.length - 1];
     if (!site || !last) return;
     const ms = Math.max(4000, p.endsAt - clock);
+    this.pulse(p, site, ms);
     this.act(p, last.eventType, site, ms);
     if (p.severity !== "normal") this.beacon(p, site, ms);
   }
 
   stop(id: string) {
     for (const m of this.markers) if (m.key === id) m.ttl = Math.min(m.ttl, 400);
+    const pulse = this.pulses.get(id);
+    if (pulse) pulse.ttl = Math.min(pulse.ttl, 400);
+  }
+
+  /** Event light washes the affected headquarters, not the surrounding city. */
+  private pulse(p: Performance, site: SiteInfo, ms: number) {
+    const latest = p.events[p.events.length - 1];
+    const negative = p.events.some((e) => e.direction === "negative");
+    const positive = p.events.some((e) => e.direction === "positive");
+    const color = negative ? 0xe35b50 : positive ? 0x6bc78c : 0x66b9df;
+    const intensity = p.severity === "critical" ? 4.2 : p.severity === "important" ? 3.0 : 2.0;
+    const existing = this.pulses.get(p.id);
+    if (existing) {
+      existing.ttl = Math.max(existing.ttl, ms);
+      existing.duration = Math.max(existing.duration, ms);
+      existing.intensity = Math.max(existing.intensity, intensity);
+      existing.light.color.setHex(color);
+      return;
+    }
+    const light = new THREE.PointLight(color, 0, 22, 1.6);
+    light.position.set(site.x, Math.max(site.groundY + 1.8, site.markerY - 1.1), site.z);
+    this.stage.scene.add(light);
+    this.pulses.set(p.id, {
+      key: p.id,
+      light,
+      ttl: ms,
+      duration: ms,
+      intensity,
+      phase: (latest?.id.length ?? 1) * 0.31,
+    });
   }
 
   private act(p: Performance, t: EventType, site: SiteInfo, ms: number) {
@@ -248,6 +292,19 @@ export class Choreographer {
   update(dtMs: number) {
     this.time += dtMs;
     const t = this.time / 1000;
+
+    for (const [key, pulse] of this.pulses) {
+      pulse.ttl -= dtMs;
+      const progress = Math.max(0, Math.min(1, pulse.ttl / pulse.duration));
+      const beat = 0.58 + 0.42 * Math.sin(t * 7.2 + pulse.phase);
+      const fade = Math.min(1, progress * 3.5);
+      pulse.light.intensity = pulse.intensity * beat * fade;
+      if (pulse.ttl <= 0) {
+        this.stage.scene.remove(pulse.light);
+        this.pulses.delete(key);
+      }
+    }
+
     for (const m of this.markers) {
       m.ttl -= dtMs;
       if (m.glow) {
@@ -267,6 +324,8 @@ export class Choreographer {
   dispose() {
     for (const m of this.markers) this.stage.scene.remove(m.mesh);
     this.markers = [];
+    for (const pulse of this.pulses.values()) this.stage.scene.remove(pulse.light);
+    this.pulses.clear();
     this.mat.dispose();
     this.beaconMat.dispose();
     geoCache.forEach((g) => g.dispose());
