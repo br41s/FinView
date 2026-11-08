@@ -541,6 +541,7 @@ export function createWorld(
       }
       brand.depthWrite = next > 0.5;
       e.site.group.visible = e.targetOpacity > 0 || next > 0.01;
+      e.label.visible = labelShouldShow(e, ctrl.distance);
       e.label.material.opacity = Math.max(0.25, next);
     }
 
