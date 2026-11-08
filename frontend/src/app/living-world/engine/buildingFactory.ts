@@ -431,8 +431,12 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   const ticker = (asset.ticker?.trim() || asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("") || "•").toUpperCase().slice(0, 12);
   ctx.fillStyle = "#ffffff";
   ctx.textBaseline = "middle";
-  ctx.font = "800 62px system-ui, sans-serif";
-  while (ctx.measureText(ticker).width > 440) ctx.font = "800 " + (parseInt(ctx.font, 10) - 2) + "px system-ui, sans-serif";
+  let signFontSize = 62;
+  ctx.font = "800 " + signFontSize + "px system-ui, sans-serif";
+  while (signFontSize > 28 && ctx.measureText(ticker).width > 440) {
+    signFontSize -= 2;
+    ctx.font = "800 " + signFontSize + "px system-ui, sans-serif";
+  }
   ctx.fillText(ticker, 30, 70, 440);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
