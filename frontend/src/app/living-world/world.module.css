@@ -1,0 +1,559 @@
+/*
+ * Living World has its own look on purpose (spec §2.1): warm, soft, toy-like. It reads none
+ * of FinView's dashboard tokens (--fv-*, shadcn) and ignores dark mode, because the scene
+ * is a daylight diorama. Colours live here as local variables on .root.
+ */
+.root {
+  --lw-sky: #bfe3f5;
+  --lw-card: rgba(255, 251, 242, 0.94);
+  --lw-card-solid: #fffbf2;
+  --lw-ink: #2d3340;
+  --lw-ink-soft: #5f6677;
+  --lw-line: rgba(45, 51, 64, 0.14);
+  --lw-accent: #e9833a;
+  --lw-accent-ink: #fff;
+  --lw-up: #1f8f55;
+  --lw-down: #c8443e;
+  --lw-warn: #b9770e;
+  --lw-radius: 16px;
+  --lw-shadow: 0 6px 22px rgba(45, 51, 64, 0.16);
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--lw-sky);
+  color: var(--lw-ink);
+  font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.host {
+  position: absolute;
+  inset: 0;
+}
+
+/* Everything on top of the scene lets the pointer through except the controls themselves. */
+.ui {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 12px 12px 8px;
+  pointer-events: none;
+}
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mid {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr) 330px;
+  min-height: 0;
+  gap: 10px;
+}
+.ui > *,
+.top,
+.mid {
+  pointer-events: none;
+}
+
+.card {
+  background: var(--lw-card);
+  border-radius: var(--lw-radius);
+  box-shadow: var(--lw-shadow);
+  border: 1px solid var(--lw-line);
+  backdrop-filter: blur(6px);
+}
+
+.topbar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+.topbar > * {
+  pointer-events: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 8px;
+}
+.brand a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--lw-ink-soft);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+.brand a:hover {
+  background: rgba(45, 51, 64, 0.08);
+  color: var(--lw-ink);
+}
+.title {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+.badge {
+  background: #ffe9a8;
+  color: #6b4b00;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-weight: 700;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 5px;
+}
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--lw-line);
+  margin: 3px 3px;
+}
+
+.btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--lw-ink);
+}
+.btn:hover:not(:disabled) {
+  background: rgba(45, 51, 64, 0.09);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--lw-accent);
+  outline-offset: 1px;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btnOn {
+  background: var(--lw-accent);
+  color: var(--lw-accent-ink);
+}
+.btnOn:hover:not(:disabled) {
+  background: #d9722a;
+}
+.select {
+  appearance: none;
+  background: rgba(45, 51, 64, 0.07);
+  border: 0;
+  border-radius: 10px;
+  min-height: 30px;
+  padding: 0 8px;
+  font: inherit;
+  font-weight: 650;
+  color: var(--lw-ink);
+  cursor: pointer;
+}
+
+.search {
+  position: relative;
+  min-width: 220px;
+}
+.search input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  border-radius: var(--lw-radius);
+  border: 1px solid var(--lw-line);
+  background: var(--lw-card);
+  padding: 0 12px 0 34px;
+  font: inherit;
+  color: var(--lw-ink);
+  box-shadow: var(--lw-shadow);
+}
+.search input:focus-visible {
+  outline: 2px solid var(--lw-accent);
+}
+.searchIcon {
+  position: absolute;
+  left: 11px;
+  top: 12px;
+  color: var(--lw-ink-soft);
+  pointer-events: none;
+}
+.results {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  right: 0;
+  padding: 4px;
+  max-height: 280px;
+  overflow: auto;
+  z-index: 5;
+}
+.result {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.result:hover,
+.result:focus-visible {
+  background: rgba(233, 131, 58, 0.14);
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+.chips > * {
+  pointer-events: auto;
+}
+.chip {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--lw-card-solid);
+  border: 1px solid var(--lw-line);
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 12px;
+}
+.chip:hover {
+  background: #fff;
+}
+.chip:focus-visible {
+  outline: 2px solid var(--lw-accent);
+}
+.chipOn {
+  background: var(--lw-ink);
+  color: #fff;
+  border-color: var(--lw-ink);
+}
+.chipOn:hover {
+  background: #1d222b;
+}
+
+.leftCol,
+.rightCol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  pointer-events: none;
+}
+.leftCol {
+  grid-column: 1;
+}
+.rightCol {
+  grid-column: 3;
+}
+.leftCol > *,
+.rightCol > * {
+  pointer-events: auto;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.panelFill {
+  flex: 1 1 auto;
+}
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px 6px;
+  font-weight: 800;
+}
+.panelBody {
+  overflow: auto;
+  padding: 4px 12px 12px;
+  min-height: 0;
+}
+.group {
+  margin-bottom: 12px;
+}
+.groupTitle {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--lw-ink-soft);
+  font-weight: 800;
+  margin: 0 0 5px;
+}
+.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 6px;
+}
+
+.feedRow {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  border-left: 4px solid transparent;
+}
+.feedRow:hover,
+.feedRow:focus-visible {
+  background: rgba(45, 51, 64, 0.07);
+}
+.feedRowActive {
+  background: rgba(233, 131, 58, 0.15);
+}
+.sev_normal {
+  border-left-color: #9aa7b8;
+}
+.sev_important {
+  border-left-color: #e8a33a;
+}
+.sev_critical {
+  border-left-color: var(--lw-down);
+}
+.feedTitle {
+  font-weight: 700;
+}
+.meta {
+  color: var(--lw-ink-soft);
+  font-size: 12px;
+}
+.up {
+  color: var(--lw-up);
+}
+.down {
+  color: var(--lw-down);
+}
+
+.inspector {
+  padding: 12px;
+  overflow: auto;
+  max-height: 58%;
+  /* The feed beside it yields space; the inspector never collapses to its header. */
+  flex: 0 0 auto;
+}
+.inspector h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 8px 0;
+}
+.kv dt {
+  color: var(--lw-ink-soft);
+}
+.kv dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+/* On the event card the actions stay in view while the metrics scroll. */
+.eventCard .actions {
+  position: sticky;
+  bottom: -12px;
+  background: var(--lw-card-solid);
+  padding: 8px 0 12px;
+  margin: 0 0 -12px;
+}
+.linkBtn {
+  background: rgba(45, 51, 64, 0.07);
+  border-radius: 10px;
+}
+
+.cards {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.cards > * {
+  pointer-events: auto;
+}
+.eventCard {
+  width: min(380px, 100%);
+  padding: 12px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.eventCard h3 {
+  margin: 4px 0 2px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.tag {
+  background: rgba(45, 51, 64, 0.09);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-weight: 700;
+  font-size: 11px;
+}
+.tagDemo {
+  background: #ffe9a8;
+  color: #6b4b00;
+}
+.metrics {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.metrics td {
+  padding: 2px 0;
+  border-top: 1px dashed var(--lw-line);
+}
+.metrics td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.why {
+  background: rgba(45, 51, 64, 0.06);
+  border-radius: 10px;
+  padding: 7px 9px;
+  margin: 6px 0;
+}
+.why summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(35, 40, 52, 0.78);
+  font-size: 11px;
+  pointer-events: none;
+}
+.footer span {
+  background: rgba(255, 251, 242, 0.7);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  z-index: 3;
+}
+.center .card {
+  padding: 24px 28px;
+  max-width: 420px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .mid {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .leftCol,
+  .rightCol {
+    max-height: 55vh;
+    min-height: 0;
+  }
+  .search {
+    min-width: 0;
+    flex: 1 1 200px;
+  }
+  /* One row of controls that scrolls sideways, so the scene keeps the screen. */
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+    scrollbar-width: none;
+  }
+  .toolbar > * {
+    flex: 0 0 auto;
+  }
+  .topbar > * {
+    max-width: 100%;
+  }
+  .eventCard {
+    max-height: 34vh;
+  }
+  .inspector {
+    max-height: 30vh;
+  }
+  .footer span:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
