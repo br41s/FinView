@@ -8,7 +8,7 @@ Dashboard de inversiones personales con importación multi-broker, motor fiscal 
 - **Frontend:** Next.js 16 · React 19 · TypeScript 6 · TailwindCSS · Recharts · lightweight-charts · NextAuth · shadcn/ui
 - **DB:** Neon Postgres (prod) · SQLite (local fallback)
 - **Deploy:** Vercel (frontend) · Google Cloud Run `europe-west1` (backend) · Cloud Build trigger (CI)
-- **Tests:** pytest (1762 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (266 frontend) · ESLint
+- **Tests:** pytest (1773 backend, 148 skipped sin ficheros reales, en CI y en un worktree local por igual) · vitest (276 frontend) · ESLint
 
 ## Brokers soportados
 
@@ -81,7 +81,7 @@ FinView/
 │       ├── app/page.tsx                 # Dashboard principal (5 tabs — inversiones)
 │       ├── app/options/page.tsx         # Monitor opciones (5 tabs)
 │       ├── app/alt-investments/page.tsx # Inversiones alternativas (banca privada)
-│       ├── app/living-world/            # Mundo vivo: la cartera como pueblo 3D (Three.js; Fase 0, datos ficticios)
+│       ├── app/living-world/            # Mundo vivo: tu cartera como pueblo 3D (Three.js; Fase 1: cartera real, eventos simulados; ?demo=1 = datos ficticios)
 │       ├── components/                  # FileUpload, tablas, stats cards
 │       ├── components/charts/           # 8 componentes de gráficas
 │       └── lib/                         # API client + tipos TypeScript
@@ -324,6 +324,9 @@ Base URL: `http://localhost:8000/api`
 - `GET /fiscal/cross-broker-lots/2024` — Lotes FIFO cruzados
 - `GET /fiscal/fifo-adjustments?fiscal_year=2024` — Ajustes FIFO v2 y desglose 332/337
 - `GET /fiscal/fx-rate?currency=USD&on=2024-01-02` — Tipo de cambio ECB (fallback ±7 días)
+
+### Mundo vivo (`/living-world/...`)
+- `GET /living-world/world` — Solo lectura: un edificio por ISIN (agregado entre brokers) con valor, peso, coste, P/L, tipo y sector guardados. Lo desconocido es `null`, nunca 0; sin llamadas a Yahoo
 
 ### Inversiones Alternativas (`/alt-investments/...`)
 - `GET /alt-investments/` — Listar posiciones (con TVPI/DPI/RVPI/unfunded por fila)
