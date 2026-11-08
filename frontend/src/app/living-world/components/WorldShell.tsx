@@ -99,10 +99,15 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
   );
   const { world, failed, ready, statsStore } = useWorld(host, { assets: sceneAssets, quality, reducedMotion, callbacks });
 
-  // Emitting an event is one action: it joins the history and queues for the stage.
+  // An event joins the activity history, enters the scene queue and opens its own
+  // story card. A burst chooses the highest-priority company event as the lead story.
   const emit = (batch: WorldEvent[]) => {
     setEvents((prev) => [...batch, ...prev].slice(0, MAX_EVENTS));
     world.current?.enqueue(batch);
+    const featured = [...batch]
+      .filter((event) => event.assetId !== null)
+      .sort((a, b) => b.priorityScore - a.priorityScore)[0] ?? batch[0];
+    if (featured) setOpenEventId(featured.id);
   };
 
   const burst = (n: number) => {
