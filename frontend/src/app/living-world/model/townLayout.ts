@@ -597,6 +597,10 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
   });
 
   const fillerSpots: FillerSpot[] = [];
+  const clearOfLots = (x: number, z: number, minDistance: number) =>
+    [...lots.values()].every((lot) => Math.hypot(lot.x - x, lot.z - z) >= minDistance);
+  const clearOfFillers = (x: number, z: number, minDistance: number) =>
+    fillerSpots.every((spot) => Math.hypot(spot.x - x, spot.z - z) >= minDistance);
   const addFiller = (kind: FillerKind, x: number, z: number, seed: string, district: DistrictId | null) => {
     const theta = (hashString(seed) / 0xffffffff) * Math.PI * 2;
     fillerSpots.push(filler(kind, x, z, theta, seed, district));
@@ -617,8 +621,8 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
         );
         if (!terrain.buildable(p.x, p.z, 2.1) || inGreenSpace(p.x, p.z, 1.5)) continue;
         if (nearRoad(p.x, p.z, 2.6) || nearInfra(p.x, p.z, 2.8)) continue;
-        if (existing.some((lot) => Math.hypot(lot.x - p.x, lot.z - p.z) < LOT_PITCH * 0.64)) continue;
-        if (fillerSpots.some((spot) => spot.district === district.id && Math.hypot(spot.x - p.x, spot.z - p.z) < 5.7)) continue;
+        if (!clearOfLots(p.x, p.z, LOT_PITCH * 0.64)) continue;
+        if (!clearOfFillers(p.x, p.z, 5.8)) continue;
         found = p;
         break;
       }
@@ -649,6 +653,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
       if (districts.some((d) => Math.hypot(x - d.cx, z - d.cz) < d.extent + 4)) continue;
       if (nearRoad(x, z, 3.4) || nearInfra(x, z, 3.4) || inGreenSpace(x, z, 3)) continue;
       if (!terrain.buildable(x, z, 3.2)) continue;
+      if (!clearOfLots(x, z, 5.8) || !clearOfFillers(x, z, 5.8)) continue;
       const near = [...districts].sort((a, b) => Math.hypot(x - a.cx, z - a.cz) - Math.hypot(x - b.cx, z - b.cz))[0] ?? null;
       const mix: Mix = {
         cbd: Math.max(0, 1 - smooth(PLAZA_RADIUS + 4, PLAZA_RADIUS + 90, r)) + (near?.id === "finance" ? 0.22 : 0),
