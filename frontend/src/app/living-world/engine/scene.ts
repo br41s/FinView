@@ -15,7 +15,7 @@ import { routeToPlaza, sidewalkRoute, type Point } from "../model/routes";
 import { approach, footprintFor, tierFor } from "../model/scale";
 import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
 import { AgentSystem, type SiteSpot } from "./agents";
-import { NOMINAL, createSite, disposeSite, type Site } from "./buildingFactory";
+import { NOMINAL, accentFor, createSite, disposeSite, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
@@ -89,7 +89,7 @@ interface SiteEntry {
   route: Point[];
 }
 
-const SKY = 0xbfe3f5;
+const SKY = 0xc5e3f4;
 
 export function createWorld(
   canvas: HTMLCanvasElement,
@@ -103,12 +103,15 @@ export function createWorld(
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== "low", powerPreference: "high-performance" });
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.06;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);
+  scene.fog = new THREE.FogExp2(SKY, 0.0011);
   const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
 
-  scene.add(new THREE.HemisphereLight(0xdff0ff, 0xb9d79a, 1.15));
-  const sun = new THREE.DirectionalLight(0xfff0d2, 2.1);
+  scene.add(new THREE.HemisphereLight(0xe4f2ff, 0xb7cfa6, 1.18));
+  const sun = new THREE.DirectionalLight(0xfff3db, 2.15);
   scene.add(sun, sun.target);
 
   let layout: WorldLayout = computeLayout([]);
@@ -239,6 +242,7 @@ export function createWorld(
       rotationY: e.lot.rotationY,
       footprint: e.footprint,
       tier: tierFor(e.asset.weightPct),
+      accent: accentFor(e.asset.id, e.asset),
       walkRoute: sidewalkRoute(e.route, layout.roads, e.asset.id.length % 2 === 0 ? 1 : -1),
     }));
     // One representative route per district, for the vans that always drive the boulevards.
@@ -250,8 +254,6 @@ export function createWorld(
   };
 
   const setAssets = (assets: readonly WorldAsset[]) => {
-    // Preserve the previous building scale so existing holdings can grow/shrink in place
-    // when portfolio weights change. New holdings are introduced with a short build-up.
     const previousScales = new Map<string, number>([...sites.values()].map((e) => [e.asset.id, e.scale] as const));
     clearSites();
     if (town) {
@@ -345,8 +347,6 @@ export function createWorld(
       : dist > 42 && dist <= 70
         ? tier !== "outpost"
         : false;
-    // Close-up identity lives on the facade itself; floating labels are reserved for
-    // important landmarks or the one building currently under inspection.
     return (visibleByDistance || e.asset.id === selected || e.asset.id === hovered) && e.site.group.visible;
   };
 
@@ -384,9 +384,7 @@ export function createWorld(
       cb.onSelect(id);
       return;
     }
-    // Inhabitants can be followed: a click on a person picks them up.
     setRay(cx, cy);
-    // Raycasting ignores `visible`: zoomed out (LOD hides people) a click must not pick one.
     const hit = agents.bodies.visible ? ray.intersectObject(agents.bodies, false)[0] : undefined;
     if (hit && hit.instanceId !== undefined) {
       const idx = hit.instanceId;
@@ -428,7 +426,6 @@ export function createWorld(
   let fps = 0;
   let lastLod = -1;
   let canBack = false;
-  /** Performances the camera was already sent to, so a merge does not fly there twice. */
   const focusedPerf = new Set<string>();
 
   const lod = (dist: number) => {
@@ -455,7 +452,7 @@ export function createWorld(
     if (disposed) return;
     if (document.hidden || !onScreen) {
       last = 0;
-      return; // resumes from the visibility handlers; a hidden scene costs nothing
+      return;
     }
     raf = requestAnimationFrame(frame);
     const minMs = QUALITY[quality].minFrameMs;
@@ -492,7 +489,6 @@ export function createWorld(
       }
       for (const p of r.merged) {
         choreo.extend(p, director.clock);
-        // An escalation to Critical after the scene began still earns its focus, once.
         if (p.requestFocus && p.assetId && !focusedPerf.has(p.id)) {
           focusedPerf.add(p.id);
           focusAsset(p.assetId);
@@ -508,8 +504,6 @@ export function createWorld(
       choreo.update(simDt);
     }
 
-    // Portfolio evolution: new companies rise into view; position changes gently grow or
-    // shrink the existing building. Staggering the initial build gives the town a reveal.
     for (const e of sites.values()) {
       if (e.scaleElapsedMs < e.scaleDurationMs) {
         if (e.scaleDelayMs > 0) {
@@ -525,7 +519,6 @@ export function createWorld(
       }
     }
 
-    // Muting fades; hidden sites switch off once fully transparent.
     for (const e of sites.values()) {
       const next = reduced ? e.targetOpacity : approach(e.opacity, e.targetOpacity, dt, 120);
       if (next === e.applied) continue;
@@ -536,7 +529,6 @@ export function createWorld(
       const transparent = next < 0.999;
       if (m.transparent !== transparent) {
         m.transparent = transparent;
-        // Opaque materials compile with alpha forced to 1; flipping the flag needs a recompile.
         m.needsUpdate = true;
       }
       m.depthWrite = next > 0.5;
@@ -571,7 +563,6 @@ export function createWorld(
   document.addEventListener("visibilitychange", wake);
   const onLost = (e: Event) => {
     e.preventDefault();
-    // Our own dispose() forces a context loss; only an unexpected one is an error.
     if (!disposed) cb.onContextLost();
   };
   canvas.addEventListener("webglcontextlost", onLost);
@@ -681,7 +672,6 @@ export function createWorld(
       hoverRing.geometry.dispose();
       (hoverRing.material as THREE.Material).dispose();
       renderer.dispose();
-      // Frees the GPU context now instead of waiting for GC; React strict mode remounts.
       renderer.forceContextLoss();
     },
   };

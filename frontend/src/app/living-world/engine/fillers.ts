@@ -5,91 +5,119 @@ import type { FillerKind, FillerSpot } from "../model/townLayout";
 import { Builder } from "./buildingFactory";
 
 /**
- * Generic buildings: the homes, offices and towers that make the town a city. They are
- * scenery, not holdings: muted colours, no labels, never clickable. One InstancedMesh per
- * kind, so a few hundred of them cost a handful of draw calls.
+ * Generic "atrezzo" buildings: the homes, apartment blocks, offices, sheds and background
+ * high-rises that give the city coherent urban fabric.
  *
- * Prototypes are modelled on a 1 x 1 footprint; each instance scales x/z by its width and y
- * by its own height factor, and tints the walls through the instance colour.
+ * Visual rule: 100% stylized architectural grayscale (monochrome concrete, slate, zinc and
+ * graphite glass), never clickable, no labels. This ensures portfolio holdings (full colour,
+ * saturated accents, illuminated signage) pop immediately as the protagonists of the scene.
+ *
+ * One InstancedMesh per kind keeps all filler buildings within 6 draw calls total.
  */
 
-const GLASS = 0x56677c;
-const GLASS_LIGHT = 0x8aa2b8;
-const SLAB = 0xf4f1ea;
-const ROOF = 0xc9694f;
+const SLAB_LIGHT = 0xe4e7eb;
+const SLAB_MID = 0xccd0d6;
+const SLAB_DARK = 0xa7adb5;
+const GLASS_DARK = 0x3b3f46;
+const GLASS_MID = 0x525760;
+const ROOF_SLATE = 0x626770;
+const ROOF_DARK = 0x454950;
+const PLINTH_GREY = 0x7c828b;
 
-// Portfolio holdings are the landmarks. Keep decorative buildings clearly subordinate.
-const WIDTH_SCALE = 0.72;
+// Portfolio holdings are the landmarks. Keep decorative buildings subordinate in width
+// while giving them believable architectural proportions (not squashed pancakes).
+const WIDTH_SCALE = 0.74;
 const HEIGHT_SCALE: Record<FillerKind, number> = {
-  skyscraper: 0.045,
-  tower: 0.12,
-  block: 0.18,
-  house: 0.32,
-  villa: 0.3,
-  shed: 0.28,
+  skyscraper: 0.155,
+  tower: 0.205,
+  block: 0.24,
+  house: 0.38,
+  villa: 0.35,
+  shed: 0.32,
 };
 
-/** Floors as alternating glass and slab, so a stretched tower still reads as storeys. */
-function storeys(b: Builder, w: number, y0: number, floors: number, floorH: number, glass = GLASS) {
+/** Grounded plinth so filler buildings sit cleanly on sloped terrain without floating edges. */
+function plinth(b: Builder, w: number, d: number) {
+  b.box(w + 0.12, 0.24, d + 0.12, 0, -0.18, 0, PLINTH_GREY);
+}
+
+/** Alternating dark-slate glass bands and monochrome concrete spandrels. */
+function storeys(b: Builder, w: number, d: number, y0: number, floors: number, floorH: number, glass = GLASS_DARK, slab = SLAB_LIGHT) {
   for (let i = 0; i < floors; i++) {
-    b.box(w, floorH * 0.7, w, 0, y0 + i * floorH, 0, glass);
-    b.box(w + 0.04, floorH * 0.3, w + 0.04, 0, y0 + i * floorH + floorH * 0.7, 0, SLAB);
+    const y = y0 + i * floorH;
+    b.box(w, floorH * 0.68, d, 0, y, 0, glass);
+    b.box(w + 0.04, floorH * 0.32, d + 0.04, 0, y + floorH * 0.68, 0, slab);
   }
   return y0 + floors * floorH;
 }
 
 const RECIPE: Record<FillerKind, (b: Builder) => void> = {
   skyscraper(b) {
-    b.box(1.0, 1.6, 1.0, 0, 0, 0, SLAB);
-    const top = storeys(b, 0.78, 1.6, 15, 1.1, GLASS_LIGHT);
-    b.box(0.58, 1.6, 0.58, 0, top, 0, SLAB);
-    b.box(0.34, 1.0, 0.34, 0, top + 1.6, 0, GLASS);
-    b.cyl(0.02, 0.03, 3.2, 0, top + 2.6, 0, 0x4a4f5a, 4);
+    plinth(b, 1.0, 1.0);
+    // Podium + stepped monochrome high-rise with mechanical penthouse.
+    b.box(1.0, 1.5, 1.0, 0, 0.06, 0, SLAB_MID);
+    b.box(0.92, 0.9, 0.92, 0, 0.3, 0, GLASS_DARK);
+    const mid = storeys(b, 0.8, 0.8, 1.56, 9, 1.05, GLASS_MID, SLAB_LIGHT);
+    const upper = storeys(b, 0.64, 0.64, mid, 5, 1.0, GLASS_DARK, SLAB_MID);
+    b.box(0.68, 0.28, 0.68, 0, upper, 0, SLAB_DARK);
+    b.box(0.42, 1.1, 0.42, 0, upper + 0.28, 0, ROOF_SLATE);
+    b.cyl(0.025, 0.035, 2.2, 0, upper + 1.38, 0, ROOF_DARK, 5);
   },
   tower(b) {
-    b.box(1.0, 1.0, 1.0, 0, 0, 0, SLAB);
-    const top = storeys(b, 0.86, 1.0, 8, 1.1);
-    b.box(0.9, 0.3, 0.9, 0, top, 0, SLAB);
-    b.box(0.35, 0.5, 0.35, 0.15, top + 0.3, 0.1, 0xb9bec7);
+    plinth(b, 1.0, 1.0);
+    b.box(0.98, 1.0, 0.98, 0, 0.06, 0, SLAB_MID);
+    const top = storeys(b, 0.86, 0.86, 1.06, 7, 1.05, GLASS_DARK, SLAB_LIGHT);
+    b.box(0.9, 0.28, 0.9, 0, top, 0, SLAB_DARK);
+    b.box(0.38, 0.55, 0.38, 0.14, top + 0.28, 0.1, ROOF_SLATE);
+    b.box(0.24, 0.35, 0.24, -0.2, top + 0.28, -0.14, PLINTH_GREY);
   },
   block(b) {
-    const top = storeys(b, 0.94, 0, 5, 1.05);
-    b.box(1.0, 0.25, 1.0, 0, top, 0, SLAB);
-    b.box(0.3, 0.45, 0.3, -0.2, top + 0.25, 0.15, 0xb9bec7);
-    b.box(0.22, 0.3, 0.5, 0.25, top + 0.25, -0.1, 0xb9bec7);
+    plinth(b, 1.0, 0.88);
+    const top = storeys(b, 0.94, 0.82, 0.06, 5, 1.0, GLASS_MID, SLAB_LIGHT);
+    b.box(0.98, 0.24, 0.86, 0, top, 0, ROOF_SLATE);
+    b.box(0.32, 0.42, 0.3, -0.2, top + 0.24, 0.12, SLAB_DARK);
+    b.box(0.24, 0.28, 0.44, 0.24, top + 0.24, -0.08, PLINTH_GREY);
   },
   house(b) {
-    b.box(0.8, 1.35, 0.7, 0, 0, 0, SLAB);
-    b.box(0.2, 0.34, 0.02, -0.2, 0.55, 0.36, GLASS_LIGHT);
-    b.box(0.2, 0.34, 0.02, 0.2, 0.55, 0.36, GLASS_LIGHT);
-    b.box(0.2, 0.55, 0.02, 0, 0, 0.36, 0x8b5e3c);
-    b.pyramid(1.0, 0.9, 0, 1.35, 0, ROOF);
+    plinth(b, 0.86, 0.76);
+    b.box(0.82, 1.32, 0.72, 0, 0.06, 0, SLAB_LIGHT);
+    b.box(0.2, 0.34, 0.03, -0.2, 0.6, 0.36, GLASS_DARK);
+    b.box(0.2, 0.34, 0.03, 0.2, 0.6, 0.36, GLASS_DARK);
+    b.box(0.2, 0.56, 0.03, 0, 0.06, 0.36, ROOF_DARK);
+    b.pyramid(0.98, 0.82, 0, 1.38, 0, ROOF_SLATE);
+    b.box(0.14, 0.48, 0.14, 0.22, 1.65, -0.12, SLAB_DARK);
   },
   villa(b) {
-    b.box(1.2, 0.06, 1.2, 0, 0, 0, 0x7fc06e);
-    b.box(0.8, 1.2, 0.5, -0.1, 0.06, 0.05, SLAB);
-    b.box(0.5, 0.8, 0.4, 0.3, 0.06, -0.02, SLAB);
-    b.box(0.9, 0.12, 0.6, -0.1, 1.26, 0.05, 0x9aa3ad);
-    b.box(0.2, 0.34, 0.02, -0.3, 0.6, 0.31, GLASS_LIGHT);
-    b.box(0.2, 0.34, 0.02, 0.1, 0.6, 0.31, GLASS_LIGHT);
-    b.box(0.5, 0.05, 0.28, 0.05, 0.06, 0.4, 0x5fb8de);
+    // Monochrome architectural courtyard villa (grey terrace, slate lap pool, cantilevered roof).
+    plinth(b, 1.16, 1.16);
+    b.box(1.14, 0.08, 1.14, 0, 0.06, 0, SLAB_MID);
+    b.box(0.8, 1.18, 0.5, -0.1, 0.14, 0.04, SLAB_LIGHT);
+    b.box(0.5, 0.82, 0.42, 0.3, 0.14, -0.02, SLAB_MID);
+    b.box(0.9, 0.14, 0.58, -0.1, 1.32, 0.04, ROOF_SLATE);
+    b.box(0.56, 0.12, 0.48, 0.3, 0.96, -0.02, ROOF_DARK);
+    b.box(0.22, 0.36, 0.03, -0.28, 0.64, 0.3, GLASS_DARK);
+    b.box(0.22, 0.36, 0.03, 0.1, 0.64, 0.3, GLASS_DARK);
+    b.box(0.48, 0.04, 0.28, 0.06, 0.14, 0.39, GLASS_MID);
   },
   shed(b) {
-    b.box(1.0, 1.3, 0.72, 0, 0, 0, SLAB);
-    for (let i = 0; i < 3; i++) b.tilted(0.34, 0.07, 0.74, -0.3 + i * 0.3, 1.45, 0, 0x8d949d, 0.5);
-    b.box(0.28, 0.7, 0.02, 0.2, 0, 0.37, 0x6b7280);
-    b.cyl(0.07, 0.07, 1.0, 0.38, 1.3, -0.22, 0xb9bec7, 6);
+    plinth(b, 1.04, 0.78);
+    b.box(1.0, 1.28, 0.74, 0, 0.06, 0, SLAB_MID);
+    for (let i = 0; i < 3; i++) {
+      b.tilted(0.34, 0.08, 0.76, -0.3 + i * 0.3, 1.42, 0, ROOF_SLATE, 0.48);
+    }
+    b.box(0.3, 0.72, 0.03, 0.2, 0.06, 0.38, ROOF_DARK);
+    b.cyl(0.075, 0.085, 1.05, 0.36, 1.34, -0.22, PLINTH_GREY, 6);
   },
 };
 
-/** Wall tints per kind: soft, muted, so the holdings (saturated) stay the landmarks. */
+/** Pure achromatic grayscale instance tints so filler buildings never compete with holdings. */
 const TINTS: Record<FillerKind, number[]> = {
-  skyscraper: [0xdfe9f2, 0xe9eef3, 0xd6e0e8, 0xf2f2f2],
-  tower: [0xe8e2d6, 0xdde6ec, 0xeadfd9, 0xe3e8dd],
-  block: [0xf0e0c8, 0xe9cfc0, 0xd9e4d2, 0xe6d9e8, 0xf2ead2],
-  house: [0xf4e6cf, 0xefd6c2, 0xe3ecd6, 0xf1e0e0, 0xdbe6ef],
-  villa: [0xfbf4e6, 0xf3ece0, 0xeaf0f2],
-  shed: [0xc9ced6, 0xd5cdbd, 0xbfc7c0],
+  skyscraper: [0xdde0e4, 0xcfd4da, 0xc2c7cf, 0xe8ebef],
+  tower: [0xd8dce1, 0xc8cdd4, 0xbbc1c9, 0xe2e5e9],
+  block: [0xd4d8de, 0xc4c9d0, 0xb8bec6, 0xdfe3e8],
+  house: [0xdce0e5, 0xced3d9, 0xc1c6ce, 0xe6e9ed],
+  villa: [0xe2e5ea, 0xd5d9df, 0xc8cdd4],
+  shed: [0xbfc4cc, 0xb2b7c0, 0xcbd0d7],
 };
 
 export interface Fillers {

@@ -3,17 +3,16 @@ import { DISTRICT_LABEL } from "../model/archetypes";
 import { seeded, valueNoise } from "../model/rng";
 import { pointAlong, routeLength } from "../model/routes";
 import { WATER_Y, distToPolyline, type Pt, type Terrain } from "../model/terrain";
-import { LOT_PITCH, PLAZA_RADIUS, toWorld, type CivicKind, type WorldLayout } from "../model/townLayout";
+import { PLAZA_RADIUS, type CivicKind, type WorldLayout } from "../model/townLayout";
 import { accentFor, Builder } from "./buildingFactory";
 import type { WorldAsset } from "../model/types";
 import { buildFillers, type Fillers } from "./fillers";
 
 /** Land, water, streets, plaza, civic buildings, trees and text labels: the static stage. */
 
-const STREET = 0x8d9097;
-const LANE = 0xb3b5b3;
+const STREET = 0x646973;
 const WHITE = 0xf4f1ea;
-const DARK = 0x4a4f5a;
+const DARK = 0x3b4048;
 
 function offsetPath(line: readonly Pt[], offset: number): Pt[] {
   return line.map((point, i) => {
@@ -72,10 +71,9 @@ export function makeLabel(text: string, opts: { font?: number; bg?: string; fg?:
   return sprite;
 }
 
-
 /**
  * Camera-facing illuminated company sign generated locally from its ticker/name and
- * deterministic site accent. It uses no external logo assets or network requests.
+ * deterministic site accent (matching its corporate profile). Uses no external assets.
  */
 export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
   const width = 640;
@@ -84,7 +82,7 @@ export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d")!;
-  const accent = new THREE.Color(accentFor(asset.id));
+  const accent = new THREE.Color(accentFor(asset.id, asset));
   const accentCss = "#" + accent.getHexString();
   const ticker = (asset.ticker?.trim() || asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("") || "•")
     .toUpperCase()
@@ -93,7 +91,7 @@ export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
 
   // Coloured luminous frame.
   ctx.shadowColor = accentCss;
-  ctx.shadowBlur = 18;
+  ctx.shadowBlur = 20;
   ctx.fillStyle = accentCss;
   ctx.beginPath();
   ctx.roundRect(7, 7, width - 14, height - 14, 30);
@@ -101,7 +99,7 @@ export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
   ctx.shadowBlur = 0;
 
   // Dark enamel face, illuminated accent rail and initials medallion.
-  ctx.fillStyle = "#172638";
+  ctx.fillStyle = "#111c2b";
   ctx.beginPath();
   ctx.roundRect(15, 15, width - 30, height - 30, 24);
   ctx.fill();
@@ -121,16 +119,33 @@ export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
 
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  let fontSize = 66;
+  let fontSize = 64;
   ctx.font = "800 " + fontSize + "px system-ui, sans-serif";
-  while (fontSize > 42 && ctx.measureText(ticker).width > 430) {
+  while (fontSize > 40 && ctx.measureText(ticker).width > 330) {
     fontSize -= 2;
     ctx.font = "800 " + fontSize + "px system-ui, sans-serif";
   }
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(ticker, 166, 91, 430);
+  ctx.fillText(ticker, 166, 91, 330);
 
-  ctx.fillStyle = "#c7d3e1";
+  if (asset.weightPct !== null && Number.isFinite(asset.weightPct)) {
+    const badge = `${asset.weightPct.toFixed(1).replace(".", ",")} %`;
+    ctx.font = "700 26px system-ui, sans-serif";
+    const bw = Math.ceil(ctx.measureText(badge).width) + 28;
+    const bx = width - 34 - bw;
+    ctx.fillStyle = accentCss;
+    ctx.beginPath();
+    ctx.roundRect(bx, 42, bw, 44, 14);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(badge, bx + bw / 2, 65);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  ctx.fillStyle = "#d3dfec";
   ctx.font = "600 27px system-ui, sans-serif";
   ctx.fillText(asset.name, 168, 139, 430);
 
@@ -141,7 +156,7 @@ export function makeBrandLabel(asset: WorldAsset): THREE.Sprite {
     new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false }),
   );
   sprite.userData.aspect = width / height;
-  sprite.scale.set((width / height) * 0.82, 0.82, 1);
+  sprite.scale.set((width / height) * 0.84, 0.84, 1);
   sprite.renderOrder = 11;
   return sprite;
 }
@@ -153,25 +168,25 @@ export function disposeLabel(s: THREE.Sprite) {
 
 function civicGeometry(kind: CivicKind): THREE.BufferGeometry {
   const b = new Builder();
-  b.cyl(2.2, 2.4, 0.15, 0, 0, 0, 0xe8dcc0, 14);
+  b.cyl(2.2, 2.4, 0.15, 0, 0, 0, 0xd8dce2, 14);
   if (kind === "bank") {
-    b.box(3.4, 2.0, 2.6, 0, 0.15, 0, 0xf1ead8);
+    b.box(3.4, 2.0, 2.6, 0, 0.15, 0, 0xe8ebf0);
     for (let i = 0; i < 4; i++) b.cyl(0.14, 0.14, 2.0, -1.2 + i * 0.8, 0.15, 1.5, WHITE, 8);
     b.box(3.7, 0.22, 2.9, 0, 2.15, 0, 0xd9a82b);
     b.cyl(0.5, 0.5, 0.1, 0, 2.4, 0, 0xe6b422, 12);
   } else if (kind === "newsKiosk") {
-    b.box(2.0, 1.2, 1.6, 0, 0.15, 0, 0xf3d6c4);
-    for (let i = 0; i < 5; i++) b.box(0.42, 0.12, 2.0, -0.84 + i * 0.42, 1.4, 0.1, i % 2 ? WHITE : 0xd8423f);
-    b.box(1.4, 0.5, 0.06, 0, 0.55, 0.85, 0xfff7e0);
+    b.box(2.0, 1.2, 1.6, 0, 0.15, 0, 0xdce0e6);
+    for (let i = 0; i < 5; i++) b.box(0.42, 0.12, 2.0, -0.84 + i * 0.42, 1.4, 0.1, i % 2 ? WHITE : 0x5c626d);
+    b.box(1.4, 0.5, 0.06, 0, 0.55, 0.85, 0xeef2f6);
   } else if (kind === "observatory") {
-    b.cyl(1.0, 1.2, 1.6, 0, 0.15, 0, 0xe9eef2, 12);
-    b.sphere(1.05, 0, 1.75, 0, 0x8fc7e8);
+    b.cyl(1.0, 1.2, 1.6, 0, 0.15, 0, 0xdfe3e8, 12);
+    b.sphere(1.05, 0, 1.75, 0, 0x9aa2ad);
     b.box(0.12, 1.0, 0.12, 0, 2.7, 0, DARK);
   } else {
-    b.box(3.0, 1.6, 2.2, 0, 0.15, 0, 0xefe0c4);
-    b.box(3.2, 0.2, 2.4, 0, 1.75, 0, 0xc9604f);
-    b.box(0.9, 1.4, 0.9, 0, 1.95, 0, 0xefe0c4);
-    b.cone(0.75, 0.8, 0, 3.3, 0, 0xc9604f, 4);
+    b.box(3.0, 1.6, 2.2, 0, 0.15, 0, 0xe2e5ea);
+    b.box(3.2, 0.2, 2.4, 0, 1.75, 0, 0x686e78);
+    b.box(0.9, 1.4, 0.9, 0, 1.95, 0, 0xe2e5ea);
+    b.cone(0.75, 0.8, 0, 3.3, 0, 0x525760, 4);
     b.cyl(0.28, 0.28, 0.06, 0, 2.4, 0.46, WHITE, 12);
   }
   return b.build();
@@ -179,12 +194,11 @@ function civicGeometry(kind: CivicKind): THREE.BufferGeometry {
 
 function treeGeometry(): THREE.BufferGeometry {
   const b = new Builder();
-  b.cyl(0.08, 0.1, 0.5, 0, 0, 0, 0x7a5a3e, 5);
-  b.cone(0.45, 0.8, 0, 0.4, 0, 0x4f9a5a, 7);
-  b.cone(0.34, 0.65, 0, 0.9, 0, 0x62ad68, 7);
+  b.cyl(0.08, 0.1, 0.5, 0, 0, 0, 0x6b533e, 5);
+  b.cone(0.45, 0.8, 0, 0.4, 0, 0x4f9458, 7);
+  b.cone(0.34, 0.65, 0, 0.9, 0, 0x62a668, 7);
   return b.build();
 }
-
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -193,15 +207,15 @@ const smooth = (a: number, b: number, x: number) => {
 
 /** Ground colour from height, slope and the shore: sand, lawn, forest, rock and snow. */
 function groundColor(h: number, slope: number, x: number, z: number, out: THREE.Color): THREE.Color {
-  const n = valueNoise(x * 0.09, z * 0.09, 5) * 0.14 - 0.07;
-  out.set(0x9fd18b);
-  if (h > 5) out.lerp(new THREE.Color(0xa9d98f), smooth(5, 6, h)); // the plateau lawn
-  if (h < 0.35) out.lerp(new THREE.Color(0xe6d8a6), 1 - smooth(-0.5, 0.35, h)); // beach
-  if (h < -0.4) out.set(0xcdbf94); // seabed
+  const n = valueNoise(x * 0.09, z * 0.09, 5) * 0.12 - 0.06;
+  out.set(0x98c987);
+  if (h > 5) out.lerp(new THREE.Color(0xa2cf8d), smooth(5, 6, h)); // the plateau lawn
+  if (h < 0.35) out.lerp(new THREE.Color(0xe0d4aa), 1 - smooth(-0.5, 0.35, h)); // beach
+  if (h < -0.4) out.set(0xc7ba94); // seabed
   const forest = smooth(6.5, 9, h) * (1 - smooth(24, 30, h));
-  out.lerp(new THREE.Color(0x6aa56f), forest * 0.8);
-  out.lerp(new THREE.Color(0x9b958a), smooth(0.45, 1.0, slope));
-  out.lerp(new THREE.Color(0xf3f6f8), smooth(33, 44, h));
+  out.lerp(new THREE.Color(0x669c6a), forest * 0.8);
+  out.lerp(new THREE.Color(0x94989e), smooth(0.45, 1.0, slope));
+  out.lerp(new THREE.Color(0xf2f5f8), smooth(33, 44, h));
   out.offsetHSL(0, 0, n);
   return out;
 }
@@ -307,11 +321,11 @@ function bridges(line: readonly Pt[], t: Terrain, width: number): THREE.BufferGe
       any = true;
       const y = t.roadY(x, z);
       const piece = len / k + 0.1;
-      b.box(width + 1.2, 0.6, piece, x, y - 0.55, z, 0xbfc0c4, ry);
+      b.box(width + 1.2, 0.6, piece, x, y - 0.55, z, 0xb8bdc4, ry);
       const ox = Math.cos(ry) * (width / 2 + 0.45);
       const oz = -Math.sin(ry) * (width / 2 + 0.45);
-      b.box(0.3, 0.7, piece, x + ox, y + 0.05, z + oz, 0xe8e6e0, ry);
-      b.box(0.3, 0.7, piece, x - ox, y + 0.05, z - oz, 0xe8e6e0, ry);
+      b.box(0.3, 0.7, piece, x + ox, y + 0.05, z + oz, 0xe2e5ea, ry);
+      b.box(0.3, 0.7, piece, x - ox, y + 0.05, z - oz, 0xe2e5ea, ry);
     }
   }
   return any ? b.build() : null;
@@ -332,18 +346,17 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   // Sea, lake and river are one water surface; the ground dips below it where they are.
   const water = new THREE.Mesh(
     own(new THREE.CircleGeometry(t.extent * 6, 48)),
-    own(new THREE.MeshLambertMaterial({ color: 0x6cc3e0 })),
+    own(new THREE.MeshLambertMaterial({ color: 0x62bce0 })),
   );
   water.rotation.x = -Math.PI / 2;
   water.position.y = WATER_Y;
   group.add(water);
 
-  // Connected streets: the outer arterial, curved district feeders and local neighbourhood loops.
-  // Roads are built from the same connected polylines used by the traffic and transit systems.
+  // Connected streets: monochrome architectural asphalt, slate sidewalks and crisp kerbs.
   const streetDetails = new Builder();
   for (const road of layout.roads) {
     const isMajor = road.kind === "arterial" || road.kind === "exit";
-    const roadColor = isMajor ? 0x454a52 : road.kind === "boulevard" ? 0x555b62 : STREET;
+    const roadColor = isMajor ? 0x3b3f47 : road.kind === "boulevard" ? 0x4c515b : STREET;
     const roadMesh = new THREE.Mesh(own(ribbon(road.path, road.width, 0.12, roadColor, t.roadY)), vcMat);
     roadMesh.receiveShadow = true;
     group.add(roadMesh);
@@ -352,10 +365,10 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       for (const side of [-1, 1]) {
         const offset = side * (road.width / 2 + 1.05);
         const walk = offsetPath(road.path, offset);
-        const sidewalk = new THREE.Mesh(own(ribbon(walk, 1.55, 0.15, 0xd7c9ad, t.roadY)), vcMat);
+        const sidewalk = new THREE.Mesh(own(ribbon(walk, 1.55, 0.15, 0xc8cdd4, t.roadY)), vcMat);
         sidewalk.receiveShadow = true;
         group.add(sidewalk);
-        const curb = new THREE.Mesh(own(ribbon(offsetPath(road.path, offset - side * 0.76), 0.18, 0.19, 0xeee8d8, t.roadY)), vcMat);
+        const curb = new THREE.Mesh(own(ribbon(offsetPath(road.path, offset - side * 0.76), 0.18, 0.19, 0xe2e5ea, t.roadY)), vcMat);
         group.add(curb);
       }
     }
@@ -364,7 +377,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     if (road.width >= 6) {
       for (let d = 5; d < total - 6; d += isMajor ? 6.2 : 4.6) {
         const p = pointAlong(road.path, d);
-        streetDetails.box(road.width >= 8 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + 0.2, p.z, 0xf0eee4, p.heading);
+        streetDetails.box(road.width >= 8 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + 0.2, p.z, 0xe6e9ed, p.heading);
       }
     }
 
@@ -381,7 +394,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
           const y = t.roadY(x, z);
           streetDetails.cyl(0.045, 0.055, 2.3, x, y + 0.08, z, DARK, 6);
           streetDetails.box(0.55, 0.07, 0.07, x + Math.sin(p.heading) * 0.2, y + 2.25, z + Math.cos(p.heading) * 0.2, DARK, p.heading);
-          streetDetails.sphere(0.13, x + Math.sin(p.heading) * 0.4, y + 2.2, z + Math.cos(p.heading) * 0.4, 0xf7df9e);
+          streetDetails.sphere(0.13, x + Math.sin(p.heading) * 0.4, y + 2.2, z + Math.cos(p.heading) * 0.4, 0xeef2f6);
         }
       }
     }
@@ -406,7 +419,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     const baseY = t.heightAt(park.x, park.z) + 0.12;
     const lawn = new THREE.Mesh(
       own(new THREE.CircleGeometry(1, 40)),
-      own(mat(park.kind === "city-park" ? 0x78ad69 : 0x8fbb76)),
+      own(mat(park.kind === "city-park" ? 0x72a864 : 0x86b572)),
     );
     lawn.rotation.x = -Math.PI / 2;
     lawn.rotation.z = park.rotationY;
@@ -415,7 +428,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     lawn.receiveShadow = true;
     group.add(lawn);
 
-    // A pale walking loop breaks up the lawn and links both sides of the park.
+    // A pale stone walking loop breaks up the lawn and links both sides of the park.
     const pathLine: Pt[] = [];
     for (let i = 0; i <= 32; i++) {
       const a = (i / 32) * Math.PI * 2;
@@ -425,13 +438,13 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       const s = Math.sin(park.rotationY);
       pathLine.push({ x: park.x + x * c - z * s, z: park.z + x * s + z * c });
     }
-    const parkPath = new THREE.Mesh(own(ribbon(pathLine, 1.25, 0.18, 0xdcccae, t.roadY)), vcMat);
+    const parkPath = new THREE.Mesh(own(ribbon(pathLine, 1.25, 0.18, 0xd4d8de, t.roadY)), vcMat);
     group.add(parkPath);
 
     if (park.pond) {
       const pond = new THREE.Mesh(
         own(new THREE.CircleGeometry(1, 40)),
-        own(mat(0x54b8d6)),
+        own(mat(0x52b6d6)),
       );
       pond.rotation.x = -Math.PI / 2;
       pond.scale.set(park.pond.radiusX, park.pond.radiusZ, 1);
@@ -439,7 +452,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       group.add(pond);
       const shore = new THREE.Mesh(
         own(new THREE.RingGeometry(0.96, 1.13, 40)),
-        own(mat(0xcbbd9d)),
+        own(mat(0xc8cdd4)),
       );
       shore.rotation.x = -Math.PI / 2;
       shore.scale.set(park.pond.radiusX, park.pond.radiusZ, 1);
@@ -453,25 +466,25 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     for (const side of [-1, 1]) {
       const x = park.x + Math.cos(park.rotationY) * side * park.radiusX * 0.48;
       const z = park.z + Math.sin(park.rotationY) * side * park.radiusX * 0.48;
-      parkProps.box(2.1, 0.14, 0.58, x, baseY, z, 0x8c6847, park.rotationY);
-      parkProps.box(2.1, 0.68, 0.12, x, baseY + 0.12, z - 0.22, 0x9d7953, park.rotationY);
+      parkProps.box(2.1, 0.14, 0.58, x, baseY, z, 0x686e78, park.rotationY);
+      parkProps.box(2.1, 0.68, 0.12, x, baseY + 0.12, z - 0.22, 0x7c828c, park.rotationY);
       parkProps.cyl(0.04, 0.05, 1.8, x + 2.5, baseY, z, DARK, 6);
-      parkProps.sphere(0.13, x + 2.5, baseY + 1.78, z, 0xf5dfa0);
+      parkProps.sphere(0.13, x + 2.5, baseY + 1.78, z, 0xeef2f6);
     }
     const propMesh = new THREE.Mesh(own(parkProps.build()), vcMat);
     propMesh.castShadow = true;
     group.add(propMesh);
   }
 
-  // Central square: paving, the market bell, and the four civic buildings.
-  const plaza = new THREE.Mesh(own(new THREE.CylinderGeometry(PLAZA_RADIUS - 1, PLAZA_RADIUS - 1, 0.12, 40)), own(mat(0xe8dcc0)));
+  // Central square: architectural stone paving, market bell, and the four civic buildings.
+  const plaza = new THREE.Mesh(own(new THREE.CylinderGeometry(PLAZA_RADIUS - 1, PLAZA_RADIUS - 1, 0.12, 40)), own(mat(0xdadfe6)));
   plaza.position.y = 0.08;
   plaza.receiveShadow = true;
   group.add(plaza);
 
   const bellGeo = (() => {
     const b = new Builder();
-    b.cyl(1.4, 1.6, 0.3, 0, 0, 0, 0xcfc7b4, 16);
+    b.cyl(1.4, 1.6, 0.3, 0, 0, 0, 0xc4c9d1, 16);
     b.cyl(0.12, 0.12, 2.4, 0, 0.3, 0, DARK, 6);
     b.cone(0.55, 0.7, 0, 2.2, 0, 0xe6b422, 12);
     return b.build();
@@ -535,7 +548,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   // District names, visible from far away.
   const districtLabels: THREE.Sprite[] = [];
   for (const d of layout.districts) {
-    const s = makeLabel(`${DISTRICT_LABEL[d.id]} · ${d.assetCount}`, { font: 34, bg: "rgba(45,51,64,0.82)", fg: "#fffaf0" });
+    const s = makeLabel(`${DISTRICT_LABEL[d.id]} · ${d.assetCount}`, { font: 34, bg: "rgba(38,43,52,0.86)", fg: "#f4f6f9" });
     s.position.set(d.cx, t.heightAt(d.cx, d.cz) + 7, d.cz - d.halfH - 3);
     s.userData.district = d.id;
     group.add(s);
@@ -566,12 +579,4 @@ function inGrid(d: { cx: number; cz: number; theta: number; halfW: number; halfH
   const lx = (x - d.cx) * c + (z - d.cz) * s;
   const lz = -(x - d.cx) * s + (z - d.cz) * c;
   return Math.abs(lx) < d.halfW + 2 && Math.abs(lz) < d.halfH + 2;
-}
-
-function distToSegment(px: number, pz: number, x1: number, z1: number, x2: number, z2: number): number {
-  const dx = x2 - x1;
-  const dz = z2 - z1;
-  const l2 = dx * dx + dz * dz;
-  const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / l2));
-  return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
 }

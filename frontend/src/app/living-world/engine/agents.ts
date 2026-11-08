@@ -6,9 +6,13 @@ import type { Archetype } from "../model/types";
 import type { Tier } from "../model/scale";
 
 /**
- * Inhabitants and vehicles (spec §6.2). Ambient life is seeded, not random, so the town
- * looks the same on every visit and an event is never lost in noise. All agents are two
- * InstancedMeshes (bodies, heads), however many there are.
+ * Inhabitants and vehicles (spec §6.2).
+ *
+ * Visual rule:
+ * - "Atrezzo" (ambient city inhabitants walking sidewalks and ambient vans) are rendered in
+ *   pure architectural grayscale so they provide urban life without visual noise.
+ * - Portfolio company workers and event actors (`assetId !== null`) wear vibrant corporate
+ *   and role colours tied to their company's identity.
  */
 
 export type Role = "worker" | "manager" | "analyst" | "courier" | "visitor" | "crew";
@@ -23,14 +27,20 @@ export type AgentState =
   | "returning";
 
 const ROLE_COLOR: Record<Role, number> = {
-  worker: 0x4f8cd6,
-  manager: 0x7a5ad6,
-  analyst: 0x2fa38a,
-  courier: 0xe0a030,
-  visitor: 0xd65f7a,
-  crew: 0xf08a2a,
+  worker: 0x3b82f6,
+  manager: 0x7c3aed,
+  analyst: 0x10b981,
+  courier: 0xf59e0b,
+  visitor: 0xec4899,
+  crew: 0xf97316,
 };
 const SKIN = [0xf1c9a5, 0xd9a47e, 0xb97c56, 0x8d5a3b, 0xf6d9bf];
+
+/** Grayscale palette for ambient city inhabitants ("atrezzo"). */
+const ATREZZO_BODY = [0x454952, 0x5c616b, 0x737984, 0x8d939e, 0xa6acb6];
+const ATREZZO_HEAD = [0xd4d8de, 0xc2c7cf, 0xb0b5be, 0x9ea4ae];
+const ATREZZO_VAN = [0x8c929c, 0xa8aeb8, 0xc4c9d1, 0x6e737c];
+
 const AGENT_SCALE = 1.3;
 const TEMP_SLOTS = 48;
 const MAX_VANS = 28;
@@ -43,15 +53,18 @@ export interface SiteSpot {
   rotationY: number;
   footprint: number;
   tier: Tier;
+  accent?: number;
   walkRoute?: Point[];
 }
 
 interface Agent {
   active: boolean;
   temp: boolean;
+  ambientCity: boolean;
   role: Role;
   state: AgentState;
   assetId: string | null;
+  accent: number | null;
   // orbit (ambient) mode
   cx: number;
   cz: number;
@@ -98,7 +111,7 @@ interface Van {
 }
 
 const blank = (): Agent => ({
-  active: false, temp: false, role: "worker", state: "idle", assetId: null,
+  active: false, temp: false, ambientCity: false, role: "worker", state: "idle", assetId: null, accent: null,
   cx: 0, cz: 0, radius: 0, angle: 0, angVel: 0, frontAngle: 0,
   walkRoute: null, walkDistance: 0, walkDirection: 1,
   until: 0, override: null, overrideUntil: 0,
@@ -127,12 +140,11 @@ export class AgentSystem {
   private up = new THREE.Vector3(0, 1, 0);
   private c = new THREE.Color();
   private ambientRoutes: Point[][] = [];
+  private siteAccent = new Map<string, number>();
   private ground: (x: number, z: number) => number = () => 0;
 
   constructor(private capacity: number) {
     const total = capacity + TEMP_SLOTS;
-    // A compact low-poly body with shoulders, arms, legs and shoes reads as a person
-    // at town zoom while staying in one instanced draw call.
     const bodyParts: THREE.BufferGeometry[] = [];
     const torso = new THREE.BoxGeometry(0.36, 0.43, 0.23);
     torso.translate(0, 0.37, 0);
@@ -194,8 +206,6 @@ export class AgentSystem {
     this.vans.frustumCulled = false;
     this.vans.count = 0;
 
-    // Small role props make the crowd legible at town zoom: hard hats, delivery packs,
-    // and professional folios. They remain instanced to keep draw calls bounded.
     const helmetTop = new THREE.SphereGeometry(0.2, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
     helmetTop.translate(0, 1.0, 0);
     const helmetBrim = new THREE.CylinderGeometry(0.23, 0.23, 0.045, 8);
@@ -249,9 +259,13 @@ export class AgentSystem {
     this.reduced = v;
   }
 
-  /** (Re)fill the ambient population: bigger sites get more people, never past capacity. */
+  /** (Re)fill the population: portfolio company workers in color + ambient city walkers in grayscale. */
   populate(sites: readonly SiteSpot[], routes: Point[][]) {
     this.ambientRoutes = routes;
+    this.siteAccent.clear();
+    for (const s of sites) {
+      if (s.accent !== undefined) this.siteAccent.set(s.assetId, s.accent);
+    }
     for (let i = 0; i < this.agents.length; i++) this.agents[i] = blank();
     const order = [...sites].sort((a, b) => b.footprint - a.footprint || (a.assetId < b.assetId ? -1 : 1));
     let n = 0;
@@ -271,6 +285,7 @@ export class AgentSystem {
       cash: ["manager", "courier"],
       crypto: ["analyst", "courier", "manager"],
     };
+    const allWalkRoutes = sites.map((s) => s.walkRoute).filter((r): r is Point[] => !!r && r.length > 1);
     outer: for (let round = 0; round < 4; round++) {
       for (const s of order) {
         const want = 1 + ["outpost", "small", "campus", "major"].indexOf(s.tier);
@@ -281,7 +296,12 @@ export class AgentSystem {
         const seed = hashString(`${s.assetId}:${round}`);
         const rnd = seeded(seed);
         a.active = true;
-        a.assetId = s.assetId;
+        // Round 0..1 are dedicated colored portfolio company workers; round >= 2 become
+        // grayscale ambient city pedestrians ("atrezzo") walking the neighbourhood sidewalks.
+        const isAtrezzo = round >= 2 && s.walkRoute && s.walkRoute.length > 1;
+        a.ambientCity = !!isAtrezzo;
+        a.assetId = isAtrezzo ? null : s.assetId;
+        a.accent = s.accent ?? null;
         const roles = roleMix[s.archetype];
         a.role = roles[Math.floor(rnd() * roles.length)];
         a.cx = s.x;
@@ -291,9 +311,10 @@ export class AgentSystem {
         a.angVel = (0.25 + rnd() * 0.25) / Math.max(1, a.radius * 0.45) * (rnd() < 0.5 ? -1 : 1);
         a.frontAngle = Math.atan2(Math.cos(s.rotationY), Math.sin(s.rotationY));
         a.walkRoute = s.walkRoute && s.walkRoute.length > 1 ? s.walkRoute : null;
-        a.walkDistance = 0;
-        a.walkDirection = 1;
-        a.state = rnd() < 0.5 ? "working" : "walking";
+        const rLen = a.walkRoute ? routeLength(a.walkRoute) : 0;
+        a.walkDistance = isAtrezzo && rLen > 0 ? rnd() * rLen : 0;
+        a.walkDirection = isAtrezzo && rnd() < 0.5 ? -1 : 1;
+        a.state = isAtrezzo ? "walking" : rnd() < 0.5 ? "working" : "walking";
         a.until = 2000 + rnd() * 6000;
         a.seed = seed;
         a.rnd = rnd;
@@ -308,21 +329,49 @@ export class AgentSystem {
         this.paint(idx);
       }
     }
+    // Fill any remaining capacity with grayscale city inhabitants ("atrezzo") on sidewalks.
+    const fillerRng = seeded(0x91c2);
+    while (n < this.capacity && allWalkRoutes.length > 0) {
+      const idx = n++;
+      const a = this.agents[idx];
+      const route = allWalkRoutes[idx % allWalkRoutes.length];
+      const seed = hashString(`city-atrezzo:${idx}`);
+      const rnd = seeded(seed);
+      a.active = true;
+      a.ambientCity = true;
+      a.assetId = null;
+      a.accent = null;
+      a.role = (["worker", "visitor", "manager", "courier"] as const)[idx % 4];
+      a.walkRoute = route;
+      const rLen = routeLength(route);
+      a.walkDistance = fillerRng() * rLen;
+      a.walkDirection = fillerRng() < 0.5 ? 1 : -1;
+      a.state = "walking";
+      a.until = 3500 + rnd() * 7000;
+      a.seed = seed;
+      a.rnd = rnd;
+      const point = pointAlong(route, a.walkDistance);
+      a.x = point.x;
+      a.z = point.z;
+      a.heading = point.heading;
+      this.paint(idx);
+    }
     this.ambientCount = n;
     this.syncVans();
     this.writeAll();
   }
 
-  /** A few vans drive plaza ↔ district gates all day so the boulevards are never empty. */
+  /** Ambient vans drive plaza ↔ district gates all day in pure grayscale ("atrezzo"). */
   private syncVans() {
     this.vanList = this.vanList.filter((v) => !v.ambient);
     const k = Math.min(10, this.ambientRoutes.length, MAX_VANS - this.vanList.length);
     const r = seeded(0x7a11);
     for (let i = 0; i < k; i++) {
       const route = this.ambientRoutes[Math.floor(r() * this.ambientRoutes.length)];
+      const tint = ATREZZO_VAN[i % ATREZZO_VAN.length];
       this.vanList.push({
         active: true, path: route, dist: r() * routeLength(route), dir: r() < 0.5 ? 1 : -1,
-        speed: 2.2 + r() * 1.2, hold: 0, ambient: true, tint: 0xf6efe0, x: 0, z: 0, heading: 0, onDone: null,
+        speed: 2.2 + r() * 1.2, hold: 0, ambient: true, tint, x: 0, z: 0, heading: 0, onDone: null,
       });
     }
   }
@@ -359,8 +408,10 @@ export class AgentSystem {
         j === arr.length - 1 ? { x: p.x + (o.offsetX ?? 0), z: p.z + (o.offsetZ ?? 0) } : p);
       a.active = true;
       a.temp = true;
+      a.ambientCity = false;
       a.role = o.role;
       a.assetId = o.assetId;
+      a.accent = o.assetId ? (this.siteAccent.get(o.assetId) ?? null) : null;
       a.path = path;
       a.dist = 0;
       a.speed = o.speed ?? 2.4;
@@ -407,16 +458,30 @@ export class AgentSystem {
     return a?.active ? (a.override ?? a.state) : null;
   }
 
-  /** Colour depends only on role and seed, so it is written once, not every frame. */
+  /**
+   * Grayscale for ambient city inhabitants ("atrezzo"), vibrant corporate/role colours for
+   * portfolio company staff and event actors.
+   */
   private paint(i: number) {
     const a = this.agents[i];
-    this.bodies.setColorAt(i, this.c.set(ROLE_COLOR[a.role]));
-    this.heads.setColorAt(i, this.c.set(SKIN[a.seed % SKIN.length]));
-    this.helmets.setColorAt(i, this.c.set(a.role === "crew" ? 0xf28b24 : 0xf0c84e));
-    this.backpacks.setColorAt(i, this.c.set(a.role === "courier" ? 0xe3a437 : 0x6b7884));
-    this.briefcases.setColorAt(i, this.c.set(a.role === "analyst" ? 0x345f91 : 0x433e52));
-    this.ties.setColorAt(i, this.c.set(0xb94e57));
-    this.clipboards.setColorAt(i, this.c.set(0x9eafbc));
+    if (a.ambientCity) {
+      this.bodies.setColorAt(i, this.c.set(ATREZZO_BODY[a.seed % ATREZZO_BODY.length]));
+      this.heads.setColorAt(i, this.c.set(ATREZZO_HEAD[a.seed % ATREZZO_HEAD.length]));
+      this.helmets.setColorAt(i, this.c.set(0x7c828c));
+      this.backpacks.setColorAt(i, this.c.set(0x525760));
+      this.briefcases.setColorAt(i, this.c.set(0x3b3f46));
+      this.ties.setColorAt(i, this.c.set(0x686d76));
+      this.clipboards.setColorAt(i, this.c.set(0x9ea4ae));
+    } else {
+      const bodyHex = a.accent ?? ROLE_COLOR[a.role];
+      this.bodies.setColorAt(i, this.c.set(bodyHex));
+      this.heads.setColorAt(i, this.c.set(SKIN[a.seed % SKIN.length]));
+      this.helmets.setColorAt(i, this.c.set(a.role === "crew" ? 0xf97316 : 0xfacc15));
+      this.backpacks.setColorAt(i, this.c.set(a.role === "courier" ? 0xf59e0b : (a.accent ?? 0x3b82f6)));
+      this.briefcases.setColorAt(i, this.c.set(a.accent ?? 0x2563eb));
+      this.ties.setColorAt(i, this.c.set(0xe11d48));
+      this.clipboards.setColorAt(i, this.c.set(0xf8fafc));
+    }
     for (const mesh of [this.bodies, this.heads, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
@@ -450,7 +515,6 @@ export class AgentSystem {
     // Reduced motion: the town stands still; only event actors (temp) move.
     if (this.reduced) return;
     if (a.override && this.time >= a.overrideUntil) a.override = null;
-    const st = a.override ?? a.state;
     if (a.override) {
       // Walk the ring to the front door, then stand there facing the building.
       const door = a.frontAngle + (((a.seed % 7) - 3) * 0.09);
@@ -461,6 +525,22 @@ export class AgentSystem {
       else a.angle = door;
       this.place(a);
       a.heading = Math.atan2(a.cx - a.x, a.cz - a.z);
+      return;
+    }
+    if (a.ambientCity && a.walkRoute && a.walkRoute.length > 1) {
+      const length = routeLength(a.walkRoute);
+      a.walkDistance += a.walkDirection * (1.28 + a.rnd() * 0.34) * dt;
+      if (a.walkDistance >= length) {
+        a.walkDistance = length;
+        a.walkDirection = -1;
+      } else if (a.walkDistance <= 0) {
+        a.walkDistance = 0;
+        a.walkDirection = 1;
+      }
+      const point = pointAlong(a.walkRoute, a.walkDistance);
+      a.x = point.x;
+      a.z = point.z;
+      a.heading = a.walkDirection === 1 ? point.heading : point.heading + Math.PI;
       return;
     }
     a.until -= dtMs;
@@ -535,7 +615,6 @@ export class AgentSystem {
         if (v.hold <= 0) {
           if (v.ambient) v.dir = (v.dir === 1 ? -1 : 1);
           else {
-            // A dispatched van delivers, waits, and drives home.
             v.dir = -1;
           }
         }
@@ -624,7 +703,6 @@ export class AgentSystem {
       this.s.set(analystRole ? AGENT_SCALE : 0, analystRole ? AGENT_SCALE : 0, analystRole ? AGENT_SCALE : 0);
       this.m.compose(this.p, this.q, this.s);
       this.clipboards.setMatrixAt(i, this.m);
-      // Restore the shared pose matrix scales before the next agent.
       this.s.set(AGENT_SCALE, AGENT_SCALE * sy, AGENT_SCALE);
       this.m.compose(this.p, this.q, this.s);
     }
