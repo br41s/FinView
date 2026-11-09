@@ -461,19 +461,24 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
     };
     addRoad(chaikin([anchor, bend, gate], 1), 6.6, "boulevard", true, district.id);
 
-    const gateAngle = Math.atan2(gate.z - district.cz, gate.x - district.cx);
-    const local: Pt[] = [];
-    const localRadius = district.extent + 5;
-    for (let i = 0; i <= 44; i++) {
-      const a = gateAngle + (i / 44) * Math.PI * 2;
-      local.push({
-        x: district.cx + Math.cos(a) * localRadius * (district.shape === "industrial" ? 1.18 : 1),
-        z: district.cz + Math.sin(a) * localRadius * (district.shape === "high-street" ? 0.84 : 0.96),
-      });
-    }
+    // Structured urban block street loop inside the district (stays strictly within district bounds)
+    const bw = Math.max(12, district.halfW * 0.62);
+    const bh = Math.max(10, district.halfH * 0.62);
+    const c = Math.cos(district.theta);
+    const s = Math.sin(district.theta);
+    const corners = [
+      { x: -bw, z: -bh },
+      { x: bw, z: -bh },
+      { x: bw, z: bh },
+      { x: -bw, z: bh },
+    ].map((pt) => ({
+      x: district.cx + pt.x * c - pt.z * s,
+      z: district.cz + pt.x * s + pt.z * c,
+    }));
+    const local = chaikin([gate, corners[0], corners[1], corners[2], corners[3], gate], 2);
     local[0] = { ...gate };
     local[local.length - 1] = { ...gate };
-    addRoad(local, 4.6, "local", true, district.id);
+    addRoad(local, 4.8, "local", true, district.id);
   }
 
   for (const a of [-Math.PI * 0.48, Math.PI * 0.52]) {

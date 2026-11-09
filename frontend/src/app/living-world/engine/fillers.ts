@@ -26,14 +26,14 @@ const PLINTH_GREY = 0x7c828b;
 
 // Portfolio holdings are the landmarks. Keep decorative buildings subordinate in width
 // while giving them believable architectural proportions (not squashed pancakes).
-const WIDTH_SCALE = 0.74;
+const WIDTH_SCALE = 1.12;
 const HEIGHT_SCALE: Record<FillerKind, number> = {
-  skyscraper: 0.155,
-  tower: 0.205,
-  block: 0.24,
-  house: 0.38,
-  villa: 0.35,
-  shed: 0.32,
+  skyscraper: 1.18,
+  tower: 1.05,
+  block: 0.95,
+  house: 0.92,
+  villa: 0.88,
+  shed: 0.84,
 };
 
 /** Grounded plinth so filler buildings sit cleanly on sloped terrain without floating edges. */

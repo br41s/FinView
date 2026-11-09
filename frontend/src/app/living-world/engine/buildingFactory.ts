@@ -109,22 +109,25 @@ const PLANTER_GREEN = 0x399c58;
  * pops from the grayscale city fabric.
  */
 function plot(c: Ctx) {
-  const s = c.n * 1.12;
+  const s = c.n * 1.18;
   // Sub-grade foundation skirt so sloped ground never leaves a gap.
-  c.b.box(s + 0.16, 0.24, s + 0.16, 0, -0.18, 0, DARK);
+  c.b.box(s + 0.2, 0.28, s + 0.2, 0, -0.2, 0, DARK);
   // Colored corporate perimeter frame.
-  c.b.box(s + 0.08, 0.08, s + 0.08, 0, 0.04, 0, c.accent);
-  // Warm travertine/limestone corporate plaza deck.
-  c.b.box(s, 0.12, s, 0, 0.06, 0, GROUND_PAD);
+  c.b.box(s + 0.1, 0.1, s + 0.1, 0, 0.05, 0, c.accent);
+  // Warm travertine/limestone corporate plaza deck with stepped podium.
+  c.b.box(s, 0.14, s, 0, 0.07, 0, GROUND_PAD);
+  c.b.box(s * 0.92, 0.06, s * 0.92, 0, 0.18, 0, 0xf6f0e2);
   // Forecourt promenade and accent entrance carpet.
-  c.b.box(s * 0.88, 0.035, 0.28, 0, 0.17, s * 0.35, 0xd8d0bc);
-  c.b.box(0.38, 0.04, s * 0.34, 0, 0.17, s * 0.31, c.accent);
-  // Landscaped corner planters with vibrant greenery.
+  c.b.box(s * 0.88, 0.035, 0.3, 0, 0.21, s * 0.35, 0xd8d0bc);
+  c.b.box(0.4, 0.045, s * 0.36, 0, 0.22, s * 0.31, c.accent);
+  // Landscaped corner planters with vibrant greenery and corner lanterns.
   for (const side of [-1, 1]) {
     const px = side * s * 0.38;
     const pz = s * 0.38;
-    c.b.box(0.56, 0.14, 0.38, px, 0.17, pz, WHITE);
-    c.b.box(0.48, 0.12, 0.3, px, 0.28, pz, PLANTER_GREEN);
+    c.b.box(0.64, 0.18, 0.42, px, 0.22, pz, WHITE);
+    c.b.box(0.54, 0.14, 0.32, px, 0.34, pz, PLANTER_GREEN);
+    c.b.cyl(0.04, 0.04, 0.38, px, 0.42, pz, DARK, 6);
+    c.b.sphere(0.08, px, 0.78, pz, WHITE);
   }
 }
 
