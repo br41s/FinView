@@ -70,7 +70,7 @@ export function BuildingInspector({ asset: a, demo, events, onClose, onFocus, on
           <Crosshair size={14} /> Enfocar
         </button>
         <button className={`${s.btn} ${s.linkBtn}`} onClick={onFollow}>
-          <Footprints size={14} /> Seguir a un vecino
+          <Footprints size={14} /> Seguir trabajador
         </button>
       </div>
       {demo ? (

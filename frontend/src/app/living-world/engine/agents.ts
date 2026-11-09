@@ -144,6 +144,7 @@ export class AgentSystem {
   readonly briefcases: THREE.InstancedMesh;
   readonly ties: THREE.InstancedMesh;
   readonly clipboards: THREE.InstancedMesh;
+  readonly shoppingBags: THREE.InstancedMesh;
   private agents: Agent[] = [];
   private ambientCount = 0;
   private vanList: Van[] = [];
@@ -254,12 +255,20 @@ export class AgentSystem {
     const clipboardGeo = mergeGeometries([clipboardBody, clipboardClip], false);
     clipboardBody.dispose();
     clipboardClip.dispose();
+    const bagBox = new THREE.BoxGeometry(0.2, 0.26, 0.12);
+    bagBox.translate(-0.24, 0.35, 0.08);
+    const bagHandle = new THREE.BoxGeometry(0.1, 0.045, 0.04);
+    bagHandle.translate(-0.24, 0.5, 0.08);
+    const bagGeo = mergeGeometries([bagBox, bagHandle], false);
+    bagBox.dispose();
+    bagHandle.dispose();
     this.helmets = new THREE.InstancedMesh(helmetGeo, flat(false), total);
     this.backpacks = new THREE.InstancedMesh(backpackGeo, flat(false), total);
     this.briefcases = new THREE.InstancedMesh(briefcaseGeo, flat(false), total);
     this.ties = new THREE.InstancedMesh(tieGeo, flat(false), total);
     this.clipboards = new THREE.InstancedMesh(clipboardGeo, flat(false), total);
-    for (const prop of [this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
+    this.shoppingBags = new THREE.InstancedMesh(bagGeo, flat(false), total);
+    for (const prop of [this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards, this.shoppingBags]) {
       prop.castShadow = true;
       prop.frustumCulled = false;
     }
@@ -496,7 +505,9 @@ export class AgentSystem {
       this.ties.setColorAt(i, this.c.set(0xe11d48));
       this.clipboards.setColorAt(i, this.c.set(0xf8fafc));
     }
-    for (const mesh of [this.bodies, this.heads, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
+    const bagPalette = [0xf97316, 0x06b6d4, 0x8b5cf6, 0xec4899, 0xeab308];
+    this.shoppingBags.setColorAt(i, this.c.set(bagPalette[a.seed % bagPalette.length]));
+    for (const mesh of [this.bodies, this.heads, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards, this.shoppingBags]) {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
   }
@@ -696,6 +707,7 @@ export class AgentSystem {
         this.briefcases.setMatrixAt(i, this.m);
         this.ties.setMatrixAt(i, this.m);
         this.clipboards.setMatrixAt(i, this.m);
+        this.shoppingBags.setMatrixAt(i, this.m);
         continue;
       }
       const st = a.override ?? a.state;
@@ -747,6 +759,13 @@ export class AgentSystem {
       this.s.set(analystRole ? AGENT_SCALE : 0, analystRole ? AGENT_SCALE : 0, analystRole ? AGENT_SCALE : 0);
       this.m.compose(this.p, this.q, this.s);
       this.clipboards.setMatrixAt(i, this.m);
+
+      const isEvening = getCircadianPhase(this.clockHour) === "evening_leisure";
+      const hasBag = isEvening && a.ambientCity && a.walkRoute && (a.seed % 2 === 0);
+      this.s.set(hasBag ? AGENT_SCALE : 0, hasBag ? AGENT_SCALE : 0, hasBag ? AGENT_SCALE : 0);
+      this.m.compose(this.p, this.q, this.s);
+      this.shoppingBags.setMatrixAt(i, this.m);
+
       this.s.set(AGENT_SCALE, AGENT_SCALE * sy, AGENT_SCALE);
       this.m.compose(this.p, this.q, this.s);
     }
@@ -757,6 +776,7 @@ export class AgentSystem {
     this.briefcases.instanceMatrix.needsUpdate = true;
     this.ties.instanceMatrix.needsUpdate = true;
     this.clipboards.instanceMatrix.needsUpdate = true;
+    this.shoppingBags.instanceMatrix.needsUpdate = true;
 
     this.vans.count = this.vanList.length;
     this.vanList.forEach((v, i) => {
@@ -772,10 +792,20 @@ export class AgentSystem {
   }
 
   dispose() {
-    for (const m of [this.bodies, this.heads, this.vans, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards]) {
+    for (const m of [this.bodies, this.heads, this.vans, this.helmets, this.backpacks, this.briefcases, this.ties, this.clipboards, this.shoppingBags]) {
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
       m.dispose();
     }
+  }
+
+  assetOf(id: number): string | null {
+    const a = this.agents[id];
+    return a?.active ? a.assetId : null;
+  }
+
+  roleOf(id: number): Role {
+    const a = this.agents[id];
+    return a?.active ? a.role : "worker";
   }
 }

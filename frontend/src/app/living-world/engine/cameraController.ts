@@ -31,6 +31,7 @@ export interface CameraOptions {
   onFocusKey: () => void;
   /** Notified when cinematic tour mode starts or stops. */
   onTourChange?: (touring: boolean) => void;
+  onFollowChange?: (following: boolean) => void;
 }
 
 export class CameraController {
@@ -104,8 +105,22 @@ export class CameraController {
 
   follow(getter: (() => { x: number; z: number } | null) | null) {
     this.stopTour();
+    const had = this.follower !== null;
     this.follower = getter;
-    if (getter) this.want.dist = Math.min(this.want.dist, 24);
+    if (getter) {
+      this.want.dist = Math.min(this.want.dist, 20);
+      this.want.pitch = 0.62;
+    }
+    if ((getter !== null) !== had) {
+      this.o.onFollowChange?.(getter !== null);
+    }
+  }
+
+  stopFollow() {
+    if (this.follower !== null) {
+      this.follower = null;
+      this.o.onFollowChange?.(false);
+    }
   }
 
   isFollowing() {
@@ -303,7 +318,7 @@ export class CameraController {
 
   private userMoved() {
     this.stopTour();
-    if (this.follower) this.follower = null;
+    this.stopFollow();
     this.o.onUserMove();
   }
 
@@ -387,6 +402,11 @@ export class CameraController {
     on("keydown", (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
+      if (k === "escape") {
+        if (this.isFollowing()) this.stopFollow();
+        if (this.isTouring()) this.stopTour();
+        return;
+      }
       if (k === "c") return void this.toggleTour();
       if (k === "home") return void (this.userMoved(), this.fit());
       if (k === "f") return void this.o.onFocusKey();

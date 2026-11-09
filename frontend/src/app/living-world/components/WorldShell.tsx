@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Footprints, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { NOT_ADVICE } from "@/lib/legal";
@@ -79,6 +79,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
   );
   const [canBack, setCanBack] = useState(false);
   const [tour, setTour] = useState(false);
+  const [followTarget, setFollowTarget] = useState<string | null>(null);
   const [webgl] = useState(supportsWebGL);
   const host = useRef<HTMLDivElement | null>(null);
   const counter = useRef(0);
@@ -96,6 +97,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
       onStats: () => undefined,
       onCanBack: setCanBack,
       onTourChange: setTour,
+      onFollowTarget: setFollowTarget,
     }),
     [],
   );
@@ -349,6 +351,23 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
             />
           ))}
         </div>
+
+        {followTarget && (
+          <div className={`${s.card} ${s.followPill}`}>
+            <Footprints size={15} />
+            <span>Siguiendo a <strong>{followTarget}</strong></span>
+            <button
+              className={s.btn}
+              onClick={() => {
+                world.current?.stopFollow();
+                setFollowTarget(null);
+              }}
+              title="Dejar de seguir (Esc)"
+            >
+              <X size={14} /> Soltar
+            </button>
+          </div>
+        )}
 
         <div className={s.footer}>
           <span>{NOT_ADVICE.short}</span>
