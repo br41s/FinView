@@ -78,6 +78,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
     typeof navigator !== "undefined" && (navigator.hardwareConcurrency ?? 8) <= 4 ? "low" : "medium",
   );
   const [canBack, setCanBack] = useState(false);
+  const [tour, setTour] = useState(false);
   const [webgl] = useState(supportsWebGL);
   const host = useRef<HTMLDivElement | null>(null);
   const counter = useRef(0);
@@ -94,6 +95,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
       onPerformance: () => undefined,
       onStats: () => undefined,
       onCanBack: setCanBack,
+      onTourChange: setTour,
     }),
     [],
   );
@@ -267,6 +269,8 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
             autoFocus={autoFocus}
             live={live}
             panel={panel}
+            tour={tour}
+            onToggleTour={() => world.current?.toggleTour()}
             onFit={() => world.current?.fit()}
             onBack={() => world.current?.back()}
             onRotate={(d) => world.current?.rotate(d)}

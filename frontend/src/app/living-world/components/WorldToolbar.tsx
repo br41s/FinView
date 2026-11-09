@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Compass,
   Crosshair,
   Filter,
   List,
@@ -31,6 +32,8 @@ interface Props {
   autoFocus: boolean;
   live: boolean;
   panel: Panel;
+  tour: boolean;
+  onToggleTour: () => void;
   onFit: () => void;
   onBack: () => void;
   onRotate: (d: -1 | 1) => void;
@@ -85,6 +88,13 @@ export function WorldToolbar(p: Readonly<Props>) {
       <span className={s.sep} />
       <IconBtn label="Ver todo el pueblo (Inicio)" onClick={p.onFit}>
         <Maximize size={16} />
+      </IconBtn>
+      <IconBtn
+        label={p.tour ? "Detener tour cinemático (C)" : "Modo tour cinemático (C)"}
+        on={p.tour}
+        onClick={p.onToggleTour}
+      >
+        <Compass size={16} /> Tour
       </IconBtn>
       <IconBtn label="Volver a la vista anterior" onClick={p.onBack} disabled={!p.canBack}>
         <Undo2 size={16} />
