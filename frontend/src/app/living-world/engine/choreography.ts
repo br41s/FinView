@@ -361,6 +361,9 @@ class ConfettiSystem {
     scene.remove(this.mesh);
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
+    this.mesh.instanceMatrix.dispose();
+    this.mesh.instanceColor?.dispose();
+    this.mesh.dispose();
   }
 }
 

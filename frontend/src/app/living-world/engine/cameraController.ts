@@ -69,11 +69,13 @@ export class CameraController {
 
   /** Hero framing: attractive isometric diorama overlooking the lively central plaza & landmarks. */
   hero(instant = false) {
+    this.stopTour();
     this.set({ tx: 0, tz: 0, yaw: Math.PI / 4, pitch: 0.74, dist: 110 }, instant);
   }
 
   /** Frame the whole town comfortably without blowing up camera distance. */
   fit(instant = false) {
+    this.stopTour();
     const r = this.o.radius();
     const fov = (this.camera.fov * Math.PI) / 180;
     const targetDist = (r * 0.76) / Math.tan(fov / 2) / Math.min(1, this.camera.aspect * 0.88 + 0.12);
