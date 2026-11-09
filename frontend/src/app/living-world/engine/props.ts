@@ -35,6 +35,7 @@ export interface Town {
   /** Positions of the civic buildings, so choreography can send vans to the bank. */
   civic: Map<CivicKind, THREE.Vector3>;
   setTreeCount(n: number): void;
+  update?(dtMs: number): void;
   dispose(): void;
 }
 
@@ -496,6 +497,41 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   plaza.receiveShadow = true;
   group.add(plaza);
 
+  // Central plaza fountain: tiered stone basin, turquoise water surface and animated spray
+  const fountainBase = new THREE.Mesh(
+    own(new THREE.CylinderGeometry(4.2, 4.5, 0.42, 28)),
+    own(mat(0xf2f4f8)),
+  );
+  fountainBase.position.set(0, 0.28, 0);
+  fountainBase.castShadow = true;
+  fountainBase.receiveShadow = true;
+  group.add(fountainBase);
+
+  const fountainWater = new THREE.Mesh(
+    own(new THREE.CircleGeometry(4.0, 28)),
+    own(new THREE.MeshBasicMaterial({ color: 0x48c2e0, transparent: true, opacity: 0.88, toneMapped: false })),
+  );
+  fountainWater.rotation.x = -Math.PI / 2;
+  fountainWater.position.set(0, 0.5, 0);
+  group.add(fountainWater);
+
+  const fountainTier = new THREE.Mesh(
+    own(new THREE.CylinderGeometry(1.4, 1.6, 0.75, 18)),
+    own(mat(0xe5e9f0)),
+  );
+  fountainTier.position.set(0, 0.65, 0);
+  fountainTier.castShadow = true;
+  group.add(fountainTier);
+
+  const fountainSpray = new THREE.Mesh(
+    own(new THREE.ConeGeometry(0.55, 1.4, 12)),
+    own(new THREE.MeshBasicMaterial({ color: 0xc4f4ff, transparent: true, opacity: 0.72, toneMapped: false })),
+  );
+  fountainSpray.position.set(0, 1.45, 0);
+  group.add(fountainSpray);
+
+  let fountainTime = 0;
+
   const bellGeo = (() => {
     const b = new Builder();
     b.cyl(1.4, 1.6, 0.3, 0, 0, 0, 0xc4c9d1, 16);
@@ -577,6 +613,12 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     civic,
     setTreeCount(n) {
       trees.count = Math.min(n, spots.length);
+    },
+    update(dtMs: number) {
+      fountainTime += dtMs / 1000;
+      const sprayPulse = 1.0 + Math.sin(fountainTime * 5.2) * 0.18;
+      fountainSpray.scale.set(sprayPulse, 0.85 + Math.sin(fountainTime * 6.5) * 0.22, sprayPulse);
+      (fountainWater.material as THREE.MeshBasicMaterial).opacity = 0.82 + Math.sin(fountainTime * 3.4) * 0.09;
     },
     dispose() {
       disposables.forEach((d) => d.dispose());

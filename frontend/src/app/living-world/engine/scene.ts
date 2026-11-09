@@ -14,13 +14,13 @@ import { computeLayout, type Lot, type WorldLayout } from "../model/townLayout";
 import { routeToPlaza, sidewalkRoute, type Point } from "../model/routes";
 import { approach, footprintFor, tierFor } from "../model/scale";
 import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
-import { AgentSystem, type SiteSpot } from "./agents";
+import { AgentSystem, getCircadianPhase, type CircadianPhase, type SiteSpot } from "./agents";
 import { NOMINAL, accentFor, createSite, disposeSite, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
-import { buildTown, disposeLabel, makeBrandLabel, type Town } from "./props";
+import { buildTown, disposeLabel, makeBrandLabel, ribbon, type Town } from "./props";
 
 /**
  * The renderer. React owns controls and cards; everything that changes per frame lives
@@ -46,6 +46,25 @@ export interface WorldStats {
   agents: number;
   sites: number;
   distance: number;
+  clockHour: number;
+  circadianPhase: CircadianPhase;
+  clockLabel: string;
+}
+
+function formatClockLabel(hour: number): string {
+  const h = Math.floor(hour);
+  const m = Math.floor((hour - h) * 60);
+  const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  const phase = getCircadianPhase(hour);
+  const phaseName =
+    phase === "morning_rush"
+      ? "Hora punta"
+      : phase === "workday"
+        ? "Jornada laboral"
+        : phase === "evening_leisure"
+          ? "Tarde de ocio"
+          : "Noche";
+  return `${timeStr} · ${phaseName}`;
 }
 
 export interface WorldHandle {
@@ -115,9 +134,19 @@ export function createWorld(
   scene.fog = new THREE.FogExp2(SKY, 0.0011);
   const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
 
-  scene.add(new THREE.HemisphereLight(0xe4f2ff, 0xb7cfa6, 1.18));
+  const hemi = new THREE.HemisphereLight(0xe4f2ff, 0xb7cfa6, 1.18);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff3db, 2.15);
   scene.add(sun, sun.target);
+
+  const skyCol = new THREE.Color(SKY);
+  const targetSky = new THREE.Color(SKY);
+  const sunCol = new THREE.Color(0xfff3db);
+  const targetSun = new THREE.Color(0xfff3db);
+  const hemiSkyCol = new THREE.Color(0xe4f2ff);
+  const targetHemiSky = new THREE.Color(0xe4f2ff);
+  const hemiGrdCol = new THREE.Color(0xb7cfa6);
+  const targetHemiGrd = new THREE.Color(0xb7cfa6);
 
   let layout: WorldLayout = computeLayout([]);
   let town: Town | null = null;
@@ -151,6 +180,36 @@ export function createWorld(
   hoverRing.visible = false;
   hoverRing.renderOrder = 3;
   scene.add(hoverRing);
+
+  let routeMesh: THREE.Mesh | null = null;
+  const routeMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    toneMapped: false,
+    side: THREE.DoubleSide,
+  });
+
+  const clearRouteHighlight = () => {
+    if (routeMesh) {
+      scene.remove(routeMesh);
+      routeMesh.geometry.dispose();
+      routeMesh = null;
+    }
+  };
+
+  const updateRouteHighlight = (assetId: string | null) => {
+    clearRouteHighlight();
+    if (!assetId) return;
+    const e = sites.get(assetId);
+    if (!e || e.route.length < 2) return;
+    const accent = accentFor(e.asset.id, e.asset);
+    routeMat.color.setHex(accent);
+    const geo = ribbon(e.route, 1.45, 0.22, accent, layout.terrain.roadY);
+    routeMesh = new THREE.Mesh(geo, routeMat);
+    routeMesh.renderOrder = 4;
+    scene.add(routeMesh);
+  };
 
   const stage = {
     scene,
@@ -219,6 +278,7 @@ export function createWorld(
 
   // --- building the town ---------------------------------------------------------
   const clearSites = () => {
+    clearRouteHighlight();
     hovered = null;
     hoverRing.visible = false;
     for (const e of sites.values()) {
@@ -383,6 +443,7 @@ export function createWorld(
       selectRing.position.set(e.lot.x, e.groundY + 0.3, e.lot.z);
       selectRing.scale.setScalar(e.footprint * 0.78);
     }
+    updateRouteHighlight(id);
     syncHighlights();
   }
 
@@ -510,7 +571,76 @@ export function createWorld(
       }
       agents.update(simDt);
       infra?.update(simDt);
+      town?.update?.(simDt);
       choreo.update(simDt);
+    }
+
+    // Circadian lighting & atmosphere based on the city's 24-hour clock
+    const hour = agents.hour;
+    let targetSunIntensity = 2.15;
+    let targetHemiIntensity = 1.18;
+
+    if (hour >= 6.5 && hour < 9.5) {
+      // Morning rush: crisp dawn sky, warm rising sun
+      targetSky.setHex(0xb2dcf4);
+      targetSun.setHex(0xffe2b8);
+      targetSunIntensity = 2.0;
+      targetHemiSky.setHex(0xe8f4ff);
+      targetHemiGrd.setHex(0xb0cfa0);
+      targetHemiIntensity = 1.15;
+    } else if (hour >= 9.5 && hour < 17.5) {
+      // Daytime workday: clean clear diorama daylight
+      targetSky.setHex(0xc5e3f4);
+      targetSun.setHex(0xfff6e4);
+      targetSunIntensity = 2.2;
+      targetHemiSky.setHex(0xe4f2ff);
+      targetHemiGrd.setHex(0xb7cfa6);
+      targetHemiIntensity = 1.18;
+    } else if (hour >= 17.5 && hour < 20.5) {
+      // Evening leisure / golden hour: warm sunset apricot glow
+      targetSky.setHex(0xf3c59a);
+      targetSun.setHex(0xff9b50);
+      targetSunIntensity = 2.05;
+      targetHemiSky.setHex(0xffd8b0);
+      targetHemiGrd.setHex(0x889c8a);
+      targetHemiIntensity = 1.05;
+    } else {
+      // Night / twilight: deep sapphire diorama night with moonlight
+      targetSky.setHex(0x1a273b);
+      targetSun.setHex(0x84abd8);
+      targetSunIntensity = 0.82;
+      targetHemiSky.setHex(0x28384f);
+      targetHemiGrd.setHex(0x18202d);
+      targetHemiIntensity = 0.7;
+    }
+
+    const lerpRate = Math.min(1, (dt / 1000) * 2.5);
+    skyCol.lerp(targetSky, lerpRate);
+    sunCol.lerp(targetSun, lerpRate);
+    hemiSkyCol.lerp(targetHemiSky, lerpRate);
+    hemiGrdCol.lerp(targetHemiGrd, lerpRate);
+
+    scene.background = skyCol;
+    if (scene.fog && "color" in scene.fog) {
+      scene.fog.color.copy(skyCol);
+    }
+    sun.color.copy(sunCol);
+    sun.intensity = THREE.MathUtils.lerp(sun.intensity, targetSunIntensity, lerpRate);
+    hemi.color.copy(hemiSkyCol);
+    hemi.groundColor.copy(hemiGrdCol);
+    hemi.intensity = THREE.MathUtils.lerp(hemi.intensity, targetHemiIntensity, lerpRate);
+
+    const sunPhase = ((hour - 6) / 24) * Math.PI * 2;
+    const rSun = layout.radius + 30;
+    const sunElevation = Math.sin(sunPhase);
+    sun.position.set(
+      rSun * Math.cos(sunPhase) * 0.65,
+      Math.max(rSun * 0.28, rSun * Math.abs(sunElevation) * 1.15),
+      rSun * Math.sin(sunPhase) * 0.5,
+    );
+
+    if (routeMesh) {
+      routeMat.opacity = 0.62 + 0.32 * Math.sin(now * 0.0055);
     }
 
     for (const e of sites.values()) {
@@ -585,6 +715,7 @@ export function createWorld(
   }
 
   function stats(): WorldStats {
+    const hour = agents.hour;
     return {
       fps,
       drawCalls: renderer.info.render.calls,
@@ -592,6 +723,9 @@ export function createWorld(
       agents: agents.activeCount(),
       sites: sites.size,
       distance: ctrl.distance,
+      clockHour: hour,
+      circadianPhase: getCircadianPhase(hour),
+      clockLabel: formatClockLabel(hour),
     };
   }
 
@@ -676,6 +810,8 @@ export function createWorld(
       canvas.removeEventListener("webglcontextlost", onLost);
       ctrl.dispose();
       clearSites();
+      clearRouteHighlight();
+      routeMat.dispose();
       choreo.dispose();
       town?.dispose();
       infra?.dispose();
