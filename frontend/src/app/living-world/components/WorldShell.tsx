@@ -251,6 +251,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
               </>
             )}
             {!demo && live && <span className={s.badge}>Eventos simulados</span>}
+            <ClockBadge store={statsStore} />
           </div>
           <WorldSearch
             query={filters.query}
@@ -365,13 +366,23 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
   );
 }
 
+function ClockBadge({ store }: Readonly<{ store: StatsStore }>) {
+  const stats = useStats(store);
+  if (!stats?.clockLabel) return null;
+  return (
+    <span className={`${s.badge} ${s.badgeInfo}`} title="Hora simulada en la ciudad y rutina de ciudadanos">
+      🕒 {stats.clockLabel}
+    </span>
+  );
+}
+
 /** Subscribes on its own, so the 500 ms stats sample does not re-render the shell. */
 function FpsLabel({ store }: Readonly<{ store: StatsStore }>) {
   const stats = useStats(store);
   if (!stats) return null;
   return (
-    <span aria-label="Rendimiento">
-      {stats.fps} FPS · {stats.sites} edificios
+    <span aria-label="Rendimiento y reloj">
+      {stats.clockLabel ? `${stats.clockLabel} · ` : ""}{stats.fps} FPS · {stats.sites} edificios
     </span>
   );
 }
