@@ -36,7 +36,7 @@ export interface Stage {
 
 type MarkerKind =
   | "arrowUp" | "arrowDown" | "flagGood" | "flagBad" | "notice" | "coin" | "board" | "diamond"
-  | "crane" | "crates" | "cross" | "beaconImportant" | "beaconCritical";
+  | "crane" | "crates" | "cross" | "beaconImportant" | "beaconCritical" | "beaconBeam";
 
 const GOLD = 0xe6b422;
 
@@ -81,6 +81,10 @@ const GEOMETRY: Record<MarkerKind, () => THREE.BufferGeometry> = {
   }),
   beaconImportant: geo((b) => b.cyl(0.35, 0.35, 12, 0, 0, 0, 0xf2b23a, 8)),
   beaconCritical: geo((b) => b.cyl(0.5, 0.5, 18, 0, 0, 0, 0xe0504a, 8)),
+  beaconBeam: geo((b) => {
+    b.cyl(0.42, 0.42, 28, 0, 14, 0, 0x48c2e0, 10);
+    b.sphere(0.85, 0, 0.4, 0, 0xffffff);
+  }),
 };
 
 function flag(hex: number): THREE.BufferGeometry {
@@ -484,6 +488,16 @@ export class Choreographer {
       this.addBadge(badgeCfg, `${p.id}:${t}`, site.x, site.markerY + 0.8, site.z, Math.min(ms, 5500));
     }
 
+    // Volumetric beacon beam on rooftop for financial results & technical signals
+    if (t === "earnings_beat" || t === "technical_signal" || t === "options_alert") {
+      this.addMarker("beaconBeam", `beam:${p.id}:${t}`, site.x, site.markerY, site.z, Math.min(ms, 6000), { beacon: true });
+    }
+
+    // Construction crates beside the crane for expansions and portfolio buys
+    if (t === "site_expansion" || t === "position_added") {
+      this.addMarker("crates", `crates:${p.id}:${t}`, site.x + 0.85, site.markerY, site.z + 0.85, ms);
+    }
+
     // Festive confetti particle bursts for notable financial moments
     if (t === "price_move_up" || t === "earnings_beat" || t === "site_expansion" || t === "position_added") {
       this.confetti.burst(site.x, site.markerY + 0.5, site.z, 32);
@@ -507,17 +521,20 @@ export class Choreographer {
       }
     }
 
-    // Deliveries: staff exits and production picks up (beat), the dividend is carried to the bank.
+    // Deliveries: staff exits and production picks up (beat), dividend caravan travels to the bank.
     const full = [...site.route, this.stage.bank];
     if (t === "earnings_beat" || t === "site_expansion") {
       a.sendVan(full.slice(0, -1), 0xc79a63, clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16));
     }
     if (t === "dividend_paid") {
-      a.sendVan(full, GOLD, clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16), () => {
+      const speed = clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16);
+      a.sendVan(full, GOLD, speed, () => {
         this.addMarker("coin", `bank:${p.id}`, this.stage.bank.x, 3.2, this.stage.bank.z, 2600, { spin: true });
         this.confetti.burst(this.stage.bank.x, 3.2, this.stage.bank.z, 36, [0xf1c40f, 0xffd700, 0xffffff, 0xe6b422]);
         this.pulseBank(`bank:${p.id}`, 2600);
       });
+      // Escort van traveling in tandem for the dividend convoy
+      a.sendVan(full, 0xf59e0b, speed * 0.92);
     }
   }
 
@@ -563,7 +580,16 @@ export class Choreographer {
 
     for (const m of this.markers) {
       m.ttl -= dtMs;
-      if (m.glow) {
+      if (m.kind === "beaconBeam") {
+        const pulse = 1 + Math.sin(t * 4.6) * 0.18;
+        m.mesh.scale.set(pulse, 1, pulse);
+        m.mesh.rotation.y = t * 1.8;
+      } else if (m.kind === "crane") {
+        m.mesh.position.y = m.baseY + Math.sin(t * 1.5) * 0.04;
+        m.mesh.rotation.y = Math.sin(t * 1.4) * 0.72;
+        const fade = Math.min(1, Math.max(0, m.ttl / 400));
+        m.mesh.scale.setScalar(fade);
+      } else if (m.glow) {
         const s = 1 + Math.sin(t * 3) * 0.12;
         m.mesh.scale.set(s, 1, s);
       } else {

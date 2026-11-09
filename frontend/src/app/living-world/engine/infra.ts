@@ -18,6 +18,8 @@ import { ribbon } from "./props";
 
 export interface InfraSystem {
   group: THREE.Group;
+  readonly monoCars: THREE.InstancedMesh;
+  getMonorailPosition(trainIdx?: number): { x: number; y: number; z: number; heading: number };
   update(dtMs: number): void;
   setReducedMotion(v: boolean): void;
   dispose(): void;
@@ -285,8 +287,16 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   };
   poseAll();
 
+  const getMonorailPosition = (trainIdx = 0) => {
+    const head = monoHeads[trainIdx % monoHeads.length] ?? 0;
+    const p = pointAlong(mono.path, head);
+    return { x: p.x, y: monorailY(p.x, p.z) + 0.6, z: p.z, heading: p.heading };
+  };
+
   return {
     group,
+    monoCars,
+    getMonorailPosition,
     setReducedMotion(v) {
       reduced = v;
     },
