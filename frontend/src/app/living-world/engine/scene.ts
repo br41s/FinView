@@ -358,8 +358,8 @@ export function createWorld(
       const tier = tierFor(asset.weightPct);
       const site = createSite(asset, tier, asset.marketValueEur === null);
       const footprint = footprintFor(asset.weightPct);
-      // Portfolio holdings are the landmarks; give them extra visual mass.
-      const targetScale = (footprint / NOMINAL[tier]) * 1.12;
+      // Portfolio holdings are the landmarks; give them extra visual mass and vertical presence.
+      const targetScale = (footprint / NOMINAL[tier]) * 1.28;
       const previousScale = previousScales.get(asset.id);
       const shouldAnimate = !reduced && (previousScale === undefined || Math.abs(previousScale - targetScale) > 0.015);
       const startScale = reduced ? targetScale : previousScale ?? targetScale * 0.52;

@@ -73,17 +73,15 @@ function nearestPointOnPath(target: Pt, path: readonly Pt[]): { x: number; z: nu
 
 export function computeInfra(s: InfraSpec): Infra {
   const stops = [...s.districtStops].sort((a, b) => Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x));
-  const avgR = stops.length
-    ? stops.reduce((acc, p) => acc + Math.hypot(p.x, p.z), 0) / stops.length
-    : Math.max(MONORAIL_RADIUS, s.radius * 0.45);
-  // Elegant outer perimeter loop that smoothly encircles the town
-  const loopRadius = Math.max(MONORAIL_RADIUS + 10, avgR * 1.02);
+  // Place the SkyTrain along a clean outer perimeter belt around the entire city
+  // so it never cuts across the central plaza, river, or district street blocks.
+  const loopRadius = Math.max(MONORAIL_RADIUS + 20, s.radius - 42);
 
   const loop: Pt[] = [];
-  const STEPS = 64;
+  const STEPS = 72;
   for (let i = 0; i <= STEPS; i++) {
     const a = (i / STEPS) * Math.PI * 2;
-    loop.push({ x: Math.cos(a) * loopRadius * 1.02, z: Math.sin(a) * loopRadius * 0.98 });
+    loop.push({ x: Math.cos(a) * loopRadius, z: Math.sin(a) * loopRadius });
   }
   loop[loop.length - 1] = { ...loop[0] };
 
