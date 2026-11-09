@@ -224,11 +224,29 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
             </Link>
             <span className={s.title}>Mundo vivo</span>
             {demo ? (
-              <span className={s.badge}>Datos ficticios</span>
+              <>
+                <span className={s.badge}>Maqueta demo (22 empresas)</span>
+                <Link
+                  href="/living-world"
+                  className={`${s.badge} ${s.badgeAction}`}
+                  title="Cambiar a los activos reales de tu cartera"
+                >
+                  Ver tu cartera →
+                </Link>
+              </>
             ) : (
-              <span className={`${s.badge} ${s.badgeInfo}`}>
-                Tu cartera{meta?.pricesAsOf ? ` · precios del ${shortDate(meta.pricesAsOf)}` : ""}
-              </span>
+              <>
+                <span className={`${s.badge} ${s.badgeInfo}`}>
+                  Tu cartera{meta?.pricesAsOf ? ` · precios del ${shortDate(meta.pricesAsOf)}` : ""}
+                </span>
+                <Link
+                  href="/living-world?demo=1"
+                  className={`${s.badge} ${s.badgeAction}`}
+                  title="Ver maqueta viva completa con 22 empresas y campus"
+                >
+                  Ver demo (22 empresas) →
+                </Link>
+              </>
             )}
             {!demo && live && <span className={s.badge}>Eventos simulados</span>}
           </div>

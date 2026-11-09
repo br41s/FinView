@@ -53,6 +53,7 @@ export interface WorldHandle {
   select(id: string | null): void;
   focusAsset(id: string): void;
   followAsset(id: string): void;
+  hero(): void;
   fit(): void;
   back(): void;
   canGoBack(): boolean;
@@ -104,7 +105,7 @@ export function createWorld(
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== "low", powerPreference: "high-performance" });
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.06;
+  renderer.toneMappingExposure = 1.14;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);
   scene.fog = new THREE.FogExp2(SKY, 0.0011);
@@ -320,7 +321,7 @@ export function createWorld(
     frameSun();
     applyShadows();
     rebuildAgents();
-    ctrl.fit(true);
+    ctrl.hero(true);
     if (selected && !sites.has(selected)) select(null);
     else select(selected);
   };
@@ -342,10 +343,13 @@ export function createWorld(
 
   const labelShouldShow = (e: SiteEntry, dist: number) => {
     const tier = tierFor(e.asset.weightPct);
-    const visibleByDistance = dist > 70 && dist <= 105
-      ? tier === "campus" || tier === "major"
-      : dist > 42 && dist <= 70
-        ? tier !== "outpost"
+    const visibleByDistance =
+      dist <= 220
+        ? tier === "campus" || tier === "major"
+          ? true
+          : dist <= 140
+            ? tier !== "outpost"
+            : false
         : false;
     return (visibleByDistance || e.asset.id === selected || e.asset.id === hovered) && e.site.group.visible;
   };
@@ -441,7 +445,7 @@ export function createWorld(
       e.label.visible = labelShouldShow(e, dist);
       e.label.scale.set(e.label.userData.aspect * h, h, 1);
     }
-    const near = dist < 140;
+    const near = dist < 320;
     agents.bodies.visible = near;
     agents.heads.visible = near;
     agents.vans.visible = near;
@@ -603,6 +607,7 @@ export function createWorld(
       const i = agents.firstAgentOf(id);
       if (i >= 0) ctrl.follow(() => agents.position(i));
     },
+    hero: () => ctrl.hero(),
     fit: () => ctrl.fit(),
     back: () => void ctrl.back(),
     canGoBack: () => ctrl.canGoBack(),

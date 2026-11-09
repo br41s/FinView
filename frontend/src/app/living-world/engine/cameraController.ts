@@ -55,20 +55,26 @@ export class CameraController {
     private dom: HTMLElement,
     private o: CameraOptions,
   ) {
-    this.want = { tx: 0, tz: 0, yaw: Math.PI / 4, pitch: 0.82, dist: 120 };
+    this.want = { tx: 0, tz: 0, yaw: Math.PI / 4, pitch: 0.74, dist: 110 };
     this.cur = { ...this.want };
-    this.fit(true);
+    this.hero(true);
     this.bind();
   }
 
   // --- public commands --------------------------------------------------------
 
-  /** Frame the whole town. */
+  /** Hero framing: attractive isometric diorama overlooking the lively central plaza & landmarks. */
+  hero(instant = false) {
+    this.set({ tx: 0, tz: 0, yaw: Math.PI / 4, pitch: 0.74, dist: 110 }, instant);
+  }
+
+  /** Frame the whole town comfortably without blowing up camera distance. */
   fit(instant = false) {
     const r = this.o.radius();
     const fov = (this.camera.fov * Math.PI) / 180;
-    const dist = (r * 1.08) / Math.tan(fov / 2) / Math.min(1, this.camera.aspect * 0.9 + 0.1);
-    this.set({ tx: 0, tz: 0, yaw: this.want.yaw, pitch: 0.82, dist }, instant);
+    const targetDist = (r * 0.76) / Math.tan(fov / 2) / Math.min(1, this.camera.aspect * 0.88 + 0.12);
+    const dist = Math.min(240, Math.max(90, targetDist));
+    this.set({ tx: 0, tz: 0, yaw: this.want.yaw, pitch: 0.76, dist }, instant);
   }
 
   /** Fly to a ground point; remembers where we were so `back()` can return. */
@@ -167,7 +173,7 @@ export class CameraController {
     return 9;
   }
   private maxDist() {
-    return Math.max(60, this.o.radius() * 3.2);
+    return Math.max(60, Math.min(420, this.o.radius() * 2.2));
   }
   private clampDist(d: number) {
     return Math.min(this.maxDist(), Math.max(this.minDist(), d));

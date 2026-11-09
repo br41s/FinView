@@ -120,6 +120,20 @@
   color: var(--lw-ink);
 }
 
+.badgeAction {
+  background: var(--lw-ink);
+  color: #fff !important;
+  text-decoration: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: background 150ms ease, transform 150ms ease;
+}
+.badgeAction:hover {
+  background: var(--lw-accent);
+  color: var(--lw-accent-ink) !important;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

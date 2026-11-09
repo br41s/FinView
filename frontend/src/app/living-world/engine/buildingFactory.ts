@@ -146,6 +146,15 @@ function solarArray(b: Builder, x: number, z: number, cols: number, rows: number
   }
 }
 
+function helipad(b: Builder, x: number, y: number, z: number, size = 1.0) {
+  b.box(size, 0.06, size, x, y, z, 0x242830);
+  b.cyl(size * 0.42, size * 0.42, 0.07, x, y + 0.01, z, 0xf0c030, 16);
+  b.cyl(size * 0.35, size * 0.35, 0.08, x, y + 0.02, z, 0x242830, 16);
+  b.box(0.06, 0.09, size * 0.4, x - size * 0.13, y + 0.03, z, WHITE);
+  b.box(0.06, 0.09, size * 0.4, x + size * 0.13, y + 0.03, z, WHITE);
+  b.box(size * 0.26, 0.09, 0.06, x, y + 0.03, z, WHITE);
+}
+
 const RECIPES: Record<Archetype, (c: Ctx) => void> = {
   retail({ b, k, n, accent }) {
     // Vibrant flagship store: glazed double-height shopfront, striped awnings, rooftop beacon.
@@ -494,7 +503,7 @@ function iberdrolaCampus({ b, n, accent }: Ctx) {
   for (const [x, z, h] of [[n * 0.34, n * 0.28, 4.0], [-n * 0.38, -n * 0.34, 3.3]] as const) {
     b.cyl(0.075, 0.17, h, x, 0.16, z, WHITE, 8);
     b.sphere(0.16, x, h + 0.04, z, blue);
-    for (let i = 0; i < 3; i++) b.tilted(0.11, 1.6, 0.045, x, h + 0.8, z + 0.17, green, (i * Math.PI * 2) / 3 + 0.4);
+    for (let i = 3; i < 6; i++) b.tilted(0.11, 1.6, 0.045, x, h + 0.8, z + 0.17, green, (i * Math.PI * 2) / 3 + 0.4);
   }
   solarArray(b, -n * 0.28, n * 0.2, 4, 2, 0.42, 1.12, blue);
   b.cyl(0.48, 0.48, 1.36, n * 0.38, 0.16, -n * 0.04, WHITE, 16);
@@ -547,6 +556,60 @@ function santanderFinancialCampus({ b, n, accent }: Ctx) {
   b.box(n * 0.84, 0.12, n * 0.24, 0, 0.16, n * 0.42, accent);
 }
 
+function inditexFashionHQ({ b, n, accent }: Ctx) {
+  // Inditex: Ultra-sleek minimalist architectural glass pavilion, catwalk gallery, illuminated fashion cube, logistics dispatch bay.
+  const navy = accent;
+  const darkGlass = 0x223547;
+  b.box(n * 0.72, 2.1, n * 0.48, -n * 0.08, 0.16, -n * 0.1, WHITE);
+  b.box(n * 0.76, 0.16, n * 0.52, -n * 0.08, 2.26, -n * 0.1, navy);
+  facadeWindows(b, 5, 2, n * 0.64, 0.28, 0.54, -n * 0.08, 0.38, n * 0.145, GLASS_BRIGHT);
+  b.box(n * 0.6, 0.14, n * 0.38, -n * 0.08, 2.42, -n * 0.1, darkGlass);
+  b.box(n * 0.52, 0.45, 0.08, -n * 0.08, 2.56, n * 0.09, navy);
+  b.box(n * 0.38, 1.15, n * 0.32, n * 0.31, 0.16, -n * 0.26, 0xf0ece1);
+  b.box(n * 0.4, 0.12, n * 0.34, n * 0.31, 1.31, -n * 0.26, navy);
+  for (let i = 0; i < 3; i++) {
+    b.box(0.18, 0.46, 0.06, n * 0.31 - 0.16 + i * 0.16, 0.26, -n * 0.09, DARK);
+  }
+  b.box(n * 0.22, 0.42, n * 0.22, n * 0.12, 0.82, -n * 0.22, GLASS_BRIGHT);
+}
+
+function telefonicaTechCampus({ b, n, accent }: Ctx) {
+  // Telefónica: High-tech communications complex ("Distrito Telefónica"), glass tower cluster, satellite dish array, antenna spire.
+  const blue = accent;
+  b.box(n * 0.48, 3.4, n * 0.44, -n * 0.14, 0.16, -n * 0.12, 0x1a4674);
+  b.box(n * 0.52, 0.18, n * 0.48, -n * 0.14, 3.56, -n * 0.12, blue);
+  facadeWindows(b, 4, 6, n * 0.42, 0.18, 0.28, -n * 0.14, 0.38, n * 0.105, GLASS_BRIGHT);
+  b.cyl(0.06, 0.08, 1.8, -n * 0.14, 3.74, -n * 0.12, WHITE, 6);
+  b.sphere(0.16, -n * 0.14, 5.54, -n * 0.12, 0x00f0ff);
+  b.box(n * 0.42, 1.25, n * 0.34, n * 0.28, 0.16, -n * 0.24, 0xedf3f8);
+  b.box(n * 0.44, 0.12, n * 0.36, n * 0.28, 1.41, -n * 0.24, blue);
+  for (const [x, z] of [[n * 0.22, -n * 0.24], [n * 0.34, -n * 0.24]] as const) {
+    b.cyl(0.04, 0.04, 0.35, x, 1.53, z, DARK, 6);
+    b.sphere(0.18, x, 1.88, z, WHITE);
+  }
+  b.box(n * 0.36, 0.88, n * 0.32, -n * 0.28, 0.16, n * 0.28, WHITE);
+  b.box(n * 0.38, 0.12, n * 0.34, -n * 0.28, 1.04, n * 0.28, blue);
+  solarArray(b, -n * 0.28, n * 0.28, 3, 2, 0.22, 1.16, blue);
+}
+
+function repsolEnergyHub({ b, n, accent }: Ctx) {
+  // Repsol: Signature orange-red energy transition campus, multi-tiered circular innovation lab, hydrogen spheres and canopy.
+  const orange = accent;
+  const red = 0xd9261c;
+  b.box(n * 0.68, 1.54, n * 0.46, -n * 0.08, 0.16, -n * 0.12, WHITE);
+  b.box(n * 0.74, 0.16, n * 0.52, -n * 0.08, 1.7, -n * 0.12, orange);
+  b.box(n * 0.76, 0.08, n * 0.54, -n * 0.08, 1.86, -n * 0.12, red);
+  facadeWindows(b, 5, 2, n * 0.6, 0.22, 0.38, -n * 0.08, 0.38, n * 0.115, GLASS_BRIGHT);
+  b.cyl(n * 0.26, n * 0.28, 1.25, n * 0.32, 0.16, -n * 0.24, 0xf6efe5, 18);
+  b.cyl(n * 0.28, n * 0.28, 0.12, n * 0.32, 1.41, -n * 0.24, orange, 18);
+  b.sphere(n * 0.16, n * 0.32, 1.47, -n * 0.24, GLASS_BRIGHT);
+  for (const [x, z] of [[n * 0.28, n * 0.26], [n * 0.12, n * 0.34]] as const) {
+    b.cyl(0.08, 0.12, 0.32, x, 0.16, z, DARK, 8);
+    b.sphere(0.28, x, 0.48, z, WHITE);
+    b.cyl(0.29, 0.29, 0.06, x, 0.76, z, orange, 16);
+  }
+}
+
 export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Site {
   const nominal = NOMINAL[tier];
   const profile = companyProfile(asset);
@@ -558,7 +621,16 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   if (profile?.identity === "iberdrola") iberdrolaCampus(ctx);
   else if (profile?.identity === "bbva") bbvaFinancialCampus(ctx);
   else if (profile?.identity === "santander") santanderFinancialCampus(ctx);
+  else if (profile?.identity === "inditex") inditexFashionHQ(ctx);
+  else if (profile?.identity === "telefonica") telefonicaTechCampus(ctx);
+  else if (profile?.identity === "repsol") repsolEnergyHub(ctx);
   else RECIPES[asset.archetype](ctx);
+
+  if (tier === "major" || tier === "campus") {
+    if (asset.archetype === "banking" || asset.archetype === "tech" || profile?.identity === "bbva" || profile?.identity === "santander") {
+      helipad(b, 0, b.top, 0, Math.min(1.4, nominal * 0.24));
+    }
+  }
 
   // Roadside corporate totem anchoring the plot at street level.
   const sx = nominal * 0.5;
