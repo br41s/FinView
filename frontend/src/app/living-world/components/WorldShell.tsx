@@ -80,6 +80,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
   const [canBack, setCanBack] = useState(false);
   const [tour, setTour] = useState(false);
   const [followTarget, setFollowTarget] = useState<string | null>(null);
+  const [soundMuted, setSoundMuted] = useState(true);
   const [webgl] = useState(supportsWebGL);
   const host = useRef<HTMLDivElement | null>(null);
   const counter = useRef(0);
@@ -179,6 +180,22 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
     .filter((e): e is WorldEvent => !!e)
     .slice(-MAX_PINNED - 1);
 
+  const toggleSound = () => {
+    if (world.current) {
+      const next = world.current.toggleSound();
+      setSoundMuted(next);
+    }
+  };
+
+  const boardTrain = () => {
+    if (followTarget === "SkyTrain Monorraíl") {
+      world.current?.stopFollow();
+      setFollowTarget(null);
+    } else {
+      world.current?.followMonorail();
+    }
+  };
+
   const chooseAsset = (a: WorldAsset) => {
     world.current?.select(a.id);
     world.current?.focusAsset(a.id);
@@ -273,6 +290,8 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
             live={live}
             panel={panel}
             tour={tour}
+            soundMuted={soundMuted}
+            followingTrain={followTarget === "SkyTrain Monorraíl"}
             onToggleTour={() => world.current?.toggleTour()}
             onFit={() => world.current?.fit()}
             onBack={() => world.current?.back()}
@@ -285,6 +304,8 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
             onLive={setSimulating}
             onBurst={() => burst(25)}
             onPanel={setPanel}
+            onToggleSound={toggleSound}
+            onBoardTrain={boardTrain}
           />
         </div>
 

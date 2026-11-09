@@ -21,6 +21,7 @@ import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
 import { buildTown, disposeLabel, makeBrandLabel, ribbon, type Town } from "./props";
+import { createSoundEngine, type SoundEngine } from "./audio";
 
 /**
  * The renderer. React owns controls and cards; everything that changes per frame lives
@@ -50,6 +51,7 @@ export interface WorldStats {
   clockHour: number;
   circadianPhase: CircadianPhase;
   clockLabel: string;
+  soundMuted: boolean;
 }
 
 function formatClockLabel(hour: number): string {
@@ -75,6 +77,9 @@ export interface WorldHandle {
   focusAsset(id: string): void;
   followAsset(id: string): void;
   stopFollow(): void;
+  followMonorail(): void;
+  toggleSound(): boolean;
+  isSoundMuted(): boolean;
   hero(): void;
   fit(): void;
   toggleTour(): boolean;
@@ -223,6 +228,7 @@ export function createWorld(
     },
   };
   let choreo = new Choreographer(stage);
+  const sound = createSoundEngine();
 
   const ctrl = new CameraController(camera, canvas, {
     radius: () => layout.radius,
@@ -463,6 +469,15 @@ export function createWorld(
       return;
     }
     setRay(cx, cy);
+    if (infra) {
+      const hitTrain = ray.intersectObject(infra.monoCars, false)[0];
+      if (hitTrain) {
+        cb.onFollowTarget?.("SkyTrain Monorraíl");
+        sound.playWhoosh();
+        ctrl.follow(() => infra!.getMonorailPosition(0));
+        return;
+      }
+    }
     if (town && town.districtLabels.length > 0) {
       const visibleLabels = town.districtLabels.filter((l) => l.visible);
       const hitLabel = ray.intersectObjects(visibleLabels, false)[0];
@@ -470,6 +485,7 @@ export function createWorld(
         const distId = hitLabel.object.userData.district as string;
         const d = layout.districts.find((x) => x.id === distId);
         if (d) {
+          sound.playWhoosh();
           ctrl.focus(d.cx, d.cz, Math.max(d.halfW, d.halfH) * 2.6 + 22);
           return;
         }
@@ -490,6 +506,7 @@ export function createWorld(
         desc = "gestor";
       }
       cb.onFollowTarget?.(desc);
+      sound.playWhoosh();
       ctrl.follow(() => agents.position(idx));
       return;
     }
@@ -528,6 +545,7 @@ export function createWorld(
   let fps = 0;
   let lastLod = -1;
   let canBack = false;
+  let lastChimeHour = -1;
   const focusedPerf = new Set<string>();
 
   const lod = (dist: number) => {
@@ -590,6 +608,11 @@ export function createWorld(
       for (const p of r.started) {
         choreo.start(p);
         cb.onPerformance("start", p);
+        const hasCelebration = p.events.some(
+          (e) => e.eventType === "dividend_paid" || e.eventType === "price_move_up" || e.eventType === "earnings_beat"
+        );
+        if (hasCelebration) sound.playCelebration();
+        else sound.playAlert();
         if (p.requestFocus && p.assetId) {
           focusedPerf.add(p.id);
           focusAsset(p.assetId);
@@ -615,6 +638,14 @@ export function createWorld(
 
     // Circadian lighting & atmosphere based on the city's 24-hour clock
     const hour = agents.hour;
+    const currentHourInt = Math.floor(hour);
+    if (lastChimeHour >= 0 && currentHourInt !== lastChimeHour) {
+      sound.playChime();
+    }
+    lastChimeHour = currentHourInt;
+
+    sound.updateWater(ctrl.distance);
+
     let targetSunIntensity = 2.15;
     let targetHemiIntensity = 1.18;
 
@@ -749,7 +780,10 @@ export function createWorld(
   // --- public handle -----------------------------------------------------------------
   function focusAsset(id: string) {
     const e = sites.get(id);
-    if (e) ctrl.focus(e.lot.x, e.lot.z, e.footprint * 2.4 + 16);
+    if (e) {
+      sound.playWhoosh();
+      ctrl.focus(e.lot.x, e.lot.z, e.footprint * 2.4 + 16);
+    }
   }
 
   function stats(): WorldStats {
@@ -764,6 +798,7 @@ export function createWorld(
       clockHour: hour,
       circadianPhase: getCircadianPhase(hour),
       clockLabel: formatClockLabel(hour),
+      soundMuted: sound.isMuted(),
     };
   }
 
@@ -793,6 +828,15 @@ export function createWorld(
       ctrl.stopFollow();
       cb.onFollowTarget?.(null);
     },
+    followMonorail: () => {
+      if (infra) {
+        cb.onFollowTarget?.("SkyTrain Monorraíl");
+        sound.playWhoosh();
+        ctrl.follow(() => infra!.getMonorailPosition(0));
+      }
+    },
+    toggleSound: () => sound.toggleMute(),
+    isSoundMuted: () => sound.isMuted(),
     hero: () => ctrl.hero(),
     fit: () => ctrl.fit(),
     toggleTour: () => ctrl.toggleTour(),
@@ -856,6 +900,7 @@ export function createWorld(
       canvas.removeEventListener("pointerleave", onLeave);
       canvas.removeEventListener("webglcontextlost", onLost);
       ctrl.dispose();
+      sound.dispose();
       clearSites();
       clearRouteHighlight();
       routeMat.dispose();

@@ -12,7 +12,10 @@ import {
   RotateCcw,
   RotateCw,
   Sparkles,
+  Train,
   Undo2,
+  Volume2,
+  VolumeX,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -48,6 +51,10 @@ interface Props {
   /** null in demo: there is nothing to refresh. */
   onRefresh: (() => void) | null;
   refreshing: boolean;
+  soundMuted?: boolean;
+  followingTrain?: boolean;
+  onToggleSound?: () => void;
+  onBoardTrain?: () => void;
 }
 
 function IconBtn({
@@ -96,6 +103,15 @@ export function WorldToolbar(p: Readonly<Props>) {
       >
         <Compass size={16} /> Tour
       </IconBtn>
+      {p.onBoardTrain && (
+        <IconBtn
+          label={p.followingTrain ? "Bajarse del SkyTrain (Esc)" : "Subirse al SkyTrain monorraíl"}
+          on={p.followingTrain}
+          onClick={p.onBoardTrain}
+        >
+          <Train size={16} /> SkyTrain
+        </IconBtn>
+      )}
       <IconBtn label="Volver a la vista anterior" onClick={p.onBack} disabled={!p.canBack}>
         <Undo2 size={16} />
       </IconBtn>
@@ -111,6 +127,15 @@ export function WorldToolbar(p: Readonly<Props>) {
       <IconBtn label="Alejar (-)" onClick={() => p.onZoom(1.33)}>
         <ZoomOut size={16} />
       </IconBtn>
+      {p.onToggleSound && (
+        <IconBtn
+          label={p.soundMuted ? "Activar sonido ambiental" : "Silenciar sonido ambiental"}
+          on={!p.soundMuted}
+          onClick={p.onToggleSound}
+        >
+          {p.soundMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+        </IconBtn>
+      )}
       <span className={s.sep} />
       <IconBtn label={p.paused ? "Reanudar" : "Pausar"} on={p.paused} onClick={() => p.onPaused(!p.paused)}>
         {p.paused ? <Play size={16} /> : <Pause size={16} />}
