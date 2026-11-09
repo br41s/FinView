@@ -37,6 +37,7 @@ export interface WorldCallbacks {
   /** Whether "back" has somewhere to go; pushed when it changes so the UI never polls the engine. */
   onCanBack(can: boolean): void;
   onTourChange?(touring: boolean): void;
+  onFollowTarget?(target: string | null): void;
 }
 
 export interface WorldStats {
@@ -73,6 +74,7 @@ export interface WorldHandle {
   select(id: string | null): void;
   focusAsset(id: string): void;
   followAsset(id: string): void;
+  stopFollow(): void;
   hero(): void;
   fit(): void;
   toggleTour(): boolean;
@@ -154,7 +156,7 @@ export function createWorld(
   let agents = new AgentSystem(QUALITY[quality].maxAgents);
   agents.setReducedMotion(reduced);
   agents.setGround(layout.terrain.roadY);
-  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
+  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
   let director: DirectorState = createDirector();
@@ -230,6 +232,9 @@ export function createWorld(
     onUserMove: () => undefined,
     onFocusKey: () => cb.onFocusKey(),
     onTourChange: (active) => cb.onTourChange?.(active),
+    onFollowChange: (following) => {
+      if (!following) cb.onFollowTarget?.(null);
+    },
   });
 
   // --- sizing ------------------------------------------------------------------
@@ -291,12 +296,12 @@ export function createWorld(
   };
 
   const rebuildAgents = () => {
-    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
+    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
     agents.dispose();
     agents = new AgentSystem(QUALITY[quality].maxAgents);
     agents.setReducedMotion(reduced);
     agents.setGround(layout.terrain.roadY);
-    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards);
+    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
@@ -421,10 +426,13 @@ export function createWorld(
 
   const syncHighlights = () => {
     const dist = ctrl.distance;
+    const hour = agents.hour;
+    const isNight = hour >= 20.0 || hour < 7.0;
     for (const s of sites.values()) {
       const active = s.asset.id === selected;
       const over = s.asset.id === hovered;
-      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : 0x000000);
+      const nightGlow = isNight ? 0x141822 : 0x000000;
+      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : nightGlow);
       s.label.visible = labelShouldShow(s, dist);
     }
     const e = hovered && hovered !== selected ? sites.get(hovered) : null;
@@ -455,9 +463,33 @@ export function createWorld(
       return;
     }
     setRay(cx, cy);
+    if (town && town.districtLabels.length > 0) {
+      const visibleLabels = town.districtLabels.filter((l) => l.visible);
+      const hitLabel = ray.intersectObjects(visibleLabels, false)[0];
+      if (hitLabel && hitLabel.object.userData.district) {
+        const distId = hitLabel.object.userData.district as string;
+        const d = layout.districts.find((x) => x.id === distId);
+        if (d) {
+          ctrl.focus(d.cx, d.cz, Math.max(d.halfW, d.halfH) * 2.6 + 22);
+          return;
+        }
+      }
+    }
     const hit = agents.bodies.visible ? ray.intersectObject(agents.bodies, false)[0] : undefined;
     if (hit && hit.instanceId !== undefined) {
       const idx = hit.instanceId;
+      const assetId = agents.assetOf(idx);
+      const role = agents.roleOf(idx);
+      let desc = "ciudadano";
+      if (assetId) {
+        const ent = sites.get(assetId);
+        desc = ent?.asset.name ? `empleado de ${ent.asset.name}` : `empleado de ${assetId}`;
+      } else if (role === "courier") {
+        desc = "repartidor";
+      } else if (role === "manager") {
+        desc = "gestor";
+      }
+      cb.onFollowTarget?.(desc);
       ctrl.follow(() => agents.position(idx));
       return;
     }
@@ -515,6 +547,12 @@ export function createWorld(
     agents.bodies.visible = near;
     agents.heads.visible = near;
     agents.vans.visible = near;
+    agents.helmets.visible = near;
+    agents.backpacks.visible = near;
+    agents.briefcases.visible = near;
+    agents.ties.visible = near;
+    agents.clipboards.visible = near;
+    agents.shoppingBags.visible = near;
   };
 
   const frame = (now: number) => {
@@ -744,7 +782,16 @@ export function createWorld(
     focusAsset,
     followAsset(id) {
       const i = agents.firstAgentOf(id);
-      if (i >= 0) ctrl.follow(() => agents.position(i));
+      if (i >= 0) {
+        const e = sites.get(id);
+        const name = e?.asset.name ? `empleado de ${e.asset.name}` : `empleado de ${id}`;
+        cb.onFollowTarget?.(name);
+        ctrl.follow(() => agents.position(i));
+      }
+    },
+    stopFollow: () => {
+      ctrl.stopFollow();
+      cb.onFollowTarget?.(null);
     },
     hero: () => ctrl.hero(),
     fit: () => ctrl.fit(),
