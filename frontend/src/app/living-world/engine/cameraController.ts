@@ -29,6 +29,8 @@ export interface CameraOptions {
   /** The user took the camera: cancels follow mode, never auto-focus. */
   onUserMove: () => void;
   onFocusKey: () => void;
+  /** Notified when cinematic tour mode starts or stops. */
+  onTourChange?: (touring: boolean) => void;
 }
 
 export class CameraController {
@@ -42,6 +44,8 @@ export class CameraController {
   private pinch: { d: number; a: number } | null = null;
   private keys = new Set<string>();
   private follower: (() => { x: number; z: number } | null) | null = null;
+  private tourActive = false;
+  private tourTime = 0;
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private hit = new THREE.Vector3();
@@ -65,11 +69,13 @@ export class CameraController {
 
   /** Hero framing: attractive isometric diorama overlooking the lively central plaza & landmarks. */
   hero(instant = false) {
+    this.stopTour();
     this.set({ tx: 0, tz: 0, yaw: Math.PI / 4, pitch: 0.74, dist: 110 }, instant);
   }
 
   /** Frame the whole town comfortably without blowing up camera distance. */
   fit(instant = false) {
+    this.stopTour();
     const r = this.o.radius();
     const fov = (this.camera.fov * Math.PI) / 180;
     const targetDist = (r * 0.76) / Math.tan(fov / 2) / Math.min(1, this.camera.aspect * 0.88 + 0.12);
@@ -79,12 +85,14 @@ export class CameraController {
 
   /** Fly to a ground point; remembers where we were so `back()` can return. */
   focus(x: number, z: number, dist = 26) {
+    this.stopTour();
     this.history.push({ ...this.want });
     if (this.history.length > 20) this.history.shift();
     this.set({ ...this.want, tx: x, tz: z, dist: Math.max(this.minDist(), dist) });
   }
 
   back() {
+    this.stopTour();
     const v = this.history.pop();
     if (v) this.set(v);
     return v !== undefined;
@@ -95,6 +103,7 @@ export class CameraController {
   }
 
   follow(getter: (() => { x: number; z: number } | null) | null) {
+    this.stopTour();
     this.follower = getter;
     if (getter) this.want.dist = Math.min(this.want.dist, 24);
   }
@@ -103,11 +112,41 @@ export class CameraController {
     return this.follower !== null;
   }
 
+  // --- cinematic tour mode ----------------------------------------------------
+
+  isTouring() {
+    return this.tourActive;
+  }
+
+  toggleTour(): boolean {
+    return this.setTour(!this.tourActive);
+  }
+
+  setTour(active: boolean): boolean {
+    if (this.tourActive === active) return this.tourActive;
+    this.tourActive = active;
+    if (active) {
+      this.tourTime = 0;
+      this.follower = null;
+    }
+    this.o.onTourChange?.(this.tourActive);
+    return this.tourActive;
+  }
+
+  stopTour() {
+    if (this.tourActive) {
+      this.tourActive = false;
+      this.o.onTourChange?.(false);
+    }
+  }
+
   rotate(dYaw: number) {
+    this.stopTour();
     this.want.yaw += dYaw;
   }
 
   zoomBy(factor: number) {
+    this.stopTour();
     this.want.dist = this.clampDist(this.want.dist * factor);
   }
 
@@ -132,6 +171,19 @@ export class CameraController {
   update(dtMs: number) {
     const dt = dtMs / 1000;
     this.applyKeys(dt);
+
+    if (this.tourActive) {
+      this.tourTime += dt;
+      // Gentle continuous diorama orbit
+      this.want.yaw += dt * 0.085;
+      // Soft breathing elevation & distance between 95 and 130
+      this.want.dist = 112 + Math.sin(this.tourTime * 0.22) * 16;
+      this.want.pitch = 0.73 + Math.sin(this.tourTime * 0.17) * 0.06;
+      // Slow gentle target drift around the central boulevard
+      this.want.tx = Math.sin(this.tourTime * 0.1) * 10;
+      this.want.tz = Math.cos(this.tourTime * 0.1) * 10;
+    }
+
     if (this.follower) {
       const p = this.follower();
       if (p) {
@@ -250,6 +302,7 @@ export class CameraController {
   }
 
   private userMoved() {
+    this.stopTour();
     if (this.follower) this.follower = null;
     this.o.onUserMove();
   }
@@ -334,6 +387,7 @@ export class CameraController {
     on("keydown", (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
+      if (k === "c") return void this.toggleTour();
       if (k === "home") return void (this.userMoved(), this.fit());
       if (k === "f") return void this.o.onFocusKey();
       if (["w", "a", "s", "d", "q", "e", "+", "=", "-", "_", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {

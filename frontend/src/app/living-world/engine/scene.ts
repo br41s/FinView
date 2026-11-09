@@ -36,6 +36,7 @@ export interface WorldCallbacks {
   onStats(s: WorldStats): void;
   /** Whether "back" has somewhere to go; pushed when it changes so the UI never polls the engine. */
   onCanBack(can: boolean): void;
+  onTourChange?(touring: boolean): void;
 }
 
 export interface WorldStats {
@@ -55,6 +56,9 @@ export interface WorldHandle {
   followAsset(id: string): void;
   hero(): void;
   fit(): void;
+  toggleTour(): boolean;
+  setTour(active: boolean): void;
+  isTouring(): boolean;
   back(): void;
   canGoBack(): boolean;
   rotate(dir: -1 | 1): void;
@@ -166,6 +170,7 @@ export function createWorld(
     onClick: (x, y) => pick(x, y),
     onUserMove: () => undefined,
     onFocusKey: () => cb.onFocusKey(),
+    onTourChange: (active) => cb.onTourChange?.(active),
   });
 
   // --- sizing ------------------------------------------------------------------
@@ -609,6 +614,9 @@ export function createWorld(
     },
     hero: () => ctrl.hero(),
     fit: () => ctrl.fit(),
+    toggleTour: () => ctrl.toggleTour(),
+    setTour: (a) => ctrl.setTour(a),
+    isTouring: () => ctrl.isTouring(),
     back: () => void ctrl.back(),
     canGoBack: () => ctrl.canGoBack(),
     rotate: (dir) => ctrl.rotate(dir * (Math.PI / 8)),

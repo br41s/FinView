@@ -109,6 +109,16 @@ interface SitePulse {
   phase: number;
 }
 
+interface FloatingBadge {
+  sprite: THREE.Sprite;
+  key: string;
+  baseX: number;
+  startY: number;
+  baseZ: number;
+  ttl: number;
+  duration: number;
+}
+
 const geoCache = new Map<MarkerKind, THREE.BufferGeometry>();
 
 function geometry(kind: MarkerKind): THREE.BufferGeometry {
@@ -162,14 +172,213 @@ const MARKERS: Partial<Record<EventType, MarkerKind>> = {
   position_closed: "cross",
 };
 
+const BADGE_CONFIG: Partial<Record<EventType, { text: string; bg: string; fg: string; border: string }>> = {
+  price_move_up: { text: "▲ SUBIDA", bg: "#10b981", fg: "#ffffff", border: "#34d399" },
+  price_move_down: { text: "▼ BAJADA", bg: "#ef4444", fg: "#ffffff", border: "#f87171" },
+  earnings_beat: { text: "★ RESULTADOS +", bg: "#059669", fg: "#ffffff", border: "#34d399" },
+  earnings_miss: { text: "▼ RESULTADOS -", bg: "#d97706", fg: "#ffffff", border: "#fbbf24" },
+  dividend_declared: { text: "DIVIDENDO ANUNCIADO", bg: "#eab308", fg: "#3f2e00", border: "#fef08a" },
+  dividend_paid: { text: "💰 DIVIDENDO ABONADO", bg: "#ca8a04", fg: "#ffffff", border: "#fef08a" },
+  site_expansion: { text: "EXPANSIÓN", bg: "#0284c7", fg: "#ffffff", border: "#38bdf8" },
+  technical_signal: { text: "SEÑAL TÉCNICA", bg: "#2563eb", fg: "#ffffff", border: "#60a5fa" },
+  options_alert: { text: "OPCIONES", bg: "#7c3aed", fg: "#ffffff", border: "#a78bfa" },
+  position_added: { text: "+ COMPRA EN CARTERA", bg: "#10b981", fg: "#ffffff", border: "#34d399" },
+  position_reduced: { text: "- VENTA EN CARTERA", bg: "#ea580c", fg: "#ffffff", border: "#fb923c" },
+  position_closed: { text: "POSICIÓN CERRADA", bg: "#475569", fg: "#ffffff", border: "#94a3b8" },
+};
+
+function makeBadgeSprite(cfg: { text: string; bg: string; fg: string; border: string }): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 380;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d")!;
+
+  ctx.fillStyle = cfg.border;
+  ctx.beginPath();
+  ctx.roundRect(4, 4, 372, 88, 26);
+  ctx.fill();
+
+  ctx.fillStyle = cfg.bg;
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 364, 80, 22);
+  ctx.fill();
+
+  ctx.fillStyle = cfg.fg;
+  ctx.font = "800 36px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(cfg.text, 190, 48, 340);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.userData.aspect = 380 / 96;
+  sprite.scale.set(sprite.userData.aspect * 1.1, 1.1, 1);
+  sprite.renderOrder = 14;
+  return sprite;
+}
+
+const MAX_CONFETTI = 180;
+interface ConfettiParticle {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+  rotSpeed: number;
+  life: number;
+  maxLife: number;
+  scale: number;
+}
+
+class ConfettiSystem {
+  private mesh: THREE.InstancedMesh;
+  private particles: ConfettiParticle[] = [];
+  private dummy = new THREE.Object3D();
+  private color = new THREE.Color();
+
+  constructor(scene: THREE.Object3D) {
+    const geo = new THREE.BoxGeometry(0.16, 0.09, 0.02);
+    const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false });
+    this.mesh = new THREE.InstancedMesh(geo, mat, MAX_CONFETTI);
+    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_CONFETTI * 3), 3);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.renderOrder = 8;
+    this.mesh.visible = true;
+
+    for (let i = 0; i < MAX_CONFETTI; i++) {
+      this.particles.push({
+        active: false,
+        x: 0,
+        y: -100,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        rx: 0,
+        ry: 0,
+        rz: 0,
+        rotSpeed: 0,
+        life: 0,
+        maxLife: 1,
+        scale: 0.8,
+      });
+      this.dummy.position.set(0, -100, 0);
+      this.dummy.scale.set(0, 0, 0);
+      this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(i, this.dummy.matrix);
+      this.color.setHex(0xffffff);
+      this.mesh.setColorAt(i, this.color);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    scene.add(this.mesh);
+  }
+
+  burst(
+    x: number,
+    y: number,
+    z: number,
+    count = 28,
+    colors: readonly number[] = [0xf1c40f, 0x2ecc71, 0x00d2d3, 0xff7675, 0x9b59b6, 0xffffff],
+  ) {
+    let spawned = 0;
+    for (let i = 0; i < MAX_CONFETTI && spawned < count; i++) {
+      const p = this.particles[i];
+      if (!p.active) {
+        p.active = true;
+        p.x = x + (Math.random() - 0.5) * 0.9;
+        p.y = y;
+        p.z = z + (Math.random() - 0.5) * 0.9;
+        const angle = Math.random() * Math.PI * 2;
+        const speedH = 1.0 + Math.random() * 2.4;
+        p.vx = Math.cos(angle) * speedH;
+        p.vy = 3.6 + Math.random() * 3.8;
+        p.vz = Math.sin(angle) * speedH;
+        p.rx = Math.random() * Math.PI;
+        p.ry = Math.random() * Math.PI;
+        p.rz = Math.random() * Math.PI;
+        p.rotSpeed = (Math.random() - 0.5) * 14.0;
+        p.life = 2.2 + Math.random() * 1.4;
+        p.maxLife = p.life;
+        p.scale = 0.7 + Math.random() * 0.5;
+        const hexColor = colors[Math.floor(Math.random() * colors.length)];
+        this.color.setHex(hexColor);
+        this.mesh.setColorAt(i, this.color);
+        spawned++;
+      }
+    }
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  update(dtMs: number, timeSec: number) {
+    const dt = dtMs / 1000;
+    let anyActive = false;
+    for (let i = 0; i < MAX_CONFETTI; i++) {
+      const p = this.particles[i];
+      if (!p.active) continue;
+      p.life -= dt;
+      if (p.life <= 0) {
+        p.active = false;
+        this.dummy.position.set(0, -100, 0);
+        this.dummy.scale.set(0, 0, 0);
+        this.dummy.updateMatrix();
+        this.mesh.setMatrixAt(i, this.dummy.matrix);
+        continue;
+      }
+      anyActive = true;
+      p.vy -= 6.2 * dt;
+      p.vx *= Math.pow(0.88, dt * 60);
+      p.vz *= Math.pow(0.88, dt * 60);
+      p.x += (p.vx + Math.sin(timeSec * 7 + i) * 0.45) * dt;
+      p.y += p.vy * dt;
+      p.z += (p.vz + Math.cos(timeSec * 7 + i) * 0.45) * dt;
+      p.rx += p.rotSpeed * dt;
+      p.ry += p.rotSpeed * 0.7 * dt;
+
+      const progress = p.life / p.maxLife;
+      const fade = Math.min(1, progress * 3.5);
+      const sc = p.scale * fade;
+
+      this.dummy.position.set(p.x, p.y, p.z);
+      this.dummy.rotation.set(p.rx, p.ry, p.rz);
+      this.dummy.scale.set(sc, sc, sc);
+      this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    if (anyActive) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  dispose(scene: THREE.Object3D) {
+    scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+    this.mesh.instanceMatrix.dispose();
+    this.mesh.instanceColor?.dispose();
+    this.mesh.dispose();
+  }
+}
+
 export class Choreographer {
   private markers: Marker[] = [];
+  private badges: FloatingBadge[] = [];
   private pulses = new Map<string, SitePulse>();
   private mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
   private beaconMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, fog: false });
   private time = 0;
+  private confetti: ConfettiSystem;
 
-  constructor(private stage: Stage) {}
+  constructor(private stage: Stage) {
+    this.confetti = new ConfettiSystem(stage.scene);
+  }
 
   start(p: Performance) {
     if (!p.assetId) return;
@@ -214,6 +423,7 @@ export class Choreographer {
 
   stop(id: string) {
     for (const m of this.markers) if (m.key === id) m.ttl = Math.min(m.ttl, 400);
+    for (const b of this.badges) if (b.key.startsWith(id)) b.ttl = Math.min(b.ttl, 400);
     const pulse = this.pulses.get(id);
     if (pulse) pulse.ttl = Math.min(pulse.ttl, 400);
   }
@@ -246,6 +456,20 @@ export class Choreographer {
     });
   }
 
+  private pulseBank(key: string, ms: number) {
+    const light = new THREE.PointLight(0xffd700, 3.8, 26, 1.8);
+    light.position.set(this.stage.bank.x, 3.6, this.stage.bank.z);
+    this.stage.scene.add(light);
+    this.pulses.set(key, {
+      key,
+      light,
+      ttl: ms,
+      duration: ms,
+      intensity: 3.8,
+      phase: 0,
+    });
+  }
+
   private act(p: Performance, t: EventType, site: SiteInfo, ms: number) {
     const a = this.stage.agents;
     const reaction = SITE_REACTION[t];
@@ -253,6 +477,20 @@ export class Choreographer {
 
     const kind = MARKERS[t];
     if (kind) this.addMarker(kind, p.id, site.x, site.markerY, site.z, ms, { spin: kind === "diamond" });
+
+    // Floating RPG-style event badges over the rooftop
+    const badgeCfg = BADGE_CONFIG[t];
+    if (badgeCfg && typeof document !== "undefined") {
+      this.addBadge(badgeCfg, `${p.id}:${t}`, site.x, site.markerY + 0.8, site.z, Math.min(ms, 5500));
+    }
+
+    // Festive confetti particle bursts for notable financial moments
+    if (t === "price_move_up" || t === "earnings_beat" || t === "site_expansion" || t === "position_added") {
+      this.confetti.burst(site.x, site.markerY + 0.5, site.z, 32);
+    }
+    if (t === "dividend_paid") {
+      this.confetti.burst(site.x, site.markerY + 0.5, site.z, 28, [0xf1c40f, 0xffd700, 0xffffff, 0xe6b422]);
+    }
 
     const actors = ACTORS[t];
     if (actors) {
@@ -277,8 +515,26 @@ export class Choreographer {
     if (t === "dividend_paid") {
       a.sendVan(full, GOLD, clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16), () => {
         this.addMarker("coin", `bank:${p.id}`, this.stage.bank.x, 3.2, this.stage.bank.z, 2600, { spin: true });
+        this.confetti.burst(this.stage.bank.x, 3.2, this.stage.bank.z, 36, [0xf1c40f, 0xffd700, 0xffffff, 0xe6b422]);
+        this.pulseBank(`bank:${p.id}`, 2600);
       });
     }
+  }
+
+  private addBadge(cfg: { text: string; bg: string; fg: string; border: string }, key: string, x: number, y: number, z: number, ttlMs: number) {
+    if (this.badges.some((b) => b.key === key)) return;
+    const sprite = makeBadgeSprite(cfg);
+    sprite.position.set(x, y, z);
+    this.stage.scene.add(sprite);
+    this.badges.push({
+      sprite,
+      key,
+      baseX: x,
+      startY: y,
+      baseZ: z,
+      ttl: ttlMs,
+      duration: ttlMs,
+    });
   }
 
   private addMarker(kind: MarkerKind, key: string, x: number, y: number, z: number, ttlMs: number, o: { spin?: boolean; beacon?: boolean } = {}) {
@@ -319,17 +575,44 @@ export class Choreographer {
     }
     for (const m of this.markers.filter((x) => x.ttl <= 0)) this.stage.scene.remove(m.mesh);
     this.markers = this.markers.filter((m) => m.ttl > 0);
+
+    for (const b of this.badges) {
+      b.ttl -= dtMs;
+      const progress = 1 - Math.max(0, b.ttl / b.duration);
+      const rise = Math.min(2.8, progress * 3.4);
+      b.sprite.position.y = b.startY + rise + Math.sin(t * 3.2 + b.startY) * 0.1;
+      const scaleEase = Math.min(1, progress * 5.0);
+      const alpha = Math.min(1, Math.max(0, b.ttl / 600));
+      b.sprite.material.opacity = alpha;
+      const currentScale = 1.1 * scaleEase;
+      b.sprite.scale.set(b.sprite.userData.aspect * currentScale, currentScale, 1);
+    }
+    for (const b of this.badges.filter((x) => x.ttl <= 0)) {
+      this.stage.scene.remove(b.sprite);
+      b.sprite.material.map?.dispose();
+      b.sprite.material.dispose();
+    }
+    this.badges = this.badges.filter((b) => b.ttl > 0);
+
+    this.confetti.update(dtMs, t);
   }
 
   dispose() {
     for (const m of this.markers) this.stage.scene.remove(m.mesh);
     this.markers = [];
+    for (const b of this.badges) {
+      this.stage.scene.remove(b.sprite);
+      b.sprite.material.map?.dispose();
+      b.sprite.material.dispose();
+    }
+    this.badges = [];
     for (const pulse of this.pulses.values()) this.stage.scene.remove(pulse.light);
     this.pulses.clear();
     this.mat.dispose();
     this.beaconMat.dispose();
     geoCache.forEach((g) => g.dispose());
     geoCache.clear();
+    this.confetti.dispose(this.stage.scene);
   }
 }
 
