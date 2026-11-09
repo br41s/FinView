@@ -73,22 +73,28 @@ function nearestPointOnPath(target: Pt, path: readonly Pt[]): { x: number; z: nu
 
 export function computeInfra(s: InfraSpec): Infra {
   const stops = [...s.districtStops].sort((a, b) => Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x));
-  let waypoints = stops;
-  if (waypoints.length < 3) {
-    const centre = waypoints[0] ?? { x: 0, z: 0 };
-    const r = Math.max(MONORAIL_RADIUS, s.radius * 0.22);
-    waypoints = [
-      { x: centre.x - r, z: centre.z - r * 0.5 },
-      { x: centre.x + r, z: centre.z - r * 0.35 },
-      { x: centre.x + r * 0.2, z: centre.z + r },
-    ];
+  const avgR = stops.length
+    ? stops.reduce((acc, p) => acc + Math.hypot(p.x, p.z), 0) / stops.length
+    : Math.max(MONORAIL_RADIUS, s.radius * 0.45);
+  // Elegant outer perimeter loop that smoothly encircles the town
+  const loopRadius = Math.max(MONORAIL_RADIUS + 10, avgR * 1.02);
+
+  const loop: Pt[] = [];
+  const STEPS = 64;
+  for (let i = 0; i <= STEPS; i++) {
+    const a = (i / STEPS) * Math.PI * 2;
+    loop.push({ x: Math.cos(a) * loopRadius * 1.02, z: Math.sin(a) * loopRadius * 0.98 });
   }
-  const closed = [...waypoints, waypoints[0]];
-  const loop = chaikin(closed, 2);
   loop[loop.length - 1] = { ...loop[0] };
-  const stations = stops.length
+
+  const stations = stops.length >= 4
     ? stops.map((stop) => nearestPointOnPath(stop, loop))
-    : [nearestPointOnPath(waypoints[0], loop), nearestPointOnPath(waypoints[1], loop), nearestPointOnPath(waypoints[2], loop)];
+    : [
+        nearestPointOnPath(polar(0, loopRadius), loop),
+        nearestPointOnPath(polar(Math.PI / 2, loopRadius), loop),
+        nearestPointOnPath(polar(Math.PI, loopRadius), loop),
+        nearestPointOnPath(polar((3 * Math.PI) / 2, loopRadius), loop),
+      ];
 
   return {
     highways: s.highways,
