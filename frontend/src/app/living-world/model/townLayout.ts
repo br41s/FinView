@@ -409,12 +409,12 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
   });
 
   const loop: Pt[] = [];
-  const LOOP_STEPS = 112;
-  const loopRadius = ring * 0.72;
+  const LOOP_STEPS = 96;
+  // Clean circular arterial boulevard connecting the central plaza to all districts
+  const loopRadius = ring * 0.68;
   for (let i = 0; i <= LOOP_STEPS; i++) {
     const a = (i / LOOP_STEPS) * Math.PI * 2;
-    const r = loopRadius * (1 + 0.055 * Math.sin(a * 3 + 0.7) + 0.028 * Math.sin(a * 5 - 0.4));
-    loop.push({ x: Math.cos(a) * r * 1.04, z: Math.sin(a) * r * 0.94 });
+    loop.push({ x: Math.cos(a) * loopRadius, z: Math.sin(a) * loopRadius });
   }
   loop[loop.length - 1] = { ...loop[0] };
 
@@ -447,7 +447,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
       districtId,
     });
   };
-  addRoad(loop, 8.4, "arterial");
+  addRoad(loop, 7.6, "arterial");
 
   const gateStops: Pt[] = [];
   for (const district of districts) {
@@ -456,14 +456,14 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
     const anchor = nearestOnLoop(gate);
     const mid = { x: (anchor.x + gate.x) / 2, z: (anchor.z + gate.z) / 2 };
     const bend = {
-      x: mid.x + (gate.z - anchor.z) * 0.12,
-      z: mid.z - (gate.x - anchor.x) * 0.12,
+      x: mid.x + (gate.z - anchor.z) * 0.14,
+      z: mid.z - (gate.x - anchor.x) * 0.14,
     };
-    addRoad(chaikin([anchor, bend, gate], 1), 6.6, "boulevard", true, district.id);
+    addRoad(chaikin([anchor, bend, gate], 1), 6.2, "boulevard", true, district.id);
 
-    // Structured urban block street loop inside the district (stays strictly within district bounds)
-    const bw = Math.max(12, district.halfW * 0.62);
-    const bh = Math.max(10, district.halfH * 0.62);
+    // Compact urban block loop inside the district core (no huge outer ring)
+    const bw = Math.min(20, Math.max(11, district.halfW * 0.48));
+    const bh = Math.min(16, Math.max(9, district.halfH * 0.48));
     const c = Math.cos(district.theta);
     const s = Math.sin(district.theta);
     const corners = [
@@ -475,45 +475,41 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
       x: district.cx + pt.x * c - pt.z * s,
       z: district.cz + pt.x * s + pt.z * c,
     }));
-    const local = chaikin([gate, corners[0], corners[1], corners[2], corners[3], gate], 2);
-    local[0] = { ...gate };
-    local[local.length - 1] = { ...gate };
-    addRoad(local, 4.8, "local", true, district.id);
+    const local = [gate, corners[0], corners[1], corners[2], corners[3], { ...gate }];
+    addRoad(local, 4.4, "local", true, district.id);
   }
 
   for (const a of [-Math.PI * 0.48, Math.PI * 0.52]) {
     const target = polar(a, loopRadius);
     const anchor = nearestOnLoop(target);
-    const start = polar(a + 0.03, PLAZA_RADIUS - 1);
-    const p1 = polar(a - 0.045, PLAZA_RADIUS + 15);
-    const p2 = polar(a + 0.055, loopRadius * 0.44);
-    const p3 = polar(a - 0.025, loopRadius * 0.76);
-    addRoad(chaikin([start, p1, p2, p3, anchor], 1), 7.2, "boulevard");
+    const start = polar(a + 0.03, PLAZA_RADIUS - 0.5);
+    const p1 = polar(a - 0.05, PLAZA_RADIUS + (loopRadius - PLAZA_RADIUS) * 0.35);
+    const p2 = polar(a + 0.05, PLAZA_RADIUS + (loopRadius - PLAZA_RADIUS) * 0.7);
+    addRoad(chaikin([start, p1, p2, anchor], 1), 6.8, "boulevard");
   }
 
   for (const a of [0.18, Math.PI + 0.18]) {
-    const target = polar(a, loopRadius);
-    const anchor = nearestOnLoop(target);
-    const p1 = polar(a + 0.08, loopRadius + 18);
-    const p2 = polar(a - 0.07, ring + maxExtent + 34);
-    const end = polar(a + 0.03, radius + 64);
-    addRoad(chaikin([anchor, p1, p2, end], 1), 8.8, "exit");
+    const startR = ring + maxExtent + 16;
+    const start = polar(a, startR);
+    const p1 = polar(a + 0.03, startR + 18);
+    const p2 = polar(a - 0.02, startR + 36);
+    const end = polar(a, radius + 64);
+    addRoad(chaikin([start, p1, p2, end], 1), 7.6, "exit");
   }
 
   const industry = districts.find((d) => d.id === "industry");
-  const railEnd = polar(Math.PI * 0.55, PLAZA_RADIUS + 7);
+  const railEnd = polar(Math.PI * 0.55, loopRadius + 10);
   const railPath = industry
     ? chaikin([
         { x: industry.gateX, z: industry.gateZ },
-        { x: industry.cx * 0.58, z: industry.cz * 0.58 + 8 },
-        polar(Math.PI * 0.62, 35),
+        { x: (industry.gateX + railEnd.x) * 0.5, z: (industry.gateZ + railEnd.z) * 0.5 + 4 },
         railEnd,
       ], 1)
     : [polar(Math.PI * 0.6, radius * 0.7), railEnd];
 
   const highways = [
-    { path: loop, clear: 13.4 },
-    ...roads.filter((road) => road.kind === "exit").map((road) => ({ path: road.path, clear: 13.8 })),
+    { path: loop, clear: 12.8 },
+    ...roads.filter((road) => road.kind === "exit").map((road) => ({ path: road.path, clear: 13.0 })),
   ];
   const infra = computeInfra({
     plaza: PLAZA_RADIUS,

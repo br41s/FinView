@@ -618,7 +618,7 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   const profile = companyProfile(asset);
   const accent = accentFor(asset.id, asset);
   const b = new Builder();
-  const componentTotal = Math.max(componentCount(tier), profile?.minComponents ?? 1);
+  const componentTotal = Math.max(componentCount(tier) + 1, profile?.minComponents ?? 2);
   const ctx: Ctx = { b, k: componentTotal, n: nominal, accent, rnd: seeded(hashString(asset.id)) };
   plot(ctx);
   if (profile?.identity === "iberdrola") iberdrolaCampus(ctx);

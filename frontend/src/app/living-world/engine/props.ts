@@ -353,45 +353,43 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   water.position.y = WATER_Y;
   group.add(water);
 
-  // Connected streets: monochrome architectural asphalt, slate sidewalks and crisp kerbs.
+  // Connected streets: layered sidewalks (lower) and asphalt carriageways (upper) so intersections never show white sidewalk crosses.
   const streetDetails = new Builder();
   for (const road of layout.roads) {
+    if (road.sidewalk) {
+      const curbBase = new THREE.Mesh(own(ribbon(road.path, road.width + 2.8, 0.11, 0xd8dde4, t.roadY)), vcMat);
+      curbBase.receiveShadow = true;
+      group.add(curbBase);
+      const sidewalkPad = new THREE.Mesh(own(ribbon(road.path, road.width + 2.4, 0.13, 0xc8cdd4, t.roadY)), vcMat);
+      sidewalkPad.receiveShadow = true;
+      group.add(sidewalkPad);
+    }
+  }
+
+  for (const road of layout.roads) {
     const isMajor = road.kind === "arterial" || road.kind === "exit";
-    const roadColor = isMajor ? 0x3b3f47 : road.kind === "boulevard" ? 0x4c515b : STREET;
-    const roadMesh = new THREE.Mesh(own(ribbon(road.path, road.width, 0.12, roadColor, t.roadY)), vcMat);
+    const roadColor = isMajor ? 0x363a42 : road.kind === "boulevard" ? 0x454a54 : STREET;
+    const roadLift = isMajor ? 0.175 : road.kind === "boulevard" ? 0.168 : 0.16;
+    const roadMesh = new THREE.Mesh(own(ribbon(road.path, road.width, roadLift, roadColor, t.roadY)), vcMat);
     roadMesh.receiveShadow = true;
     group.add(roadMesh);
 
-    if (road.sidewalk) {
-      for (const side of [-1, 1]) {
-        const offset = side * (road.width / 2 + 1.05);
-        const walk = offsetPath(road.path, offset);
-        const sidewalk = new THREE.Mesh(own(ribbon(walk, 1.55, 0.15, 0xc8cdd4, t.roadY)), vcMat);
-        sidewalk.receiveShadow = true;
-        group.add(sidewalk);
-        const curb = new THREE.Mesh(own(ribbon(offsetPath(road.path, offset - side * 0.76), 0.18, 0.19, 0xe2e5ea, t.roadY)), vcMat);
-        group.add(curb);
-      }
-    }
-
     const total = routeLength(road.path);
     if (road.width >= 6) {
-      for (let d = 5; d < total - 6; d += isMajor ? 6.2 : 4.6) {
+      for (let d = 7; d < total - 7; d += isMajor ? 7.2 : 5.4) {
         const p = pointAlong(road.path, d);
-        streetDetails.box(road.width >= 8 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + 0.138, p.z, 0xe6e9ed, p.heading);
+        streetDetails.box(road.width >= 7.4 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + roadLift + 0.015, p.z, 0xe6e9ed, p.heading);
       }
-      // Pedestrian crosswalks (pasos de cebra) at road junctions and district entrances
-      if (road.sidewalk && total > 22) {
-        for (const distFromEnd of [4.2, total - 4.2]) {
-          const cp = pointAlong(road.path, distFromEnd);
-          const laneSpan = road.width * 0.72;
-          const stripes = Math.max(4, Math.floor(laneSpan / 0.75));
-          for (let s = 0; s < stripes; s++) {
-            const offset = -laneSpan / 2 + ((s + 0.5) * laneSpan) / stripes;
-            const sx = cp.x + Math.cos(cp.heading) * offset;
-            const sz = cp.z - Math.sin(cp.heading) * offset;
-            streetDetails.box(0.38, 0.025, 1.45, sx, t.roadY(sx, sz) + 0.139, sz, 0xf0f3f8, cp.heading);
-          }
+      // Pedestrian crosswalks strictly at straight boulevard approaches to district entrances
+      if (road.kind === "boulevard" && road.districtId && total > 18) {
+        const cp = pointAlong(road.path, total - 3.6);
+        const laneSpan = road.width * 0.72;
+        const stripes = Math.max(4, Math.floor(laneSpan / 0.75));
+        for (let s = 0; s < stripes; s++) {
+          const offset = -laneSpan / 2 + ((s + 0.5) * laneSpan) / stripes;
+          const sx = cp.x + Math.cos(cp.heading) * offset;
+          const sz = cp.z - Math.sin(cp.heading) * offset;
+          streetDetails.box(0.38, 0.025, 1.45, sx, t.roadY(sx, sz) + roadLift + 0.016, sz, 0xf0f3f8, cp.heading);
         }
       }
     }
@@ -404,8 +402,8 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
         const nx = Math.cos(p.heading);
         const nz = -Math.sin(p.heading);
         for (const side of [-1, 1]) {
-          const x = p.x + nx * side * (road.width / 2 + 2.05);
-          const z = p.z + nz * side * (road.width / 2 + 2.05);
+          const x = p.x + nx * side * (road.width / 2 + 1.85);
+          const z = p.z + nz * side * (road.width / 2 + 1.85);
           const y = t.roadY(x, z);
           streetDetails.cyl(0.045, 0.055, 2.3, x, y + 0.08, z, DARK, 6);
           streetDetails.box(0.55, 0.07, 0.07, x + Math.sin(p.heading) * 0.2, y + 2.25, z + Math.cos(p.heading) * 0.2, DARK, p.heading);
@@ -427,6 +425,21 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     details.castShadow = true;
     details.receiveShadow = true;
     group.add(details);
+  }
+
+  // District urban plazas: paved town block foundations under each neighbourhood so buildings stand on civic stone instead of raw grass.
+  for (const d of layout.districts) {
+    const padY = t.heightAt(d.cx, d.cz) + 0.06;
+    const pad = new THREE.Mesh(
+      own(new THREE.CircleGeometry(1, 36)),
+      own(mat(0xdce0e6)),
+    );
+    pad.rotation.x = -Math.PI / 2;
+    pad.rotation.z = d.theta;
+    pad.scale.set(d.halfW * 1.05, d.halfH * 1.05, 1);
+    pad.position.set(d.cx, padY, d.cz);
+    pad.receiveShadow = true;
+    group.add(pad);
   }
 
   // Parks and pocket gardens have their own landscape, paths, benches and pond.
