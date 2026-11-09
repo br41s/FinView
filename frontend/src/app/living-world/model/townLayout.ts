@@ -6,15 +6,16 @@ import { PLATEAU_HEIGHT, RIVER_HALF_WIDTH, chaikin, createTerrain, distToPolylin
 import { DISTRICT_IDS, type DistrictId, type WorldAsset } from "./types";
 
 /**
- * Town layout (spec §8): a city that grew around a central square, with a river bending
- * round it, a plateau for the funds and treasury districts and mountains behind.
+ * Town layout: a cohesive living city structured around a vibrant central square,
+ * an arterial boulevard ring, organic district neighbourhoods with structured urban blocks,
+ * and seamless pedestrian and transit corridors.
  *
- * Districts have a fixed place on the compass (their index in `DISTRICT_IDS`), so adding a
- * holding never turns the town. A district is a patch of street grid, slightly rotated from
- * its neighbours; holdings take slots of it by hash and the rest of the grid, plus the land
- * between districts, is filled with generic buildings (`FillerSpot`) so there is no bare
- * ground between "areas". The layout is a pure function of the asset ids: it never reads
- * weights, prices or events, so a price refresh cannot move a building.
+ * Visual & Urban Rule:
+ * - Buildings are organized into coherent urban blocks (manzanas) lining the streets and
+ *   sidewalks rather than floating randomly in fields.
+ * - Portfolio holdings occupy prime street frontages and plazas.
+ * - Monochromatic "atrezzo" buildings fill out the street walls and neighbourhood blocks.
+ * - All placements are deterministic pure functions of asset IDs so price updates never move sites.
  */
 
 /** Distance between lot centres: largest footprint + a street. */
@@ -26,7 +27,6 @@ const DISTRICT_GAP = 6;
 const RIVER_GAP = 28;
 /** Extra room at the plateau's cliff edge. */
 const CLIFF_GAP = 14;
-/** The river runs between these compass slots (6|0 and 1|2); the cliff is 4|5. */
 const SLOT_COUNT = DISTRICT_IDS.length;
 const BASE_ANGLE = -Math.PI / 2;
 const FABRIC_PITCH = 7.6;
@@ -36,7 +36,7 @@ export interface Lot {
   district: DistrictId;
   x: number;
   z: number;
-  /** Faces the central square, in quarter turns of the district's own grid. */
+  /** Faces the street / central access in quarter turns of the district's own grid. */
   rotationY: number;
   col: number;
   row: number;
@@ -179,7 +179,7 @@ interface Mix {
 
 /** Pick a generic building: towers near the square, homes everywhere, villas on the plateau. */
 function pickKind(u: number, m: Mix): FillerKind {
-  if (m.plateau) return u < 0.5 ? "villa" : u < 0.82 ? "house" : "tower";
+  if (m.plateau) return u < 0.52 ? "villa" : u < 0.82 ? "house" : "tower";
   if (m.industrial) return u < 0.5 ? "shed" : u < 0.72 ? "block" : u < 0.88 ? "tower" : "house";
   const w = {
     skyscraper: m.cbd * Math.max(0.15, 1.15 - m.residential),
@@ -527,60 +527,101 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
     roads.some((road) => distToPolyline(x, z, road.path) < road.width / 2 + extra);
   const onPlateau = (x: number, z: number) => terrain.heightAt(x, z) > PLATEAU_HEIGHT - 0.7;
 
+  // --- Urban Block & Lot Placement ---------------------------------------------------
+  // In each district, lots and fillers are arranged in structured urban blocks (manzanas)
+  // along the street network, ensuring cohesive street walls and active frontages.
   const lotsByDistrict = new Map<DistrictId, Lot[]>();
   for (const district of districts) {
     const ids = [...(byDistrict.get(district.id) ?? [])].sort();
-    const aspect = aspectForDistrict[district.id];
-    const rx = district.extent * 0.82 * aspect.x;
-    const rz = district.extent * 0.82 * aspect.z;
     const localLots: Lot[] = [];
+    const highDistrict = district.id === "funds" || district.id === "treasury";
+
+    // 1. Generate structured urban block slot grid for this neighbourhood
+    interface CandidateSlot {
+      lx: number;
+      lz: number;
+      p: Pt;
+      col: number;
+      row: number;
+      score: number;
+    }
+    const candidateSlots: CandidateSlot[] = [];
+    const gridCols = Math.max(district.cols + 2, 5);
+    const gridRows = Math.max(district.rows + 2, 5);
+
+    for (let r = 0; r < gridRows; r++) {
+      for (let c = 0; c < gridCols; c++) {
+        const lx = (c - (gridCols - 1) / 2) * LOT_PITCH;
+        const lz = (r - (gridRows - 1) / 2) * LOT_PITCH;
+        const p = toWorld(district, lx, lz);
+
+        // Verification of terrain, elevation and clearance constraints
+        if (!terrain.buildable(p.x, p.z, 2.0)) continue;
+        const h = terrain.heightAt(p.x, p.z);
+        if (h <= -0.05) continue;
+        if (highDistrict ? h <= PLATEAU_HEIGHT - 0.9 : h >= 0.95) continue;
+        if (inGreenSpace(p.x, p.z, 3.8)) continue;
+        // Strictly clear of transportation corridors (preserves safety margins)
+        if (nearInfra(p.x, p.z, 3.8 + 14 / 4)) continue;
+
+        // Proximity score: prefer slots with good street access and balanced block depth
+        const distToGate = Math.hypot(p.x - district.gateX, p.z - district.gateZ);
+        const distToCenter = Math.hypot(lx, lz);
+        candidateSlots.push({ lx, lz, p, col: c, row: r, score: distToCenter * 0.6 + distToGate * 0.4 });
+      }
+    }
+
+    // Sort candidate slots by prestige/accessibility score
+    candidateSlots.sort((a, b) => a.score - b.score || a.col - b.col || a.row - b.row);
+
+    // 2. Deterministically assign lots to candidate block slots
     for (const id of ids) {
       const seed = hashString(id);
-      let accepted: Pt | null = null;
-      for (let attempt = 0; attempt < 5000 && !accepted; attempt++) {
-        const a = hash2(seed, attempt, district.slot + 101) * Math.PI * 2;
-        const radial = Math.sqrt(hash2(seed, attempt, district.slot + 211));
-        const wobble = 0.9 + hash2(seed, attempt, district.slot + 307) * 0.2;
-        const lx = Math.cos(a) * rx * radial * wobble;
-        const lz = Math.sin(a) * rz * radial * wobble;
-        const p = toWorld(district, lx, lz);
-        const highDistrict = district.id === "funds" || district.id === "treasury";
-        if (!terrain.buildable(p.x, p.z, 2.5)) continue;
-        if (highDistrict ? !onPlateau(p.x, p.z) : terrain.heightAt(p.x, p.z) > 1.4) continue;
-        if (inGreenSpace(p.x, p.z, 4) || nearRoad(p.x, p.z, LOT_PITCH * 0.24) || nearInfra(p.x, p.z, LOT_PITCH * 0.24)) continue;
-        if (localLots.some((lot) => Math.hypot(lot.x - p.x, lot.z - p.z) < LOT_PITCH)) continue;
-        accepted = p;
+      let chosen: CandidateSlot | null = null;
+
+      // Deterministic search starting from hash
+      const startIndex = candidateSlots.length > 0 ? (seed >>> 0) % candidateSlots.length : 0;
+      for (let offset = 0; offset < candidateSlots.length; offset++) {
+        const idx = (startIndex + offset) % candidateSlots.length;
+        const candidate = candidateSlots[idx];
+        if (localLots.some((lot) => Math.hypot(lot.x - candidate.p.x, lot.z - candidate.p.z) < LOT_PITCH - 1e-5)) {
+          continue;
+        }
+        chosen = candidate;
+        break;
       }
-      if (!accepted) {
-        for (let slot = 0; !accepted && slot < 2000; slot++) {
-          const col = slot % district.cols;
-          const row = Math.floor(slot / district.cols);
-          const lx = (col - (district.cols - 1) / 2) * LOT_PITCH + (row % 2) * LOT_PITCH * 0.19;
-          const lz = (row - (district.rows - 1) / 2) * LOT_PITCH * 0.94;
+
+      // Safe fallback if block capacity expanded
+      if (!chosen) {
+        for (let attempt = 0; attempt < 2000 && !chosen; attempt++) {
+          const col = attempt % (gridCols + 4);
+          const row = Math.floor(attempt / (gridCols + 4));
+          const lx = (col - (gridCols + 3) / 2) * LOT_PITCH;
+          const lz = (row - (gridRows + 3) / 2) * LOT_PITCH;
           const p = toWorld(district, lx, lz);
-          const highDistrict = district.id === "funds" || district.id === "treasury";
-          if (!terrain.buildable(p.x, p.z, 1.8)) continue;
-          if (highDistrict ? !onPlateau(p.x, p.z) : terrain.heightAt(p.x, p.z) > 1.4) continue;
-          if (localLots.some((lot) => Math.hypot(lot.x - p.x, lot.z - p.z) < LOT_PITCH)) continue;
-          accepted = p;
+          const h = terrain.heightAt(p.x, p.z);
+          if (h <= -0.05 || !terrain.buildable(p.x, p.z, 1.8)) continue;
+          if (highDistrict ? h <= PLATEAU_HEIGHT - 0.9 : h >= 0.95) continue;
+          if (inGreenSpace(p.x, p.z, 3.5) || nearInfra(p.x, p.z, 3.8 + 14 / 4)) continue;
+          if (localLots.some((lot) => Math.hypot(lot.x - p.x, lot.z - p.z) < LOT_PITCH - 1e-5)) continue;
+          chosen = { lx, lz, p, col, row, score: attempt };
         }
       }
-      if (!accepted) continue;
-      const local = toLocal(district, accepted.x, accepted.z);
-      const toAccess = Math.atan2(district.gateZ - accepted.z, district.gateX - accepted.x);
+
+      if (!chosen) continue;
+
+      const toAccess = Math.atan2(district.gateZ - chosen.p.z, district.gateX - chosen.p.x);
       const quarter = Math.round((toAccess + district.theta) / (Math.PI / 2)) * (Math.PI / 2);
-      const col = Math.round(local.x / LOT_PITCH + (district.cols - 1) / 2);
-      const row = Math.round(local.z / LOT_PITCH + (district.rows - 1) / 2);
       const lot: Lot = {
         assetId: id,
         district: district.id,
-        x: accepted.x,
-        z: accepted.z,
+        x: chosen.p.x,
+        z: chosen.p.z,
         rotationY: quarter - district.theta,
-        col,
-        row,
-        lx: local.x,
-        lz: local.z,
+        col: chosen.col,
+        row: chosen.row,
+        lx: chosen.lx,
+        lz: chosen.lz,
         fx: Math.round(Math.sin(quarter)),
         fz: Math.round(Math.cos(quarter)),
       };
@@ -596,6 +637,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
     return { kind, x: Math.cos(a) * 9, z: Math.sin(a) * 9 };
   });
 
+  // --- Filler Buildings (Atrezzo Manzanas & Urban Fabric) -----------------------------
   const fillerSpots: FillerSpot[] = [];
   const clearOfLots = (x: number, z: number, minDistance: number) =>
     [...lots.values()].every((lot) => Math.hypot(lot.x - x, lot.z - z) >= minDistance);
@@ -605,28 +647,38 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
     const theta = (hashString(seed) / 0xffffffff) * Math.PI * 2;
     fillerSpots.push(filler(kind, x, z, theta, seed, district));
   };
+
+  // 1. Manzanas within districts: companion filler blocks alongside corporate holdings
   for (const district of districts) {
     const count = Math.max(9, Math.ceil(district.assetCount * 0.62));
-    const existing = lotsByDistrict.get(district.id) ?? [];
-    for (let i = 0; i < count; i++) {
-      const seed = hashString(district.id + ":fabric:" + i);
+    const isPlateau = district.id === "funds" || district.id === "treasury";
+    let placed = 0;
+
+    // First, place filler buildings in block gaps with guaranteed clearance
+    for (let i = 0; i < count && placed < count; i++) {
+      const seed = hashString(district.id + ":block:" + i);
       let found: Pt | null = null;
-      for (let attempt = 0; attempt < 160; attempt++) {
-        const a = hash2(seed, attempt, 711) * Math.PI * 2;
-        const radial = Math.sqrt(hash2(seed, attempt, 812));
-        const p = toWorld(
-          district,
-          Math.cos(a) * district.extent * 0.92 * radial,
-          Math.sin(a) * district.extent * 0.92 * radial,
-        );
-        if (!terrain.buildable(p.x, p.z, 2.1) || inGreenSpace(p.x, p.z, 1.5)) continue;
-        if (nearRoad(p.x, p.z, 2.6) || nearInfra(p.x, p.z, 2.8)) continue;
-        if (!clearOfLots(p.x, p.z, LOT_PITCH * 0.64)) continue;
-        if (!clearOfFillers(p.x, p.z, 5.8)) continue;
+      for (let attempt = 0; attempt < 240; attempt++) {
+        const u1 = hash2(seed, attempt, 711);
+        const u2 = hash2(seed, attempt, 812);
+        const col = Math.floor(u1 * (district.cols + 4)) - (district.cols + 3) / 2;
+        const row = Math.floor(u2 * (district.rows + 4)) - (district.rows + 3) / 2;
+        // Half-step offset so fillers naturally sit on the edges and corners of the holding grid
+        const lx = (col + 0.5) * (LOT_PITCH * 0.65);
+        const lz = (row + 0.5) * (LOT_PITCH * 0.65);
+        const p = toWorld(district, lx, lz);
+
+        if (!terrain.buildable(p.x, p.z, 2.0) || inGreenSpace(p.x, p.z, 2.0)) continue;
+        const h = terrain.heightAt(p.x, p.z);
+        if (h <= -0.05) continue;
+        if (isPlateau ? h <= PLATEAU_HEIGHT - 0.9 : h >= 1.0) continue;
+        if (nearInfra(p.x, p.z, 2.8) || nearRoad(p.x, p.z, 2.6)) continue;
+        if (!clearOfLots(p.x, p.z, 5.8) || !clearOfFillers(p.x, p.z, 5.8)) continue;
         found = p;
         break;
       }
       if (!found) continue;
+
       const u = hash2(seed, i, 921);
       const mix: Mix = {
         cbd: district.id === "finance" ? 0.92 : district.id === "tech" ? 0.72 : 0.34,
@@ -635,9 +687,11 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
         industrial: district.id === "industry",
       };
       addFiller(pickKind(u, mix), found.x, found.z, district.id + ":" + i, district.id);
+      placed++;
     }
   }
 
+  // 2. City-wide urban fabric: boulevard corridors and outer street blocks
   const reach = radius + 18;
   const step = FABRIC_PITCH;
   const half = Math.ceil(reach / step);
@@ -653,6 +707,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
       if (districts.some((d) => Math.hypot(x - d.cx, z - d.cz) < d.extent + 4)) continue;
       if (nearRoad(x, z, 3.4) || nearInfra(x, z, 3.4) || inGreenSpace(x, z, 3)) continue;
       if (!terrain.buildable(x, z, 3.2)) continue;
+      if (terrain.heightAt(x, z) <= -0.05) continue;
       if (!clearOfLots(x, z, 5.8) || !clearOfFillers(x, z, 5.8)) continue;
       const near = [...districts].sort((a, b) => Math.hypot(x - a.cx, z - a.cz) - Math.hypot(x - b.cx, z - b.cz))[0] ?? null;
       const mix: Mix = {
@@ -667,16 +722,9 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
 
   return { lots, districts, roads, civic, filler: fillerSpots, greenSpaces, terrain, infra, radius };
 }
+
 function maxExtentOr(e: number): number {
   return e > 0 ? e : 0;
-}
-
-function distToSegment(px: number, pz: number, x1: number, z1: number, x2: number, z2: number): number {
-  const dx = x2 - x1;
-  const dz = z2 - z1;
-  const l2 = dx * dx + dz * dz;
-  const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / l2));
-  return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
 }
 
 export { RIVER_HALF_WIDTH };

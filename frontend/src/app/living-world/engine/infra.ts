@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { MONORAIL_DECK, MONORAIL_WIDTH, RAIL_WIDTH } from "../model/infra";
 import { pointAlong, routeLength, type Point } from "../model/routes";
 import { seeded } from "../model/rng";
-import type { WorldLayout } from "../model/townLayout";
+import { distToPolyline } from "../model/terrain";
+import type { RoadSegment, WorldLayout } from "../model/townLayout";
 import { Builder } from "./buildingFactory";
 import { ribbon } from "./props";
 
@@ -59,11 +60,20 @@ function deck(
   }
 }
 
-/** Pillars every `every` units along a line, wherever there is ground to stand on. */
-function pillars(b: Builder, line: readonly Point[], every: number, radius: number, deckY: (x: number, z: number) => number, ground: (x: number, z: number) => number) {
+/** Pillars every `every` units along a line, wherever there is ground to stand on and clear of roads. */
+function pillars(
+  b: Builder,
+  line: readonly Point[],
+  every: number,
+  radius: number,
+  deckY: (x: number, z: number) => number,
+  ground: (x: number, z: number) => number,
+  roads: readonly RoadSegment[] = [],
+) {
   const total = routeLength(line);
   for (let d = every / 2; d < total; d += every) {
     const p = pointAlong(line, d);
+    if (roads.some((r) => distToPolyline(p.x, p.z, r.path) < r.width / 2 + 0.85)) continue;
     const g = ground(p.x, p.z);
     if (g < -0.3) continue;
     const h = deckY(p.x, p.z) - 0.9 - g;
@@ -160,7 +170,7 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   const mb = new Builder();
   const mono = infra.monorail;
   deck(mb, mono.path, MONORAIL_WIDTH, 0.8, monorailY, { top: 0x626770, slab: 0xd4d8de });
-  pillars(mb, mono.path, 11, 0.45, monorailY, t.heightAt);
+  pillars(mb, mono.path, 11, 0.45, monorailY, t.heightAt, layout.roads);
   for (const st of mono.stations) {
     const ry = st.angle;
     stationAt(mb, st.x, st.z, monorailY(st.x, st.z) + 0.1, ry, 9, 4.2);
