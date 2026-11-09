@@ -8,11 +8,18 @@ import type { Tier } from "../model/scale";
 /**
  * Inhabitants and vehicles (spec §6.2).
  *
- * Visual rule:
- * - "Atrezzo" (ambient city inhabitants walking sidewalks and ambient vans) are rendered in
- *   pure architectural grayscale so they provide urban life without visual noise.
- * - Portfolio company workers and event actors (`assetId !== null`) wear vibrant corporate
- *   and role colours tied to their company's identity.
+ * Dual simulation rules:
+ * 1. "Atrezzo" (filler ambient citizens and vehicles):
+ *    - Rendered in pure architectural monochrome grayscale (concrete, slate, graphite).
+ *    - Follow a 24-hour circadian city routine:
+ *      • 07:30–09:30 (Hora punta mañana): Commuters briskly walking to work with backpacks/briefcases.
+ *      • 09:30–17:30 (Jornada laboral): Most citizens remain inside or at workstations; streets quiet down to couriers & vans.
+ *      • 17:30–21:30 (Tarde de ocio): Citizens head to plazas, parks, and retail avenues; social chatting clusters.
+ *      • 21:30–07:30 (Noche): Low-density night strollers and maintenance crew.
+ * 2. "Portfolio Company Staff":
+ *    - Wear vibrant corporate colors and role accessories.
+ *    - Stationed strictly at their corporate headquarters (plaza podium / courtyard).
+ *    - Actions are EXCLUSIVELY driven by corporate financial events (rallies, drops, dividends, expansions).
  */
 
 export type Role = "worker" | "manager" | "analyst" | "courier" | "visitor" | "crew";
@@ -26,6 +33,15 @@ export type AgentState =
   | "delivering"
   | "returning";
 
+export type CircadianPhase = "morning_rush" | "workday" | "evening_leisure" | "night";
+
+export function getCircadianPhase(hour: number): CircadianPhase {
+  if (hour >= 7.5 && hour < 9.5) return "morning_rush";
+  if (hour >= 9.5 && hour < 17.5) return "workday";
+  if (hour >= 17.5 && hour < 21.5) return "evening_leisure";
+  return "night";
+}
+
 const ROLE_COLOR: Record<Role, number> = {
   worker: 0x3b82f6,
   manager: 0x7c3aed,
@@ -36,12 +52,12 @@ const ROLE_COLOR: Record<Role, number> = {
 };
 const SKIN = [0xf1c9a5, 0xd9a47e, 0xb97c56, 0x8d5a3b, 0xf6d9bf];
 
-/** Grayscale palette for ambient city inhabitants ("atrezzo"). */
-const ATREZZO_BODY = [0x454952, 0x5c616b, 0x737984, 0x8d939e, 0xa6acb6];
-const ATREZZO_HEAD = [0xd4d8de, 0xc2c7cf, 0xb0b5be, 0x9ea4ae];
-const ATREZZO_VAN = [0x8c929c, 0xa8aeb8, 0xc4c9d1, 0x6e737c];
+/** Architectural grayscale palette for ambient city inhabitants ("atrezzo"). */
+const ATREZZO_BODY = [0x484d56, 0x5d636e, 0x727986, 0x8c93a0, 0xa5abb8];
+const ATREZZO_HEAD = [0xd6dae0, 0xc4c9d0, 0xb1b7c0, 0x9ea4ad];
+const ATREZZO_VAN = [0x8b919b, 0xa7adb8, 0xc2c7cf, 0x6e737c];
 
-const AGENT_SCALE = 1.3;
+const AGENT_SCALE = 1.32;
 const TEMP_SLOTS = 48;
 const MAX_VANS = 28;
 
@@ -65,7 +81,7 @@ interface Agent {
   state: AgentState;
   assetId: string | null;
   accent: number | null;
-  // orbit (ambient) mode
+  // corporate plaza or sidewalk position
   cx: number;
   cz: number;
   radius: number;
@@ -75,7 +91,7 @@ interface Agent {
   walkRoute: Point[] | null;
   walkDistance: number;
   walkDirection: 1 | -1;
-  // timers
+  // timers & event overrides
   until: number;
   override: AgentState | null;
   overrideUntil: number;
@@ -132,6 +148,7 @@ export class AgentSystem {
   private ambientCount = 0;
   private vanList: Van[] = [];
   private time = 0;
+  private clockHour = 8.5; // Start in bustling morning rush hour
   private reduced = false;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -250,13 +267,20 @@ export class AgentSystem {
     for (let i = 0; i < total; i++) this.agents.push(blank());
   }
 
-  /** Height of the road or ground at a point, so people and vans follow hills and bridges. */
   setGround(fn: (x: number, z: number) => number) {
     this.ground = fn;
   }
 
   setReducedMotion(v: boolean) {
     this.reduced = v;
+  }
+
+  get hour(): number {
+    return this.clockHour;
+  }
+
+  setHour(h: number) {
+    this.clockHour = (h % 24 + 24) % 24;
   }
 
   /** (Re)fill the population: portfolio company workers in color + ambient city walkers in grayscale. */
@@ -286,56 +310,52 @@ export class AgentSystem {
       crypto: ["analyst", "courier", "manager"],
     };
     const allWalkRoutes = sites.map((s) => s.walkRoute).filter((r): r is Point[] => !!r && r.length > 1);
-    outer: for (let round = 0; round < 4; round++) {
-      for (const s of order) {
-        const want = 1 + ["outpost", "small", "campus", "major"].indexOf(s.tier);
-        if (round >= want) continue;
-        if (n >= this.capacity) break outer;
+
+    // 1. Portfolio Company Staff: stationed directly at their corporate site podium.
+    // They wear vivid corporate colours and only act out company-related events.
+    for (const s of order) {
+      const companyStaffCount = 1 + ["outpost", "small", "campus", "major"].indexOf(s.tier);
+      for (let k = 0; k < companyStaffCount && n < this.capacity; k++) {
         const idx = n++;
         const a = this.agents[idx];
-        const seed = hashString(`${s.assetId}:${round}`);
+        const seed = hashString(`${s.assetId}:staff:${k}`);
         const rnd = seeded(seed);
         a.active = true;
-        // Round 0..1 are dedicated colored portfolio company workers; round >= 2 become
-        // grayscale ambient city pedestrians ("atrezzo") walking the neighbourhood sidewalks.
-        const isAtrezzo = round >= 2 && s.walkRoute && s.walkRoute.length > 1;
-        a.ambientCity = !!isAtrezzo;
-        a.assetId = isAtrezzo ? null : s.assetId;
+        a.ambientCity = false;
+        a.assetId = s.assetId;
         a.accent = s.accent ?? null;
         const roles = roleMix[s.archetype];
-        a.role = roles[Math.floor(rnd() * roles.length)];
+        a.role = roles[k % roles.length];
         a.cx = s.x;
         a.cz = s.z;
-        a.radius = s.footprint * 0.55 + 0.9 + rnd() * 0.5;
-        a.angle = rnd() * Math.PI * 2;
-        a.angVel = (0.25 + rnd() * 0.25) / Math.max(1, a.radius * 0.45) * (rnd() < 0.5 ? -1 : 1);
+        // Positioned neatly on the corporate plaza podium / courtyard
+        a.radius = s.footprint * 0.44 + (k * 0.48);
         a.frontAngle = Math.atan2(Math.cos(s.rotationY), Math.sin(s.rotationY));
-        a.walkRoute = s.walkRoute && s.walkRoute.length > 1 ? s.walkRoute : null;
-        const rLen = a.walkRoute ? routeLength(a.walkRoute) : 0;
-        a.walkDistance = isAtrezzo && rLen > 0 ? rnd() * rLen : 0;
-        a.walkDirection = isAtrezzo && rnd() < 0.5 ? -1 : 1;
-        a.state = isAtrezzo ? "walking" : rnd() < 0.5 ? "working" : "walking";
-        a.until = 2000 + rnd() * 6000;
+        a.angle = a.frontAngle + ((k - (companyStaffCount - 1) / 2) * 0.42);
+        a.angVel = 0;
+        a.walkRoute = null;
+        a.walkDistance = 0;
+        a.walkDirection = 1;
+        // In normal state, staff are at their post (working or idle), facing the plaza entrance
+        a.state = k === 0 ? "working" : "idle";
+        a.until = 4000 + rnd() * 8000;
         a.seed = seed;
         a.rnd = rnd;
-        if (a.state === "walking" && a.walkRoute) {
-          const point = pointAlong(a.walkRoute, a.walkDistance);
-          a.x = point.x;
-          a.z = point.z;
-          a.heading = point.heading;
-        } else {
-          this.place(a);
-        }
+        this.place(a);
+        a.heading = Math.atan2(s.x - a.x, s.z - a.z);
         this.paint(idx);
       }
     }
-    // Fill any remaining capacity with grayscale city inhabitants ("atrezzo") on sidewalks.
-    const fillerRng = seeded(0x91c2);
+
+    // 2. Grayscale Ambient City Inhabitants ("Atrezzo"): walking the sidewalks and blocks.
+    const fillerRng = seeded(0x82a4);
+    let routeIdx = 0;
     while (n < this.capacity && allWalkRoutes.length > 0) {
       const idx = n++;
       const a = this.agents[idx];
-      const route = allWalkRoutes[idx % allWalkRoutes.length];
-      const seed = hashString(`city-atrezzo:${idx}`);
+      const route = allWalkRoutes[routeIdx % allWalkRoutes.length];
+      routeIdx++;
+      const seed = hashString(`atrezzo:${idx}`);
       const rnd = seeded(seed);
       a.active = true;
       a.ambientCity = true;
@@ -347,13 +367,13 @@ export class AgentSystem {
       a.walkDistance = fillerRng() * rLen;
       a.walkDirection = fillerRng() < 0.5 ? 1 : -1;
       a.state = "walking";
-      a.until = 3500 + rnd() * 7000;
+      a.until = 3000 + rnd() * 6000;
       a.seed = seed;
       a.rnd = rnd;
       const point = pointAlong(route, a.walkDistance);
       a.x = point.x;
       a.z = point.z;
-      a.heading = point.heading;
+      a.heading = a.walkDirection === 1 ? point.heading : point.heading + Math.PI;
       this.paint(idx);
     }
     this.ambientCount = n;
@@ -361,7 +381,7 @@ export class AgentSystem {
     this.writeAll();
   }
 
-  /** Ambient vans drive plaza ↔ district gates all day in pure grayscale ("atrezzo"). */
+  /** Ambient vans drive plaza ↔ district avenues in grayscale ("atrezzo"). */
   private syncVans() {
     this.vanList = this.vanList.filter((v) => !v.ambient);
     const k = Math.min(10, this.ambientRoutes.length, MAX_VANS - this.vanList.length);
@@ -376,7 +396,7 @@ export class AgentSystem {
     }
   }
 
-  /** Dispatch the site's own people for an event: they walk to the front door and react. */
+  /** Dispatch the site's own corporate staff for an event reaction. */
   dispatch(assetId: string, state: AgentState, durationMs: number, max = 3) {
     let k = 0;
     for (let i = 0; i < this.ambientCount && k < max; i++) {
@@ -389,7 +409,7 @@ export class AgentSystem {
     return k;
   }
 
-  /** A temporary actor that walks `route` (already trimmed), performs, then walks back. */
+  /** A temporary actor that walks `route`, performs event action, then walks back. */
   spawnActor(o: {
     role: Role;
     route: Point[];
@@ -414,7 +434,7 @@ export class AgentSystem {
       a.accent = o.assetId ? (this.siteAccent.get(o.assetId) ?? null) : null;
       a.path = path;
       a.dist = 0;
-      a.speed = o.speed ?? 2.4;
+      a.speed = o.speed ?? 2.5;
       a.phase = "in";
       a.state = "walking";
       a.holdState = o.holdState;
@@ -441,7 +461,6 @@ export class AgentSystem {
     });
   }
 
-  /** Index of the first ambient inhabitant of a site, so the camera can follow them. */
   firstAgentOf(assetId: string): number {
     for (let i = 0; i < this.ambientCount; i++) if (this.agents[i].assetId === assetId) return i;
     return -1;
@@ -452,33 +471,28 @@ export class AgentSystem {
     return a?.active ? { x: a.x, z: a.z } : null;
   }
 
-  /** Where an agent is, for the camera's follow mode and for tests of the state machine. */
   stateOf(id: number): AgentState | null {
     const a = this.agents[id];
     return a?.active ? (a.override ?? a.state) : null;
   }
 
-  /**
-   * Grayscale for ambient city inhabitants ("atrezzo"), vibrant corporate/role colours for
-   * portfolio company staff and event actors.
-   */
   private paint(i: number) {
     const a = this.agents[i];
     if (a.ambientCity) {
       this.bodies.setColorAt(i, this.c.set(ATREZZO_BODY[a.seed % ATREZZO_BODY.length]));
       this.heads.setColorAt(i, this.c.set(ATREZZO_HEAD[a.seed % ATREZZO_HEAD.length]));
-      this.helmets.setColorAt(i, this.c.set(0x7c828c));
-      this.backpacks.setColorAt(i, this.c.set(0x525760));
-      this.briefcases.setColorAt(i, this.c.set(0x3b3f46));
-      this.ties.setColorAt(i, this.c.set(0x686d76));
-      this.clipboards.setColorAt(i, this.c.set(0x9ea4ae));
+      this.helmets.setColorAt(i, this.c.set(0x767c86));
+      this.backpacks.setColorAt(i, this.c.set(0x4f545e));
+      this.briefcases.setColorAt(i, this.c.set(0x383c44));
+      this.ties.setColorAt(i, this.c.set(0x656a73));
+      this.clipboards.setColorAt(i, this.c.set(0x9ca2ac));
     } else {
       const bodyHex = a.accent ?? ROLE_COLOR[a.role];
       this.bodies.setColorAt(i, this.c.set(bodyHex));
       this.heads.setColorAt(i, this.c.set(SKIN[a.seed % SKIN.length]));
       this.helmets.setColorAt(i, this.c.set(a.role === "crew" ? 0xf97316 : 0xfacc15));
       this.backpacks.setColorAt(i, this.c.set(a.role === "courier" ? 0xf59e0b : (a.accent ?? 0x3b82f6)));
-      this.briefcases.setColorAt(i, this.c.set(a.accent ?? 0x2563eb));
+      this.briefcases.setColorAt(i, this.c.set(a.accent ?? 0x1d4ed8));
       this.ties.setColorAt(i, this.c.set(0xe11d48));
       this.clipboards.setColorAt(i, this.c.set(0xf8fafc));
     }
@@ -487,7 +501,6 @@ export class AgentSystem {
     }
   }
 
-  /** Inhabitants currently on stage (ambient plus event actors). */
   activeCount(): number {
     let n = 0;
     for (const a of this.agents) if (a.active) n++;
@@ -502,6 +515,9 @@ export class AgentSystem {
   update(dtMs: number) {
     this.time += dtMs;
     const dt = dtMs / 1000;
+    // Advance simulated city clock (smooth 24-hour cycle)
+    this.clockHour = (this.clockHour + dt / 45) % 24;
+
     for (const a of this.agents) {
       if (!a.active) continue;
       if (a.temp) this.stepTemp(a, dt);
@@ -512,65 +528,90 @@ export class AgentSystem {
   }
 
   private stepAmbient(a: Agent, dtMs: number, dt: number) {
-    // Reduced motion: the town stands still; only event actors (temp) move.
     if (this.reduced) return;
     if (a.override && this.time >= a.overrideUntil) a.override = null;
-    if (a.override) {
-      // Walk the ring to the front door, then stand there facing the building.
-      const door = a.frontAngle + (((a.seed % 7) - 3) * 0.09);
-      let d = door - a.angle;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
-      const step = Math.abs(a.angVel) * 2.4 * dt;
-      if (Math.abs(d) > step) a.angle += Math.sign(d) * step;
-      else a.angle = door;
+
+    // 1. Corporate Company Staff: Event-driven only.
+    if (!a.ambientCity && a.assetId !== null) {
+      if (a.override) {
+        // Active event reaction: face forward into the courtyard/plaza, celebrate or react
+        const door = a.frontAngle;
+        let d = door - a.angle;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        const step = 2.2 * dt;
+        if (Math.abs(d) > step) a.angle += Math.sign(d) * step;
+        else a.angle = door;
+        this.place(a);
+        a.heading = Math.atan2(a.cx - a.x, a.cz - a.z);
+        return;
+      }
+      // Normal state: stationary at the corporate headquarters plaza
       this.place(a);
       a.heading = Math.atan2(a.cx - a.x, a.cz - a.z);
+      a.state = "idle";
       return;
     }
-    if (a.ambientCity && a.walkRoute && a.walkRoute.length > 1) {
+
+    // 2. Grayscale Ambient City Inhabitants ("Atrezzo"): Follow Circadian Routine
+    const phase = getCircadianPhase(this.clockHour);
+    if (a.walkRoute && a.walkRoute.length > 1) {
       const length = routeLength(a.walkRoute);
-      a.walkDistance += a.walkDirection * (1.28 + a.rnd() * 0.34) * dt;
-      if (a.walkDistance >= length) {
-        a.walkDistance = length;
-        a.walkDirection = -1;
-      } else if (a.walkDistance <= 0) {
-        a.walkDistance = 0;
-        a.walkDirection = 1;
+      let speedMult = 1.0;
+
+      if (phase === "morning_rush") {
+        // Brisk commute to work
+        speedMult = 1.65;
+        a.state = "walking";
+      } else if (phase === "workday") {
+        // Mostly working indoors; couriers keep delivering, others take brief walks
+        if (a.role === "courier") {
+          speedMult = 1.35;
+          a.state = "delivering";
+        } else if (a.seed % 3 === 0) {
+          speedMult = 0.9;
+          a.state = "walking";
+        } else {
+          // Stationary working / outside office entrance
+          a.state = "working";
+          speedMult = 0;
+        }
+      } else if (phase === "evening_leisure") {
+        // Relaxed stroll to plaza, shopping, socializing
+        speedMult = 1.1;
+        a.state = a.seed % 4 === 0 ? "idle" : "walking";
+      } else {
+        // Night stillness
+        speedMult = a.seed % 4 === 0 ? 0.75 : 0;
+        a.state = speedMult === 0 ? "idle" : "walking";
       }
-      const point = pointAlong(a.walkRoute, a.walkDistance);
-      a.x = point.x;
-      a.z = point.z;
-      a.heading = a.walkDirection === 1 ? point.heading : point.heading + Math.PI;
+
+      if (speedMult > 0) {
+        a.walkDistance += a.walkDirection * (1.18 + a.rnd() * 0.35) * speedMult * dt;
+        if (a.walkDistance >= length) {
+          a.walkDistance = length;
+          a.walkDirection = -1;
+        } else if (a.walkDistance <= 0) {
+          a.walkDistance = 0;
+          a.walkDirection = 1;
+        }
+        const point = pointAlong(a.walkRoute, a.walkDistance);
+        a.x = point.x;
+        a.z = point.z;
+        a.heading = a.walkDirection === 1 ? point.heading : point.heading + Math.PI;
+      }
       return;
     }
+
+    // Fallback circular orbit for non-route ambient
     a.until -= dtMs;
     if (a.until <= 0) {
-      const roll = a.rnd();
-      a.state = roll < 0.42 ? "walking" : roll < 0.82 ? "working" : "idle";
-      a.until = 2600 + a.rnd() * 7600;
+      a.state = a.rnd() < 0.5 ? "walking" : "idle";
+      a.until = 3000 + a.rnd() * 6000;
     }
-    const current = a.override ?? a.state;
-    if (current === "walking" && a.walkRoute && a.walkRoute.length > 1) {
-      const length = routeLength(a.walkRoute);
-      a.walkDistance += a.walkDirection * (1.25 + a.rnd() * 0.35) * dt;
-      if (a.walkDistance >= length) {
-        a.walkDistance = length;
-        a.walkDirection = -1;
-      } else if (a.walkDistance <= 0) {
-        a.walkDistance = 0;
-        a.walkDirection = 1;
-      }
-      const point = pointAlong(a.walkRoute, a.walkDistance);
-      a.x = point.x;
-      a.z = point.z;
-      a.heading = a.walkDirection === 1 ? point.heading : point.heading + Math.PI;
-    } else if (current === "walking") {
+    if (a.state === "walking") {
       a.angle += a.angVel * dt;
       this.place(a);
-      a.heading = Math.atan2(-Math.sin(a.angle) * Math.sign(a.angVel), Math.cos(a.angle) * Math.sign(a.angVel));
-    } else if (current === "idle") {
-      this.place(a);
-      a.heading = Math.atan2(a.cx - a.x, a.cz - a.z) + Math.sin(this.time / 1700 + a.seed) * 0.12;
+      a.heading = Math.atan2(-Math.sin(a.angle), Math.cos(a.angle));
     } else {
       this.place(a);
       a.heading = Math.atan2(a.cx - a.x, a.cz - a.z);
@@ -659,19 +700,22 @@ export class AgentSystem {
       }
       const st = a.override ?? a.state;
       const moving = st === "walking" || st === "delivering" || st === "returning";
-      const ph = t * (moving ? 7 : 2.2) + a.seed;
+      const ph = t * (moving ? 7.2 : 2.4) + a.seed;
       let y = this.ground(a.x, a.z);
       let sy = 1;
       let yaw = a.heading;
       if (!this.reduced) {
-        if (moving) y += Math.abs(Math.sin(ph)) * 0.07;
+        if (moving) y += Math.abs(Math.sin(ph)) * 0.08;
         else if (st === "working") y += Math.abs(Math.sin(ph * 1.6)) * 0.05;
-        else if (st === "celebrating") y += Math.abs(Math.sin(t * 6 + a.seed)) * 0.38;
-        else if (st === "concerned") {
-          sy = 0.93;
-          yaw += Math.sin(t * 1.4 + a.seed) * 0.45;
+        else if (st === "celebrating") {
+          y += Math.abs(Math.sin(t * 6.8 + a.seed)) * 0.42;
+          yaw += Math.sin(t * 4 + a.seed) * 0.28;
         }
-        else if (st === "investigating") yaw += Math.sin(t * 1.1 + a.seed) * 0.5;
+        else if (st === "concerned") {
+          sy = 0.92;
+          yaw += Math.sin(t * 1.5 + a.seed) * 0.42;
+        }
+        else if (st === "investigating") yaw += Math.sin(t * 1.2 + a.seed) * 0.48;
       }
       this.q.setFromAxisAngle(this.up, yaw);
       this.p.set(a.x, y, a.z);
@@ -718,7 +762,7 @@ export class AgentSystem {
     this.vanList.forEach((v, i) => {
       this.q.setFromAxisAngle(this.up, v.heading - Math.PI / 2);
       this.p.set(v.x, this.ground(v.x, v.z) + 0.1, v.z);
-      this.s.set(1.1, 1.1, 1.1);
+      this.s.set(1.12, 1.12, 1.12);
       this.m.compose(this.p, this.q, this.s);
       this.vans.setMatrixAt(i, this.m);
       this.vans.setColorAt(i, this.c.set(v.tint));
