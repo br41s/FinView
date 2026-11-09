@@ -377,7 +377,21 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     if (road.width >= 6) {
       for (let d = 5; d < total - 6; d += isMajor ? 6.2 : 4.6) {
         const p = pointAlong(road.path, d);
-        streetDetails.box(road.width >= 8 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + 0.2, p.z, 0xe6e9ed, p.heading);
+        streetDetails.box(road.width >= 8 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + 0.138, p.z, 0xe6e9ed, p.heading);
+      }
+      // Pedestrian crosswalks (pasos de cebra) at road junctions and district entrances
+      if (road.sidewalk && total > 22) {
+        for (const distFromEnd of [4.2, total - 4.2]) {
+          const cp = pointAlong(road.path, distFromEnd);
+          const laneSpan = road.width * 0.72;
+          const stripes = Math.max(4, Math.floor(laneSpan / 0.75));
+          for (let s = 0; s < stripes; s++) {
+            const offset = -laneSpan / 2 + ((s + 0.5) * laneSpan) / stripes;
+            const sx = cp.x + Math.cos(cp.heading) * offset;
+            const sz = cp.z - Math.sin(cp.heading) * offset;
+            streetDetails.box(0.38, 0.025, 1.45, sx, t.roadY(sx, sz) + 0.139, sz, 0xf0f3f8, cp.heading);
+          }
+        }
       }
     }
 

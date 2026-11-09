@@ -189,7 +189,7 @@ export function createWorld(
       sun.shadow.map?.dispose();
       sun.shadow.map = null;
     }
-    scene.traverse((o) => {
+    scene.traverse((o: THREE.Object3D) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true));
       else if (m) m.needsUpdate = true;
