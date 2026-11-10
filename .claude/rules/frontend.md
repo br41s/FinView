@@ -225,8 +225,8 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
   the funds and treasury districts** with mountains behind it. Terrain is a function of the
   compass and the district sizes only (never of weights), so a hill cannot move either.
 - **Holdings are landmarks, the rest is scenery.** `FillerSpot`s (homes, towers, skyscrapers,
-  villas on the plateau, sheds) fill free slots and the land between districts; they are pale,
-  never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
+  villas on the plateau, sheds) fill free slots and the land between districts; they are coloured
+  (saturated palettes per kind) but never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
   `townLayout.ts`) or "size = weight" stops meaning anything. Homes exist in every district
   (fewer downtown, villas only on the plateau): pinned in `townLayout.test.ts`.
 - **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`;
@@ -247,6 +247,26 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 - **Material gotcha**: toggling `material.transparent` needs `material.needsUpdate = true`.
   Opaque materials compile with alpha forced to 1, so fading buildings (filters mute to 22 %)
   silently ignored `opacity` until the flag change triggered a recompile.
+- **The look (F2).** `engine/materials.ts` is one `MeshStandardMaterial` patched with `onBeforeCompile`:
+  glass parts (the per-vertex `aKind` that `Builder` writes: 0 wall, 1 glass, 2 accent/roof; the
+  landmark window colours count as glass) get a window grid with mullions, a vertical gradient, sky
+  reflections and lit windows at night (`uNight`); walls and roofs stay plain. It serves merged sites
+  (one material per site, seed uniform) and the filler `InstancedMesh`es (per-instance `aWall`,
+  `aGlass`, `aSeed` from `fillerPalette.ts`). **Glass stays opaque** (the AO pass draws transparent
+  depth-writing meshes twice). The sky map (`createSkyEnvironment`, PMREM) is set as `material.envMap`,
+  never `scene.environment`: Lambert materials would pick it up as a mirror. Ambient comes only from
+  the hemisphere light (the shader zeroes the map's diffuse term). Filler floors are exactly 1.0 tall
+  and start on whole numbers so the shader's rows match the storeys: keep that when editing recipes.
+- **Lighting and clock** live in `engine/lighting.ts` (hemisphere, sun + shadow, fog, sky backdrop,
+  env) driven by `engine/skyModel.ts`, a pure function of the city hour (keyframes, wraps at midnight,
+  `night` 0..1 drives windows and bloom). `PCFSoftShadowMap` no longer exists in three 0.186: use
+  `PCFShadowMap` + `shadow.radius`. Tone mapping is Khronos Neutral (ACES muted the colours).
+- **Post-processing** (`engine/post.ts`): N8AO (`n8ao`, CC0 licence file; peer `postprocessing` is
+  Zlib) -> bloom (night only) -> OutputPass -> SMAA. `QUALITY[tier].post` is `null` for low (plain
+  `renderer.render`, no composer or float targets exist). N8AO renders the scene once into its own
+  target; the shadow pass is what doubles `stats().drawCalls`. `renderer.info.autoReset` is off and
+  read after the frame so the numbers cover the whole chain. A quality change keeps the city hour.
+- Dev handles for screenshots: `__livingWorld.setHour(h)`, `.focusPoint(x, z, distance)`, `.setQuality(q)`.
 - **Canvas lifecycle**: `hooks/useWorld.ts` creates a fresh `<canvas>` per mount. A canvas whose
   context was released by `forceContextLoss()` cannot be reused, and React strict mode mounts
   twice; the `webglcontextlost` listener is removed in `dispose()` or the first mount's

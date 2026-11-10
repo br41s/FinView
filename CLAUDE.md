@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1773 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 276 frontend tests |
+| Tests | pytest · 1773 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 292 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -262,12 +262,12 @@ reported 127 skips here against 159 there. Gate on a path built from
 is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
 the pure unit tests down with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 276 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 292 tests over pure logic: `src/lib/`
 (`aiExposure`, `brokerSync`, `exposure`, `optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis, tier grouping, ladder badge)
 plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options
 page's state reducer), `src/game/garden/` (the rules of the landing page's garden game) and
-`src/app/living-world/model/` (layout, scale, filters, priority, director, routes, API-row mapper and scene signature of the Living World town). **`vitest` must be installed**
+`src/app/living-world/model/` (layout, scale, filters, priority, director, routes, API-row mapper and scene signature of the Living World town) and `src/app/living-world/engine/look.test.ts` (sky model, filler palettes, quality tiers). **`vitest` must be installed**
 or `pnpm build` fails on `vitest.config.ts` even though the app itself compiles — run
 `pnpm install` in a fresh worktree before wondering why the build is red.
 
