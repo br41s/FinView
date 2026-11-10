@@ -3,12 +3,13 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hashString, seeded } from "../model/rng";
 import { componentCount, type Tier } from "../model/scale";
 import type { Archetype, WorldAsset } from "../model/types";
+import { createFacadeMaterial } from "./materials";
 
 /**
  * Portfolio company buildings (spec §9.3).
  *
- * Visual rule: Portfolio holdings are the vibrant, full-colour protagonists of the city,
- * contrasting sharply against the grayscale "atrezzo" city fabric. Each site stands on a
+ * Visual rule: Portfolio holdings are the protagonists of the city: bigger, with a corporate
+ * accent, a plaza and a sign, against the smaller coloured "atrezzo" fabric. Each site stands on a
  * colour-trimmed corporate plaza podium and merges its entire complex into ONE mesh with
  * vertex colours, keeping ~100 companies at ~100 draw calls regardless of architectural detail.
  */
@@ -19,7 +20,7 @@ export const NOMINAL: Record<Tier, number> = { outpost: 3.6, small: 5.0, campus:
 export interface Site {
   group: THREE.Group;
   mesh: THREE.Mesh;
-  material: THREE.MeshLambertMaterial;
+  material: THREE.MeshStandardMaterial;
   brandPlate: THREE.Mesh;
   brandMaterial: THREE.MeshBasicMaterial;
   nominal: number;
@@ -29,10 +30,15 @@ export interface Site {
   sign: THREE.Vector3;
 }
 
+/** Window colours of the landmark recipes: parts painted with these get the glass treatment. */
+const GLASS_HEXES = new Set([0x5ab9ea, 0x8be0ff, 0xd4f4ff]);
+
 export class Builder {
   private parts: THREE.BufferGeometry[] = [];
   top = 0;
   private color = new THREE.Color();
+  /** 1 = curtain-wall glass, 2 = accent (roofs of the background buildings); window colours are glass anyway. */
+  kind: 0 | 1 | 2 = 0;
 
   private push(g: THREE.BufferGeometry, x: number, y: number, z: number, hex: number, ry = 0, rz = 0) {
     if (ry) g.rotateY(ry);
@@ -48,6 +54,7 @@ export class Builder {
       c[i * 3 + 2] = this.color.b;
     }
     g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+    g.setAttribute("aKind", new THREE.BufferAttribute(new Float32Array(n).fill(this.kind || (GLASS_HEXES.has(hex) ? 1 : 0)), 1));
     g.computeBoundingBox();
     this.top = Math.max(this.top, g.boundingBox!.max.y);
     this.parts.push(g);
@@ -67,6 +74,10 @@ export class Builder {
   pyramid(base: number, h: number, x: number, y: number, z: number, hex: number) {
     this.push(new THREE.ConeGeometry(base / Math.SQRT2, h, 4), x, y + h / 2, z, hex, Math.PI / 4);
   }
+  /** A low-poly rounded blob (smooth-shaded icosphere) centred at `y`. */
+  ico(r: number, x: number, y: number, z: number, hex: number, detail = 1) {
+    this.push(new THREE.IcosahedronGeometry(r, detail), x, y, z, hex);
+  }
   sphere(r: number, x: number, y: number, z: number, hex: number) {
     this.push(new THREE.SphereGeometry(r, 10, 8), x, y + r, z, hex);
   }
@@ -76,7 +87,10 @@ export class Builder {
   }
 
   build(): THREE.BufferGeometry {
-    const merged = mergeGeometries(this.parts, false);
+    // Polyhedra are non-indexed, boxes and cylinders are indexed; the merge wants all or none.
+    const mixed = this.parts.some((g) => !g.index) && this.parts.some((g) => g.index);
+    const parts = mixed ? this.parts.map((g) => (g.index ? g.toNonIndexed() : g)) : this.parts;
+    const merged = mergeGeometries(parts, false);
     this.parts.forEach((g) => g.dispose());
     this.parts = [];
     merged.computeBoundingSphere();
@@ -649,7 +663,7 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   }
 
   const geometry = b.build();
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const material = createFacadeMaterial({ instanced: false, seed: (hashString(asset.id) % 997) / 997, saturation: 1.22 });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
