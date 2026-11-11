@@ -154,8 +154,8 @@ const VERT_WALK = /* glsl */ `
   float pivot = 0.5;
   if (aLimb > 0.5 && aLimb < 1.5) ang = sw * 0.75;
   else if (aLimb > 1.5 && aLimb < 2.5) ang = -sw * 0.75;
-  else if (aLimb > 2.5 && aLimb < 3.5) { ang = -sw * 0.65; pivot = 0.95; }
-  else if (aLimb > 3.5) { ang = sw * 0.65; pivot = 0.95; }
+  else if (aLimb > 2.5 && aLimb < 3.5) { ang = -sw * 0.65; pivot = 0.92; }
+  else if (aLimb > 3.5) { ang = sw * 0.65; pivot = 0.92; }
   float c = cos(ang);
   float s = sin(ang);
   float dy = transformed.y - pivot;
