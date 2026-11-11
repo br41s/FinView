@@ -391,7 +391,7 @@ export function createWorld(
         opacity: 1,
         applied: 1,
         targetOpacity: 1,
-        route: routeToPlaza(lot, d, layout.roads),
+        route: routeToPlaza(lot, d, layout),
       });
     }
     frameSun();
