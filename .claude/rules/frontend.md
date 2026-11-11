@@ -243,12 +243,55 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 - **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`).
 - **Transport** (`model/infra.ts`, `engine/infra.ts`), derived from the graph: a monorail on pillars above
   the avenue loop (pillars are chosen in the model, always in the avenue's central reservation, never in
-  water or on a crossing; stations on the loop edge nearest each district), a ground railway from a
-  terminus beside the plaza east out of town with level crossings (decking, barriers, signals), and ambient
-  traffic loops on the ring road, avenue loop and perimeter. Buildings stay out of the rail corridor
-  (blocks in the rail row are clipped). Traffic is scenery for now: it does not act out events.
+  water or on a crossing; stations on the loop edge nearest each district) and a ground railway from a
+  terminus beside the plaza east out of town (a platform at each end) with level crossings.
+  **Both trains run on timetables** (`model/trainSchedule.ts`, pure functions of the simulation clock, so
+  renderer, barriers and road traffic read the same answer): the ground train dwells at a terminus with its
+  door lamps lit, pulls out, cruises at 11 u/s and brakes into the other end; the monorail circles the loop
+  and stops at every station (head half a train past the platform centre), the doors slide open while it
+  dwells, and a second train runs the same timetable half a period behind. **Level-crossing barriers** are
+  an `InstancedMesh` of arms plus flashing lamps; `crossingClosed` (6 s before the train reaches the barrier
+  until its tail has cleared) drives them and is the predicate road traffic stops on.
+- **Road traffic (F4)** is `model/traffic.ts` (pure, tested) + `engine/vehicles.ts`. `buildLaneNetwork` cuts
+  right-hand lanes from the graph (`lanes / 2` per direction, offset clear of an avenue's median, trimmed
+  to the junction mouth) and every legal movement through a node is a short curve (`turn`); two movements
+  that come within a vehicle's width of each other (3.3 for turns, 1.9 for parallel straights) or end in
+  the same lane are recorded as **conflicts**. `TrafficSim` is a fixed-step (1/30 s) sim: IDM car-following
+  with the nearest leader on the lane, on the next movement and on its siblings, a virtual obstacle at the
+  stop line, and a **reservation rule**: a vehicle may only enter a junction when its signal is green, the
+  exit lane has room for it (and for everything already granted) and no conflicting movement is inside. A
+  vehicle can hold reservations at two junctions at once (`holds`): releasing on "rear left the lane"
+  only is what let long vehicles run a short lane unprotected (found by the overlap test, 2026-11-11). Signals
+  alternate by axis with an all-red gap and are only the flow; the reservation is the safety net. The
+  longest-waiting movement on green goes first (left turns never starve). Level crossings stop traffic at
+  a stop line while `crossingClosed`. Spawning is deterministic and weighted to the centre; `trafficLevel(hour)`
+  scales the target; a vehicle stuck 60 s is removed. Event vans (`AgentSystem.sendVan` -> `VehicleSystem`)
+  are scripted on the right-hand lane, send themselves out 1.6 s apart and are **external actors**: traffic
+  brakes for them and they give way to traffic (never for more than 3 s).
+  `engine/toyMaterial.ts` is the shared material of cars, trains and walkers (a `MeshStandardMaterial`
+  patched like the facade one): per-vertex `aKind` (paint takes the instance colour, glass, headlight,
+  taillight, lit window, hair), `uNight` from `facadeShared` lights lamps, brake lights follow the per-instance
+  `aBrake`, headlight beams are one additive instanced wedge mesh shown only at night. Vehicles are rounded
+  boxes (`GeoBuilder.roundBox`), scaled x1.2-1.35 so they read next to the lanes; their size lives in
+  `VEHICLE_SPEC` (the sim uses the same length and width).
+- **People (F4)** are `model/pedestrians.ts` + `engine/people.ts` + `engine/agents.ts`. Walkers follow a
+  pavement network: each road half-edge has a pavement either side, a walker owns one side for good and at a
+  junction hugs the corner (`next` = the road before the one it came from in angle order), which walks a
+  city block and **never crosses the asphalt** (pinned in `pedestrians.test.ts`; inner corners are rounded,
+  outer ones chamfered round the kerb corner). Four professions (worker, executive, courier, analyst), each
+  one merged geometry drawn as one `InstancedMesh`, chosen by the district a walker spawns in (the district's
+  own profession half of the time) and fading in and out with `crowdLevel(hour)`. The walk is in the vertex
+  shader (`aLimb`, `aAnim`), so the CPU writes a matrix and three numbers per person. Company staff keep their
+  post and act out events (role -> profession); event actors walk the route offset onto the pavement
+  (`sidewalkRoute`). `AgentSystem.pickAgent` replaces picking `bodies`; follow mode is unchanged.
+- **Quality tiers** add `maxWalkers` (40 / 150 / 300) and `maxVehicles` (60 / 180 / 300 at the busiest hour);
+  `maxAgents` is now company staff only. Measured at hour 9 from the default camera: low 294k triangles
+  (before 269k), medium 1.13M (989k), high 1.44M (1.30M), 3 more draw calls, 60 fps (30 on low, capped).
+  `engine/rollingStock.test.ts` keeps a vehicle under 560 triangles (bus 900) and a person under 600.
+- Dev handles added in F4: `__livingWorld.crowd()` (visible people with ids and professions, vehicles, train
+  positions), `.followAgent(id)`, `.followTrain()`; `stats().vehicles`.
 - **Routes** (`routeToPlaza`) are Dijkstra over the ground roads from a lot's door to the nearest plaza
-  gate; vans and visitors follow them, walkers use `sidewalkRoute` offsets.
+  gate; event vans (on their lane) and event actors (on the pavement, via `sidewalkRoute`) follow them.
 - **A ribbon's index order matters**: strips that wind clockwise face down and are culled, so roads looked
   missing while their bridges showed. `Flat.tri` in `engine/roads.ts` forces the normal up; `ribbon()` in
   `props.ts` (route highlight) still needs counter-clockwise order. Check roads from above.
