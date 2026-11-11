@@ -80,7 +80,7 @@ export class CameraController {
     const r = this.o.radius();
     const fov = (this.camera.fov * Math.PI) / 180;
     const targetDist = (r * 0.76) / Math.tan(fov / 2) / Math.min(1, this.camera.aspect * 0.88 + 0.12);
-    const dist = Math.min(240, Math.max(90, targetDist));
+    const dist = Math.min(this.maxDist(), Math.max(90, targetDist));
     this.set({ tx: 0, tz: 0, yaw: this.want.yaw, pitch: 0.76, dist }, instant);
   }
 

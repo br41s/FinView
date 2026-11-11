@@ -394,8 +394,8 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
   for (const lot of template.lots) {
     if (taken.has(lot.key)) continue;
     const block = blockOf.get(lot.blockKey)!;
-    const nx = Math.max(1, Math.round(lot.w / 8));
-    const nz = Math.max(1, Math.round(lot.d / 8));
+    const nx = Math.max(1, Math.round(lot.w / 6.4));
+    const nz = Math.max(1, Math.round(lot.d / 6.4));
     const cw = lot.w / nx;
     const cd = lot.d / nz;
     const tx = -lot.fz;
@@ -418,7 +418,7 @@ export function computeLayout(assets: readonly WorldAsset[]): WorldLayout {
         const x = lot.x + tx * along + lot.fx * deep;
         const z = lot.z + tz * along + lot.fz * deep;
         const kind = pickKind(hash2(hs, 4, 3), mix);
-        fillerSpots.push(filler(kind, x, z, lot.rotationY, seed, lot.district, Math.min(cw, cd) * 0.78));
+        fillerSpots.push(filler(kind, x, z, lot.rotationY, seed, lot.district, Math.min(cw, cd) * 0.8));
       }
     }
   }

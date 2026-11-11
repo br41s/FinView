@@ -162,16 +162,17 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   term.box(0.7, 0.2, 2.6, tp.x - 0.6, th + 1.0, tp.z, 0xd8dce2);
   // Level crossings: rubber decking over the street, a barrier and a signal either side.
   for (const c of infra.crossings) {
-    term.box(5.2, 0.05, 9, c.x, th + 0.15, c.z, 0x2f3338);
+    // The rail runs along x: the decking is as wide as the street (x) and as deep as the track (z).
+    term.box(9.2, 0.05, 4.2, c.x, th + 0.15, c.z, 0x2f3338);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const px = c.x + sx * 3.4;
-        const pz = c.z + sz * 5.3;
+        const px = c.x + sx * 5.6;
+        const pz = c.z + sz * 3.6;
         term.cyl(0.09, 0.09, 1.9, px, th + 0.1, pz, 0x3b4048, 6);
         term.sphere(0.2, px, th + 2.0, pz, 0xd23b3b);
-        // Striped arm, raised: it stands along the street, clear of the carriageway.
-        term.box(0.14, 0.14, 1.8, px - sx * 0.4, th + 1.1, pz - sz * 1.0, 0xf4f4f4, 0);
-        term.box(0.15, 0.15, 0.6, px - sx * 0.4, th + 1.1, pz - sz * 0.5, 0xd23b3b, 0);
+        // Striped arm, raised: it points along the rail, clear of the carriageway.
+        term.box(1.8, 0.14, 0.14, px + sx * 1.0, th + 1.1, pz, 0xf4f4f4, 0);
+        term.box(0.6, 0.15, 0.15, px + sx * 0.5, th + 1.1, pz, 0xd23b3b, 0);
       }
     }
   }

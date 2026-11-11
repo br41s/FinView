@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { distToSegment, polyArea } from "./cityGeometry";
-import { CANAL_HALF_WIDTH, LINES, PITCH, buildCityGraph, isRoadClass, routeToGate } from "./cityGraph";
+import { CANAL_HALF_WIDTH, LINES, PITCH, buildCityGraph, routeToGate } from "./cityGraph";
 import { getCityTemplate, slotAt } from "./cityLots";
 import { DISTRICT_IDS } from "./types";
 

@@ -10,22 +10,8 @@ import { buildRoads } from "./roads";
 
 /** Land, water, streets, plaza, civic buildings, trees and text labels: the static stage. */
 
-const STREET = 0x646973;
 const WHITE = 0xf4f1ea;
 const DARK = 0x3b4048;
-
-function offsetPath(line: readonly Pt[], offset: number): Pt[] {
-  return line.map((point, i) => {
-    const previous = line[Math.max(0, i - 1)];
-    const next = line[Math.min(line.length - 1, i + 1)];
-    const dx = next.x - previous.x;
-    const dz = next.z - previous.z;
-    const length = Math.hypot(dx, dz) || 1;
-    const nx = -dz / length;
-    const nz = dx / length;
-    return { x: point.x + nx * offset, z: point.z + nz * offset };
-  });
-}
 
 export interface Town {
   group: THREE.Group;
