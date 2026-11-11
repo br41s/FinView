@@ -7,6 +7,7 @@ import { accentFor, Builder } from "./buildingFactory";
 import type { WorldAsset } from "../model/types";
 import { buildFillers, type Fillers } from "./fillers";
 import { buildRoads } from "./roads";
+import { createTrees } from "./trees";
 
 /** Land, water, streets, plaza, civic buildings, trees and text labels: the static stage. */
 
@@ -15,6 +16,7 @@ const DARK = 0x3b4048;
 
 export interface Town {
   group: THREE.Group;
+  /** Broadleaf trees (the conifers are in the same group). */
   trees: THREE.InstancedMesh;
   fillers: Fillers;
   districtLabels: THREE.Sprite[];
@@ -179,14 +181,6 @@ function civicGeometry(kind: CivicKind): THREE.BufferGeometry {
   return b.build();
 }
 
-function treeGeometry(): THREE.BufferGeometry {
-  const b = new Builder();
-  b.cyl(0.08, 0.1, 0.5, 0, 0, 0, 0x6b533e, 5);
-  b.cone(0.45, 0.8, 0, 0.4, 0, 0x4f9458, 7);
-  b.cone(0.34, 0.65, 0, 0.9, 0, 0x62a668, 7);
-  return b.build();
-}
-
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -195,7 +189,7 @@ const smooth = (a: number, b: number, x: number) => {
 /** Ground colour: a level lawn, sand on the canal banks and the canal bed. */
 function groundColor(h: number, x: number, z: number, out: THREE.Color): THREE.Color {
   const n = valueNoise(x * 0.05, z * 0.05, 5) * 0.08 - 0.04;
-  out.set(0x98c987);
+  out.set(0x82cc64);
   if (h < -0.05) out.lerp(new THREE.Color(0xe0d4aa), smooth(-0.05, -0.5, h)); // bank
   if (h < -0.6) out.set(0xc7ba94); // canal bed
   out.offsetHSL(0, 0, n);
@@ -380,16 +374,9 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
 
   // Trees: parks, canal banks, pavements and the country beyond (positions come from the layout).
   const spots = layout.treeSpots;
-  const treeGeo = own(treeGeometry());
-  const trees = new THREE.InstancedMesh(treeGeo, vcMat, Math.max(1, spots.length));
-  const m4 = new THREE.Matrix4();
-  spots.forEach(([x, z, sc], i) => {
-    m4.compose(new THREE.Vector3(x, t.heightAt(x, z), z), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc));
-    trees.setMatrixAt(i, m4);
-  });
-  trees.count = Math.min(maxTrees, spots.length);
-  trees.castShadow = true;
-  group.add(trees);
+  const treeSet = createTrees(spots, t, maxTrees);
+  const trees = treeSet.round;
+  group.add(treeSet.round, treeSet.pines);
 
   // District names, visible from far away.
   const districtLabels: THREE.Sprite[] = [];
@@ -408,9 +395,10 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     districtLabels,
     civic,
     setTreeCount(n) {
-      trees.count = Math.min(n, spots.length);
+      treeSet.setCount(n);
     },
     update(dtMs: number) {
+      treeSet.update(dtMs);
       fountainTime += dtMs / 1000;
       const sprayPulse = 1.0 + Math.sin(fountainTime * 5.2) * 0.18;
       fountainSpray.scale.set(sprayPulse, 0.85 + Math.sin(fountainTime * 6.5) * 0.22, sprayPulse);
@@ -420,7 +408,7 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
       disposables.forEach((d) => d.dispose());
       roads.dispose();
       fillers.dispose();
-      trees.dispose();
+      treeSet.dispose();
       districtLabels.forEach(disposeLabel);
     },
   };
