@@ -88,6 +88,36 @@ export class Builder {
   pyramid(base: number, h: number, x: number, y: number, z: number, hex: number) {
     this.push(new THREE.ConeGeometry(base / Math.SQRT2, h, 4), x, y + h / 2, z, hex, Math.PI / 4);
   }
+  /** A gable roof: eaves `w` x `d` at `y`, ridge `h` above along x. Faces are oriented away from its centre. */
+  gable(w: number, h: number, d: number, x: number, y: number, z: number, hex: number) {
+    const hw = w / 2;
+    const hd = d / 2;
+    const P = {
+      a: [-hw, 0, -hd], b: [hw, 0, -hd], c: [hw, 0, hd], e: [-hw, 0, hd], r1: [-hw, h, 0], r2: [hw, h, 0],
+    } as const;
+    const tris: Array<[readonly number[], readonly number[], readonly number[]]> = [
+      [P.a, P.b, P.r2], [P.a, P.r2, P.r1], // back slope
+      [P.e, P.r1, P.r2], [P.e, P.r2, P.c], // front slope
+      [P.a, P.r1, P.e], // left end
+      [P.b, P.c, P.r2], // right end
+      [P.a, P.e, P.c], [P.a, P.c, P.b], // underside
+    ];
+    const pos: number[] = [];
+    const centre = new THREE.Vector3(0, h / 3, 0);
+    for (const [p, q, r] of tris) {
+      const A = new THREE.Vector3(...p);
+      const B = new THREE.Vector3(...q);
+      const C = new THREE.Vector3(...r);
+      const n = B.clone().sub(A).cross(C.clone().sub(A));
+      const out = A.clone().add(B).add(C).divideScalar(3).sub(centre);
+      const t = n.dot(out) < 0 ? [A, C, B] : [A, B, C];
+      for (const v of t) pos.push(v.x, v.y, v.z);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    this.push(g, x, y, z, hex);
+  }
   /** A low-poly rounded blob (smooth-shaded icosphere) centred at `y`. */
   ico(r: number, x: number, y: number, z: number, hex: number, detail = 1) {
     this.push(new THREE.IcosahedronGeometry(r, detail), x, y, z, hex);

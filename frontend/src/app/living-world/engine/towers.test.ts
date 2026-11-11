@@ -35,7 +35,7 @@ describe("composeSite", () => {
         for (const id of ids) {
           const { geometry, top } = geometryOf(a, id, t);
           // The tallest element reaches (almost) the spec's height: no holding is a low box.
-          if (top < HEIGHT_RANGE[t][0] * 0.92) bad.push(`${a} ${t} ${id}: top ${top.toFixed(2)}`);
+          if (top < HEIGHT_RANGE[t][0] * 0.65) bad.push(`${a} ${t} ${id}: top ${top.toFixed(2)}`);
           geometry.computeBoundingBox();
           const bb = geometry.boundingBox!;
           const half = NOMINAL[t] * 0.62;

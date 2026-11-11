@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TIERS } from "./scale";
-import { EXTRA_COUNT, HEIGHT_RANGE, accentColour, hslHex, towerSpec } from "./towerSpec";
+import { EXTRA_COUNT, FAMILY_HEIGHT, HEIGHT_RANGE, accentColour, hslHex, towerSpec } from "./towerSpec";
 import { ARCHETYPES } from "./types";
 
 const ids = Array.from({ length: 40 }, (_, i) => `ES${String(1_000_000_000 + i * 7919)}`);
@@ -55,9 +55,10 @@ describe("towerSpec", () => {
     for (const a of ARCHETYPES) {
       for (const id of ids.slice(0, 10)) {
         for (const t of TIERS) {
-          const h = towerSpec(a, id, t).main.height;
-          expect(h).toBeGreaterThanOrEqual(HEIGHT_RANGE[t][0]);
-          expect(h).toBeLessThanOrEqual(HEIGHT_RANGE[t][1]);
+          const { main } = towerSpec(a, id, t);
+          const f = FAMILY_HEIGHT[main.family] ?? 1;
+          expect(main.height).toBeGreaterThanOrEqual(HEIGHT_RANGE[t][0] * f - 1e-9);
+          expect(main.height).toBeLessThanOrEqual(HEIGHT_RANGE[t][1] * f + 1e-9);
         }
       }
     }
@@ -79,6 +80,16 @@ describe("towerSpec", () => {
     const kinds = towerSpec("banking", ids[1], "small").parts.map((p) => p.kind);
     expect(kinds).toContain("hall");
     expect(kinds).toContain("plaza");
+  });
+});
+
+describe("variety across a town", () => {
+  it("draws every silhouette family from the archetypes that have a pool", () => {
+    const fam = new Set<string>();
+    for (const a of ["tech", "banking", "realestate", "fund", "crypto"] as const) {
+      for (const id of ids) fam.add(towerSpec(a, id, "campus").main.family);
+    }
+    expect([...fam].sort()).toEqual(["cylinder", "crystal", "dome", "egg", "slab", "stadium", "stepped", "twist"].sort());
   });
 });
 

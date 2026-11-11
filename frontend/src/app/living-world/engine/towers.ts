@@ -89,6 +89,8 @@ export interface LoftOpts {
   capKind?: 0 | 1 | 2;
   /** Round the number of window columns of a ring to a multiple of this (diagrid period). */
   colMultiple?: number;
+  /** Window columns per local unit of the material that draws it (default SITE_COLS). */
+  cols?: number;
   /** Faces point inwards (the inner wall of a bowl). */
   inward?: boolean;
 }
@@ -101,6 +103,7 @@ export function loft(b: Builder, o: LoftOpts): number {
   const twist = o.twist ?? (() => 0);
   const yAt = o.yAt ?? ((t: number) => t);
   const mult = o.colMultiple ?? 1;
+  const cols = o.cols ?? SITE_COLS;
   const rot = o.rot ?? 0;
   const at = (x: number, z: number, t: number): [number, number, number] => {
     const s = scale(t);
@@ -119,14 +122,14 @@ export function loft(b: Builder, o: LoftOpts): number {
     const cum = [0];
     for (let i = 1; i < P; i++) cum.push(cum[i - 1] + Math.hypot(ch.pts[i][0] - ch.pts[i - 1][0], ch.pts[i][1] - ch.pts[i - 1][1]));
     const L = cum[P - 1];
-    const ncols = Math.max(mult, Math.round((L * SITE_COLS) / mult) * mult);
+    const ncols = Math.max(mult, Math.round((L * cols) / mult) * mult);
     const pos = new Float32Array(P * R * 3);
     const arc = new Float32Array(P * R);
     for (let j = 0; j < R; j++) {
       for (let i = 0; i < P; i++) {
         const [x, y, z] = at(ch.pts[i][0], ch.pts[i][1], ts[j]);
         pos.set([x, y, z], (j * P + i) * 3);
-        arc[j * P + i] = ((cum[i] / L) * ncols) / SITE_COLS;
+        arc[j * P + i] = ((cum[i] / L) * ncols) / cols;
       }
     }
     const idx: number[] = [];

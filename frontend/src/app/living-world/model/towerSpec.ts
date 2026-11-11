@@ -101,6 +101,12 @@ export const HEIGHT_RANGE: Record<Tier, readonly [number, number]> = {
   major: [22, 30],
 };
 
+/**
+ * Families whose tallest element is a mast or a spire, not the building: they stand shorter than a
+ * tower of their tier, so a stadium is not drawn as four needles. Still above every filler (tested).
+ */
+export const FAMILY_HEIGHT: Partial<Record<Family, number>> = { stadium: 0.7, dome: 0.88 };
+
 /** Base width of the main structure as a share of the nominal footprint. */
 const WIDTH_FRAC: Record<Tier, readonly [number, number]> = {
   outpost: [0.36, 0.42],
@@ -284,7 +290,7 @@ export function towerSpec(archetype: Archetype, id: string, tier: Tier, accentOv
   const family = pick(r, MAIN_POOL[archetype]);
   const [h0, h1] = HEIGHT_RANGE[tier];
   const [w0, w1] = WIDTH_FRAC[tier];
-  const height = h0 + (h1 - h0) * r();
+  const height = (h0 + (h1 - h0) * r()) * (FAMILY_HEIGHT[family] ?? 1);
   const plan = pick(r, PLANS[family]);
   const taperBase = family === "twist" ? 0.6 + r() * 0.22 : family === "crystal" ? 0.5 + r() * 0.2 : family === "egg" ? 1 : 0.84 + r() * 0.14;
   const main: MainSpec = {

@@ -186,7 +186,7 @@ function pickKind(u: number, m: Mix): FillerKind {
 }
 
 /** Generic buildings stay smaller than the holdings (3.4–7): size must keep meaning weight. */
-const WIDTH: Record<FillerKind, [number, number]> = {
+export const WIDTH: Record<FillerKind, [number, number]> = {
   skyscraper: [2.8, 3.8],
   tower: [3.2, 4.0],
   block: [3.4, 4.2],
@@ -194,7 +194,7 @@ const WIDTH: Record<FillerKind, [number, number]> = {
   villa: [3.8, 4.6],
   shed: [4.2, 5.0],
 };
-const TALL: Record<FillerKind, [number, number]> = {
+export const TALL: Record<FillerKind, [number, number]> = {
   skyscraper: [0.8, 1.7],
   tower: [0.55, 1.0],
   block: [0.55, 0.95],
