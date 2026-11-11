@@ -36,16 +36,16 @@ export interface QualitySettings {
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
-  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 0, post: null, maxAgents: 80, maxWalkers: 40, maxVehicles: 40, trees: 90, fillerDensity: 0.45, minFrameMs: 33 },
+  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 0, post: null, maxAgents: 80, maxWalkers: 40, maxVehicles: 60, trees: 90, fillerDensity: 0.45, minFrameMs: 33 },
   medium: {
     maxPixelRatio: 1.5, shadows: true, shadowMapSize: 1024,
     post: { aoHalfRes: true, aoSamples: 8, aoDenoiseSamples: 4, bloom: false, smaa: true },
-    maxAgents: 220, maxWalkers: 150, maxVehicles: 120, trees: 260, fillerDensity: 1, minFrameMs: 0,
+    maxAgents: 220, maxWalkers: 150, maxVehicles: 180, trees: 260, fillerDensity: 1, minFrameMs: 0,
   },
   high: {
     maxPixelRatio: 2, shadows: true, shadowMapSize: 2048,
     post: { aoHalfRes: true, aoSamples: 16, aoDenoiseSamples: 8, bloom: true, smaa: true },
-    maxAgents: 420, maxWalkers: 300, maxVehicles: 220, trees: 520, fillerDensity: 1, minFrameMs: 0,
+    maxAgents: 420, maxWalkers: 300, maxVehicles: 300, trees: 520, fillerDensity: 1, minFrameMs: 0,
   },
 };
 

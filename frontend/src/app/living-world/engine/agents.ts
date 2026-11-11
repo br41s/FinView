@@ -456,6 +456,15 @@ export class AgentSystem {
     return a?.active ? a.role : "worker";
   }
 
+  /** Dev handle: every visible person with their profession. */
+  snapshot(): Array<{ id: number; x: number; z: number; profession: string; crowd: boolean }> {
+    const out: Array<{ id: number; x: number; z: number; profession: string; crowd: boolean }> = [];
+    this.agents.forEach((a, id) => {
+      if (a.active && a.vis > 0.5) out.push({ id, x: a.x, z: a.z, profession: a.prof, crowd: !!a.crowd });
+    });
+    return out;
+  }
+
   professionOf(id: number): Profession {
     const a = this.agents[id];
     return a?.active ? a.prof : "worker";

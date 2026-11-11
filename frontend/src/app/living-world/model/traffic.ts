@@ -401,13 +401,20 @@ export class TrafficSim {
   private externals: External[] = [];
   private weights: number[];
   private spawnable: Piece[];
+  private spawnWeight: number[];
   private spawnTotal: number;
 
   constructor(readonly net: LaneNetwork, private opts: TrafficOptions = {}) {
     this.rnd = seeded(opts.seed ?? 1);
     this.weights = VEHICLE_KINDS.map((k) => VEHICLE_SPEC[k].weight);
     this.spawnable = net.lanes.filter((l) => l.length > 14);
-    this.spawnTotal = this.spawnable.reduce((s, l) => s + l.length, 0);
+    // The middle of town is busier than the outskirts.
+    this.spawnWeight = this.spawnable.map((l) => {
+      const m = l.pts[0];
+      const r = Math.max(Math.abs(m.x), Math.abs(m.z));
+      return l.length * (0.35 + 1.5 * Math.exp(-((r / 120) ** 2)));
+    });
+    this.spawnTotal = this.spawnWeight.reduce((a, b) => a + b, 0);
   }
 
   get count(): number {
@@ -471,10 +478,10 @@ export class TrafficSim {
     for (let attempt = 0; attempt < 6; attempt++) {
       let r = this.rnd() * this.spawnTotal;
       let lane = this.spawnable[0];
-      for (const l of this.spawnable) {
-        r -= l.length;
+      for (let i = 0; i < this.spawnable.length; i++) {
+        r -= this.spawnWeight[i];
         if (r <= 0) {
-          lane = l;
+          lane = this.spawnable[i];
           break;
         }
       }

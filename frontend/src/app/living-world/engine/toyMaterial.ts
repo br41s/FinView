@@ -199,11 +199,11 @@ const FRAG_EMISSIVE = /* glsl */ `
   float head = step(1.5, vKind) * step(vKind, 2.5);
   float tail = step(2.5, vKind) * step(vKind, 3.5);
   float lit = step(4.5, vKind) * step(vKind, 5.5);
-  totalEmissiveRadiance += vColor.rgb * head * (0.12 + 2.2 * uNight);
+  totalEmissiveRadiance += vColor.rgb * head * (0.12 + 4.5 * uNight);
   #ifdef BRAKE
-  totalEmissiveRadiance += vColor.rgb * tail * (0.1 + 0.9 * uNight + 1.8 * vBrake);
+  totalEmissiveRadiance += vColor.rgb * tail * (0.1 + 1.6 * uNight + 2.2 * vBrake);
   #else
-  totalEmissiveRadiance += vColor.rgb * tail * (0.1 + 0.9 * uNight);
+  totalEmissiveRadiance += vColor.rgb * tail * (0.1 + 1.6 * uNight);
   #endif
   totalEmissiveRadiance += vec3(1.0, 0.85, 0.55) * lit * (0.06 + 0.9 * uNight);
 }

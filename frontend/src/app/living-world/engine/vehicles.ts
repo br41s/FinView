@@ -4,6 +4,7 @@ import type { Point } from "../model/routes";
 import { TrafficSim, VEHICLE_KINDS, VEHICLE_SPEC, getLaneNetwork, offsetPolyline, trafficLevel, type VehicleKind } from "../model/traffic";
 import type { GNode } from "../model/cityGraph";
 import type { WorldLayout } from "../model/townLayout";
+import { facadeShared } from "./materials";
 import { GeoBuilder, KIND, createToyMaterial } from "./toyMaterial";
 
 /**
@@ -149,6 +150,27 @@ interface Scripted {
   onDone: (() => void) | null;
 }
 
+/** A wedge of light on the road ahead of a vehicle: bright at the lamps, fading to nothing 5 units on. */
+function beamGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  const pos: number[] = [];
+  const col: number[] = [];
+  for (const s of [-1, 1]) {
+    const x0 = s * 0.3;
+    const quad = [
+      [x0 - 0.18, 0, 0.12], [x0 + 0.18, 0, 0.12], [x0 + s * 0.3 + 0.45, 0, 5.2], [x0 + s * 0.3 - 0.45, 0, 5.2],
+    ];
+    const c = [[0.36, 0.32, 0.18], [0.36, 0.32, 0.18], [0, 0, 0], [0, 0, 0]];
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+      pos.push(quad[i][0], 0.07, quad[i][2]);
+      col.push(...c[i]);
+    }
+  }
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
 const MAX_SCRIPTED = 10;
 const LANE_OFFSET = 1.45;
 /** Stand-off to the traffic ahead before a scripted van gives way. */
@@ -181,6 +203,8 @@ export class VehicleSystem {
   private meshes = new Map<VehicleKind, THREE.InstancedMesh>();
   private brake = new Map<VehicleKind, THREE.InstancedBufferAttribute>();
   private scripted: Scripted[] = [];
+  private beams: THREE.InstancedMesh;
+  private beamMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
   private material = createToyMaterial({ paint: [-0.5, 0.5], brake: true, roughness: 0.38 });
   private maxVehicles = 0;
   private reduced = false;
@@ -216,6 +240,12 @@ export class VehicleSystem {
       this.meshes.set(kind, mesh);
       this.brake.set(kind, attr);
     }
+    this.beams = new THREE.InstancedMesh(beamGeometry(), this.beamMat, cap);
+    this.beams.count = 0;
+    this.beams.frustumCulled = false;
+    this.beams.renderOrder = 2;
+    this.beams.visible = false;
+    this.group.add(this.beams);
     this.sim.setTarget(this.targetCount());
     this.sim.warm(this.targetCount());
     this.write();
@@ -303,6 +333,19 @@ export class VehicleSystem {
 
   private write() {
     const counts = new Map<VehicleKind, number>();
+    let lit = 0;
+    const night = facadeShared.uNight.value;
+    this.beams.visible = night > 0.2;
+    this.beamMat.color.setScalar(Math.min(1, night * 1.2));
+    const beam = (kind: VehicleKind, x: number, z: number, heading: number, len: number, scale: number) => {
+      if (!this.beams.visible || lit >= this.beams.instanceMatrix.count) return;
+      this.q.setFromAxisAngle(this.up, heading);
+      this.p.set(x + Math.sin(heading) * (len / 2 - 0.05), this.o.ground(x, z) + 0.1, z + Math.cos(heading) * (len / 2 - 0.05));
+      const k = Math.max(0.001, scale) * VEHICLE_SPEC[kind].scale;
+      this.s.set(k, 1, k);
+      this.m.compose(this.p, this.q, this.s);
+      this.beams.setMatrixAt(lit++, this.m);
+    };
     const put = (kind: VehicleKind, x: number, z: number, heading: number, scale: number, colour: number, braking: boolean) => {
       const mesh = this.meshes.get(kind)!;
       const i = counts.get(kind) ?? 0;
@@ -320,8 +363,14 @@ export class VehicleSystem {
     for (const v of this.sim.vehicles) {
       const palette = PAINT[v.kind];
       put(v.kind, v.x, v.z, v.heading, v.scale, palette[hashString(`c${v.id}`) % palette.length], v.braking);
+      beam(v.kind, v.x, v.z, v.heading, v.length, v.scale);
     }
-    for (const v of this.scripted) put("van", v.x, v.z, v.heading, 1, v.tint, v.moving === 0);
+    for (const v of this.scripted) {
+      put("van", v.x, v.z, v.heading, 1, v.tint, v.moving === 0);
+      beam("van", v.x, v.z, v.heading, VEHICLE_SPEC.van.length, 1);
+    }
+    this.beams.count = lit;
+    this.beams.instanceMatrix.needsUpdate = true;
     for (const kind of VEHICLE_KINDS) {
       const mesh = this.meshes.get(kind)!;
       mesh.count = counts.get(kind) ?? 0;
@@ -331,11 +380,19 @@ export class VehicleSystem {
     }
   }
 
+  /** Dev handle: the traffic's poses. */
+  snapshot(): Array<{ x: number; z: number; kind: string; v: number }> {
+    return this.sim.vehicles.map((c) => ({ x: c.x, z: c.z, kind: c.kind, v: c.v }));
+  }
+
   dispose() {
     for (const mesh of this.meshes.values()) {
       mesh.geometry.dispose();
       mesh.dispose();
     }
+    this.beams.geometry.dispose();
+    this.beams.dispose();
+    this.beamMat.dispose();
     this.material.dispose();
   }
 }

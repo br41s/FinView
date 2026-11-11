@@ -104,6 +104,12 @@ export interface WorldHandle {
   setHour(h: number): void;
   /** Fly the camera to a ground point (dev tools and screenshots). */
   focusPoint(x: number, z: number, distance?: number): void;
+  /** Follow the ground train (it shuttles along the railway and stops at both termini). */
+  followTrain(): void;
+  /** Dev handle: third-person follow of one pavement walker or staff member (id from `crowd()`). */
+  followAgent(id: number): void;
+  /** Dev handle: where the visible pavement walkers and the vehicles are (screenshots, checks). */
+  crowd(): { people: Array<{ id: number; x: number; z: number; profession: string; crowd: boolean }>; vehicles: Array<{ x: number; z: number; kind: string; v: number }>; trains: Array<{ x: number; y: number; z: number }> };
   stats(): WorldStats;
   dispose(): void;
 }
@@ -814,6 +820,18 @@ export function createWorld(
     setHour(h) {
       agents.setHour(h);
     },
+    followTrain() {
+      if (infra) {
+        cb.onFollowTarget?.("Tren de cercanías");
+        ctrl.follow(() => infra!.getGroundTrainPosition());
+      }
+    },
+    followAgent(id) {
+      const a = agents.professionOf(id);
+      cb.onFollowTarget?.(a === "worker" ? "obrero" : a === "executive" ? "ejecutivo" : a === "courier" ? "repartidor" : "analista");
+      ctrl.follow(() => agents.position(id));
+    },
+    crowd: () => ({ people: agents.snapshot(), vehicles: vehicles?.snapshot() ?? [], trains: infra ? [infra.getMonorailPosition(0), infra.getMonorailPosition(1), infra.getGroundTrainPosition()] : [] }),
     focusPoint(x, z, distance) {
       ctrl.focus(x, z, distance);
     },
