@@ -132,14 +132,15 @@ vec3 fGlassCol = diffuseColor.rgb * (1.0 + 0.24 * fVar) * (0.96 + 0.42 * clamp(v
 fGlassCol *= mix(0.5, 1.0, fPane);
 diffuseColor.rgb = mix(diffuseColor.rgb, fGlassCol, fGlass);
 // Diagrid: two families of diagonals across the window cells (kind 3 only).
+// (Derivatives are taken outside the branch: they are undefined in non-uniform control flow.)
+vec2 fLc = fCell / max(uExtra.y, 1.0);
+float fLs1 = fract(fLc.x + fLc.y);
+float fLs2 = fract(fLc.x - fLc.y);
+float fLd = min(min(fLs1, 1.0 - fLs1), min(fLs2, 1.0 - fLs2));
+float fLaa = max(fwidth(fLc.x), fwidth(fLc.y)) * 0.7 + 0.01;
 float fLat = 0.0;
 if (uExtra.y > 0.5 && vKind > 2.5) {
-  vec2 lc = fCell / uExtra.y;
-  float s1 = fract(lc.x + lc.y);
-  float s2 = fract(lc.x - lc.y);
-  float dl = min(min(s1, 1.0 - s1), min(s2, 1.0 - s2));
-  float aa = max(fwidth(lc.x), fwidth(lc.y)) * 0.7 + 0.01;
-  fLat = (1.0 - smoothstep(uExtra.z - aa, uExtra.z + aa, dl)) * fGlass;
+  fLat = (1.0 - smoothstep(uExtra.z - fLaa, uExtra.z + fLaa, fLd)) * fGlass;
   diffuseColor.rgb = mix(diffuseColor.rgb, uLat, fLat);
 }
 // Walls get a faint ground-contact darkening so they sit on the street.
