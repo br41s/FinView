@@ -1,24 +1,31 @@
 import * as THREE from "three";
+import { nodeId, type GNode } from "../model/cityGraph";
 import { MONORAIL_DECK, MONORAIL_WIDTH, RAIL_WIDTH, type Pier } from "../model/infra";
 import { pointAlong, routeLength, type Point } from "../model/routes";
-import { seeded } from "../model/rng";
 import type { WorldLayout } from "../model/townLayout";
+import { createLoop, createShuttle, crossingClosed, type TrainState } from "../model/trainSchedule";
 import { Builder } from "./buildingFactory";
 import { ribbon } from "./props";
+import { GeoBuilder, KIND, createToyMaterial } from "./toyMaterial";
 
 /**
- * Transport: elevated expressways with traffic, a railway with a shuttle train, and a
- * monorail loop on pillars.
+ * Transport: the railway with its shuttle train and level crossings, and the monorail loop on
+ * pillars with its two trains. Road traffic lives in `vehicles.ts`.
  *
- * Visual rule: Ambient city transport and highway vehicles belong to the grayscale "atrezzo"
- * layer (sleek monochrome slate, silver and charcoal tones) so they never compete with
- * portfolio company buildings or corporate event vans.
+ * Both trains follow timetables from `model/trainSchedule.ts`, pure functions of this module's clock:
+ * the ground train waits at a terminus, pulls out and runs to the other end and back; the monorail
+ * brakes into every station, dwells with its doors open, and departs. The level-crossing barriers
+ * read the same timetable, so they close before the train arrives and open after its tail has gone,
+ * and the road traffic reads the same barrier state through `crossingClosed`.
  */
 
 export interface InfraSystem {
   group: THREE.Group;
   readonly monoCars: THREE.InstancedMesh;
   getMonorailPosition(trainIdx?: number): { x: number; y: number; z: number; heading: number };
+  getGroundTrainPosition(): { x: number; y: number; z: number; heading: number };
+  /** Is the level crossing at this graph node closed to road traffic? */
+  crossingClosed(node: GNode): boolean;
   update(dtMs: number): void;
   setReducedMotion(v: boolean): void;
   dispose(): void;
@@ -74,33 +81,77 @@ function pillars(b: Builder, piers: readonly Pier[], deckY: (x: number, z: numbe
   }
 }
 
-function carGeometry(): THREE.BufferGeometry {
-  const b = new Builder();
-  b.box(0.95, 0.42, 1.9, 0, 0.12, 0, 0xffffff);
-  b.box(0.8, 0.34, 1.0, 0, 0.54, -0.1, 0x383d45);
+// --- rolling stock ------------------------------------------------------------------------------
+
+const LAMP = 0xfff1c4;
+const BRAKE_LAMP = 0xff3a3a;
+const DOOR_LAMP = 0x58f08c;
+const GLASS = 0x32465c;
+const DARK = 0x2b2f36;
+
+/** Ground train: a red locomotive and four cream coaches with a blue stripe, 22 long, nose to +z. */
+const TRAIN_LENGTH = 22;
+function groundTrainGeometry(): THREE.BufferGeometry {
+  const b = new GeoBuilder();
+  const w = 1.9;
+  const vehicle = (z0: number, len: number, loco: boolean) => {
+    const zc = z0 - len / 2;
+    b.box(w - 0.3, 0.3, len - 0.3, 0, 0.18, zc, DARK);
+    b.roundBox(w, 1.5, len, 0.26, 0, 0.36, zc, loco ? 0xd9443a : 0xf1e9d8, { kind: KIND.fixed });
+    b.box(w + 0.02, 0.2, len - 0.3, 0, 0.72, zc, loco ? 0xf2c230 : 0x2f6fd6);
+    b.roundBox(w - 0.35, 0.12, len - 0.5, 0.05, 0, 1.84, zc, loco ? 0x9aa1ab : 0xdfe3e8);
+    if (!loco) {
+      for (const s of [-1, 1]) {
+        b.box(w + 0.03, 0.5, len - 0.9, 0, 1.08, zc, 0xdce9f2, { kind: KIND.lit });
+        b.box(0.02, 0.62, 0.05, s * (w / 2 + 0.02), 0.94, zc + len / 2 - 0.6, DOOR_LAMP, { kind: KIND.tail });
+        b.box(0.02, 0.62, 0.05, s * (w / 2 + 0.02), 0.94, zc - len / 2 + 0.6, DOOR_LAMP, { kind: KIND.tail });
+      }
+    }
+  };
+  vehicle(TRAIN_LENGTH / 2, 4.6, true);
+  for (let i = 0; i < 4; i++) vehicle(TRAIN_LENGTH / 2 - 4.9 - i * 4.25, 3.9, false);
+  const nose = TRAIN_LENGTH / 2;
+  b.box(w - 0.5, 0.5, 0.06, 0, 1.05, nose + 0.005, GLASS, { kind: KIND.glass });
+  for (const s of [-1, 1]) {
+    b.box(0.26, 0.14, 0.06, s * (w / 2 - 0.3), 0.56, nose + 0.01, LAMP, { kind: KIND.head });
+    b.box(0.26, 0.14, 0.06, s * (w / 2 - 0.3), 0.56, -nose - 0.01, BRAKE_LAMP, { kind: KIND.tail });
+  }
   return b.build();
 }
 
-function coachGeometry(len: number, wide: number, tall: number): THREE.BufferGeometry {
-  const b = new Builder();
-  b.box(wide, tall, len, 0, 0.35, 0, 0xffffff);
-  b.box(wide + 0.04, tall * 0.34, len - 0.5, 0, 0.35 + tall * 0.42, 0, 0x383d45);
-  b.box(wide - 0.2, 0.15, len - 0.2, 0, 0.35 + tall, 0, 0xc8cdd4);
+/** One monorail car, 3.4 long, nose to +z, with a doorway on each side at its middle. */
+const MONO_CAR = 3.4;
+function monorailCarGeometry(): THREE.BufferGeometry {
+  const b = new GeoBuilder();
+  const w = 1.5;
+  b.box(w - 0.5, 0.25, MONO_CAR - 0.5, 0, 0.12, 0, DARK);
+  b.roundBox(w, 1.2, MONO_CAR - 0.04, 0.34, 0, 0.3, 0, 0xffffff, { kind: KIND.paint });
+  b.box(w + 0.02, 0.44, MONO_CAR - 0.7, 0, 0.88, 0, 0xdce9f2, { kind: KIND.lit });
+  b.box(w - 0.3, 0.5, MONO_CAR + 0.0, 0, 0.88, 0, 0xdce9f2, { kind: KIND.lit });
+  b.roundBox(w - 0.4, 0.14, MONO_CAR - 0.6, 0.06, 0, 1.46, 0, 0xdfe3e8);
+  for (const s of [-1, 1]) {
+    b.box(0.03, 0.9, 0.86, s * (w / 2 + 0.005), 0.34, 0, GLASS, { kind: KIND.glass });
+    b.box(0.02, 0.5, 0.04, s * (w / 2 + 0.035), 0.9, 0.5, DOOR_LAMP, { kind: KIND.tail });
+    b.box(0.26, 0.12, 0.06, s * (w / 2 - 0.3), 0.6, MONO_CAR / 2 - 0.02, LAMP, { kind: KIND.head });
+    b.box(0.26, 0.12, 0.06, s * (w / 2 - 0.3), 0.6, -MONO_CAR / 2 + 0.02, BRAKE_LAMP, { kind: KIND.tail });
+  }
   return b.build();
 }
 
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
+function doorLeafGeometry(): THREE.BufferGeometry {
+  const b = new GeoBuilder();
+  b.box(0.04, 0.88, 0.43, 0, 0, 0, 0x9fb4c8);
+  return b.build();
+}
 
-interface Car {
-  line: number;
-  dist: number;
-  speed: number;
-  lane: number;
-  forward: boolean;
-  loop: boolean;
+function barrierArmGeometry(): THREE.BufferGeometry {
+  // One unit long along +x from the pivot: the instance matrix scales it to the road.
+  const b = new GeoBuilder();
+  const stripes = 10;
+  for (let i = 0; i < stripes; i++) {
+    b.box(1 / stripes, 0.14, 0.14, (i + 0.5) / stripes, -0.07, 0, i % 2 ? 0xf4f4f4 : 0xd23b3b);
+  }
+  return b.build();
 }
 
 export function buildInfra(layout: WorldLayout): InfraSystem {
@@ -108,12 +159,12 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   const disposables: Array<{ dispose(): void }> = [];
   const own = <T extends { dispose(): void }>(x: T) => (disposables.push(x), x);
   const t = layout.terrain;
-  const { infra } = layout;
+  const { infra, graph } = layout;
   const mat = own(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  const toy = own(createToyMaterial({ paint: [-0.5, 0.5], brake: true, roughness: 0.42 }));
   let reduced = false;
+  let clock = 0;
 
-  // Ambient traffic drives on the ground roads, on top of the asphalt (0.15).
-  const highwayY = (x: number, z: number) => t.roadY(x, z) + 0.17;
   const monorailY = (x: number, z: number) => Math.max(MONORAIL_DECK, t.roadY(x, z) + 6);
 
   // --- railway ---------------------------------------------------------------------
@@ -141,7 +192,7 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     });
     group.add(new THREE.Mesh(own(ribbon(off, 0.14, 0.2, 0x4b5059, t.roadY)), mat));
   }
-  // The terminus: a platform with a monochrome architectural canopy beside the square.
+  // The termini: a platform with a canopy beside the square, and another at the far end.
   const term = new Builder();
   const tp = infra.railTerminus;
   const th = t.roadY(tp.x, tp.z);
@@ -156,27 +207,61 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     }
     b.box(w * 0.5, 1.4, 2.0, x, y + 0.35, z, 0xe2e5ea, ry);
   };
-  // Platform beside the track (the track keeps its own width), a buffer stop at the end of the line.
-  stationAt(term, tp.x + 10, tp.z + 4.4, th + 0.12, tAng, 16, 4.2);
+  // Platform beside the track (the track keeps its own width), a buffer stop at each end of the line.
+  stationAt(term, tp.x + 11, tp.z + 4.4, th + 0.12, tAng, 18, 4.2);
+  const endP = rail[rail.length - 1];
+  stationAt(term, endP.x - 11, endP.z + 4.4, th + 0.12, tAng, 18, 4.2);
   term.box(0.5, 0.9, 2.2, tp.x - 0.6, th + 0.18, tp.z, 0x7a2f2f);
   term.box(0.7, 0.2, 2.6, tp.x - 0.6, th + 1.0, tp.z, 0xd8dce2);
-  // Level crossings: rubber decking over the street, a barrier and a signal either side.
+  term.box(0.5, 0.9, 2.2, endP.x + 0.6, th + 0.18, endP.z, 0x7a2f2f);
+  term.box(0.7, 0.2, 2.6, endP.x + 0.6, th + 1.0, endP.z, 0xd8dce2);
+
+  // Level crossings: rubber decking over the street, and a pole + barrier arm + signal each side.
+  interface Crossing {
+    node: GNode;
+    at: number;
+    lift: number;
+    target: number;
+    closed: boolean;
+  }
+  const crossings: Crossing[] = [];
+  const arms: Array<{ x: number; z: number; sx: number; sz: number; len: number }> = [];
   for (const c of infra.crossings) {
-    // The rail runs along x: the decking is as wide as the street (x) and as deep as the track (z).
-    term.box(9.2, 0.05, 4.2, c.x, th + 0.15, c.z, 0x2f3338);
+    const node = graph.node(nodeId(c.x, c.z));
+    const roads = (graph.adjacency.get(node.id) ?? []).map((h) => graph.edges.find((e) => e.id === h.edge)!);
+    const e = roads.reduce((a, b) => (b.width > a.width ? b : a), roads[0]);
+    const poleX = e ? e.width / 2 - e.walk / 2 : 3.6;
+    const deckW = e ? e.width - 2 * e.walk + 0.6 : 6;
+    // The rail runs along x: the decking is as wide as the carriageway (x) and as deep as the track (z).
+    term.box(deckW, 0.05, 4.2, c.x, th + 0.15, c.z, 0x2f3338);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const px = c.x + sx * 5.6;
+        const px = c.x + sx * poleX;
         const pz = c.z + sz * 3.6;
         term.cyl(0.09, 0.09, 1.9, px, th + 0.1, pz, 0x3b4048, 6);
-        term.sphere(0.2, px, th + 2.0, pz, 0xd23b3b);
-        // Striped arm, raised: it points along the rail, clear of the carriageway.
-        term.box(1.8, 0.14, 0.14, px + sx * 1.0, th + 1.1, pz, 0xf4f4f4, 0);
-        term.box(0.6, 0.15, 0.15, px + sx * 0.5, th + 1.1, pz, 0xd23b3b, 0);
+        arms.push({ x: px, z: pz, sx, sz, len: poleX - 0.15 });
       }
     }
+    crossings.push({ node, at: c.x - rail[0].x, lift: 1, target: 1, closed: false });
   }
   group.add(new THREE.Mesh(own(term.build()), mat));
+
+  // Barrier arms (instanced, lowered and raised every frame) and their flashing lamps.
+  const armMesh = new THREE.InstancedMesh(own(barrierArmGeometry()), mat, Math.max(1, arms.length));
+  armMesh.count = arms.length;
+  armMesh.frustumCulled = false;
+  armMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  group.add(armMesh);
+  const lampMesh = new THREE.InstancedMesh(
+    own(new THREE.SphereGeometry(0.22, 8, 6)),
+    own(new THREE.MeshBasicMaterial({ toneMapped: false })),
+    Math.max(1, arms.length),
+  );
+  lampMesh.count = arms.length;
+  lampMesh.frustumCulled = false;
+  lampMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  for (let i = 0; i < arms.length; i++) lampMesh.setColorAt(i, new THREE.Color(0x5a1414));
+  group.add(lampMesh);
 
   // --- monorail --------------------------------------------------------------------
   const mb = new Builder();
@@ -191,47 +276,41 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   monoMesh.castShadow = true;
   group.add(monoMesh);
 
-  // --- ambient grayscale traffic ---------------------------------------------------
-  const rng = seeded(0xca75);
-  const CARS = 56;
-  const cars: Car[] = [];
-  const lens = infra.highways.map((c) => routeLength(c.path));
-  const totalLen = lens.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < CARS; i++) {
-    let r = rng() * totalLen;
-    let line = 0;
-    while (line < lens.length - 1 && r > lens[line]) r -= lens[line++];
-    const path = infra.highways[line].path;
-    const loop = Math.hypot(path[0].x - path[path.length - 1].x, path[0].z - path[path.length - 1].z) < 0.05;
-    cars.push({ line, dist: r, speed: 7 + rng() * 5, lane: infra.highways[line].lane ?? 1.3, forward: rng() < 0.5, loop });
-  }
-  const carGeo = own(carGeometry());
-  const carMesh = new THREE.InstancedMesh(carGeo, mat, CARS);
-  // Pure grayscale palette for ambient highway vehicles ("atrezzo").
-  const palette = [0x2b2e34, 0x3e424a, 0x565b64, 0x727882, 0x9197a1, 0xb4bac4, 0xd8dce2];
-  const color = new THREE.Color();
-  cars.forEach((_c, i) => carMesh.setColorAt(i, color.set(palette[Math.floor(rng() * palette.length)])));
-  if (carMesh.instanceColor) carMesh.instanceColor.needsUpdate = true;
-  carMesh.frustumCulled = false;
-  carMesh.castShadow = true;
-  group.add(carMesh);
+  // --- rolling stock ---------------------------------------------------------------
+  const brakeAttr = (n: number) => {
+    const a = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
+    a.setUsage(THREE.DynamicDrawUsage);
+    return a;
+  };
+  const white = new THREE.Color(0xffffff);
 
-  // Rolling stock in monochrome silver/graphite so ambient transit stays subordinate.
-  const COACHES = 5;
+  const trainGeo = own(groundTrainGeometry());
+  const trainDoors = brakeAttr(1);
+  trainGeo.setAttribute("aBrake", trainDoors);
+  const trainMesh = new THREE.InstancedMesh(trainGeo, toy, 1);
+  trainMesh.setColorAt(0, white);
+  trainMesh.frustumCulled = false;
+  trainMesh.castShadow = true;
+  group.add(trainMesh);
+
   const MONO_TRAINS = 2;
   const MONO_CARS = 3;
-  const stockGeo = own(coachGeometry(3.4, 1.9, 1.5));
-  const trainMesh = new THREE.InstancedMesh(stockGeo, mat, COACHES);
-  const monoGeo = own(coachGeometry(3.0, 1.3, 1.1));
-  const monoCars = new THREE.InstancedMesh(monoGeo, mat, MONO_TRAINS * MONO_CARS);
-  for (let i = 0; i < COACHES; i++) trainMesh.setColorAt(i, color.set(i === 0 ? 0x454952 : 0xd4d8de));
-  for (let i = 0; i < MONO_TRAINS * MONO_CARS; i++) monoCars.setColorAt(i, color.set(i % MONO_CARS === 0 ? 0x5c616b : 0xe2e5ea));
-  for (const m of [trainMesh, monoCars]) {
-    if (m.instanceColor) m.instanceColor.needsUpdate = true;
-    m.frustumCulled = false;
-    m.castShadow = true;
-    group.add(m);
-  }
+  const monoGeo = own(monorailCarGeometry());
+  const monoDoors = brakeAttr(MONO_TRAINS * MONO_CARS);
+  monoGeo.setAttribute("aBrake", monoDoors);
+  const monoCars = new THREE.InstancedMesh(monoGeo, toy, MONO_TRAINS * MONO_CARS);
+  const monoPaint = [0x2f8fd8, 0xe9edf0, 0xe9edf0, 0xf29a2e, 0xe9edf0, 0xe9edf0];
+  const color = new THREE.Color();
+  for (let i = 0; i < MONO_TRAINS * MONO_CARS; i++) monoCars.setColorAt(i, color.set(monoPaint[i]));
+  monoCars.frustumCulled = false;
+  monoCars.castShadow = true;
+  group.add(monoCars);
+  const leafMesh = new THREE.InstancedMesh(own(doorLeafGeometry()), toy, MONO_TRAINS * MONO_CARS * 4);
+  for (let i = 0; i < leafMesh.count; i++) leafMesh.setColorAt(i, white);
+  leafMesh.frustumCulled = false;
+  group.add(leafMesh);
+
+  // Timetables.
   const loopLen = routeLength(mono.path);
   const stationDist = mono.stations.map((st) => {
     let best = 0;
@@ -246,16 +325,19 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     }
     return best;
   });
-  const monoHeads = [0, loopLen / 2];
-  let railHead = 0;
-  let railDir = 1;
-  let railWait = 0;
+  const MONO_LEN = MONO_CARS * MONO_CAR;
+  // A train stops with its middle on the platform: its head is half a train past the station.
+  const monoLoop = createLoop(loopLen, stationDist.map((d) => (d + MONO_LEN / 2) % loopLen), MONO_LEN, { vmax: 7, acc: 1.5 }, 7);
+  const shuttle = createShuttle(routeLength(rail), TRAIN_LENGTH, { vmax: 11, acc: 1.8 }, 9);
+  // Start the clock with the ground train just out of the terminus and the monorails under way.
+  clock = 13;
 
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const pos = new THREE.Vector3();
   const one = new THREE.Vector3(1, 1, 1);
+  const sc = new THREE.Vector3();
 
   const place = (mesh: THREE.InstancedMesh, i: number, x: number, y: number, z: number, heading: number) => {
     q.setFromAxisAngle(up, heading);
@@ -264,42 +346,89 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     mesh.setMatrixAt(i, m4);
   };
 
-  const along = (line: readonly Point[], d: number, offset = 0) => {
-    const p = pointAlong(line, d);
-    return { x: p.x + Math.cos(p.heading) * offset, z: p.z - Math.sin(p.heading) * offset, heading: p.heading };
-  };
+  const monoState = (idx: number): TrainState => monoLoop.at(clock, idx * (monoLoop.period / 2));
 
   const poseAll = () => {
-    cars.forEach((c, i) => {
-      const line = infra.highways[c.line].path;
-      const len = lens[c.line];
-      const d = c.loop ? ((c.dist % len) + len) % len : Math.min(len, Math.max(0, c.dist));
-      const p = along(line, d, c.forward ? c.lane : -c.lane);
-      place(carMesh, i, p.x, highwayY(p.x, p.z) + 0.1, p.z, c.forward ? p.heading : p.heading + Math.PI);
-    });
-    carMesh.instanceMatrix.needsUpdate = true;
-
-    for (let i = 0; i < COACHES; i++) {
-      const d = Math.min(railLen, Math.max(0, railHead - railDir * i * 3.7));
-      const p = pointAlong(rail, d);
-      place(trainMesh, i, p.x, t.roadY(p.x, p.z) + 0.2, p.z, railDir === 1 ? p.heading : p.heading + Math.PI);
-    }
+    // Ground train.
+    const gs = shuttle.at(clock);
+    place(trainMesh, 0, rail[0].x + gs.pos, t.roadY(0, 0) + 0.2, rail[0].z, gs.dir === 1 ? Math.PI / 2 : -Math.PI / 2);
+    trainDoors.setX(0, gs.doors > 0.5 ? 1 : 0);
+    trainDoors.needsUpdate = true;
     trainMesh.instanceMatrix.needsUpdate = true;
 
-    monoHeads.forEach((head, tIdx) => {
+    // Monorail trains: cars follow the loop behind the head, doors slide while it dwells.
+    for (let tIdx = 0; tIdx < MONO_TRAINS; tIdx++) {
+      const s = monoState(tIdx);
       for (let i = 0; i < MONO_CARS; i++) {
-        const d = (((head - i * 3.4) % loopLen) + loopLen) % loopLen;
+        const d = (((s.pos - MONO_CAR * (i + 0.5)) % loopLen) + loopLen) % loopLen;
         const p = pointAlong(mono.path, d);
-        place(monoCars, tIdx * MONO_CARS + i, p.x, monorailY(p.x, p.z) + 0.2, p.z, p.heading);
+        const y = monorailY(p.x, p.z) + 0.1;
+        const slot = tIdx * MONO_CARS + i;
+        place(monoCars, slot, p.x, y, p.z, p.heading);
+        monoDoors.setX(slot, s.doors > 0.5 ? 1 : 0);
+        // Door leaves: two per side, sliding apart along the car by the door opening.
+        q.setFromAxisAngle(up, p.heading);
+        let k = slot * 4;
+        for (const side of [-1, 1]) {
+          for (const half of [-1, 1]) {
+            const lx = side * (0.75 + 0.03);
+            const lz = half * (0.215 + s.doors * 0.5);
+            sc.set(1, 1, 1);
+            pos.set(lx, 0.34, lz).applyQuaternion(q);
+            pos.x += p.x;
+            pos.y += y;
+            pos.z += p.z;
+            m4.compose(pos, q, sc);
+            leafMesh.setMatrixAt(k++, m4);
+          }
+        }
+      }
+    }
+    monoDoors.needsUpdate = true;
+    monoCars.instanceMatrix.needsUpdate = true;
+    leafMesh.instanceMatrix.needsUpdate = true;
+  };
+
+  const qz = new THREE.Quaternion();
+  const zAxis = new THREE.Vector3(0, 0, 1);
+  const poseBarriers = (dt: number) => {
+    const flash = Math.floor(clock * 2.4) % 2 === 0;
+    for (const c of crossings) {
+      c.closed = crossingClosed(shuttle, c.at, clock);
+      c.target = c.closed ? 0 : 1;
+      c.lift += (c.target - c.lift) * Math.min(1, dt * 2.6);
+    }
+    // Arms are stored in crossing order, four per crossing.
+    crossings.forEach((c, ci) => {
+      for (let k = 0; k < 4; k++) {
+        const i = ci * 4 + k;
+        const arm = arms[i];
+        // 0 = lying across the road, 1.35 = nearly upright; the arm points at the road's centre line.
+        q.setFromAxisAngle(up, arm.sx > 0 ? Math.PI : 0);
+        q.multiply(qz.setFromAxisAngle(zAxis, c.lift * 1.35));
+        pos.set(arm.x, th + 1.1, arm.z);
+        sc.set(arm.len, 1, 1);
+        m4.compose(pos, q, sc);
+        armMesh.setMatrixAt(i, m4);
+        pos.set(arm.x, th + 2.05, arm.z);
+        q.identity();
+        m4.compose(pos, q, one);
+        lampMesh.setMatrixAt(i, m4);
+        const warn = c.closed || c.lift < 0.95;
+        lampMesh.setColorAt(i, color.set(warn && flash === (k % 2 === 0) ? 0xff2a2a : 0x4a1212));
       }
     });
-    monoCars.instanceMatrix.needsUpdate = true;
+    armMesh.instanceMatrix.needsUpdate = true;
+    lampMesh.instanceMatrix.needsUpdate = true;
+    if (lampMesh.instanceColor) lampMesh.instanceColor.needsUpdate = true;
   };
   poseAll();
+  poseBarriers(1);
+  for (const c of crossings) c.lift = c.target;
 
   const getMonorailPosition = (trainIdx = 0) => {
-    const head = monoHeads[trainIdx % monoHeads.length] ?? 0;
-    const p = pointAlong(mono.path, head);
+    const s = monoState(trainIdx % MONO_TRAINS);
+    const p = pointAlong(mono.path, (((s.pos - MONO_LEN / 2) % loopLen) + loopLen) % loopLen);
     return { x: p.x, y: monorailY(p.x, p.z) + 0.6, z: p.z, heading: p.heading };
   };
 
@@ -307,53 +436,31 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     group,
     monoCars,
     getMonorailPosition,
+    getGroundTrainPosition() {
+      const gs = shuttle.at(clock);
+      return { x: rail[0].x + gs.pos, y: t.roadY(0, 0) + 1.2, z: rail[0].z, heading: gs.dir === 1 ? Math.PI / 2 : -Math.PI / 2 };
+    },
+    crossingClosed(node) {
+      const c = crossings.find((x) => x.node.id === node.id);
+      return c ? c.closed : false;
+    },
     setReducedMotion(v) {
       reduced = v;
     },
     update(dtMs) {
       if (reduced) return;
       const dt = dtMs / 1000;
-      for (const c of cars) {
-        const len = lens[c.line];
-        c.dist += (c.forward ? 1 : -1) * c.speed * dt;
-        if (c.loop) {
-          c.dist = ((c.dist % len) + len) % len;
-        } else if (c.dist >= len) {
-          c.dist = len;
-          c.forward = false;
-        } else if (c.dist <= 0) {
-          c.dist = 0;
-          c.forward = true;
-        }
-      }
-      if (railWait > 0) railWait -= dt;
-      else {
-        railHead += railDir * 9 * dt;
-        if (railDir === 1 && railHead >= railLen) {
-          railHead = railLen;
-          railDir = -1;
-          railWait = 5;
-        } else if (railDir === -1 && railHead <= 3.7 * (COACHES - 1)) {
-          railHead = 3.7 * (COACHES - 1);
-          railDir = 1;
-          railWait = 5;
-        }
-      }
-      for (let i = 0; i < monoHeads.length; i++) {
-        let near = loopLen;
-        for (const sd of stationDist) {
-          const raw = Math.abs(monoHeads[i] - sd);
-          near = Math.min(near, raw, loopLen - raw);
-        }
-        monoHeads[i] = (monoHeads[i] + (1.2 + 5.5 * smooth(0, 14, near)) * dt + loopLen) % loopLen;
-      }
+      clock += dt;
       poseAll();
+      poseBarriers(dt);
     },
     dispose() {
       disposables.forEach((d) => d.dispose());
-      carMesh.dispose();
       trainMesh.dispose();
       monoCars.dispose();
+      leafMesh.dispose();
+      armMesh.dispose();
+      lampMesh.dispose();
     },
   };
 }
