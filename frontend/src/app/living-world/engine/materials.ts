@@ -42,12 +42,18 @@ export interface FacadeOptions {
   saturation?: number;
   /** Brightness multiplier for lit windows. */
   windowGlow?: number;
+  /** 0..1: darkens the lower edge of every window cell, so storeys read as floor plates. */
+  spandrel?: number;
+  /** Diagonal lattice (diagrid) drawn on kind-3 glass: bar colour, period in window cells, half-width in periods. */
+  lattice?: { hex: number; period: number; width: number };
 }
 
 const VERT_PARS = /* glsl */ `
 #include <common>
 attribute float aKind;
+attribute float aArc;
 varying float vKind;
+varying float vArc;
 varying vec3 vLPos;
 varying vec3 vLNorm;
 #ifdef FACADE_INSTANCED
@@ -63,6 +69,7 @@ varying float vSeed;
 const VERT_BODY = /* glsl */ `
 #include <begin_vertex>
 vKind = aKind;
+vArc = aArc;
 vLPos = position;
 vLNorm = normal;
 #ifdef FACADE_INSTANCED
@@ -75,6 +82,7 @@ vSeed = aSeed;
 const FRAG_PARS = /* glsl */ `
 #include <common>
 varying float vKind;
+varying float vArc;
 varying vec3 vLPos;
 varying vec3 vLNorm;
 #ifdef FACADE_INSTANCED
@@ -88,6 +96,8 @@ uniform float uNight;
 uniform vec3 uGrid;
 uniform float uSat;
 uniform float uGlow;
+uniform vec3 uExtra;
+uniform vec3 uLat;
 float fHash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
@@ -105,18 +115,34 @@ diffuseColor.rgb *= mix(vWall, vGlass, step(0.5, vKind));
 float fSeed = uSeed;
 #endif
 float fWall = smoothstep(0.6, 0.35, abs(vLNorm.y));
-float fGlass = step(0.5, vKind) * step(vKind, 1.5) * fWall;
-float fHoriz = abs(vLNorm.x) > abs(vLNorm.z) ? vLPos.z : vLPos.x;
+float fIsGlass = step(0.5, vKind) * step(vKind, 1.5) + step(2.5, vKind) * step(vKind, 3.5);
+float fGlass = fIsGlass * fWall;
+// Curved shells carry their own arc length (aArc, a whole number of window columns round the
+// ring); anything else picks the horizontal axis from the facing.
+float fHoriz = vArc > -1000.0 ? vArc : (abs(vLNorm.x) > abs(vLNorm.z) ? vLPos.z : vLPos.x);
 vec2 fCell = vec2(fHoriz * uGrid.x, vLPos.y * uGrid.y);
 vec2 fId = floor(fCell) + vec2(fSeed * 37.1, fSeed * 91.7);
 vec2 fF = fract(fCell);
 float fPane = uGrid.z > 0.5 ? smoothstep(0.0, 0.08, fF.x) * smoothstep(1.0, 0.92, fF.x) : 1.0;
+fPane *= mix(1.0, smoothstep(0.0, 0.16, fF.y), uExtra.x);
 float fVar = fHash(fId + 3.7);
 float fL = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
 diffuseColor.rgb = mix(vec3(fL), diffuseColor.rgb, uSat);
 vec3 fGlassCol = diffuseColor.rgb * (1.0 + 0.24 * fVar) * (0.96 + 0.42 * clamp(vLPos.y * 0.07, 0.0, 1.0));
 fGlassCol *= mix(0.5, 1.0, fPane);
 diffuseColor.rgb = mix(diffuseColor.rgb, fGlassCol, fGlass);
+// Diagrid: two families of diagonals across the window cells (kind 3 only).
+// (Derivatives are taken outside the branch: they are undefined in non-uniform control flow.)
+vec2 fLc = fCell / max(uExtra.y, 1.0);
+float fLs1 = fract(fLc.x + fLc.y);
+float fLs2 = fract(fLc.x - fLc.y);
+float fLd = min(min(fLs1, 1.0 - fLs1), min(fLs2, 1.0 - fLs2));
+float fLaa = max(fwidth(fLc.x), fwidth(fLc.y)) * 0.7 + 0.01;
+float fLat = 0.0;
+if (uExtra.y > 0.5 && vKind > 2.5) {
+  fLat = (1.0 - smoothstep(uExtra.z - fLaa, uExtra.z + fLaa, fLd)) * fGlass;
+  diffuseColor.rgb = mix(diffuseColor.rgb, uLat, fLat);
+}
 // Walls get a faint ground-contact darkening so they sit on the street.
 diffuseColor.rgb *= mix(1.0, 0.8 + 0.2 * smoothstep(0.0, 1.4, vLPos.y), (1.0 - step(0.5, vKind)) * fWall);
 `;
@@ -128,7 +154,7 @@ roughnessFactor = mix(roughnessFactor, 0.2, fGlass);
 
 const FRAG_METAL = /* glsl */ `
 #include <metalnessmap_fragment>
-metalnessFactor = mix(metalnessFactor, 0.28, fGlass);
+metalnessFactor = mix(metalnessFactor, 0.28, fGlass * (1.0 - fLat));
 `;
 
 // The sky map is for reflections only: ambient light comes from the hemisphere light, which every
@@ -144,7 +170,7 @@ const FRAG_EMISSIVE = /* glsl */ `
   float fR = fHash(fId + 11.3);
   float fOn = step(0.4, fR);
   vec3 fWarm = mix(vec3(1.0, 0.7, 0.36), vec3(0.72, 0.88, 1.0), step(0.88, fHash(fId + 7.1)));
-  totalEmissiveRadiance += fWarm * fOn * fPane * fGlass * uNight * uGlow * (0.65 + 0.7 * fHash(fId + 1.9));
+  totalEmissiveRadiance += fWarm * fOn * fPane * fGlass * (1.0 - fLat) * uNight * uGlow * (0.65 + 0.7 * fHash(fId + 1.9));
   // A thin bright rim on glass seen at a grazing angle.
   float fFres = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);
   totalEmissiveRadiance += fGlass * fFres * vec3(0.5, 0.72, 1.0) * 0.16 * (1.0 - uNight * 0.85);
@@ -169,6 +195,8 @@ export function createFacadeMaterial(o: FacadeOptions): THREE.MeshStandardMateri
     shader.uniforms.uGrid = { value: new THREE.Vector3(grid.cols, grid.rows, grid.mullions ? 1 : 0) };
     shader.uniforms.uSat = { value: sat };
     shader.uniforms.uGlow = { value: glow };
+    shader.uniforms.uExtra = { value: new THREE.Vector3(o.spandrel ?? 0, o.lattice?.period ?? 0, o.lattice?.width ?? 0) };
+    shader.uniforms.uLat = { value: new THREE.Color(o.lattice?.hex ?? 0xffffff) };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", VERT_PARS)
       .replace("#include <begin_vertex>", VERT_BODY);

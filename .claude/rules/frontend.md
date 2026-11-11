@@ -203,7 +203,7 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 
 - **Same split as the garden game.** `model/` is pure TypeScript with colocated `*.test.ts`
   (layout, scale, filters, priority, director, routes, fixtures); `engine/` is Three.js and is
-  not unit-tested (vitest runs in node, `.ts` only); `components/` is React controls and cards.
+  mostly untested (vitest runs in node, `.ts` only; the pure Three.js geometry builders are the exception: `towers.test.ts`, `fillers.test.ts`); `components/` is React controls and cards.
   A rule changes in `model/` and its test, never in the renderer. Per-frame state never goes
   through React: the render loop, agents and director live in `engine/scene.ts`.
 - **Do not name a file `layout.ts` (or `page`, `route`, `template`, `loading`, `error`, …) under
@@ -215,6 +215,28 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 - **One merged mesh per site** (`engine/buildingFactory.ts`, vertex colours, a `Builder` that
   merges primitives) so ~100 companies stay ~100 draw calls; trees, people and vans are
   `InstancedMesh`. `createSite` is the seam for authored glTF kits in a later phase.
+- **Every holding is a unique complex (F3).** `model/towerSpec.ts` derives a spec from (archetype, id,
+  tier) only: weight never reaches it, so a price move cannot redraw a building and a tier change only
+  ADDS parts (each tier's parts are a prefix of the next's; pinned in `towerSpec.test.ts`). The id picks
+  the silhouette family of the main structure from the archetype's pool, the plan, taper, twist,
+  setbacks, crown, diagrid, accent hue (archetype palette + id nudge, `accentColour`; the few brand
+  colours in `companyProfile` still win) and glass tint. `engine/mains.ts` builds the main structure
+  (twisting tower, gherkin with diagrid, setbacks, cylinder with helipad ring, twin slabs with a
+  sky-bridge, lattice mast or headframe, dome, arena, power-plant stacks, faceted crystal),
+  `engine/parts.ts` the extras (plaza, hall, pavilion, annex tower, car park, mall, hospital wing, dish,
+  silos, tanks, flare, pipe rack, turbine hall, substation, wind turbines, solar field, cooling tower,
+  heaps, conveyor, vault, colonnade...), `engine/towers.ts` the primitives (`loft`: a plan lofted floor
+  by floor with taper, twist and an optional lathe profile; lattice mast; crowns; helipad). Parts stand
+  in the slots of `model/siteLayout.ts` (front band low, flanks, back), shuffled and mirrored by the id,
+  assigned in the order parts are added so none moves when a tier adds one.
+  Tiers: outpost = main + 1 part, small + 3, campus + 5, major + 7, and the tallest element is 8.4-9.8 /
+  11-13.4 / 15-19 / 22-30 local units (x1.28..1.6 in the town); `stadium` and `dome` take
+  `FAMILY_HEIGHT` of that (their tallest element is a mast). Budgets, tested in `engine/towers.test.ts`
+  (it also checks every face is wound outwards): <= 1.5k / 2.4k / 3.2k / 4k triangles per site, and
+  everything inside the plot. The utilities complex (cooling tower, chimneys, turbine hall, substation,
+  wind turbines, solar field) and the energy one (process columns, flare, tanks, pipe rack) are the
+  proof that an archetype is a whole industrial site, not a bigger box. The sign wall and brand plate
+  stand at the front of the plot (z = 0.5 n), not on the tower, so the plate suits any height.
 - **Layout is a pure function of asset ids** and the street skeleton of none. `model/cityGraph.ts` builds
   the roads once (planar graph on one orthogonal grid, PITCH 44, 9 x 9 cells): a plaza block bounded by a
   ring road, an avenue loop at +-110 (the monorail rides it), a perimeter avenue, streets on every other
@@ -239,7 +261,11 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
   (`Flat.tri`), so a strip can never face down.
 - **Holdings are landmarks, the rest is scenery.** `FillerSpot`s fill every lot no holding took; they are
   coloured (saturated palettes per kind), never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
-  `townLayout.ts`) or "size = weight" stops meaning anything.
+  `townLayout.ts`) or "size = weight" stops meaning anything. Pinned in `engine/fillers.test.ts`: the tallest
+  possible filler (`fillerMaxExtent`, spire included) is lower than the lowest outpost of any archetype and no
+  wider than an outpost's plot, so tune `HEIGHT_SCALE` and the recipes against that test. Three kinds
+  (skyscraper, tower, house) have a second silhouette (round, stepped, gabled with a water tank) that takes
+  about half of their spots by a stable hash: 9 filler draw calls.
 - **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`).
 - **Transport** (`model/infra.ts`, `engine/infra.ts`), derived from the graph: a monorail on pillars above
   the avenue loop (pillars are chosen in the model, always in the avenue's central reservation, never in
@@ -271,6 +297,13 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
   never `scene.environment`: Lambert materials would pick it up as a mirror. Ambient comes only from
   the hemisphere light (the shader zeroes the map's diffuse term). Filler floors are exactly 1.0 tall
   and start on whole numbers so the shader's rows match the storeys: keep that when editing recipes.
+  **F3 extensions of the same shader (all additive, fillers unaffected):** `aKind` 3 is glass with a
+  diagrid (two families of diagonals across the window cells, period 4, colour `lattice.hex`, no lit
+  windows on the bars); `aArc` is the arc length along a curved shell, written by `loft`, in a whole
+  number of window columns per ring so the grid closes without a seam (`ARC_NONE` = "pick the axis from
+  the facing", what every other part gets); `spandrel` darkens the lower edge of each window cell so
+  storeys read as floor plates. Site material: `FACADE_ROWS` = 2.6 rows and columns per local unit, a
+  storey is `FLOOR_H` = 1/2.6: glass volumes stand on `k * FLOOR_H` (`BASE_Y`).
 - **Lighting and clock** live in `engine/lighting.ts` (hemisphere, sun + shadow, fog, sky backdrop,
   env) driven by `engine/skyModel.ts`, a pure function of the city hour (keyframes, wraps at midnight,
   `night` 0..1 drives windows and bloom). `PCFSoftShadowMap` no longer exists in three 0.186: use
@@ -280,7 +313,11 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
   `renderer.render`, no composer or float targets exist). N8AO renders the scene once into its own
   target; the shadow pass is what doubles `stats().drawCalls`. `renderer.info.autoReset` is off and
   read after the frame so the numbers cover the whole chain. A quality change keeps the city hour.
-- Dev handles for screenshots: `__livingWorld.setHour(h)`, `.focusPoint(x, z, distance)`, `.setQuality(q)`.
+- Dev handles for screenshots: `__livingWorld.setHour(h)`, `.focusPoint(x, z, distance)`, `.setQuality(q)`,
+  `.sites()` (id, archetype, tier, silhouette family, position and the asset of every holding; with
+  `setAssets` it lets you force tiers). `.focusPoint` keeps the camera high: tilt it with a shift-drag
+  (`PointerEvent` with `shiftKey` dispatched on the canvas) to see a skyline, and hide the React overlay
+  (`.world-module__*__ui`, `display: none`) for a clean screenshot.
 - **Canvas lifecycle**: `hooks/useWorld.ts` creates a fresh `<canvas>` per mount. A canvas whose
   context was released by `forceContextLoss()` cannot be reused, and React strict mode mounts
   twice; the `webglcontextlost` listener is removed in `dispose()` or the first mount's

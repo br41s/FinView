@@ -15,7 +15,7 @@ import { routeToPlaza, sidewalkRoute, type Point } from "../model/routes";
 import { approach, footprintFor, tierFor } from "../model/scale";
 import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
 import { AgentSystem, getCircadianPhase, type CircadianPhase, type SiteSpot } from "./agents";
-import { NOMINAL, accentFor, createSite, disposeSite, type Site } from "./buildingFactory";
+import { NOMINAL, accentFor, createSite, disposeSite, specFor, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
 import { Choreographer } from "./choreography";
@@ -101,6 +101,8 @@ export interface WorldHandle {
   setHour(h: number): void;
   /** Fly the camera to a ground point (dev tools and screenshots). */
   focusPoint(x: number, z: number, distance?: number): void;
+  /** Where every holding stands (dev tools and screenshots). */
+  sites(): Array<{ id: string; name: string; archetype: string; tier: string; family: string; x: number; z: number; asset: WorldAsset }>;
   stats(): WorldStats;
   dispose(): void;
 }
@@ -801,6 +803,9 @@ export function createWorld(
     },
     focusPoint(x, z, distance) {
       ctrl.focus(x, z, distance);
+    },
+    sites() {
+      return [...sites.values()].map((e) => ({ id: e.asset.id, name: e.asset.name, archetype: e.asset.archetype, tier: tierFor(e.asset.weightPct), family: specFor(e.asset, tierFor(e.asset.weightPct)).main.family, x: e.lot.x, z: e.lot.z, asset: e.asset }));
     },
     setReducedMotion(v) {
       if (v === reduced) return;
