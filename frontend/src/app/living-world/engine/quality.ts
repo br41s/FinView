@@ -21,8 +21,12 @@ export interface QualitySettings {
   shadows: boolean;
   shadowMapSize: number;
   post: PostSettings | null;
-  /** Ambient inhabitants across the whole town. */
+  /** Company staff standing at their headquarters (event actors come on top). */
   maxAgents: number;
+  /** Pedestrians on the pavements (the busiest hour; fewer out at night). */
+  maxWalkers: number;
+  /** Cars, vans, trucks and buses on the roads at the busiest hour. */
+  maxVehicles: number;
   /** Decorative trees. */
   trees: number;
   /** Share of the generic buildings (homes, offices) that are drawn. */
@@ -32,16 +36,16 @@ export interface QualitySettings {
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
-  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 0, post: null, maxAgents: 80, trees: 90, fillerDensity: 0.45, minFrameMs: 33 },
+  low: { maxPixelRatio: 1, shadows: false, shadowMapSize: 0, post: null, maxAgents: 80, maxWalkers: 40, maxVehicles: 60, trees: 90, fillerDensity: 0.45, minFrameMs: 33 },
   medium: {
     maxPixelRatio: 1.5, shadows: true, shadowMapSize: 1024,
     post: { aoHalfRes: true, aoSamples: 8, aoDenoiseSamples: 4, bloom: false, smaa: true },
-    maxAgents: 220, trees: 260, fillerDensity: 1, minFrameMs: 0,
+    maxAgents: 220, maxWalkers: 150, maxVehicles: 180, trees: 260, fillerDensity: 1, minFrameMs: 0,
   },
   high: {
     maxPixelRatio: 2, shadows: true, shadowMapSize: 2048,
     post: { aoHalfRes: true, aoSamples: 16, aoDenoiseSamples: 8, bloom: true, smaa: true },
-    maxAgents: 420, trees: 520, fillerDensity: 1, minFrameMs: 0,
+    maxAgents: 420, maxWalkers: 300, maxVehicles: 300, trees: 520, fillerDensity: 1, minFrameMs: 0,
   },
 };
 

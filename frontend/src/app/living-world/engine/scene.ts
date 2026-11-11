@@ -18,6 +18,7 @@ import { AgentSystem, getCircadianPhase, type CircadianPhase, type SiteSpot } fr
 import { NOMINAL, accentFor, createSite, disposeSite, specFor, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
+import { VehicleSystem } from "./vehicles";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
 import { createLighting } from "./lighting";
@@ -48,6 +49,8 @@ export interface WorldStats {
   drawCalls: number;
   triangles: number;
   agents: number;
+  /** Road vehicles (traffic plus event vans). */
+  vehicles: number;
   sites: number;
   distance: number;
   clockHour: number;
@@ -103,6 +106,12 @@ export interface WorldHandle {
   focusPoint(x: number, z: number, distance?: number): void;
   /** Where every holding stands (dev tools and screenshots). */
   sites(): Array<{ id: string; name: string; archetype: string; tier: string; family: string; x: number; z: number; asset: WorldAsset }>;
+  /** Follow the ground train (it shuttles along the railway and stops at both termini). */
+  followTrain(): void;
+  /** Dev handle: third-person follow of one pavement walker or staff member (id from `crowd()`). */
+  followAgent(id: number): void;
+  /** Dev handle: where the visible pavement walkers and the vehicles are (screenshots, checks). */
+  crowd(): { people: Array<{ id: number; x: number; z: number; profession: string; crowd: boolean }>; vehicles: Array<{ x: number; z: number; kind: string; v: number }>; trains: Array<{ x: number; y: number; z: number }> };
   stats(): WorldStats;
   dispose(): void;
 }
@@ -154,10 +163,11 @@ export function createWorld(
   let layout: WorldLayout = computeLayout([]);
   let town: Town | null = null;
   let infra: InfraSystem | null = null;
-  let agents = new AgentSystem(QUALITY[quality].maxAgents);
+  let vehicles: VehicleSystem | null = null;
+  let agents = new AgentSystem(QUALITY[quality].maxAgents, QUALITY[quality].maxWalkers);
   agents.setReducedMotion(reduced);
   agents.setGround(layout.terrain.roadY);
-  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
+  scene.add(...agents.objects);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
   let director: DirectorState = createDirector();
@@ -279,15 +289,31 @@ export function createWorld(
     siteMeshes.length = 0;
   };
 
+  /** Road traffic for the current layout and quality tier (the lane network is cached per graph). */
+  const buildVehicles = () => {
+    if (vehicles) {
+      scene.remove(vehicles.group);
+      vehicles.dispose();
+    }
+    vehicles = new VehicleSystem(layout, {
+      maxVehicles: QUALITY[quality].maxVehicles,
+      crossingClosed: (node) => infra?.crossingClosed(node) ?? false,
+      ground: layout.terrain.roadY,
+    });
+    vehicles.setReducedMotion(reduced);
+    scene.add(vehicles.group);
+  };
+
   const rebuildAgents = () => {
-    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
+    scene.remove(...agents.objects);
     const clockHour = agents.hour;
     agents.dispose();
-    agents = new AgentSystem(QUALITY[quality].maxAgents);
+    agents = new AgentSystem(QUALITY[quality].maxAgents, QUALITY[quality].maxWalkers);
     agents.setHour(clockHour); // a quality change must not rewind the city's day
     agents.setReducedMotion(reduced);
-    agents.setGround(layout.terrain.roadY);
-    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
+    agents.setWorld({ graph: layout.graph, roads: layout.roads, ground: layout.terrain.roadY });
+    agents.setVehicles(vehicles);
+    scene.add(...agents.objects);
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
@@ -329,6 +355,7 @@ export function createWorld(
     infra = buildInfra(layout);
     infra.setReducedMotion(reduced);
     scene.add(infra.group);
+    buildVehicles();
     const bank = town.civic.get("bank");
     stage.bank = bank ? { x: bank.x, z: bank.z } : { x: 0, z: 0 };
 
@@ -468,9 +495,8 @@ export function createWorld(
         }
       }
     }
-    const hit = agents.bodies.visible ? ray.intersectObject(agents.bodies, false)[0] : undefined;
-    if (hit && hit.instanceId !== undefined) {
-      const idx = hit.instanceId;
+    const idx = agents.pickAgent(ray);
+    if (idx >= 0) {
       const assetId = agents.assetOf(idx);
       const role = agents.roleOf(idx);
       let desc = "ciudadano";
@@ -541,15 +567,7 @@ export function createWorld(
       e.label.scale.set(e.label.userData.aspect * h, h, 1);
     }
     const near = dist < 320;
-    agents.bodies.visible = near;
-    agents.heads.visible = near;
-    agents.vans.visible = near;
-    agents.helmets.visible = near;
-    agents.backpacks.visible = near;
-    agents.briefcases.visible = near;
-    agents.ties.visible = near;
-    agents.clipboards.visible = near;
-    agents.shoppingBags.visible = near;
+    agents.setVisible(near);
   };
 
   const frame = (now: number) => {
@@ -611,6 +629,7 @@ export function createWorld(
       }
       agents.update(simDt);
       infra?.update(simDt);
+      vehicles?.update(simDt, agents.hour);
       town?.update?.(simDt);
       choreo.update(simDt);
     }
@@ -716,6 +735,7 @@ export function createWorld(
       drawCalls,
       triangles,
       agents: agents.activeCount(),
+      vehicles: vehicles?.count ?? 0,
       sites: sites.size,
       distance: ctrl.distance,
       clockHour: hour,
@@ -796,11 +816,24 @@ export function createWorld(
       applyShadows();
       town?.setTreeCount(QUALITY[q].trees);
       town?.fillers.setDensity(QUALITY[q].fillerDensity);
+      if (infra) buildVehicles();
       rebuildAgents();
     },
     setHour(h) {
       agents.setHour(h);
     },
+    followTrain() {
+      if (infra) {
+        cb.onFollowTarget?.("Tren de cercanías");
+        ctrl.follow(() => infra!.getGroundTrainPosition());
+      }
+    },
+    followAgent(id) {
+      const a = agents.professionOf(id);
+      cb.onFollowTarget?.(a === "worker" ? "obrero" : a === "executive" ? "ejecutivo" : a === "courier" ? "repartidor" : "analista");
+      ctrl.follow(() => agents.position(id));
+    },
+    crowd: () => ({ people: agents.snapshot(), vehicles: vehicles?.snapshot() ?? [], trains: infra ? [infra.getMonorailPosition(0), infra.getMonorailPosition(1), infra.getGroundTrainPosition()] : [] }),
     focusPoint(x, z, distance) {
       ctrl.focus(x, z, distance);
     },
@@ -812,6 +845,7 @@ export function createWorld(
       reduced = v;
       agents.setReducedMotion(v);
       infra?.setReducedMotion(v);
+      vehicles?.setReducedMotion(v);
       if (v) {
         for (const e of sites.values()) {
           e.scale = e.scaleTarget;
@@ -842,6 +876,7 @@ export function createWorld(
       choreo.dispose();
       town?.dispose();
       infra?.dispose();
+      vehicles?.dispose();
       agents.dispose();
       selectRing.geometry.dispose();
       (selectRing.material as THREE.Material).dispose();
