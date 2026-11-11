@@ -42,13 +42,14 @@ const IDM = { accel: 2.6, brake: 3.4, headway: 0.9, minGap: 1.0 } as const;
 
 export type VehicleKind = "sedan" | "hatch" | "taxi" | "van" | "truck" | "bus";
 
-export const VEHICLE_SPEC: Record<VehicleKind, { length: number; width: number; speed: number; weight: number }> = {
-  sedan: { length: 2.4, width: 1.05, speed: 1, weight: 34 },
-  hatch: { length: 2.1, width: 1.05, speed: 1, weight: 28 },
-  taxi: { length: 2.4, width: 1.05, speed: 1.05, weight: 10 },
-  van: { length: 2.7, width: 1.15, speed: 0.92, weight: 11 },
-  truck: { length: 3.7, width: 1.25, speed: 0.85, weight: 7 },
-  bus: { length: 5.6, width: 1.35, speed: 0.8, weight: 10 },
+/** Drawn size is the model's (about 2.4 long for a sedan) times `scale`: toy cars are chunky next to the lanes. */
+export const VEHICLE_SPEC: Record<VehicleKind, { length: number; width: number; speed: number; weight: number; scale: number }> = {
+  sedan: { length: 2.4 * 1.35, width: 1.05 * 1.35, speed: 1, weight: 34, scale: 1.35 },
+  hatch: { length: 2.1 * 1.35, width: 1.05 * 1.35, speed: 1, weight: 28, scale: 1.35 },
+  taxi: { length: 2.4 * 1.35, width: 1.05 * 1.35, speed: 1.05, weight: 10, scale: 1.35 },
+  van: { length: 2.7 * 1.3, width: 1.15 * 1.3, speed: 0.92, weight: 11, scale: 1.3 },
+  truck: { length: 3.7 * 1.25, width: 1.25 * 1.25, speed: 0.85, weight: 7, scale: 1.25 },
+  bus: { length: 5.6 * 1.2, width: 1.35 * 1.2, speed: 0.8, weight: 10, scale: 1.2 },
 };
 export const VEHICLE_KINDS = Object.keys(VEHICLE_SPEC) as VehicleKind[];
 
@@ -639,6 +640,10 @@ export class TrafficSim {
         }
       };
       for (const o of this.list(v.piece)) if (o !== v && (o.s > v.s || (o.s === v.s && o.id > v.id))) consider(o.s - o.length - v.s, o.v);
+      if (v.piece.kind === "turn") {
+        // Movements that left the same lane share their first metres: a follower must see them too.
+        for (const sib of v.piece.siblings) for (const o of this.list(sib)) if (o.s > v.s) consider(o.s - o.length - v.s, o.v);
+      }
       const toEnd = v.piece.length - v.s;
       const nx = v.piece.kind === "lane" ? v.next : v.piece.to;
       if (nx) {

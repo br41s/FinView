@@ -133,10 +133,10 @@ const VERT_COLOR = /* glsl */ `
 #include <color_vertex>
 vKind = aKind;
 #ifdef USE_INSTANCING_COLOR
-  vColor = color;
-  if (aKind > PAINT_LO && aKind < PAINT_HI) vColor *= instanceColor.xyz;
+  vColor.rgb = color.rgb;
+  if (aKind > PAINT_LO && aKind < PAINT_HI) vColor.rgb *= instanceColor.rgb;
   #ifdef PEOPLE
-  if (aKind > 5.5) vColor = hairColour(instanceColor.xyz);
+  if (aKind > 5.5) vColor.rgb = hairColour(instanceColor.rgb);
   #endif
 #endif
 #ifdef BRAKE
@@ -199,11 +199,11 @@ const FRAG_EMISSIVE = /* glsl */ `
   float head = step(1.5, vKind) * step(vKind, 2.5);
   float tail = step(2.5, vKind) * step(vKind, 3.5);
   float lit = step(4.5, vKind) * step(vKind, 5.5);
-  totalEmissiveRadiance += vColor * head * (0.12 + 2.2 * uNight);
+  totalEmissiveRadiance += vColor.rgb * head * (0.12 + 2.2 * uNight);
   #ifdef BRAKE
-  totalEmissiveRadiance += vColor * tail * (0.1 + 0.9 * uNight + 1.8 * vBrake);
+  totalEmissiveRadiance += vColor.rgb * tail * (0.1 + 0.9 * uNight + 1.8 * vBrake);
   #else
-  totalEmissiveRadiance += vColor * tail * (0.1 + 0.9 * uNight);
+  totalEmissiveRadiance += vColor.rgb * tail * (0.1 + 0.9 * uNight);
   #endif
   totalEmissiveRadiance += vec3(1.0, 0.85, 0.55) * lit * (0.06 + 0.9 * uNight);
 }

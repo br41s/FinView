@@ -52,7 +52,7 @@ const ROLE_PROFESSION: Record<Role, Profession> = {
   visitor: "analyst",
 };
 
-const PERSON_SCALE = 1.0;
+const PERSON_SCALE = 1.3;
 const TEMP_SLOTS = 48;
 
 export interface SiteSpot {

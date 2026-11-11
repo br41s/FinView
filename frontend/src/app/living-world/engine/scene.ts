@@ -49,6 +49,8 @@ export interface WorldStats {
   drawCalls: number;
   triangles: number;
   agents: number;
+  /** Road vehicles (traffic plus event vans). */
+  vehicles: number;
   sites: number;
   distance: number;
   clockHour: number;
@@ -725,6 +727,7 @@ export function createWorld(
       drawCalls,
       triangles,
       agents: agents.activeCount(),
+      vehicles: vehicles?.count ?? 0,
       sites: sites.size,
       distance: ctrl.distance,
       clockHour: hour,

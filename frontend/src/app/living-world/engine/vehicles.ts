@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { hashString } from "../model/rng";
 import type { Point } from "../model/routes";
-import { TrafficSim, VEHICLE_KINDS, getLaneNetwork, offsetPolyline, trafficLevel, type VehicleKind } from "../model/traffic";
+import { TrafficSim, VEHICLE_KINDS, VEHICLE_SPEC, getLaneNetwork, offsetPolyline, trafficLevel, type VehicleKind } from "../model/traffic";
 import type { GNode } from "../model/cityGraph";
 import type { WorldLayout } from "../model/townLayout";
 import { GeoBuilder, KIND, createToyMaterial } from "./toyMaterial";
@@ -295,7 +295,7 @@ export class VehicleSystem {
     if (!this.reduced) {
       this.sim.setTarget(this.targetCount());
       this.stepScripted(dt);
-      this.sim.setExternals(this.scripted.map((v) => ({ x: v.x, z: v.z, heading: v.heading, length: 2.7, speed: v.moving * v.speed })));
+      this.sim.setExternals(this.scripted.map((v) => ({ x: v.x, z: v.z, heading: v.heading, length: 2.7 * VEHICLE_SPEC.van.scale, speed: v.moving * v.speed })));
       this.sim.advance(dt);
     }
     this.write();
@@ -310,7 +310,7 @@ export class VehicleSystem {
       counts.set(kind, i + 1);
       this.q.setFromAxisAngle(this.up, heading);
       this.p.set(x, this.o.ground(x, z) + 0.16, z);
-      const k = Math.max(0.001, scale);
+      const k = Math.max(0.001, scale) * VEHICLE_SPEC[kind].scale;
       this.s.set(k, k, k);
       this.m.compose(this.p, this.q, this.s);
       mesh.setMatrixAt(i, this.m);
