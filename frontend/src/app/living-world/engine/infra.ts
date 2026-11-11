@@ -1,9 +1,8 @@
 import * as THREE from "three";
-import { MONORAIL_DECK, MONORAIL_WIDTH, RAIL_WIDTH } from "../model/infra";
+import { MONORAIL_DECK, MONORAIL_WIDTH, RAIL_WIDTH, type Pier } from "../model/infra";
 import { pointAlong, routeLength, type Point } from "../model/routes";
 import { seeded } from "../model/rng";
-import { distToPolyline } from "../model/terrain";
-import type { RoadSegment, WorldLayout } from "../model/townLayout";
+import type { WorldLayout } from "../model/townLayout";
 import { Builder } from "./buildingFactory";
 import { ribbon } from "./props";
 
@@ -62,24 +61,16 @@ function deck(
   }
 }
 
-/** Pillars every `every` units along a line, wherever there is ground to stand on and clear of roads. */
-function pillars(
-  b: Builder,
-  line: readonly Point[],
-  every: number,
-  radius: number,
-  deckY: (x: number, z: number) => number,
-  ground: (x: number, z: number) => number,
-  roads: readonly RoadSegment[] = [],
-) {
-  const total = routeLength(line);
-  for (let d = every / 2; d < total; d += every) {
-    const p = pointAlong(line, d);
-    if (roads.some((r) => distToPolyline(p.x, p.z, r.path) < r.width / 2 + 0.85)) continue;
+/**
+ * Pillars at the positions the model chose (the avenue's central reservation, never a lane):
+ * a column from the ground to a cross-head just under the deck.
+ */
+function pillars(b: Builder, piers: readonly Pier[], deckY: (x: number, z: number) => number, ground: (x: number, z: number) => number) {
+  for (const p of piers) {
     const g = ground(p.x, p.z);
-    if (g < -0.3) continue;
-    const h = deckY(p.x, p.z) - 0.9 - g;
-    if (h > 0.5) b.cyl(radius * 0.8, radius, h, p.x, g, p.z, CONCRETE, 8);
+    const top = deckY(p.x, p.z) - 0.85;
+    b.cyl(0.38, 0.5, top - g - 0.5, p.x, g, p.z, CONCRETE, 10);
+    b.box(2.6, 0.5, 1.0, p.x, top - 0.5, p.z, CONCRETE, p.heading + Math.PI / 2);
   }
 }
 
@@ -121,8 +112,8 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
   const mat = own(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   let reduced = false;
 
-  // Highways follow the natural ground profile; no elevated deck/pillar transitions.
-  const highwayY = (x: number, z: number) => t.roadY(x, z) + 0.28;
+  // Ambient traffic drives on the ground roads, on top of the asphalt (0.15).
+  const highwayY = (x: number, z: number) => t.roadY(x, z) + 0.17;
   const monorailY = (x: number, z: number) => Math.max(MONORAIL_DECK, t.roadY(x, z) + 6);
 
   // --- railway ---------------------------------------------------------------------
@@ -165,14 +156,33 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     }
     b.box(w * 0.5, 1.4, 2.0, x, y + 0.35, z, 0xe2e5ea, ry);
   };
-  stationAt(term, tp.x, tp.z, th + 0.12, tAng, 11, 5.4);
+  // Platform beside the track (the track keeps its own width), a buffer stop at the end of the line.
+  stationAt(term, tp.x + 10, tp.z + 4.4, th + 0.12, tAng, 16, 4.2);
+  term.box(0.5, 0.9, 2.2, tp.x - 0.6, th + 0.18, tp.z, 0x7a2f2f);
+  term.box(0.7, 0.2, 2.6, tp.x - 0.6, th + 1.0, tp.z, 0xd8dce2);
+  // Level crossings: rubber decking over the street, a barrier and a signal either side.
+  for (const c of infra.crossings) {
+    // The rail runs along x: the decking is as wide as the street (x) and as deep as the track (z).
+    term.box(9.2, 0.05, 4.2, c.x, th + 0.15, c.z, 0x2f3338);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const px = c.x + sx * 5.6;
+        const pz = c.z + sz * 3.6;
+        term.cyl(0.09, 0.09, 1.9, px, th + 0.1, pz, 0x3b4048, 6);
+        term.sphere(0.2, px, th + 2.0, pz, 0xd23b3b);
+        // Striped arm, raised: it points along the rail, clear of the carriageway.
+        term.box(1.8, 0.14, 0.14, px + sx * 1.0, th + 1.1, pz, 0xf4f4f4, 0);
+        term.box(0.6, 0.15, 0.15, px + sx * 0.5, th + 1.1, pz, 0xd23b3b, 0);
+      }
+    }
+  }
   group.add(new THREE.Mesh(own(term.build()), mat));
 
   // --- monorail --------------------------------------------------------------------
   const mb = new Builder();
   const mono = infra.monorail;
   deck(mb, mono.path, MONORAIL_WIDTH, 0.8, monorailY, { top: 0x626770, slab: 0xd4d8de });
-  pillars(mb, mono.path, 11, 0.45, monorailY, t.heightAt, layout.roads);
+  pillars(mb, mono.piers, monorailY, t.heightAt);
   for (const st of mono.stations) {
     const ry = st.angle;
     stationAt(mb, st.x, st.z, monorailY(st.x, st.z) + 0.1, ry, 9, 4.2);
@@ -193,7 +203,7 @@ export function buildInfra(layout: WorldLayout): InfraSystem {
     while (line < lens.length - 1 && r > lens[line]) r -= lens[line++];
     const path = infra.highways[line].path;
     const loop = Math.hypot(path[0].x - path[path.length - 1].x, path[0].z - path[path.length - 1].z) < 0.05;
-    cars.push({ line, dist: r, speed: 7 + rng() * 5, lane: rng() < 0.5 ? -1.3 : 1.3, forward: rng() < 0.5, loop });
+    cars.push({ line, dist: r, speed: 7 + rng() * 5, lane: infra.highways[line].lane ?? 1.3, forward: rng() < 0.5, loop });
   }
   const carGeo = own(carGeometry());
   const carMesh = new THREE.InstancedMesh(carGeo, mat, CARS);

@@ -75,6 +75,8 @@ export interface WorldHandle {
   setVisibility(v: ReadonlyMap<string, Visibility>): void;
   select(id: string | null): void;
   focusAsset(id: string): void;
+  /** Fly the camera to a ground point (street-level views, debugging). */
+  focusPoint(x: number, z: number, dist?: number): void;
   followAsset(id: string): void;
   stopFollow(): void;
   followMonorail(): void;
@@ -391,7 +393,7 @@ export function createWorld(
         opacity: 1,
         applied: 1,
         targetOpacity: 1,
-        route: routeToPlaza(lot, d, layout.roads),
+        route: routeToPlaza(lot, d, layout),
       });
     }
     frameSun();
@@ -837,6 +839,7 @@ export function createWorld(
     },
     toggleSound: () => sound.toggleMute(),
     isSoundMuted: () => sound.isMuted(),
+    focusPoint: (x, z, dist) => ctrl.focus(x, z, dist),
     hero: () => ctrl.hero(),
     fit: () => ctrl.fit(),
     toggleTour: () => ctrl.toggleTour(),

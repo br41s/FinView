@@ -1,10 +1,7 @@
-import { valueNoise } from "./rng";
-
 /**
- * The land under the town (pure): a sea around an island, a lake in the mountain foot, a
- * river that bends round the central square and reaches the sea, a plateau for the funds
- * and treasury districts, and a mountain range behind it. Everything is a function of a few
- * numbers the layout derives from the holdings, so a price refresh can never move a hill.
+ * The land under the town (pure). The city is flat: the only relief is a canal, a trench
+ * cut into a level plain. The canal is a function of the street template only (never of the
+ * holdings), so nothing under a building can move.
  */
 
 export interface Pt {
@@ -12,52 +9,40 @@ export interface Pt {
   z: number;
 }
 
-/** Water surface. The ground is carved below it for the sea, the lake and the river. */
+/** Water surface. The ground is carved below it along the canal. */
 export const WATER_Y = -0.45;
-export const PLATEAU_HEIGHT = 9;
-export const RIVER_HALF_WIDTH = 5;
+/** Depth of the canal bed below the plain. */
+export const CANAL_DEPTH = 1.7;
 
 export interface TerrainSpec {
-  /** Radius of the urban area; the coast sits a little beyond it. */
-  cityRadius: number;
-  plazaRadius: number;
-  /** Plateau: an annular sector centred on `plateauAngle`. */
-  plateauAngle: number;
-  plateauHalfAngle: number;
-  plateauInner: number;
-  plateauOuter: number;
-  /** River centre line (already smooth) and the lake it starts from. */
-  river: Pt[];
-  lake: { x: number; z: number; r: number };
-  seed: number;
+  /** Canal centre line (axis-aligned legs) and its half width at the water line. */
+  canal: Pt[];
+  canalHalfWidth: number;
+  /** Half extent of the land; the canal runs out to it on both ends. */
+  extent: number;
 }
 
 export interface Terrain {
   spec: TerrainSpec;
-  /** Ground height, including the carved riverbed, lake and seabed. */
+  /** Ground height: 0 everywhere except the canal bed. */
   heightAt(x: number, z: number): number;
   /** Where a road or a vehicle runs: the ground, but flat across water (a bridge). */
   roadY(x: number, z: number): number;
   isWater(x: number, z: number): boolean;
-  /** Flat, dry and gentle enough to build on, with `margin` of room around the point. */
+  /** Dry and clear of the canal bank, with `margin` of room around the point. */
   buildable(x: number, z: number, margin?: number): boolean;
   /** Bounding half-extent of the terrain mesh. */
   extent: number;
-  /** Distance from the river centre line (Infinity without a river). */
-  riverDistance(x: number, z: number): number;
+  /** Distance from the canal centre line. */
+  canalDistance(x: number, z: number): number;
+  /** Sample coordinates for the ground mesh: coarse on the plain, fine across the canal. */
+  groundAxes(): { xs: number[]; zs: number[] };
 }
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
-
-function angleDiff(a: number, b: number): number {
-  let d = a - b;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return d;
-}
 
 export function distToPolyline(px: number, pz: number, line: readonly Pt[]): number {
   let best = Infinity;
@@ -92,72 +77,45 @@ export function chaikin(line: readonly Pt[], passes = 2): Pt[] {
 }
 
 export function createTerrain(spec: TerrainSpec): Terrain {
-  const { cityRadius, plateauAngle, plateauHalfAngle, plateauInner, plateauOuter, river, lake, seed } = spec;
-  const mountainStart = plateauOuter + 14;
-  // Land runs on beyond the town towards the mountains, and ends in the sea elsewhere.
-  const extent = mountainStart + 110;
+  const { canal, canalHalfWidth: hw, extent } = spec;
 
-  const coast = (angle: number) => {
-    const toward = Math.max(0, Math.cos(angleDiff(angle, plateauAngle)));
-    return cityRadius + 20 + valueNoise(angle * 2.2 + 40, 0, seed) * 9 + toward * toward * 120;
-  };
-
-  function raw(x: number, z: number): number {
-    const r = Math.hypot(x, z);
-    const angle = Math.atan2(z, x);
-    let h = 0;
-
-    // Plateau: flat top, a gentle ramp on the plaza side and a steeper one on the others.
-    const da = Math.abs(angleDiff(angle, plateauAngle));
-    const wa = 1 - smooth(plateauHalfAngle - 0.04, plateauHalfAngle + 0.1, da);
-    const wr = smooth(plateauInner - 18, plateauInner, r) * (1 - smooth(plateauOuter, plateauOuter + 16, r));
-    const plateau = PLATEAU_HEIGHT * wa * wr;
-
-    // Mountains behind the plateau: a shelf at plateau height, then ridges and peaks.
-    const wm = Math.max(0, Math.cos(angleDiff(angle, plateauAngle) * 0.9)) ** 2;
-    const ridge = 1 - Math.abs(valueNoise(x * 0.035, z * 0.035, seed + 3) * 2 - 1);
-    const detail = valueNoise(x * 0.11, z * 0.11, seed + 9);
-    const peaks = 16 + Math.max(0, ridge - 0.2) * 66 + detail * 8;
-    const rise = smooth(mountainStart - 6, mountainStart + 70, r);
-    const mountain = wm * (smooth(mountainStart - 14, mountainStart, r) * (PLATEAU_HEIGHT - 0.5) + rise * peaks);
-
-    h = Math.max(plateau, mountain);
-
-    // The sea.
-    h -= 4.4 * smooth(coast(angle) - 8, coast(angle) + 12, r);
-
-    // River and lake carve the ground; the lake is a little deeper and rounder.
-    const rd = distToPolyline(x, z, river);
-    const cr = 1 - smooth(RIVER_HALF_WIDTH * 0.55, RIVER_HALF_WIDTH * 1.7, rd);
-    h = h * (1 - cr) + -2.1 * cr;
-    const ld = Math.hypot(x - lake.x, z - lake.z);
-    const cl = 1 - smooth(lake.r * 0.7, lake.r * 1.3, ld);
-    h = h * (1 - cl) + -2.4 * cl;
-    return h;
+  const canalDistance = (x: number, z: number) => distToPolyline(x, z, canal);
+  function heightAt(x: number, z: number): number {
+    const d = canalDistance(x, z);
+    if (d > hw + 3) return 0;
+    // Bed flat under the water, banks sloping up to the plain in about 3 units.
+    return -CANAL_DEPTH * (1 - smooth(hw - 1.5, hw + 2.2, d));
   }
 
-  const heightAt = (x: number, z: number) => raw(x, z);
-  const roadY = (x: number, z: number) => Math.max(0, raw(x, z));
-  const isWater = (x: number, z: number) => raw(x, z) < WATER_Y + 0.05;
-
-  function buildable(x: number, z: number, margin = 0): boolean {
-    const c = raw(x, z);
-    if (c < -0.05) return false;
-    const m = Math.max(1, margin);
-    for (const [dx, dz] of [[m, 0], [-m, 0], [0, m], [0, -m]] as const) {
-      const h = raw(x + dx, z + dz);
-      if (h < -0.05 || Math.abs(h - c) > 1.1) return false;
+  function groundAxes() {
+    const coarse = 14;
+    const xs = new Set<number>();
+    const zs = new Set<number>();
+    for (let v = -extent; v <= extent + 1e-6; v += coarse) {
+      xs.add(Math.round(v * 4) / 4);
+      zs.add(Math.round(v * 4) / 4);
     }
-    return true;
+    // Fine lines across every axis-aligned canal leg (and a little past its ends).
+    for (let i = 1; i < canal.length; i++) {
+      const a = canal[i - 1];
+      const b = canal[i];
+      const vertical = Math.abs(a.x - b.x) < 1e-6;
+      const c = vertical ? a.x : a.z;
+      const axis = vertical ? xs : zs;
+      for (let o = -hw - 5; o <= hw + 5 + 1e-6; o += 0.75) axis.add(Math.round((c + o) * 4) / 4);
+    }
+    const sort = (s: Set<number>) => [...s].sort((p, q) => p - q);
+    return { xs: sort(xs), zs: sort(zs) };
   }
 
   return {
     spec,
     heightAt,
-    roadY,
-    isWater,
-    buildable,
+    roadY: (x, z) => Math.max(0, heightAt(x, z)),
+    isWater: (x, z) => heightAt(x, z) < WATER_Y + 0.05,
+    buildable: (x, z, margin = 0) => canalDistance(x, z) > hw + 2.2 + margin,
     extent,
-    riverDistance: (x, z) => distToPolyline(x, z, river),
+    canalDistance,
+    groundAxes,
   };
 }

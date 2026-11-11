@@ -215,29 +215,43 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 - **One merged mesh per site** (`engine/buildingFactory.ts`, vertex colours, a `Builder` that
   merges primitives) so ~100 companies stay ~100 draw calls; trees, people and vans are
   `InstancedMesh`. `createSite` is the seam for authored glTF kits in a later phase.
-- **Layout is a pure function of asset ids** (hash slots in a district grid). It never reads
-  weights, prices or events: a price refresh must not move a building. Lots have one pitch (the
-  largest footprint plus a street), so a building that grows a tier cannot collide.
-- **The city is organic, not a set of pads** (`model/townLayout.ts`, `terrain.ts`, `infra.ts`).
-  Districts keep a **fixed compass slot** (their index in `DISTRICT_IDS`), so adding a holding
-  never turns the town; each is a street grid rotated a few degrees from its neighbours. The
-  land is a heightfield: sea, a lake and a river that bends round the square, a **plateau for
-  the funds and treasury districts** with mountains behind it. Terrain is a function of the
-  compass and the district sizes only (never of weights), so a hill cannot move either.
-- **Holdings are landmarks, the rest is scenery.** `FillerSpot`s (homes, towers, skyscrapers,
-  villas on the plateau, sheds) fill free slots and the land between districts; they are pale,
-  never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
-  `townLayout.ts`) or "size = weight" stops meaning anything. Homes exist in every district
-  (fewer downtown, villas only on the plateau): pinned in `townLayout.test.ts`.
-- **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`;
-  `roadY` is the ground but flat across water, i.e. a bridge). Sites, labels, markers, agents,
-  vans and the camera target all do; a new object placed at y = 0 will sink on the plateau.
-- **Transport** (`model/infra.ts`, `engine/infra.ts`): an elevated expressway ring, an
-  expressway round the square, a surface railway with a shuttle, and a monorail loop on pillars.
-  They run in the corridors between districts and the layout keeps buildings out of them
-  (`nearInfra`, tested). Traffic is scenery for now: it does not act out events.
-- **A ribbon's index order matters**: `ribbon()` strips that wind clockwise face down and are
-  culled, so roads looked missing while their bridges showed. Check roads from above.
+- **Layout is a pure function of asset ids** and the street skeleton of none. `model/cityGraph.ts` builds
+  the roads once (planar graph on one orthogonal grid, PITCH 44, 9 x 9 cells): a plaza block bounded by a
+  ring road, an avenue loop at +-110 (the monorail rides it), a perimeter avenue, streets on every other
+  line, a canal (cells x = -88 then z = 44, crossed by bridge edges), and a railway along z = 0 that meets
+  streets only at `crossing` nodes. Node ids come from integer coordinates, never insertion order. Blocks
+  are the bounded faces of a half-edge walk (not a hand list); `model/cityLots.ts` shrinks each by its
+  pavements and splits it by a jittered oriented-box cut into lots that front a street. The skeleton never
+  reads the holdings: adding one cannot move a road, block or lot.
+- **Districts keep a fixed compass wedge** (`slotAt`, their index in `DISTRICT_IDS`): a block belongs to the
+  district of its centroid's angle. A holding picks its lot by ranking its district's free lots with its own
+  hash, premium frontage (ring road, avenues) first, claiming in hash order (`townLayout.ts`); beyond a
+  district's capacity it takes the nearest free lots. Stateless, so a newcomer can only push a holding to its
+  next-best lot when their hashes collide (pinned: at most a handful move). Holdings need lots of at least
+  14.4 on a side; the biggest landmark is 16.4, so filler lots are subdivided every ~6.4 and fillers stay <= 5.
+- **The city is flat.** `terrain.ts` is a level plain with the canal carved into it (`groundAxes` gives the
+  ground mesh coarse samples away from the canal, fine across it). There are no mountains, plateau or sea.
+  Everything still asks `terrain.heightAt` / `roadY` (0, flat across water = bridge).
+- **Roads are built from the graph** (`engine/roads.ts`): per junction, incident roads are sorted by angle,
+  offset side lines intersected for the corner points, asphalt corners get a 3-unit kerb fillet and the
+  pavement keeps square corners; ribbons start at each arm's stop distance; zebras sit on every junction
+  leg and at the plaza gates. Two draw calls for the whole network. Triangle winding is forced per triangle
+  (`Flat.tri`), so a strip can never face down.
+- **Holdings are landmarks, the rest is scenery.** `FillerSpot`s fill every lot no holding took; they are
+  pale, never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
+  `townLayout.ts`) or "size = weight" stops meaning anything.
+- **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`).
+- **Transport** (`model/infra.ts`, `engine/infra.ts`), derived from the graph: a monorail on pillars above
+  the avenue loop (pillars are chosen in the model, always in the avenue's central reservation, never in
+  water or on a crossing; stations on the loop edge nearest each district), a ground railway from a
+  terminus beside the plaza east out of town with level crossings (decking, barriers, signals), and ambient
+  traffic loops on the ring road, avenue loop and perimeter. Buildings stay out of the rail corridor
+  (blocks in the rail row are clipped). Traffic is scenery for now: it does not act out events.
+- **Routes** (`routeToPlaza`) are Dijkstra over the ground roads from a lot's door to the nearest plaza
+  gate; vans and visitors follow them, walkers use `sidewalkRoute` offsets.
+- **A ribbon's index order matters**: strips that wind clockwise face down and are culled, so roads looked
+  missing while their bridges showed. `Flat.tri` in `engine/roads.ts` forces the normal up; `ribbon()` in
+  `props.ts` (route highlight) still needs counter-clockwise order. Check roads from above.
 - **Size = portfolio weight, not price action** (`model/scale.ts`, piecewise-linear, tiers with
   hysteresis). An unknown weight/valuation is drawn small *and marked* (yellow diamond), never
   treated as zero. Events are acted out temporarily; only tier changes alter a building.
