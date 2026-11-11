@@ -30,7 +30,7 @@ const BRAKE_LAMP = 0xff2e2e;
 function wheels(b: GeoBuilder, r: number, xs: number, zs: number[], width = 0.16) {
   for (const z of zs) {
     for (const s of [-1, 1]) {
-      b.cyl(r, r, width, s * xs, r - width / 2, z, TYRE, 10, { rz: Math.PI / 2, kind: KIND.fixed });
+      b.cyl(r, r, width, s * xs, r - width / 2, z, TYRE, 8, { rz: Math.PI / 2, kind: KIND.fixed });
     }
   }
 }
@@ -130,6 +130,9 @@ const GEOMETRY: Record<VehicleKind, () => THREE.BufferGeometry> = {
   truck,
   bus,
 };
+
+/** One vehicle's merged geometry (exported for the triangle budget test). */
+export const vehicleGeometry = (kind: VehicleKind): THREE.BufferGeometry => GEOMETRY[kind]();
 
 const PAINT: Record<VehicleKind, number[]> = { sedan: CAR_PAINT, hatch: CAR_PAINT, taxi: [TAXI], van: VAN_PAINT, truck: VAN_PAINT, bus: BUS_PAINT };
 
@@ -282,8 +285,10 @@ export class VehicleSystem {
     const path = [...out, ...back];
     const turnAt = pathLength(out);
     const start = path[0];
+    // Vans sent together (a dividend and its escort) leave a moment apart instead of overlapping.
+    const queued = this.scripted.filter((o) => o.dist < 4 && Math.hypot(o.path[0].x - start.x, o.path[0].z - start.z) < 6).length;
     this.scripted.push({
-      path, dist: 0, total: pathLength(path), turnAt, hold: 0, held: false, stall: 0, speed,
+      path, dist: 0, total: pathLength(path), turnAt, hold: queued * 1.6, held: false, stall: 0, speed: Math.min(speed, 11),
       tint, x: start.x, z: start.z, heading: 0, moving: 0, onDone: onDone ?? null,
     });
   }
@@ -382,7 +387,10 @@ export class VehicleSystem {
 
   /** Dev handle: the traffic's poses. */
   snapshot(): Array<{ x: number; z: number; kind: string; v: number }> {
-    return this.sim.vehicles.map((c) => ({ x: c.x, z: c.z, kind: c.kind, v: c.v }));
+    return [
+      ...this.sim.vehicles.map((c) => ({ x: c.x, z: c.z, kind: c.kind, v: c.v })),
+      ...this.scripted.map((c) => ({ x: c.x, z: c.z, kind: "event", v: c.moving * c.speed })),
+    ];
   }
 
   dispose() {

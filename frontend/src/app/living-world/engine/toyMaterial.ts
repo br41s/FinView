@@ -21,6 +21,8 @@ export interface PartOpts {
   ry?: number;
   rx?: number;
   rz?: number;
+  /** Cylinders: leave the end caps off (hidden inside other parts). */
+  open?: boolean;
 }
 
 export class GeoBuilder {
@@ -79,7 +81,7 @@ export class GeoBuilder {
 
   /** `y` is the bottom; the axis is vertical unless rotated. */
   cyl(rTop: number, rBot: number, h: number, x: number, y: number, z: number, hex: number, seg = 8, o: PartOpts = {}) {
-    this.push(new THREE.CylinderGeometry(rTop, rBot, h, seg), x, y + h / 2, z, hex, o);
+    this.push(new THREE.CylinderGeometry(rTop, rBot, h, seg, 1, o.open ?? false), x, y + h / 2, z, hex, o);
   }
 
   /** `y` is the centre. */
@@ -91,7 +93,7 @@ export class GeoBuilder {
 
   /** `y` is the centre. */
   torus(r: number, tube: number, x: number, y: number, z: number, hex: number, o: PartOpts = {}) {
-    this.push(new THREE.TorusGeometry(r, tube, 5, 10), x, y, z, hex, o);
+    this.push(new THREE.TorusGeometry(r, tube, 4, 8), x, y, z, hex, o);
   }
 
   cone(r: number, h: number, x: number, y: number, z: number, hex: number, seg = 6, o: PartOpts = {}) {
@@ -100,7 +102,7 @@ export class GeoBuilder {
 
   /** A sphere cap (hard hats, hair). `y` is the centre of the full sphere. */
   cap(r: number, x: number, y: number, z: number, hex: number, o: PartOpts = {}, theta = Math.PI / 2) {
-    this.push(new THREE.SphereGeometry(r, 10, 6, 0, Math.PI * 2, 0, theta), x, y, z, hex, o);
+    this.push(new THREE.SphereGeometry(r, 8, 4, 0, Math.PI * 2, 0, theta), x, y, z, hex, o);
   }
 
   build(): THREE.BufferGeometry {

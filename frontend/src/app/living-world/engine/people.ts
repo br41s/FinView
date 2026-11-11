@@ -19,7 +19,6 @@ import { GeoBuilder, KIND, LIMB, createToyMaterial } from "./toyMaterial";
 
 const SKIN = [0xf5d0b0, 0xe6b48c, 0xc98c5e, 0x9a6540, 0x6e4529, 0xf8dcc4];
 const EYE = 0x20242c;
-const CHEEK = 0xf0a3a0;
 
 const HIP = 0.5;
 
@@ -28,23 +27,22 @@ function figure(b: GeoBuilder, o: { shirt: number; trousers: number; sleeves?: n
   const shoes = o.shoes ?? 0x2b2622;
   // Legs and shoes swing about the hip.
   for (const [s, limb] of [[-1, LIMB.legL], [1, LIMB.legR]] as const) {
-    b.cyl(0.085, 0.09, HIP - 0.08, s * 0.13, 0.09, 0, o.trousers, 7, { limb });
-    b.roundBox(0.17, 0.1, 0.27, 0.04, s * 0.13, 0, 0.04, shoes, { limb });
+    b.cyl(0.085, 0.09, HIP - 0.08, s * 0.13, 0.09, 0, o.trousers, 7, { limb, open: true });
+    b.box(0.17, 0.1, 0.27, s * 0.13, 0, 0.04, shoes, { limb });
   }
   // Torso.
-  b.roundBox(0.46, 0.46, 0.3, 0.12, 0, HIP - 0.04, 0, o.shirt);
+  b.box(0.46, 0.46, 0.3, 0, HIP - 0.04, 0, o.shirt);
   // Arms swing about the shoulder; hands are skin.
   if (o.arms !== false) {
     for (const [s, limb] of [[-1, LIMB.armL], [1, LIMB.armR]] as const) {
-      b.cyl(0.065, 0.06, 0.4, s * 0.3, 0.52, 0, sleeves, 7, { limb });
-      b.ellipsoid(0.07, 0.07, 0.07, s * 0.3, 0.5, 0, 0xffffff, { limb, kind: KIND.paint }, 7, 5);
+      b.cyl(0.065, 0.06, 0.4, s * 0.3, 0.52, 0, sleeves, 7, { limb, open: true });
+      b.ellipsoid(0.07, 0.07, 0.07, s * 0.3, 0.5, 0, 0xffffff, { limb, kind: KIND.paint }, 5, 4);
     }
   }
   // Head: big, with eyes and cheeks.
-  b.ellipsoid(0.33, 0.31, 0.31, 0, 1.12, 0, 0xffffff, { kind: KIND.paint }, 14, 10);
+  b.ellipsoid(0.33, 0.31, 0.31, 0, 1.12, 0, 0xffffff, { kind: KIND.paint }, 9, 6);
   for (const s of [-1, 1]) {
-    b.ellipsoid(0.045, 0.06, 0.03, s * 0.12, 1.14, 0.29, EYE, {}, 6, 5);
-    b.ellipsoid(0.06, 0.04, 0.03, s * 0.2, 1.03, 0.25, CHEEK, {}, 6, 4);
+    b.ellipsoid(0.045, 0.06, 0.03, s * 0.12, 1.14, 0.29, EYE, {}, 5, 4);
   }
 }
 
@@ -56,15 +54,15 @@ function worker(): THREE.BufferGeometry {
   const b = new GeoBuilder();
   figure(b, { shirt: 0x9a4b3a, trousers: 0x2f5fb0, shoes: 0x3a2c22 });
   // Overalls: bib and straps over the shirt.
-  b.roundBox(0.4, 0.34, 0.32, 0.08, 0, 0.42, 0.005, 0x2f5fb0);
+  b.box(0.4, 0.34, 0.32, 0, 0.42, 0.005, 0x2f5fb0);
   for (const s of [-1, 1]) b.box(0.07, 0.3, 0.32, s * 0.15, 0.78, 0, 0x2f5fb0);
   b.box(0.16, 0.1, 0.02, 0, 0.55, 0.16, 0x244a8c);
   // Hard hat.
   b.cap(0.37, 0, 1.19, 0, 0xff8a1f, { kind: KIND.fixed }, Math.PI * 0.47);
-  b.cyl(0.4, 0.4, 0.045, 0, 1.16, 0, 0xff8a1f, 14);
+  b.cyl(0.4, 0.4, 0.045, 0, 1.16, 0, 0xff8a1f, 10);
   b.box(0.09, 0.08, 0.4, 0, 1.44, 0, 0xe87812);
   // A brick in the right hand.
-  b.roundBox(0.26, 0.13, 0.13, 0.02, 0.3, 0.4, 0.13, 0xb5523a, { limb: LIMB.armR });
+  b.box(0.26, 0.13, 0.13, 0.3, 0.4, 0.13, 0xb5523a, { limb: LIMB.armR });
   return b.build();
 }
 
@@ -83,7 +81,7 @@ function executive(): THREE.BufferGeometry {
   b.box(0.07, 0.07, 0.04, 0, 0.9, 0.16, 0xd1343b);
   b.box(0.065, 0.26, 0.02, 0, 0.62, 0.165, 0xd1343b);
   // Briefcase in the right hand.
-  b.roundBox(0.1, 0.26, 0.34, 0.025, 0.33, 0.16, 0.0, 0x8a5a32, { limb: LIMB.armR });
+  b.box(0.1, 0.26, 0.34, 0.33, 0.16, 0.0, 0x8a5a32, { limb: LIMB.armR });
   b.box(0.04, 0.05, 0.14, 0.33, 0.42, 0, 0x4e3220, { limb: LIMB.armR });
   return b.build();
 }
@@ -94,17 +92,17 @@ function courier(): THREE.BufferGeometry {
   figure(b, { shirt: HOOD, trousers: 0x39404e, shoes: 0x1f2229, arms: false });
   // Arms hold the parcel: angled forward, no swing.
   for (const s of [-1, 1]) {
-    b.cyl(0.065, 0.06, 0.4, s * 0.29, 0.56, 0.11, HOOD, 7, { rx: -1.0 });
+    b.cyl(0.065, 0.06, 0.4, s * 0.29, 0.56, 0.11, HOOD, 7, { rx: -1.0, open: true });
     b.ellipsoid(0.07, 0.07, 0.07, s * 0.27, 0.62, 0.29, 0xffffff, { kind: KIND.paint }, 7, 5);
   }
   // Hood behind the head, pocket on the front.
-  b.ellipsoid(0.34, 0.3, 0.26, 0, 1.12, -0.13, HOOD, {}, 12, 8);
+  b.ellipsoid(0.34, 0.3, 0.26, 0, 1.12, -0.13, HOOD, {}, 8, 6);
   b.box(0.3, 0.1, 0.02, 0, 0.5, 0.152, 0xd97620);
   // Dark backpack and a cardboard parcel with tape.
-  b.roundBox(0.34, 0.4, 0.18, 0.06, 0, 0.5, -0.25, 0x2a2f3a);
+  b.box(0.34, 0.4, 0.18, 0, 0.5, -0.25, 0x2a2f3a);
   b.box(0.06, 0.4, 0.02, -0.14, 0.52, -0.155, 0x1d2129);
   b.box(0.06, 0.4, 0.02, 0.14, 0.52, -0.155, 0x1d2129);
-  b.roundBox(0.34, 0.3, 0.3, 0.03, 0, 0.52, 0.36, 0xc89a62);
+  b.box(0.34, 0.3, 0.3, 0, 0.52, 0.36, 0xc89a62);
   b.box(0.06, 0.305, 0.31, 0, 0.52, 0.36, 0xe8d8b0);
   return b.build();
 }
@@ -114,7 +112,7 @@ function analyst(): THREE.BufferGeometry {
   figure(b, { shirt: 0xf6f3ee, trousers: 0x5a6272, shoes: 0x2b2622 });
   hair(b);
   // Brown vest over the shirt, yellow tie.
-  b.roundBox(0.4, 0.38, 0.33, 0.07, 0, 0.5, 0.0, 0x7a4f2c);
+  b.box(0.4, 0.38, 0.33, 0, 0.5, 0.0, 0x7a4f2c);
   b.box(0.1, 0.2, 0.03, 0, 0.7, 0.158, 0xf6f3ee);
   b.box(0.06, 0.07, 0.04, 0, 0.88, 0.17, 0xf2c230);
   b.box(0.06, 0.24, 0.02, 0, 0.66, 0.175, 0xf2c230);
@@ -129,6 +127,9 @@ function analyst(): THREE.BufferGeometry {
 }
 
 const GEOMETRY: Record<Profession, () => THREE.BufferGeometry> = { worker, executive, courier, analyst };
+
+/** One pedestrian's merged geometry (exported for the triangle budget test). */
+export const personGeometry = (prof: Profession): THREE.BufferGeometry => GEOMETRY[prof]();
 
 export interface PersonPose {
   x: number;
