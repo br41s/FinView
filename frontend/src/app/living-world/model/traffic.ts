@@ -32,6 +32,8 @@ export const STOP_BACK = 2.8;
 export const CROSSING_STOP = 5.4;
 /** Two junction movements closer than this conflict (vehicle width plus margin). */
 const CONFLICT_DIST = 1.9;
+/** Movements that cross or turn sweep more than their centre line (long vehicles swing wide). */
+const CONFLICT_DIST_SWEEP = 3.3;
 export const FIXED_DT = 1 / 30;
 const MAX_STEPS_PER_FRAME = 4;
 
@@ -286,7 +288,12 @@ export function buildLaneNetwork(graph: CityGraph): LaneNetwork {
           b.siblings.push(a);
           continue;
         }
-        if (a.to === b.to || polylineDist(a.pts, b.pts) < CONFLICT_DIST) {
+        const da = { x: a.from!.pts[1].x - a.from!.pts[0].x, z: a.from!.pts[1].z - a.from!.pts[0].z };
+        const db = { x: b.from!.pts[1].x - b.from!.pts[0].x, z: b.from!.pts[1].z - b.from!.pts[0].z };
+        const la = Math.hypot(da.x, da.z) || 1;
+        const lb = Math.hypot(db.x, db.z) || 1;
+        const parallel = a.movement === "S" && b.movement === "S" && Math.abs(da.x * db.x + da.z * db.z) / (la * lb) > 0.9;
+        if (a.to === b.to || polylineDist(a.pts, b.pts) < (parallel ? CONFLICT_DIST : CONFLICT_DIST_SWEEP)) {
           a.conflicts.add(b.id);
           b.conflicts.add(a.id);
         }
@@ -348,7 +355,7 @@ export interface Vehicle {
   /** The movement chosen for the end of the current lane. */
   next: Piece | null;
   /** Junction movement this vehicle has been granted (held until its rear leaves it). */
-  box: Piece | null;
+  holds: Piece[];
   waitT: number;
   stuckT: number;
   age: number;
@@ -435,7 +442,7 @@ export class TrafficSim {
       colour: colour ?? Math.floor(this.rnd() * 1000),
       piece, trail: [], s, v: speed,
       v0: piece.limit * spec.speed * (0.82 + 0.3 * rnd()),
-      next: null, box: null, waitT: 0, stuckT: 0, age: 0, leaving: false, scale: 0, braking: false,
+      next: null, holds: [], waitT: 0, stuckT: 0, age: 0, leaving: false, scale: 0, braking: false,
       x: 0, z: 0, heading: 0, rnd,
     };
     v.next = this.choose(v);
@@ -564,7 +571,7 @@ export class TrafficSim {
     let free = lane.length;
     for (const o of this.list(lane)) free = Math.min(free, o.s - o.length);
     for (const users of this.boxes.values()) {
-      for (const u of users) if (u !== me && u.box && u.box.to === lane && u.piece !== lane) free -= u.length + 1;
+      for (const u of users) if (u !== me && u.piece !== lane && u.holds.some((h) => h.to === lane)) free -= u.length + 1;
     }
     return free;
   }
@@ -580,7 +587,7 @@ export class TrafficSim {
       : signalGreen(this.net, line.node, line.axis, this.time, 0.7);
     if (!green) return false;
     if (this.roomAt(next.to!, v) < v.length + 1.0) return false;
-    for (const u of this.boxes.get(line.node) ?? []) if (u !== v && u.box && next.conflicts.has(u.box.id)) return false;
+    for (const u of this.boxes.get(line.node) ?? []) if (u !== v && u.holds.some((h) => next.conflicts.has(h.id))) return false;
     // A movement that has waited longer, and is on green, goes first.
     for (const w of this.waiters.get(line.node) ?? []) {
       if (w === v || !w.next || !next.conflicts.has(w.next.id)) continue;
@@ -601,13 +608,13 @@ export class TrafficSim {
       const l = this.occupants.get(v.piece.id);
       if (l) l.push(v);
       else this.occupants.set(v.piece.id, [v]);
-      if (v.box) {
-        const node = v.box.node;
-        const b = this.boxes.get(node);
-        if (b) b.push(v);
-        else this.boxes.set(node, [v]);
+      for (const h of v.holds) {
+        const b = this.boxes.get(h.node);
+        if (b) {
+          if (!b.includes(v)) b.push(v);
+        } else this.boxes.set(h.node, [v]);
       }
-      if (!v.box && v.waitT > 0 && v.next && v.piece.control === "signal") {
+      if (v.waitT > 0 && !v.holds.some((h) => h.from === v.piece) && v.next && v.piece.control === "signal") {
         const w = this.waiters.get(v.piece.node);
         if (w) w.push(v);
         else this.waiters.set(v.piece.node, [v]);
@@ -671,7 +678,7 @@ export class TrafficSim {
       // Stop lines.
       const line = v.piece;
       let virtual = Infinity;
-      if (line.kind === "lane" && line.control !== "none" && v.next && !v.box) {
+      if (line.kind === "lane" && line.control !== "none" && v.next && !v.holds.some((h) => h.from === line)) {
         const toLine = line.stopAt - v.s;
         const lookahead = Math.max(6, (v.v * v.v) / (2 * IDM.brake) + 3);
         if (toLine > lookahead) {
@@ -680,8 +687,8 @@ export class TrafficSim {
           virtual = Math.max(0.05, toLine);
           if (v.v < 0.4 && toLine < 2.2) v.waitT += dt;
         } else {
-          v.box = line.control === "signal" ? v.next : null;
-          if (v.box) {
+          if (line.control === "signal") {
+            v.holds.push(v.next);
             const b = this.boxes.get(line.node);
             if (b) b.push(v);
             else this.boxes.set(line.node, [v]);
@@ -725,7 +732,7 @@ export class TrafficSim {
         v.piece = nx;
         if (nx.kind === "lane") v.next = this.choose(v);
       }
-      if (v.box && v.piece === v.box.to && v.s - v.length >= 0) v.box = null;
+      if (v.holds.length) v.holds = v.holds.filter((h) => !(v.piece === h.to && v.s - v.length >= 0));
       if (v.leaving && v.scale <= 0) gone.push(v);
       else if (v.stuckT > 60 && !v.leaving) {
         v.leaving = true;

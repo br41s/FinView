@@ -143,8 +143,8 @@ describe("traffic simulation", () => {
     expect(key(a)).not.toBe(key(c));
   });
 
-  it("never lets two vehicles overlap, in lanes or in junctions", () => {
-    const sim = new TrafficSim(net, { seed: 3 });
+  it.each([3, 21, 77])("never lets two vehicles overlap, in lanes or in junctions (seed %i)", (seed) => {
+    const sim = new TrafficSim(net, { seed });
     sim.warm(220);
     let checked = 0;
     let bad: [Vehicle, Vehicle] | null = null;
