@@ -5,7 +5,7 @@ import { type Tier } from "../model/scale";
 import { placeParts } from "../model/siteLayout";
 import { FACADE_ROWS, accentColour, towerSpec, type TowerSpec } from "../model/towerSpec";
 import type { WorldAsset } from "../model/types";
-import { buildMain, DECK_TOP, MAIN_Z } from "./mains";
+import { buildMain, DECK_TOP } from "./mains";
 import { createFacadeMaterial } from "./materials";
 import { buildPart } from "./parts";
 import { DARK, DECK, SITE_COLS, WHITE } from "./towers";
@@ -249,7 +249,6 @@ export function composeSite(spec: TowerSpec, n: number, unknown: boolean): { geo
   }
   const triangles = b.triangles();
   const top = b.top;
-  void MAIN_Z;
   return { geometry: b.build(), top, triangles };
 }
 

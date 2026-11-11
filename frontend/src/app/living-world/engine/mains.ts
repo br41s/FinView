@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { FLOOR_H, type TowerSpec } from "../model/towerSpec";
 import type { Builder } from "./buildingFactory";
-import { BASE_Y, CROWN_SHARE, DARK, GREY, SITE_COLS, WHITE, bar, crown, hcyl, latticeMast, loft } from "./towers";
+import { BASE_Y, CROWN_SHARE, DARK, GREY, WHITE, bar, crown, hcyl, latticeMast, loft } from "./towers";
 
 /**
  * The main structure of a holding: the tower (or the stack, dome, arena) the rest of the complex
@@ -28,7 +28,7 @@ export interface MainResult {
 const floorsFor = (h: number) => Math.max(4, Math.round(h / FLOOR_H));
 
 /** A flat disc or ring-shaped annulus lying at height y. */
-function annulus(b: Builder, plan: "ellipse" | "super", cx: number, cz: number, y: number, w: number, d: number, sOuter: number, sInner: number, hex: number) {
+function annulus(b: Builder, cx: number, cz: number, y: number, w: number, d: number, sOuter: number, sInner: number, hex: number) {
   const N = 24;
   const pos = new Float32Array(N * 2 * 3);
   const nor = new Float32Array(N * 2 * 3);
@@ -55,7 +55,6 @@ function annulus(b: Builder, plan: "ellipse" | "super", cx: number, cz: number, 
   g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
   g.setIndex(idx);
   b.custom(g, hex);
-  void plan;
 }
 
 function plinth(c: MainCtx, w: number, d: number, cx: number, cz: number) {
@@ -296,7 +295,7 @@ function stadiumTower(c: MainCtx): MainResult {
   const topY = loft(b, { plan: m.plan === "super" ? "super" : "ellipse", w, d, cx: 0, cz, y0, h: H, hex: WHITE, kind: 0 });
   // Glass band round the upper bowl, then the roof ring and the inner terraces going down.
   loft(b, { plan: "ellipse", w: w * 1.02, d: d * 1.02, cx: 0, cz, y0: y0 + 2 * FLOOR_H, h: 2 * FLOOR_H, hex: spec.glass, kind: 1, colMultiple: 4 });
-  annulus(b, "ellipse", 0, cz, topY, w, d, 1.06, 0.74, spec.accent);
+  annulus(b, 0, cz, topY, w, d, 1.06, 0.74, spec.accent);
   loft(b, { plan: "ellipse", w: w * 0.74, d: d * 0.74, cx: 0, cz, y0: topY, h: -(H - 0.5), hex: 0xe9e2d2, kind: 0, inward: true, ts: [0, 1], scale: (t) => 1 - 0.18 * t });
   // The pitch.
   loft(b, { plan: "ellipse", w: w * 0.56, d: d * 0.56, cx: 0, cz, y0: y0 + 0.5, h: 0.02, hex: 0x3fa456, cap: 0x3fa456, capKind: 0, kind: 0 });
@@ -430,4 +429,3 @@ export function buildMain(c: MainCtx): MainResult {
   }
 }
 
-void SITE_COLS;

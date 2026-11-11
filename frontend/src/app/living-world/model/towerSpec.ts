@@ -1,5 +1,5 @@
 import { hashString, seeded } from "./rng";
-import { TIERS, type Tier } from "./scale";
+import type { Tier } from "./scale";
 import type { Archetype } from "./types";
 
 /**
@@ -323,5 +323,3 @@ export function towerSpec(archetype: Archetype, id: string, tier: Tier, accentOv
   return { id, archetype, tier, main, parts, mirror: seeded(hashString(id + ":mirror"))() < 0.5, accent, glass };
 }
 
-/** The tiers in growth order, for tests and docs. */
-export { TIERS };

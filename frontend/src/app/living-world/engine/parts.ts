@@ -1,7 +1,7 @@
 import { FLOOR_H, type PartKind, type TowerSpec } from "../model/towerSpec";
 import type { Builder } from "./buildingFactory";
 import { DECK_TOP } from "./mains";
-import { BASE_Y, DARK, DECK, GOLD, GREY, WHITE, bar, hcyl, latticeMast, loft, tree } from "./towers";
+import { BASE_Y, DARK, GOLD, GREY, WHITE, bar, hcyl, latticeMast, loft, tree } from "./towers";
 
 /**
  * The other structures of a holding's complex: plazas, halls, pavilions, car parks, annex towers,
@@ -390,7 +390,6 @@ const colonnade: PartFn = ({ b, spec }, x, z, w, d) => {
   b.kind = 2;
   b.box(w * 0.98, 0.14, d * 0.6, x, DECK_TOP + 1.32, z, spec.accent);
   b.pyramid(w * 0.5, 0.3, x, DECK_TOP + 1.46, z, GOLD);
-  void DECK;
 };
 
 const PARTS: Record<PartKind, PartFn> = {
