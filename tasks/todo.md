@@ -1,5 +1,25 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Mundo vivo — Más eventos reales (rama `feat/living-world-more-events`, apilada sobre #379)
+
+Origen: 2026-11-12. Brais elige de la lista los eventos 2, 3, 4, 5, 6, 8, 10, 11 y 14. Regla: solo datos que
+FinView ya guarda (el pueblo no llama a Yahoo). Inventario (subagente Haiku) y decisión por evento:
+
+- [x] 3 · Máximo/mínimo de 52 semanas: `zonas_clave_analysis.price_history` (solo valores en el watchlist de
+      Zonas Clave con ≥ 1 año de cierres); `price_cache` tiene huecos y no sirve. Puntual.
+- [x] 4 · Split: `split_history_cache` por ticker de Yahoo (`ticker_map.effective_map`, sin red). Día completo.
+- [x] 5 · Acciones recibidas (escisión, DRIP o derechos: el libro no los distingue): fila SPINOFF que es la
+      primera de ese ISIN y que sigue en cartera. Día completo, sin llamarlo «escisión».
+- [x] 6 · Dividendo por acción mayor/menor: neto cobrado ÷ acciones en cartera ese día, frente al cobrado
+      hace ~1 año (300–430 días; interino y complementario no se comparan entre sí); ±10 %. Día completo.
+- [x] 8 · Informe anual nuevo: `segment_reports.created_at` (cuándo lo guardó FinView, no la publicación).
+- [x] 10 · Alerta geopolítica: `geo_signals` notificadas con un ticker de la cartera (`geo_signal_tickers`).
+      Puntual, con hora real.
+- [x] 11 · Volumen inusual: último volumen ≥ 2,5× la media de 20 sesiones en `price_history` (mismo límite que 3).
+- [x] 14 · Zona clave alcanzada: `technical_signals` con `alerted` del usuario para un ticker en cartera. Puntual.
+- [ ] 2 · Resultados próximos: **no hay calendario guardado**; necesita una fuente nueva → pendiente de decisión.
+- [x] Frontend: tipos, temporización, textos, prioridad, coreografías; verificación; docs; PR.
+
 ## Mundo vivo — Eventos de día completo, rótulos, hover y ruinas (rama `feat/living-world-day-events`)
 
 Origen: 2026-11-12, tras #378. Brais: distinguir eventos de día completo (dividendos) de los puntuales

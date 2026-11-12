@@ -188,16 +188,16 @@ function SiteArchitecture({ archetype, p }: { archetype: string; p: Palette }) {
 }
 
 function EventGlyph({ type, accent }: { type: WorldEvent["eventType"]; accent: string }) {
-  if (type === "price_move_down" || type === "earnings_miss") {
+  if (type === "price_move_down" || type === "earnings_miss" || type === "week52_low" || type === "dividend_cut" || type === "geo_alert") {
     return <g><circle cx="630" cy="72" r="32" fill="#fff" opacity=".92"/><path d="m613 58 17 23 17-12" fill="none" stroke="#d84d49" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/></g>;
   }
-  if (type === "dividend_paid" || type === "dividend_declared") {
+  if (type === "dividend_paid" || type === "dividend_declared" || type === "dividend_raised") {
     return <g><circle cx="630" cy="72" r="32" fill="#fff" opacity=".92"/><circle cx="630" cy="72" r="20" fill="#e5b94d"/><path d="M630 57v30m-8-22h13a6 6 0 0 1 0 12h-12" stroke="#fff" strokeWidth="4" fill="none"/></g>;
   }
-  if (type === "site_expansion" || type === "position_added") {
+  if (type === "site_expansion" || type === "position_added" || type === "shares_received" || type === "stock_split") {
     return <g><circle cx="630" cy="72" r="32" fill="#fff" opacity=".92"/><path d="M630 52v40m-20-20h40" stroke={accent} strokeWidth="8" strokeLinecap="round"/></g>;
   }
-  if (type === "technical_signal" || type === "options_alert") {
+  if (type === "technical_signal" || type === "options_alert" || type === "volume_spike") {
     return <g><circle cx="630" cy="72" r="32" fill="#fff" opacity=".92"/><path d="m610 83 12-17 11 9 17-22" stroke={accent} strokeWidth="6" fill="none" strokeLinecap="round" strokeLinejoin="round"/></g>;
   }
   return <g><circle cx="630" cy="72" r="32" fill="#fff" opacity=".92"/><path d="m630 51 7 14 16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2Z" fill={accent}/></g>;

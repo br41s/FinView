@@ -22,6 +22,15 @@ const EVENT_BASE: Record<EventType, number> = {
   position_added: 0.8,
   position_reduced: 0.8,
   position_closed: 1.5,
+  week52_high: 1.3,
+  week52_low: 1.3,
+  volume_spike: 1,
+  stock_split: 1.2,
+  shares_received: 1.2,
+  dividend_raised: 1.3,
+  dividend_cut: 1.5,
+  annual_report: 1,
+  geo_alert: 1.2,
 };
 
 const CONFIDENCE_FACTOR: Record<Confidence, number> = {
@@ -54,6 +63,18 @@ export function magnitudeFactor(
   if (type === "price_move_up" || type === "price_move_down") {
     const c = num("change_pct");
     return c === null ? 1 : clamp(Math.abs(c) / 2, 0.5, 3);
+  }
+  if (type === "dividend_raised" || type === "dividend_cut") {
+    const c = num("change_pct");
+    return c === null ? 1 : clamp(Math.abs(c) / 15, 0.5, 3);
+  }
+  if (type === "volume_spike") {
+    const r = num("volume_ratio");
+    return r === null ? 1 : clamp(r / 2.5, 0.5, 3);
+  }
+  if (type === "geo_alert") {
+    const i = num("importance");
+    return i === null ? 1 : clamp(i / 60, 0.5, 3);
   }
   if (type === "earnings_beat" || type === "earnings_miss") {
     const s = num("surprise_pct");

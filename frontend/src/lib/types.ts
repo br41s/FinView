@@ -333,6 +333,8 @@ export interface LivingWorldEvent {
   name: string;
   /** ISO date (the session or the trade date; no time of day is known). */
   occurred_on: string;
+  /** ISO-8601 UTC when the source knows the moment; null when only the date is known. */
+  occurred_at?: string | null;
   source_type: string;
   confidence: string;
   metrics: Record<string, number | string | null>;

@@ -54,6 +54,9 @@ class WorldEventOut(BaseModel):
     isin: str
     name: str
     occurred_on: date
+    # ISO-8601 UTC when the source knows the moment (a geo alert, a Zonas Clave alert); null
+    # for what only has a date.
+    occurred_at: str | None = None
     source_type: str
     confidence: str
     metrics: dict[str, float | str | None]
@@ -68,7 +71,8 @@ class WorldOut(BaseModel):
 @router.get("/world", response_model=WorldOut)
 def world(db: DbSession, user: CurrentUser):
     """One building per held ISIN with its valuation, cost and classification, and the
-    last week's real events (daily moves of at least 2 %, buys, sells, dividends).
+    last week's real events: daily moves of at least 2 %, buys, sells, dividends, and what
+    other features stored (Zonas Clave history and alerts, splits, annual reports, geo).
 
     Unknown values are null, never zero. No external call: prices come from the portfolio
     service's cache and the sector from what the exposure refresh already stored.

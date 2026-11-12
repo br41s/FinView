@@ -97,7 +97,8 @@ export interface Stage {
 
 type MarkerKind =
   | "arrowUp" | "arrowDown" | "flagGood" | "flagBad" | "notice" | "coin" | "board" | "diamond"
-  | "crane" | "crates" | "cross" | "beaconImportant" | "beaconCritical" | "beaconBeam";
+  | "crane" | "crates" | "cross" | "beaconImportant" | "beaconCritical" | "beaconBeam"
+  | "trophy" | "cloud" | "storm" | "binder" | "flagZone";
 
 const GOLD = 0xe6b422;
 
@@ -140,6 +141,37 @@ const GEOMETRY: Record<MarkerKind, () => THREE.BufferGeometry> = {
     b.tilted(1.2, 0.18, 0.18, 0, 0.6, 0, 0x6b6f7a, Math.PI / 4);
     b.tilted(1.2, 0.18, 0.18, 0, 0.6, 0, 0x6b6f7a, -Math.PI / 4);
   }),
+  // A year's high: a gold cup on the roof.
+  trophy: geo((b) => {
+    b.cyl(0.32, 0.32, 0.12, 0, 0, 0, GOLD, 12);
+    b.cyl(0.08, 0.08, 0.35, 0, 0.12, 0, GOLD, 8);
+    b.cyl(0.45, 0.2, 0.55, 0, 0.47, 0, GOLD, 14);
+    b.box(0.12, 0.3, 0.06, -0.5, 0.65, 0, GOLD);
+    b.box(0.12, 0.3, 0.06, 0.5, 0.65, 0, GOLD);
+  }),
+  // A year's low: a grey cloud hanging over the roof.
+  cloud: geo((b) => {
+    b.ico(0.55, 0, 0.6, 0, 0x8d949e, 1);
+    b.ico(0.42, 0.55, 0.5, 0.1, 0x9aa1aa, 1);
+    b.ico(0.4, -0.55, 0.5, -0.1, 0x9aa1aa, 1);
+    for (let i = 0; i < 5; i++) b.box(0.03, 0.4, 0.03, -0.5 + i * 0.25, -0.2, (i % 2) * 0.2, 0x6fa8dc);
+  }),
+  // A geopolitical alert: a dark storm cloud with a lightning bolt.
+  storm: geo((b) => {
+    b.ico(0.6, 0, 0.7, 0, 0x4b5160, 1);
+    b.ico(0.46, 0.6, 0.6, 0.1, 0x575e6d, 1);
+    b.ico(0.44, -0.6, 0.6, -0.1, 0x575e6d, 1);
+    b.tilted(0.12, 0.5, 0.06, 0.05, 0.05, 0.2, 0xffd400, 0.5);
+    b.tilted(0.12, 0.45, 0.06, -0.05, -0.35, 0.2, 0xffd400, -0.5);
+  }),
+  // A new annual report: a fat blue binder.
+  binder: geo((b) => {
+    b.box(0.75, 0.95, 0.28, 0, 0, 0, 0x2e5fa3);
+    b.box(0.68, 0.88, 0.22, 0.05, 0.035, 0, 0xf4f1e8);
+    b.box(0.08, 0.95, 0.3, -0.38, 0, 0, 0x1d3f72);
+  }),
+  // A Zonas Clave level reached: the analyst's flag on the roof.
+  flagZone: () => flag(0x2563eb),
   beaconImportant: geo((b) => b.cyl(0.35, 0.35, 12, 0, 0, 0, 0xf2b23a, 8)),
   beaconCritical: geo((b) => b.cyl(0.5, 0.5, 18, 0, 0, 0, 0xe0504a, 8)),
   beaconBeam: geo((b) => {
@@ -212,9 +244,23 @@ const ACTORS: Partial<Record<EventType, { role: Role; hold: AgentState; n: numbe
   position_added: { role: "crew", hold: "working", n: 3 },
   position_reduced: { role: "crew", hold: "working", n: 2 },
   position_closed: { role: "manager", hold: "concerned", n: 1 },
+  week52_high: { role: "visitor", hold: "celebrating", n: 3 },
+  week52_low: { role: "analyst", hold: "investigating", n: 1 },
+  volume_spike: { role: "visitor", hold: "investigating", n: 3 },
+  stock_split: { role: "crew", hold: "working", n: 3 },
+  shares_received: { role: "crew", hold: "working", n: 3 },
+  dividend_raised: { role: "courier", hold: "delivering", n: 2 },
+  dividend_cut: { role: "analyst", hold: "investigating", n: 1 },
+  annual_report: { role: "courier", hold: "delivering", n: 1 },
+  geo_alert: { role: "analyst", hold: "investigating", n: 2 },
 };
 
 const SITE_REACTION: Partial<Record<EventType, AgentState>> = {
+  week52_high: "celebrating",
+  week52_low: "concerned",
+  dividend_raised: "celebrating",
+  dividend_cut: "concerned",
+  geo_alert: "concerned",
   price_move_up: "celebrating",
   price_move_down: "concerned",
   earnings_beat: "celebrating",
@@ -235,6 +281,14 @@ const MARKERS: Partial<Record<EventType, MarkerKind>> = {
   position_added: "crane",
   position_reduced: "crates",
   position_closed: "cross",
+  week52_high: "trophy",
+  week52_low: "cloud",
+  stock_split: "crates",
+  shares_received: "crane",
+  dividend_raised: "coin",
+  dividend_cut: "notice",
+  annual_report: "binder",
+  geo_alert: "storm",
 };
 
 const BADGE_CONFIG: Partial<Record<EventType, { text: string; bg: string; fg: string; border: string }>> = {
@@ -250,6 +304,15 @@ const BADGE_CONFIG: Partial<Record<EventType, { text: string; bg: string; fg: st
   position_added: { text: "+ COMPRA EN CARTERA", bg: "#10b981", fg: "#ffffff", border: "#34d399" },
   position_reduced: { text: "- VENTA EN CARTERA", bg: "#ea580c", fg: "#ffffff", border: "#fb923c" },
   position_closed: { text: "POSICIÓN CERRADA", bg: "#475569", fg: "#ffffff", border: "#94a3b8" },
+  week52_high: { text: "★ MÁXIMO 52 SEM.", bg: "#b8860b", fg: "#ffffff", border: "#fde68a" },
+  week52_low: { text: "▼ MÍNIMO 52 SEM.", bg: "#64748b", fg: "#ffffff", border: "#cbd5e1" },
+  volume_spike: { text: "VOLUMEN INUSUAL", bg: "#0f766e", fg: "#ffffff", border: "#5eead4" },
+  stock_split: { text: "SPLIT", bg: "#0284c7", fg: "#ffffff", border: "#7dd3fc" },
+  shares_received: { text: "ACCIONES RECIBIDAS", bg: "#0891b2", fg: "#ffffff", border: "#67e8f9" },
+  dividend_raised: { text: "▲ DIVIDENDO MAYOR", bg: "#ca8a04", fg: "#ffffff", border: "#fef08a" },
+  dividend_cut: { text: "▼ DIVIDENDO MENOR", bg: "#9a3412", fg: "#ffffff", border: "#fdba74" },
+  annual_report: { text: "INFORME ANUAL", bg: "#1d4ed8", fg: "#ffffff", border: "#93c5fd" },
+  geo_alert: { text: "⚡ ALERTA GEOPOLÍTICA", bg: "#374151", fg: "#fde047", border: "#fde047" },
 };
 
 function makeBadgeSprite(cfg: { text: string; bg: string; fg: string; border: string }): THREE.Sprite {
@@ -656,8 +719,27 @@ export class Choreographer {
       this.addMarker("beaconBeam", `beam:${p.id}:${t}`, site.x, site.markerY, site.z, Math.min(ms, 6000), { beacon: true });
     }
 
+    // A year's high: fireworks, three gold bursts over the roof.
+    if (t === "week52_high" && !this.reduced) {
+      for (let k = 0; k < 3; k++) {
+        this.confetti.burst(site.x + (k - 1) * 0.8, site.markerY + 1.4 + k * 0.4, site.z, 30, [0xffd700, 0xfff1a8, 0xffffff, 0xff9f1c]);
+      }
+    }
+    // A Zonas Clave level reached: the analyst plants a flag on the roof, beside the chart board.
+    if (t === "technical_signal") {
+      this.addMarker("flagZone", `flag:${p.id}`, site.x + 0.7, site.markerY - 0.6, site.z, ms);
+    }
+    // Unusual volume: a queue of vans at the entrance.
+    if (t === "volume_spike") {
+      const lane = [...site.route].reverse();
+      const speed = clamp(pathLen(lane) / Math.max(2, (ms * 0.35) / 1000), 4, 14);
+      for (const [i, tint] of [0x0f766e, 0xc79a63, 0x3b82f6, 0xe5e7eb].entries()) {
+        a.sendVan(lane, tint, speed * (1 - i * 0.08));
+      }
+    }
+
     // Construction crates beside the crane for expansions and portfolio buys
-    if (t === "site_expansion" || t === "position_added") {
+    if (t === "site_expansion" || t === "position_added" || t === "shares_received") {
       this.addMarker("crates", `crates:${p.id}:${t}`, site.x + 0.85, site.markerY, site.z + 0.85, ms);
     }
 
@@ -665,7 +747,7 @@ export class Choreographer {
     if (t === "price_move_up" || t === "earnings_beat" || t === "site_expansion" || t === "position_added") {
       this.confetti.burst(site.x, site.markerY + 0.5, site.z, 32);
     }
-    if (t === "dividend_paid") {
+    if (t === "dividend_paid" || t === "dividend_raised") {
       this.confetti.burst(site.x, site.markerY + 0.5, site.z, 28, [0xf1c40f, 0xffd700, 0xffffff, 0xe6b422]);
     }
 
@@ -689,7 +771,11 @@ export class Choreographer {
     if (t === "earnings_beat" || t === "site_expansion") {
       a.sendVan(full.slice(0, -1), 0xc79a63, clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16));
     }
-    if (t === "dividend_paid") {
+    // Smaller dividend: one grey van, alone.
+    if (t === "dividend_cut") {
+      a.sendVan(full, 0x8b8f97, clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16));
+    }
+    if (t === "dividend_paid" || t === "dividend_raised") {
       const speed = clamp(pathLen(full) / Math.max(2, (ms * 0.4) / 1000), 4, 16);
       a.sendVan(full, GOLD, speed, () => {
         this.addMarker("coin", `bank:${p.id}`, this.stage.bank.x, 3.2, this.stage.bank.z, 2600, { spin: true });

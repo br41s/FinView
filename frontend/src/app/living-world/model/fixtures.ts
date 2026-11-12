@@ -165,6 +165,15 @@ const DIRECTION: Record<EventType, Direction | "by-sign"> = {
   position_added: "neutral",
   position_reduced: "neutral",
   position_closed: "neutral",
+  week52_high: "positive",
+  week52_low: "negative",
+  volume_spike: "neutral",
+  stock_split: "neutral",
+  shares_received: "neutral",
+  dividend_raised: "positive",
+  dividend_cut: "negative",
+  annual_report: "neutral",
+  geo_alert: "neutral",
 };
 
 interface Draft {
@@ -237,6 +246,17 @@ function draft(type: EventType, a: WorldAsset, r: () => number): Draft {
         metrics: { alert: "prima inusual", strike: Number((10 + r() * 90).toFixed(0)), volume_ratio: Number((2 + r() * 4).toFixed(1)) },
         sourceType: "options_monitor",
       };
+    // Real-data events: the demo town does not invent them (typesFor never picks them).
+    case "week52_high":
+    case "week52_low":
+    case "volume_spike":
+    case "stock_split":
+    case "shares_received":
+    case "dividend_raised":
+    case "dividend_cut":
+    case "annual_report":
+    case "geo_alert":
+      return { title: `${a.name}: evento de demostración`, summary: "Evento de demostración.", metrics: {}, sourceType: "demo_filing" };
     case "position_added":
     case "position_reduced":
     case "position_closed": {

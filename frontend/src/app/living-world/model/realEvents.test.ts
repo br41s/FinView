@@ -73,4 +73,41 @@ describe("toWorldEvents", () => {
     );
     expect(big.priorityScore).toBeGreaterThan(small.priorityScore);
   });
+
+  it("keeps the real moment of an alert and the date of what has none", () => {
+    const [geo, report] = toWorldEvents(
+      [
+        raw({ id: "geo:1", event_type: "geo_alert", confidence: "derived", occurred_on: "2026-11-11", occurred_at: "2026-11-11T08:30:00Z", metrics: { headline: "Huelga en el puerto", importance: 80 } }),
+        raw({ id: "report:1", event_type: "annual_report", occurred_on: "2026-11-10", occurred_at: null, metrics: { fiscal_year: 2025 } }),
+      ],
+      assets,
+    );
+    expect(geo.occurredAt).toBe("2026-11-11T08:30:00.000Z");
+    expect(geo.summary).toBe("Huelga en el puerto");
+    expect(geo.direction).toBe("neutral");
+    expect(report.occurredAt).toBe("2026-11-10T00:00:00.000Z");
+    expect(report.title).toBe(`Nuevo informe anual de ${held.name} (ejercicio 2025)`);
+  });
+
+  it("names a split and a reverse split by their ratio", () => {
+    const [split, reverse] = toWorldEvents(
+      [
+        raw({ id: "s1", event_type: "stock_split", confidence: "reported", occurred_on: "2026-11-12", metrics: { ratio: 4 } }),
+        raw({ id: "s2", event_type: "stock_split", confidence: "reported", occurred_on: "2026-11-11", metrics: { ratio: 0.1 } }),
+      ],
+      assets,
+    );
+    expect(split.title).toBe(`Split de ${held.name} 4:1`);
+    expect(split.confidence).toBe("reported");
+    expect(reverse.title).toBe(`Contrasplit de ${held.name} 1:10`);
+  });
+
+  it("states a dividend change per share with its sign", () => {
+    const [cut] = toWorldEvents(
+      [raw({ id: "d1", event_type: "dividend_cut", confidence: "derived", metrics: { change_pct: -25.5 } })],
+      assets,
+    );
+    expect(cut.title).toBe(`${held.name} paga menos dividendo por acción (−25,50 %)`);
+    expect(cut.direction).toBe("negative");
+  });
 });
