@@ -29,6 +29,10 @@ class PriceCache(Base):
     original_currency: Mapped[str | None] = mapped_column(String(3))
     original_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    # The close of the session before the one `original_price` comes from, in the same
+    # currency (pence already divided). NULL = unknown: rows written before it existed,
+    # or a ticker with a single bar in the window.
+    previous_close: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     fetched_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     __table_args__ = (
