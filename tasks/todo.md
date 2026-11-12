@@ -42,8 +42,9 @@ canal, cruces reales, monorraíl elevado, personajes con profesiones).
 - [x] **F4 Vida** (tras F1) — coches por carriles sobre el grafo (IDM simple), peatones chibi con 4 profesiones
       (obrero, directivo, mensajero, analista) procedurales, tren y monorraíl sobre splines con estaciones;
       GLB de coches/tren de Kenney solo si Brais aprueba la descarga.
-- [ ] **F5 Integración** — tests, build, captura antes/después, docs (`CLAUDE.md`, `.claude/rules/frontend.md`,
-      conteo de tests), PR.
+- [x] **F5 Integración** — tests, build, captura antes/después, docs (`CLAUDE.md`, `.claude/rules/frontend.md`,
+      conteo de tests), PR. Fusionado en #375 (2026-11-12). Cierre: `dbg.test.ts` retirado (371 vitest);
+      demo de 100 sitios a 60 fps de día (261 agentes, 1,2 M triángulos) y 59–60 de noche. Sin captura «antes».
 
 **Riesgos**: rendimiento con Standard+AO+sombras en GPU integrada (medir); regla «tamaño = peso» frente a torres altas
 por todas partes; scene.ts (920 líneas) es el punto de colisión entre fases → fusionar en orden F1, F2, F3, F4.
