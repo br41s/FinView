@@ -15,11 +15,14 @@ import { routeToPlaza, sidewalkRoute, type Point } from "../model/routes";
 import { approach, footprintFor, tierFor } from "../model/scale";
 import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
 import { AgentSystem, getCircadianPhase, type CircadianPhase, type SiteSpot } from "./agents";
-import { NOMINAL, accentFor, createSite, disposeSite, type Site } from "./buildingFactory";
+import { NOMINAL, accentFor, createSite, disposeSite, specFor, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
+import { VehicleSystem } from "./vehicles";
 import { Choreographer } from "./choreography";
 import { QUALITY, type Quality } from "./quality";
+import { createLighting } from "./lighting";
+import { createPost } from "./post";
 import { buildTown, disposeLabel, makeBrandLabel, ribbon, type Town } from "./props";
 import { createSoundEngine, type SoundEngine } from "./audio";
 
@@ -46,6 +49,8 @@ export interface WorldStats {
   drawCalls: number;
   triangles: number;
   agents: number;
+  /** Road vehicles (traffic plus event vans). */
+  vehicles: number;
   sites: number;
   distance: number;
   clockHour: number;
@@ -95,6 +100,18 @@ export interface WorldHandle {
   setPaused(paused: boolean): void;
   setQuality(q: Quality): void;
   setReducedMotion(v: boolean): void;
+  /** Jump the city clock (dev tools and screenshots). */
+  setHour(h: number): void;
+  /** Fly the camera to a ground point (dev tools and screenshots). */
+  focusPoint(x: number, z: number, distance?: number): void;
+  /** Where every holding stands (dev tools and screenshots). */
+  sites(): Array<{ id: string; name: string; archetype: string; tier: string; family: string; x: number; z: number; asset: WorldAsset }>;
+  /** Follow the ground train (it shuttles along the railway and stops at both termini). */
+  followTrain(): void;
+  /** Dev handle: third-person follow of one pavement walker or staff member (id from `crowd()`). */
+  followAgent(id: number): void;
+  /** Dev handle: where the visible pavement walkers and the vehicles are (screenshots, checks). */
+  crowd(): { people: Array<{ id: number; x: number; z: number; profession: string; crowd: boolean }>; vehicles: Array<{ x: number; z: number; kind: string; v: number }>; trains: Array<{ x: number; y: number; z: number }> };
   stats(): WorldStats;
   dispose(): void;
 }
@@ -120,8 +137,6 @@ interface SiteEntry {
   route: Point[];
 }
 
-const SKY = 0xc5e3f4;
-
 export function createWorld(
   canvas: HTMLCanvasElement,
   init: { quality: Quality; reducedMotion: boolean },
@@ -133,35 +148,26 @@ export function createWorld(
   let disposed = false;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== "low", powerPreference: "high-performance" });
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.14;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Khronos PBR Neutral keeps hue and saturation (ACES shifts and mutes them): toy colours stay toy colours.
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  // The post chain renders several times per frame: count them all, reset once per frame.
+  renderer.info.autoReset = false;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(SKY);
-  scene.fog = new THREE.FogExp2(SKY, 0.0011);
   const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
-
-  const hemi = new THREE.HemisphereLight(0xe4f2ff, 0xb7cfa6, 1.18);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff3db, 2.15);
-  scene.add(sun, sun.target);
-
-  const skyCol = new THREE.Color(SKY);
-  const targetSky = new THREE.Color(SKY);
-  const sunCol = new THREE.Color(0xfff3db);
-  const targetSun = new THREE.Color(0xfff3db);
-  const hemiSkyCol = new THREE.Color(0xe4f2ff);
-  const targetHemiSky = new THREE.Color(0xe4f2ff);
-  const hemiGrdCol = new THREE.Color(0xb7cfa6);
-  const targetHemiGrd = new THREE.Color(0xb7cfa6);
+  const lighting = createLighting(scene, renderer);
+  const post = createPost(renderer, scene, camera);
+  post.setSettings(QUALITY[quality].post);
 
   let layout: WorldLayout = computeLayout([]);
   let town: Town | null = null;
   let infra: InfraSystem | null = null;
-  let agents = new AgentSystem(QUALITY[quality].maxAgents);
+  let vehicles: VehicleSystem | null = null;
+  let agents = new AgentSystem(QUALITY[quality].maxAgents, QUALITY[quality].maxWalkers);
   agents.setReducedMotion(reduced);
   agents.setGround(layout.terrain.roadY);
-  scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
+  scene.add(...agents.objects);
   const sites = new Map<string, SiteEntry>();
   const siteMeshes: THREE.Mesh[] = [];
   let director: DirectorState = createDirector();
@@ -249,6 +255,7 @@ export function createWorld(
     const h = canvas.clientHeight || 1;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].maxPixelRatio));
     renderer.setSize(w, h, false);
+    post.setSize(w, h, renderer.getPixelRatio());
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
@@ -258,13 +265,7 @@ export function createWorld(
 
   const applyShadows = () => {
     const q = QUALITY[quality];
-    renderer.shadowMap.enabled = q.shadows;
-    sun.castShadow = q.shadows;
-    if (q.shadows) {
-      sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
-      sun.shadow.map?.dispose();
-      sun.shadow.map = null;
-    }
+    lighting.setShadows(q.shadows, q.shadowMapSize);
     scene.traverse((o: THREE.Object3D) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true));
@@ -272,20 +273,7 @@ export function createWorld(
     });
   };
 
-  const frameSun = () => {
-    const r = layout.radius + 30;
-    sun.position.set(r * 0.55, r * 1.1, r * 0.4);
-    sun.target.position.set(0, 0, 0);
-    const c = sun.shadow.camera;
-    c.left = -r;
-    c.right = r;
-    c.top = r;
-    c.bottom = -r;
-    c.near = 1;
-    c.far = r * 3;
-    c.updateProjectionMatrix();
-    sun.shadow.bias = -0.0006;
-  };
+  const frameSun = () => lighting.frame(layout.radius);
 
   // --- building the town ---------------------------------------------------------
   const clearSites = () => {
@@ -301,13 +289,31 @@ export function createWorld(
     siteMeshes.length = 0;
   };
 
+  /** Road traffic for the current layout and quality tier (the lane network is cached per graph). */
+  const buildVehicles = () => {
+    if (vehicles) {
+      scene.remove(vehicles.group);
+      vehicles.dispose();
+    }
+    vehicles = new VehicleSystem(layout, {
+      maxVehicles: QUALITY[quality].maxVehicles,
+      crossingClosed: (node) => infra?.crossingClosed(node) ?? false,
+      ground: layout.terrain.roadY,
+    });
+    vehicles.setReducedMotion(reduced);
+    scene.add(vehicles.group);
+  };
+
   const rebuildAgents = () => {
-    scene.remove(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
+    scene.remove(...agents.objects);
+    const clockHour = agents.hour;
     agents.dispose();
-    agents = new AgentSystem(QUALITY[quality].maxAgents);
+    agents = new AgentSystem(QUALITY[quality].maxAgents, QUALITY[quality].maxWalkers);
+    agents.setHour(clockHour); // a quality change must not rewind the city's day
     agents.setReducedMotion(reduced);
-    agents.setGround(layout.terrain.roadY);
-    scene.add(agents.bodies, agents.heads, agents.vans, agents.helmets, agents.backpacks, agents.briefcases, agents.ties, agents.clipboards, agents.shoppingBags);
+    agents.setWorld({ graph: layout.graph, roads: layout.roads, ground: layout.terrain.roadY });
+    agents.setVehicles(vehicles);
+    scene.add(...agents.objects);
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
@@ -349,6 +355,7 @@ export function createWorld(
     infra = buildInfra(layout);
     infra.setReducedMotion(reduced);
     scene.add(infra.group);
+    buildVehicles();
     const bank = town.civic.get("bank");
     stage.bank = bank ? { x: bank.x, z: bank.z } : { x: 0, z: 0 };
 
@@ -391,7 +398,7 @@ export function createWorld(
         opacity: 1,
         applied: 1,
         targetOpacity: 1,
-        route: routeToPlaza(lot, d, layout.roads),
+        route: routeToPlaza(lot, d, layout),
       });
     }
     frameSun();
@@ -432,13 +439,10 @@ export function createWorld(
 
   const syncHighlights = () => {
     const dist = ctrl.distance;
-    const hour = agents.hour;
-    const isNight = hour >= 20.0 || hour < 7.0;
     for (const s of sites.values()) {
       const active = s.asset.id === selected;
       const over = s.asset.id === hovered;
-      const nightGlow = isNight ? 0x141822 : 0x000000;
-      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : nightGlow);
+      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : 0x000000);
       s.label.visible = labelShouldShow(s, dist);
     }
     const e = hovered && hovered !== selected ? sites.get(hovered) : null;
@@ -491,9 +495,8 @@ export function createWorld(
         }
       }
     }
-    const hit = agents.bodies.visible ? ray.intersectObject(agents.bodies, false)[0] : undefined;
-    if (hit && hit.instanceId !== undefined) {
-      const idx = hit.instanceId;
+    const idx = agents.pickAgent(ray);
+    if (idx >= 0) {
       const assetId = agents.assetOf(idx);
       const role = agents.roleOf(idx);
       let desc = "ciudadano";
@@ -543,6 +546,8 @@ export function createWorld(
   let frames = 0;
   let acc = 0;
   let fps = 0;
+  let drawCalls = 0;
+  let triangles = 0;
   let lastLod = -1;
   let canBack = false;
   let lastChimeHour = -1;
@@ -562,15 +567,7 @@ export function createWorld(
       e.label.scale.set(e.label.userData.aspect * h, h, 1);
     }
     const near = dist < 320;
-    agents.bodies.visible = near;
-    agents.heads.visible = near;
-    agents.vans.visible = near;
-    agents.helmets.visible = near;
-    agents.backpacks.visible = near;
-    agents.briefcases.visible = near;
-    agents.ties.visible = near;
-    agents.clipboards.visible = near;
-    agents.shoppingBags.visible = near;
+    agents.setVisible(near);
   };
 
   const frame = (now: number) => {
@@ -632,6 +629,7 @@ export function createWorld(
       }
       agents.update(simDt);
       infra?.update(simDt);
+      vehicles?.update(simDt, agents.hour);
       town?.update?.(simDt);
       choreo.update(simDt);
     }
@@ -646,67 +644,8 @@ export function createWorld(
 
     sound.updateWater(ctrl.distance);
 
-    let targetSunIntensity = 2.15;
-    let targetHemiIntensity = 1.18;
-
-    if (hour >= 6.5 && hour < 9.5) {
-      // Morning rush: crisp dawn sky, warm rising sun
-      targetSky.setHex(0xb2dcf4);
-      targetSun.setHex(0xffe2b8);
-      targetSunIntensity = 2.0;
-      targetHemiSky.setHex(0xe8f4ff);
-      targetHemiGrd.setHex(0xb0cfa0);
-      targetHemiIntensity = 1.15;
-    } else if (hour >= 9.5 && hour < 17.5) {
-      // Daytime workday: clean clear diorama daylight
-      targetSky.setHex(0xc5e3f4);
-      targetSun.setHex(0xfff6e4);
-      targetSunIntensity = 2.2;
-      targetHemiSky.setHex(0xe4f2ff);
-      targetHemiGrd.setHex(0xb7cfa6);
-      targetHemiIntensity = 1.18;
-    } else if (hour >= 17.5 && hour < 20.5) {
-      // Evening leisure / golden hour: warm sunset apricot glow
-      targetSky.setHex(0xf3c59a);
-      targetSun.setHex(0xff9b50);
-      targetSunIntensity = 2.05;
-      targetHemiSky.setHex(0xffd8b0);
-      targetHemiGrd.setHex(0x889c8a);
-      targetHemiIntensity = 1.05;
-    } else {
-      // Night / twilight: deep sapphire diorama night with moonlight
-      targetSky.setHex(0x1a273b);
-      targetSun.setHex(0x84abd8);
-      targetSunIntensity = 0.82;
-      targetHemiSky.setHex(0x28384f);
-      targetHemiGrd.setHex(0x18202d);
-      targetHemiIntensity = 0.7;
-    }
-
-    const lerpRate = Math.min(1, (dt / 1000) * 2.5);
-    skyCol.lerp(targetSky, lerpRate);
-    sunCol.lerp(targetSun, lerpRate);
-    hemiSkyCol.lerp(targetHemiSky, lerpRate);
-    hemiGrdCol.lerp(targetHemiGrd, lerpRate);
-
-    scene.background = skyCol;
-    if (scene.fog && "color" in scene.fog) {
-      scene.fog.color.copy(skyCol);
-    }
-    sun.color.copy(sunCol);
-    sun.intensity = THREE.MathUtils.lerp(sun.intensity, targetSunIntensity, lerpRate);
-    hemi.color.copy(hemiSkyCol);
-    hemi.groundColor.copy(hemiGrdCol);
-    hemi.intensity = THREE.MathUtils.lerp(hemi.intensity, targetHemiIntensity, lerpRate);
-
-    const sunPhase = ((hour - 6) / 24) * Math.PI * 2;
-    const rSun = layout.radius + 30;
-    const sunElevation = Math.sin(sunPhase);
-    sun.position.set(
-      rSun * Math.cos(sunPhase) * 0.65,
-      Math.max(rSun * 0.28, rSun * Math.abs(sunElevation) * 1.15),
-      rSun * Math.sin(sunPhase) * 0.5,
-    );
+    lighting.update(hour, dt, layout.radius, camera);
+    post.setNight(lighting.night);
 
     if (routeMesh) {
       routeMat.opacity = 0.62 + 0.32 * Math.sin(now * 0.0055);
@@ -757,7 +696,10 @@ export function createWorld(
       lastLod = dist;
       lod(dist);
     }
-    renderer.render(scene, camera);
+    renderer.info.reset();
+    post.render();
+    drawCalls = renderer.info.render.calls;
+    triangles = renderer.info.render.triangles;
   };
 
   const wake = () => {
@@ -790,9 +732,10 @@ export function createWorld(
     const hour = agents.hour;
     return {
       fps,
-      drawCalls: renderer.info.render.calls,
-      triangles: renderer.info.render.triangles,
+      drawCalls,
+      triangles,
       agents: agents.activeCount(),
+      vehicles: vehicles?.count ?? 0,
       sites: sites.size,
       distance: ctrl.distance,
       clockHour: hour,
@@ -868,17 +811,41 @@ export function createWorld(
     setQuality(q) {
       if (q === quality) return;
       quality = q;
+      post.setSettings(QUALITY[q].post);
       resize();
       applyShadows();
       town?.setTreeCount(QUALITY[q].trees);
       town?.fillers.setDensity(QUALITY[q].fillerDensity);
+      if (infra) buildVehicles();
       rebuildAgents();
+    },
+    setHour(h) {
+      agents.setHour(h);
+    },
+    followTrain() {
+      if (infra) {
+        cb.onFollowTarget?.("Tren de cercanías");
+        ctrl.follow(() => infra!.getGroundTrainPosition());
+      }
+    },
+    followAgent(id) {
+      const a = agents.professionOf(id);
+      cb.onFollowTarget?.(a === "worker" ? "obrero" : a === "executive" ? "ejecutivo" : a === "courier" ? "repartidor" : "analista");
+      ctrl.follow(() => agents.position(id));
+    },
+    crowd: () => ({ people: agents.snapshot(), vehicles: vehicles?.snapshot() ?? [], trains: infra ? [infra.getMonorailPosition(0), infra.getMonorailPosition(1), infra.getGroundTrainPosition()] : [] }),
+    focusPoint(x, z, distance) {
+      ctrl.focus(x, z, distance);
+    },
+    sites() {
+      return [...sites.values()].map((e) => ({ id: e.asset.id, name: e.asset.name, archetype: e.asset.archetype, tier: tierFor(e.asset.weightPct), family: specFor(e.asset, tierFor(e.asset.weightPct)).main.family, x: e.lot.x, z: e.lot.z, asset: e.asset }));
     },
     setReducedMotion(v) {
       if (v === reduced) return;
       reduced = v;
       agents.setReducedMotion(v);
       infra?.setReducedMotion(v);
+      vehicles?.setReducedMotion(v);
       if (v) {
         for (const e of sites.values()) {
           e.scale = e.scaleTarget;
@@ -904,9 +871,12 @@ export function createWorld(
       clearSites();
       clearRouteHighlight();
       routeMat.dispose();
+      post.dispose();
+      lighting.dispose();
       choreo.dispose();
       town?.dispose();
       infra?.dispose();
+      vehicles?.dispose();
       agents.dispose();
       selectRing.geometry.dispose();
       (selectRing.material as THREE.Material).dispose();

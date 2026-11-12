@@ -203,7 +203,7 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 
 - **Same split as the garden game.** `model/` is pure TypeScript with colocated `*.test.ts`
   (layout, scale, filters, priority, director, routes, fixtures); `engine/` is Three.js and is
-  not unit-tested (vitest runs in node, `.ts` only); `components/` is React controls and cards.
+  mostly untested (vitest runs in node, `.ts` only; the pure Three.js geometry builders are the exception: `towers.test.ts`, `fillers.test.ts`); `components/` is React controls and cards.
   A rule changes in `model/` and its test, never in the renderer. Per-frame state never goes
   through React: the render loop, agents and director live in `engine/scene.ts`.
 - **Do not name a file `layout.ts` (or `page`, `route`, `template`, `loading`, `error`, …) under
@@ -215,29 +215,112 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 - **One merged mesh per site** (`engine/buildingFactory.ts`, vertex colours, a `Builder` that
   merges primitives) so ~100 companies stay ~100 draw calls; trees, people and vans are
   `InstancedMesh`. `createSite` is the seam for authored glTF kits in a later phase.
-- **Layout is a pure function of asset ids** (hash slots in a district grid). It never reads
-  weights, prices or events: a price refresh must not move a building. Lots have one pitch (the
-  largest footprint plus a street), so a building that grows a tier cannot collide.
-- **The city is organic, not a set of pads** (`model/townLayout.ts`, `terrain.ts`, `infra.ts`).
-  Districts keep a **fixed compass slot** (their index in `DISTRICT_IDS`), so adding a holding
-  never turns the town; each is a street grid rotated a few degrees from its neighbours. The
-  land is a heightfield: sea, a lake and a river that bends round the square, a **plateau for
-  the funds and treasury districts** with mountains behind it. Terrain is a function of the
-  compass and the district sizes only (never of weights), so a hill cannot move either.
-- **Holdings are landmarks, the rest is scenery.** `FillerSpot`s (homes, towers, skyscrapers,
-  villas on the plateau, sheds) fill free slots and the land between districts; they are pale,
-  never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
-  `townLayout.ts`) or "size = weight" stops meaning anything. Homes exist in every district
-  (fewer downtown, villas only on the plateau): pinned in `townLayout.test.ts`.
-- **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`;
-  `roadY` is the ground but flat across water, i.e. a bridge). Sites, labels, markers, agents,
-  vans and the camera target all do; a new object placed at y = 0 will sink on the plateau.
-- **Transport** (`model/infra.ts`, `engine/infra.ts`): an elevated expressway ring, an
-  expressway round the square, a surface railway with a shuttle, and a monorail loop on pillars.
-  They run in the corridors between districts and the layout keeps buildings out of them
-  (`nearInfra`, tested). Traffic is scenery for now: it does not act out events.
-- **A ribbon's index order matters**: `ribbon()` strips that wind clockwise face down and are
-  culled, so roads looked missing while their bridges showed. Check roads from above.
+- **Every holding is a unique complex (F3).** `model/towerSpec.ts` derives a spec from (archetype, id,
+  tier) only: weight never reaches it, so a price move cannot redraw a building and a tier change only
+  ADDS parts (each tier's parts are a prefix of the next's; pinned in `towerSpec.test.ts`). The id picks
+  the silhouette family of the main structure from the archetype's pool, the plan, taper, twist,
+  setbacks, crown, diagrid, accent hue (archetype palette + id nudge, `accentColour`; the few brand
+  colours in `companyProfile` still win) and glass tint. `engine/mains.ts` builds the main structure
+  (twisting tower, gherkin with diagrid, setbacks, cylinder with helipad ring, twin slabs with a
+  sky-bridge, lattice mast or headframe, dome, arena, power-plant stacks, faceted crystal),
+  `engine/parts.ts` the extras (plaza, hall, pavilion, annex tower, car park, mall, hospital wing, dish,
+  silos, tanks, flare, pipe rack, turbine hall, substation, wind turbines, solar field, cooling tower,
+  heaps, conveyor, vault, colonnade...), `engine/towers.ts` the primitives (`loft`: a plan lofted floor
+  by floor with taper, twist and an optional lathe profile; lattice mast; crowns; helipad). Parts stand
+  in the slots of `model/siteLayout.ts` (front band low, flanks, back), shuffled and mirrored by the id,
+  assigned in the order parts are added so none moves when a tier adds one.
+  Tiers: outpost = main + 1 part, small + 3, campus + 5, major + 7, and the tallest element is 8.4-9.8 /
+  11-13.4 / 15-19 / 22-30 local units (x1.28..1.6 in the town); `stadium` and `dome` take
+  `FAMILY_HEIGHT` of that (their tallest element is a mast). Budgets, tested in `engine/towers.test.ts`
+  (it also checks every face is wound outwards): <= 1.5k / 2.4k / 3.2k / 4k triangles per site, and
+  everything inside the plot. The utilities complex (cooling tower, chimneys, turbine hall, substation,
+  wind turbines, solar field) and the energy one (process columns, flare, tanks, pipe rack) are the
+  proof that an archetype is a whole industrial site, not a bigger box. The sign wall and brand plate
+  stand at the front of the plot (z = 0.5 n), not on the tower, so the plate suits any height.
+- **Layout is a pure function of asset ids** and the street skeleton of none. `model/cityGraph.ts` builds
+  the roads once (planar graph on one orthogonal grid, PITCH 44, 9 x 9 cells): a plaza block bounded by a
+  ring road, an avenue loop at +-110 (the monorail rides it), a perimeter avenue, streets on every other
+  line, a canal (cells x = -88 then z = 44, crossed by bridge edges), and a railway along z = 0 that meets
+  streets only at `crossing` nodes. Node ids come from integer coordinates, never insertion order. Blocks
+  are the bounded faces of a half-edge walk (not a hand list); `model/cityLots.ts` shrinks each by its
+  pavements and splits it by a jittered oriented-box cut into lots that front a street. The skeleton never
+  reads the holdings: adding one cannot move a road, block or lot.
+- **Districts keep a fixed compass wedge** (`slotAt`, their index in `DISTRICT_IDS`): a block belongs to the
+  district of its centroid's angle. A holding picks its lot by ranking its district's free lots with its own
+  hash, premium frontage (ring road, avenues) first, claiming in hash order (`townLayout.ts`); beyond a
+  district's capacity it takes the nearest free lots. Stateless, so a newcomer can only push a holding to its
+  next-best lot when their hashes collide (pinned: at most a handful move). Holdings need lots of at least
+  14.4 on a side; the biggest landmark is 16.4, so filler lots are subdivided every ~6.4 and fillers stay <= 5.
+- **The city is flat.** `terrain.ts` is a level plain with the canal carved into it (`groundAxes` gives the
+  ground mesh coarse samples away from the canal, fine across it). There are no mountains, plateau or sea.
+  Everything still asks `terrain.heightAt` / `roadY` (0, flat across water = bridge).
+- **Roads are built from the graph** (`engine/roads.ts`): per junction, incident roads are sorted by angle,
+  offset side lines intersected for the corner points, asphalt corners get a 3-unit kerb fillet and the
+  pavement keeps square corners; ribbons start at each arm's stop distance; zebras sit on every junction
+  leg and at the plaza gates. Two draw calls for the whole network. Triangle winding is forced per triangle
+  (`Flat.tri`), so a strip can never face down.
+- **Holdings are landmarks, the rest is scenery.** `FillerSpot`s fill every lot no holding took; they are
+  coloured (saturated palettes per kind), never labelled or clickable, and **must stay smaller than the holdings** (`WIDTH` in
+  `townLayout.ts`) or "size = weight" stops meaning anything. Pinned in `engine/fillers.test.ts`: the tallest
+  possible filler (`fillerMaxExtent`, spire included) is lower than the lowest outpost of any archetype and no
+  wider than an outpost's plot, so tune `HEIGHT_SCALE` and the recipes against that test. Three kinds
+  (skyscraper, tower, house) have a second silhouette (round, stepped, gabled with a water tank) that takes
+  about half of their spots by a stable hash: 9 filler draw calls.
+- **Everything that stands on the ground asks the terrain for its height** (`terrain.heightAt`).
+- **Transport** (`model/infra.ts`, `engine/infra.ts`), derived from the graph: a monorail on pillars above
+  the avenue loop (pillars are chosen in the model, always in the avenue's central reservation, never in
+  water or on a crossing; stations on the loop edge nearest each district) and a ground railway from a
+  terminus beside the plaza east out of town (a platform at each end) with level crossings.
+  **Both trains run on timetables** (`model/trainSchedule.ts`, pure functions of the simulation clock, so
+  renderer, barriers and road traffic read the same answer): the ground train dwells at a terminus with its
+  door lamps lit, pulls out, cruises at 11 u/s and brakes into the other end; the monorail circles the loop
+  and stops at every station (head half a train past the platform centre), the doors slide open while it
+  dwells, and a second train runs the same timetable half a period behind. **Level-crossing barriers** are
+  an `InstancedMesh` of arms plus flashing lamps; `crossingClosed` (6 s before the train reaches the barrier
+  until its tail has cleared) drives them and is the predicate road traffic stops on.
+- **Road traffic (F4)** is `model/traffic.ts` (pure, tested) + `engine/vehicles.ts`. `buildLaneNetwork` cuts
+  right-hand lanes from the graph (`lanes / 2` per direction, offset clear of an avenue's median, trimmed
+  to the junction mouth) and every legal movement through a node is a short curve (`turn`); two movements
+  that come within a vehicle's width of each other (3.3 for turns, 1.9 for parallel straights) or end in
+  the same lane are recorded as **conflicts**. `TrafficSim` is a fixed-step (1/30 s) sim: IDM car-following
+  with the nearest leader on the lane, on the next movement and on its siblings, a virtual obstacle at the
+  stop line, and a **reservation rule**: a vehicle may only enter a junction when its signal is green, the
+  exit lane has room for it (and for everything already granted) and no conflicting movement is inside. A
+  vehicle can hold reservations at two junctions at once (`holds`): releasing on "rear left the lane"
+  only is what let long vehicles run a short lane unprotected (found by the overlap test, 2026-11-11). Signals
+  alternate by axis with an all-red gap and are only the flow; the reservation is the safety net. The
+  longest-waiting movement on green goes first (left turns never starve). Level crossings stop traffic at
+  a stop line while `crossingClosed`. Spawning is deterministic and weighted to the centre; `trafficLevel(hour)`
+  scales the target; a vehicle stuck 60 s is removed. Event vans (`AgentSystem.sendVan` -> `VehicleSystem`)
+  are scripted on the right-hand lane, send themselves out 1.6 s apart and are **external actors**: traffic
+  brakes for them and they give way to traffic (never for more than 3 s).
+  `engine/toyMaterial.ts` is the shared material of cars, trains and walkers (a `MeshStandardMaterial`
+  patched like the facade one): per-vertex `aKind` (paint takes the instance colour, glass, headlight,
+  taillight, lit window, hair), `uNight` from `facadeShared` lights lamps, brake lights follow the per-instance
+  `aBrake`, headlight beams are one additive instanced wedge mesh shown only at night. Vehicles are rounded
+  boxes (`GeoBuilder.roundBox`), scaled x1.2-1.35 so they read next to the lanes; their size lives in
+  `VEHICLE_SPEC` (the sim uses the same length and width).
+- **People (F4)** are `model/pedestrians.ts` + `engine/people.ts` + `engine/agents.ts`. Walkers follow a
+  pavement network: each road half-edge has a pavement either side, a walker owns one side for good and at a
+  junction hugs the corner (`next` = the road before the one it came from in angle order), which walks a
+  city block and **never crosses the asphalt** (pinned in `pedestrians.test.ts`; inner corners are rounded,
+  outer ones chamfered round the kerb corner). Four professions (worker, executive, courier, analyst), each
+  one merged geometry drawn as one `InstancedMesh`, chosen by the district a walker spawns in (the district's
+  own profession half of the time) and fading in and out with `crowdLevel(hour)`. The walk is in the vertex
+  shader (`aLimb`, `aAnim`), so the CPU writes a matrix and three numbers per person. Company staff keep their
+  post and act out events (role -> profession); event actors walk the route offset onto the pavement
+  (`sidewalkRoute`). `AgentSystem.pickAgent` replaces picking `bodies`; follow mode is unchanged.
+- **Quality tiers** add `maxWalkers` (40 / 150 / 300) and `maxVehicles` (60 / 180 / 300 at the busiest hour);
+  `maxAgents` is now company staff only. Measured at hour 9 from the default camera: low 294k triangles
+  (before 269k), medium 1.13M (989k), high 1.44M (1.30M), 3 more draw calls, 60 fps (30 on low, capped).
+  `engine/rollingStock.test.ts` keeps a vehicle under 560 triangles (bus 900) and a person under 600.
+- Dev handles added in F4: `__livingWorld.crowd()` (visible people with ids and professions, vehicles, train
+  positions), `.followAgent(id)`, `.followTrain()`; `stats().vehicles`.
+- **Routes** (`routeToPlaza`) are Dijkstra over the ground roads from a lot's door to the nearest plaza
+  gate; event vans (on their lane) and event actors (on the pavement, via `sidewalkRoute`) follow them.
+- **A ribbon's index order matters**: strips that wind clockwise face down and are culled, so roads looked
+  missing while their bridges showed. `Flat.tri` in `engine/roads.ts` forces the normal up; `ribbon()` in
+  `props.ts` (route highlight) still needs counter-clockwise order. Check roads from above.
 - **Size = portfolio weight, not price action** (`model/scale.ts`, piecewise-linear, tiers with
   hysteresis). An unknown weight/valuation is drawn small *and marked* (yellow diamond), never
   treated as zero. Events are acted out temporarily; only tier changes alter a building.
@@ -247,6 +330,37 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
 - **Material gotcha**: toggling `material.transparent` needs `material.needsUpdate = true`.
   Opaque materials compile with alpha forced to 1, so fading buildings (filters mute to 22 %)
   silently ignored `opacity` until the flag change triggered a recompile.
+- **The look (F2).** `engine/materials.ts` is one `MeshStandardMaterial` patched with `onBeforeCompile`:
+  glass parts (the per-vertex `aKind` that `Builder` writes: 0 wall, 1 glass, 2 accent/roof; the
+  landmark window colours count as glass) get a window grid with mullions, a vertical gradient, sky
+  reflections and lit windows at night (`uNight`); walls and roofs stay plain. It serves merged sites
+  (one material per site, seed uniform) and the filler `InstancedMesh`es (per-instance `aWall`,
+  `aGlass`, `aSeed` from `fillerPalette.ts`). **Glass stays opaque** (the AO pass draws transparent
+  depth-writing meshes twice). The sky map (`createSkyEnvironment`, PMREM) is set as `material.envMap`,
+  never `scene.environment`: Lambert materials would pick it up as a mirror. Ambient comes only from
+  the hemisphere light (the shader zeroes the map's diffuse term). Filler floors are exactly 1.0 tall
+  and start on whole numbers so the shader's rows match the storeys: keep that when editing recipes.
+  **F3 extensions of the same shader (all additive, fillers unaffected):** `aKind` 3 is glass with a
+  diagrid (two families of diagonals across the window cells, period 4, colour `lattice.hex`, no lit
+  windows on the bars); `aArc` is the arc length along a curved shell, written by `loft`, in a whole
+  number of window columns per ring so the grid closes without a seam (`ARC_NONE` = "pick the axis from
+  the facing", what every other part gets); `spandrel` darkens the lower edge of each window cell so
+  storeys read as floor plates. Site material: `FACADE_ROWS` = 2.6 rows and columns per local unit, a
+  storey is `FLOOR_H` = 1/2.6: glass volumes stand on `k * FLOOR_H` (`BASE_Y`).
+- **Lighting and clock** live in `engine/lighting.ts` (hemisphere, sun + shadow, fog, sky backdrop,
+  env) driven by `engine/skyModel.ts`, a pure function of the city hour (keyframes, wraps at midnight,
+  `night` 0..1 drives windows and bloom). `PCFSoftShadowMap` no longer exists in three 0.186: use
+  `PCFShadowMap` + `shadow.radius`. Tone mapping is Khronos Neutral (ACES muted the colours).
+- **Post-processing** (`engine/post.ts`): N8AO (`n8ao`, CC0 licence file; peer `postprocessing` is
+  Zlib) -> bloom (night only) -> OutputPass -> SMAA. `QUALITY[tier].post` is `null` for low (plain
+  `renderer.render`, no composer or float targets exist). N8AO renders the scene once into its own
+  target; the shadow pass is what doubles `stats().drawCalls`. `renderer.info.autoReset` is off and
+  read after the frame so the numbers cover the whole chain. A quality change keeps the city hour.
+- Dev handles for screenshots: `__livingWorld.setHour(h)`, `.focusPoint(x, z, distance)`, `.setQuality(q)`,
+  `.sites()` (id, archetype, tier, silhouette family, position and the asset of every holding; with
+  `setAssets` it lets you force tiers). `.focusPoint` keeps the camera high: tilt it with a shift-drag
+  (`PointerEvent` with `shiftKey` dispatched on the canvas) to see a skyline, and hide the React overlay
+  (`.world-module__*__ui`, `display: none`) for a clean screenshot.
 - **Canvas lifecycle**: `hooks/useWorld.ts` creates a fresh `<canvas>` per mount. A canvas whose
   context was released by `forceContextLoss()` cannot be reused, and React strict mode mounts
   twice; the `webglcontextlost` listener is removed in `dispose()` or the first mount's

@@ -1,5 +1,53 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Mundo vivo — Ciudad de referencia (rama `feat/living-world-true-urban-diorama`)
+
+Origen: 2026-11-10. Brais: calles sin sentido, tren y SkyTrain incoherentes, edificios sin personalidad. Objetivo:
+el nivel de dos imágenes de referencia (ciudad juguete saturada, torres de cristal con siluetas únicas, parques,
+canal, cruces reales, monorraíl elevado, personajes con profesiones).
+
+**Decisiones de Brais (2026-11-10)**
+- Híbrido: kits glTF CC0 solo donde ganan (coches, tren) + todo lo singular en código (torres, complejos, personajes).
+- Ciudad **plana** (fuera montañas/meseta/lago); los 7 distritos conservan su casilla fija en la brújula.
+- Portátil actual a 60 fps; el selector de calidad existente degrada AO/bloom/sombras.
+- Cada holding con edificio único (silueta por arquetipo + semilla del ISIN); relleno **colorido** (no gris).
+- Un holding que crece pasa de un edificio a un **complejo** de varias estructuras (Iberdrola = central/fábrica con
+  chimeneas, turbinas, subestación…). Ya existe `componentCount(tier)`; hay que darle recetas con sentido.
+
+**Hallazgos de la investigación (3 subagentes Sonnet, solo lectura)**
+- Layout: ningún generador ajeno sirve tal cual. Descartados por licencia: ProbableTrain/MapGenerator (GPL/LGPL),
+  watabou (GPL), 3DStreet (AGPL). Descartado por diseño: WFC (un cambio reordena toda la ciudad; rompe el determinismo).
+  → plantilla propia determinista (manzanas ortogonales + plaza central + anillo + canal), grafo de calles con
+  half-edges, manzanas por recorrido de caras, parcelas por corte OBB. Referencias MIT: `jstrait/city-tour`
+  (río/puentes en el grafo, seguir carreteras), `t-mw/citygen` (cortes/ajustes de segmentos), RoadTrafficSimulator (IDM).
+- Los generadores de ciudad de three 0.186 (`examples/jsm/generators/city/*`) usan **TSL/WebGPU**: no sirven en nuestro
+  pipeline WebGL; solo como inspiración de geometría. Idea útil: atributo `partId` por vértice.
+- Assets: Kenney (CC0, GLB, atlas único) cubre coches, trenes, personajes genéricos; **no** hay torres singulares, ni
+  monorraíl elevado, ni profesiones, ni autobús. Quaternius cambió su licencia (QAL v1.0, 2026-08-28): no commitear
+  sus GLB en repo público. KayKit City Builder Bits: CC0, pequeño. Poly by Google: CC-BY (exige atribución).
+- Look: ningún repo reutilizable para torres con personalidad → librería propia sobre `Builder`. N8AO (CC0) para AO,
+  `onBeforeCompile` para ventanas por shader, RoomEnvironment para el cristal, luz hemisférica + 1 direccional.
+
+**Plan por fases** (cada una en su worktree; escritores en ficheros distintos; yo superviso y reviso diff + capturas)
+- [x] **F1 Cimientos urbanos** — `model/cityGraph.ts` (nodos/aristas/caras, determinista, tests), `terrain.ts` plano
+      (+ canal), `townLayout.ts` sobre el grafo (manzanas, parcelas, plazas, parques), `engine/roads.ts` (cruces con
+      geometría real, aceras, pasos de cebra, puentes), `infra` sobre aristas: monorraíl elevado sobre avenidas con
+      estaciones, ferrocarril con estación. Invariantes: layout función pura de los IDs; casilla de distrito fija.
+- [x] **F2 Look** (paralelo a F1, otros ficheros) — `engine/materials.ts` (ventanas por shader, día/noche, cristal),
+      `engine/post.ts` (N8AO half-res + SMAA + bloom suave + tone mapping), luz/cielo/niebla, relleno colorido,
+      árboles instanciados con viento. Calidad: tres niveles en `quality.ts`.
+- [x] **F3 Edificios con personalidad** (tras F2) — librería de torres (giro, huevo/lathe, diagrid, escalonada, coronas
+      con helipuerto, estadio) + recetas de complejo por arquetipo y tier en `buildingFactory.ts`.
+      Regla a conservar: relleno más pequeño que cualquier holding (tamaño = peso).
+- [x] **F4 Vida** (tras F1) — coches por carriles sobre el grafo (IDM simple), peatones chibi con 4 profesiones
+      (obrero, directivo, mensajero, analista) procedurales, tren y monorraíl sobre splines con estaciones;
+      GLB de coches/tren de Kenney solo si Brais aprueba la descarga.
+- [ ] **F5 Integración** — tests, build, captura antes/después, docs (`CLAUDE.md`, `.claude/rules/frontend.md`,
+      conteo de tests), PR.
+
+**Riesgos**: rendimiento con Standard+AO+sombras en GPU integrada (medir); regla «tamaño = peso» frente a torres altas
+por todas partes; scene.ts (920 líneas) es el punto de colisión entre fases → fusionar en orden F1, F2, F3, F4.
+
 ## Mundo vivo — Fase 1: la cartera real (rama `feat/living-world-real-portfolio`)
 
 Origen: 2026-11-08. Fase 0 (PR #362) era un pueblo con 100 posiciones ficticias; la Fase 1 lo alimenta con la

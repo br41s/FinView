@@ -1,34 +1,22 @@
 import * as THREE from "three";
 import { DISTRICT_LABEL } from "../model/archetypes";
-import { seeded, valueNoise } from "../model/rng";
-import { pointAlong, routeLength } from "../model/routes";
-import { WATER_Y, distToPolyline, type Pt, type Terrain } from "../model/terrain";
+import { valueNoise } from "../model/rng";
+import { WATER_Y, type Pt, type Terrain } from "../model/terrain";
 import { PLAZA_RADIUS, type CivicKind, type WorldLayout } from "../model/townLayout";
 import { accentFor, Builder } from "./buildingFactory";
 import type { WorldAsset } from "../model/types";
 import { buildFillers, type Fillers } from "./fillers";
+import { buildRoads } from "./roads";
+import { createTrees } from "./trees";
 
 /** Land, water, streets, plaza, civic buildings, trees and text labels: the static stage. */
 
-const STREET = 0x646973;
 const WHITE = 0xf4f1ea;
 const DARK = 0x3b4048;
 
-function offsetPath(line: readonly Pt[], offset: number): Pt[] {
-  return line.map((point, i) => {
-    const previous = line[Math.max(0, i - 1)];
-    const next = line[Math.min(line.length - 1, i + 1)];
-    const dx = next.x - previous.x;
-    const dz = next.z - previous.z;
-    const length = Math.hypot(dx, dz) || 1;
-    const nx = -dz / length;
-    const nz = dx / length;
-    return { x: point.x + nx * offset, z: point.z + nz * offset };
-  });
-}
-
 export interface Town {
   group: THREE.Group;
+  /** Broadleaf trees (the conifers are in the same group). */
   trees: THREE.InstancedMesh;
   fillers: Fillers;
   districtLabels: THREE.Sprite[];
@@ -193,64 +181,48 @@ function civicGeometry(kind: CivicKind): THREE.BufferGeometry {
   return b.build();
 }
 
-function treeGeometry(): THREE.BufferGeometry {
-  const b = new Builder();
-  b.cyl(0.08, 0.1, 0.5, 0, 0, 0, 0x6b533e, 5);
-  b.cone(0.45, 0.8, 0, 0.4, 0, 0x4f9458, 7);
-  b.cone(0.34, 0.65, 0, 0.9, 0, 0x62a668, 7);
-  return b.build();
-}
-
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
 
-/** Ground colour from height, slope and the shore: sand, lawn, forest, rock and snow. */
-function groundColor(h: number, slope: number, x: number, z: number, out: THREE.Color): THREE.Color {
-  const n = valueNoise(x * 0.09, z * 0.09, 5) * 0.12 - 0.06;
-  out.set(0x98c987);
-  if (h > 5) out.lerp(new THREE.Color(0xa2cf8d), smooth(5, 6, h)); // the plateau lawn
-  if (h < 0.35) out.lerp(new THREE.Color(0xe0d4aa), 1 - smooth(-0.5, 0.35, h)); // beach
-  if (h < -0.4) out.set(0xc7ba94); // seabed
-  const forest = smooth(6.5, 9, h) * (1 - smooth(24, 30, h));
-  out.lerp(new THREE.Color(0x669c6a), forest * 0.8);
-  out.lerp(new THREE.Color(0x94989e), smooth(0.45, 1.0, slope));
-  out.lerp(new THREE.Color(0xf2f5f8), smooth(33, 44, h));
+/** Ground colour: a level lawn, sand on the canal banks and the canal bed. */
+function groundColor(h: number, x: number, z: number, out: THREE.Color): THREE.Color {
+  const n = valueNoise(x * 0.05, z * 0.05, 5) * 0.08 - 0.04;
+  out.set(0x82cc64);
+  if (h < -0.05) out.lerp(new THREE.Color(0xe0d4aa), smooth(-0.05, -0.5, h)); // bank
+  if (h < -0.6) out.set(0xc7ba94); // canal bed
   out.offsetHSL(0, 0, n);
   return out;
 }
 
+/** The plain: a tensor grid, coarse away from the canal and fine across it. */
 function terrainGeometry(t: Terrain): THREE.BufferGeometry {
-  const S = t.extent;
-  const step = 3;
-  const n = Math.ceil((2 * S) / step);
-  const verts = n + 1;
-  const pos = new Float32Array(verts * verts * 3);
-  const colors = new Float32Array(verts * verts * 3);
+  const { xs, zs } = t.groundAxes();
+  const nx = xs.length;
+  const nz = zs.length;
+  const pos = new Float32Array(nx * nz * 3);
+  const colors = new Float32Array(nx * nz * 3);
   const c = new THREE.Color();
-  for (let i = 0; i < verts; i++) {
-    for (let j = 0; j < verts; j++) {
-      const x = -S + i * step;
-      const z = -S + j * step;
-      const h = t.heightAt(x, z);
-      const slope = Math.hypot(t.heightAt(x + 2, z) - t.heightAt(x - 2, z), t.heightAt(x, z + 2) - t.heightAt(x, z - 2)) / 4;
-      const k = (i * verts + j) * 3;
-      pos[k] = x;
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      const h = t.heightAt(xs[i], zs[j]);
+      const k = (i * nz + j) * 3;
+      pos[k] = xs[i];
       pos[k + 1] = h;
-      pos[k + 2] = z;
-      groundColor(h, slope, x, z, c);
+      pos[k + 2] = zs[j];
+      groundColor(h, xs[i], zs[j], c);
       colors[k] = c.r;
       colors[k + 1] = c.g;
       colors[k + 2] = c.b;
     }
   }
   const index: number[] = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      const a = i * verts + j;
+  for (let i = 0; i < nx - 1; i++) {
+    for (let j = 0; j < nz - 1; j++) {
+      const a = i * nz + j;
       const b = a + 1;
-      const d = a + verts;
+      const d = a + nz;
       const e = d + 1;
       index.push(a, b, d, b, e, d);
     }
@@ -305,33 +277,6 @@ export function ribbon(line: readonly Pt[], width: number, lift: number, hex: nu
   return g;
 }
 
-/** Deck and parapets for the stretches of a road that cross water. */
-function bridges(line: readonly Pt[], t: Terrain, width: number): THREE.BufferGeometry | null {
-  const b = new Builder();
-  let any = false;
-  for (let i = 1; i < line.length; i++) {
-    const a = line[i - 1];
-    const c = line[i];
-    const len = Math.hypot(c.x - a.x, c.z - a.z);
-    const k = Math.max(1, Math.ceil(len / 3));
-    const ry = Math.atan2(c.x - a.x, c.z - a.z);
-    for (let s = 0; s < k; s++) {
-      const x = a.x + ((c.x - a.x) * (s + 0.5)) / k;
-      const z = a.z + ((c.z - a.z) * (s + 0.5)) / k;
-      if (t.heightAt(x, z) > -0.3) continue;
-      any = true;
-      const y = t.roadY(x, z);
-      const piece = len / k + 0.1;
-      b.box(width + 1.2, 0.6, piece, x, y - 0.55, z, 0xb8bdc4, ry);
-      const ox = Math.cos(ry) * (width / 2 + 0.45);
-      const oz = -Math.sin(ry) * (width / 2 + 0.45);
-      b.box(0.3, 0.7, piece, x + ox, y + 0.05, z + oz, 0xe2e5ea, ry);
-      b.box(0.3, 0.7, piece, x - ox, y + 0.05, z - oz, 0xe2e5ea, ry);
-    }
-  }
-  return any ? b.build() : null;
-}
-
 export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   const group = new THREE.Group();
   const disposables: Array<{ dispose(): void }> = [];
@@ -353,156 +298,9 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   water.position.y = WATER_Y;
   group.add(water);
 
-  // Connected streets: layered sidewalks (lower) and asphalt carriageways (upper) so intersections never show white sidewalk crosses.
-  const streetDetails = new Builder();
-  for (const road of layout.roads) {
-    if (road.sidewalk) {
-      const curbBase = new THREE.Mesh(own(ribbon(road.path, road.width + 2.8, 0.11, 0xd8dde4, t.roadY)), vcMat);
-      curbBase.receiveShadow = true;
-      group.add(curbBase);
-      const sidewalkPad = new THREE.Mesh(own(ribbon(road.path, road.width + 2.4, 0.13, 0xc8cdd4, t.roadY)), vcMat);
-      sidewalkPad.receiveShadow = true;
-      group.add(sidewalkPad);
-    }
-  }
-
-  for (const road of layout.roads) {
-    const isMajor = road.kind === "arterial" || road.kind === "exit";
-    const roadColor = isMajor ? 0x363a42 : road.kind === "boulevard" ? 0x454a54 : STREET;
-    const roadLift = isMajor ? 0.175 : road.kind === "boulevard" ? 0.168 : 0.16;
-    const roadMesh = new THREE.Mesh(own(ribbon(road.path, road.width, roadLift, roadColor, t.roadY)), vcMat);
-    roadMesh.receiveShadow = true;
-    group.add(roadMesh);
-
-    const total = routeLength(road.path);
-    if (road.width >= 6) {
-      for (let d = 7; d < total - 7; d += isMajor ? 7.2 : 5.4) {
-        const p = pointAlong(road.path, d);
-        streetDetails.box(road.width >= 7.4 ? 1.25 : 0.86, 0.035, 0.12, p.x, t.roadY(p.x, p.z) + roadLift + 0.015, p.z, 0xe6e9ed, p.heading);
-      }
-      // Pedestrian crosswalks strictly at straight boulevard approaches to district entrances
-      if (road.kind === "boulevard" && road.districtId && total > 18) {
-        const cp = pointAlong(road.path, total - 3.6);
-        const laneSpan = road.width * 0.72;
-        const stripes = Math.max(4, Math.floor(laneSpan / 0.75));
-        for (let s = 0; s < stripes; s++) {
-          const offset = -laneSpan / 2 + ((s + 0.5) * laneSpan) / stripes;
-          const sx = cp.x + Math.cos(cp.heading) * offset;
-          const sz = cp.z - Math.sin(cp.heading) * offset;
-          streetDetails.box(0.38, 0.025, 1.45, sx, t.roadY(sx, sz) + roadLift + 0.016, sz, 0xf0f3f8, cp.heading);
-        }
-      }
-    }
-
-    // Lamps on the main avenues, spaced by real path distance rather than endpoint chords.
-    if (road.kind === "arterial" || road.kind === "boulevard" || road.kind === "exit") {
-      const spacing = road.kind === "arterial" ? 28 : 22;
-      for (let d = spacing * 0.5; d < total; d += spacing) {
-        const p = pointAlong(road.path, d);
-        const nx = Math.cos(p.heading);
-        const nz = -Math.sin(p.heading);
-        for (const side of [-1, 1]) {
-          const x = p.x + nx * side * (road.width / 2 + 1.85);
-          const z = p.z + nz * side * (road.width / 2 + 1.85);
-          const y = t.roadY(x, z);
-          streetDetails.cyl(0.045, 0.055, 2.3, x, y + 0.08, z, DARK, 6);
-          streetDetails.box(0.55, 0.07, 0.07, x + Math.sin(p.heading) * 0.2, y + 2.25, z + Math.cos(p.heading) * 0.2, DARK, p.heading);
-          streetDetails.sphere(0.13, x + Math.sin(p.heading) * 0.4, y + 2.2, z + Math.cos(p.heading) * 0.4, 0xeef2f6);
-        }
-      }
-    }
-
-    const bridge = bridges(road.path, t, road.width);
-    if (bridge) {
-      const mesh = new THREE.Mesh(own(bridge), vcMat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-    }
-  }
-  if (layout.roads.length > 0) {
-    const details = new THREE.Mesh(own(streetDetails.build()), vcMat);
-    details.castShadow = true;
-    details.receiveShadow = true;
-    group.add(details);
-  }
-
-  // District urban plazas: paved town block foundations under each neighbourhood so buildings stand on civic stone instead of raw grass.
-  for (const d of layout.districts) {
-    const padY = t.heightAt(d.cx, d.cz) + 0.06;
-    const pad = new THREE.Mesh(
-      own(new THREE.CircleGeometry(1, 36)),
-      own(mat(0xdce0e6)),
-    );
-    pad.rotation.x = -Math.PI / 2;
-    pad.rotation.z = d.theta;
-    pad.scale.set(d.halfW * 1.05, d.halfH * 1.05, 1);
-    pad.position.set(d.cx, padY, d.cz);
-    pad.receiveShadow = true;
-    group.add(pad);
-  }
-
-  // Parks and pocket gardens have their own landscape, paths, benches and pond.
-  for (const park of layout.greenSpaces) {
-    const baseY = t.heightAt(park.x, park.z) + 0.12;
-    const lawn = new THREE.Mesh(
-      own(new THREE.CircleGeometry(1, 40)),
-      own(mat(park.kind === "city-park" ? 0x72a864 : 0x86b572)),
-    );
-    lawn.rotation.x = -Math.PI / 2;
-    lawn.rotation.z = park.rotationY;
-    lawn.scale.set(park.radiusX, park.radiusZ, 1);
-    lawn.position.set(park.x, baseY, park.z);
-    lawn.receiveShadow = true;
-    group.add(lawn);
-
-    // A pale stone walking loop breaks up the lawn and links both sides of the park.
-    const pathLine: Pt[] = [];
-    for (let i = 0; i <= 32; i++) {
-      const a = (i / 32) * Math.PI * 2;
-      const x = Math.cos(a) * park.radiusX * 0.72;
-      const z = Math.sin(a) * park.radiusZ * 0.72;
-      const c = Math.cos(park.rotationY);
-      const s = Math.sin(park.rotationY);
-      pathLine.push({ x: park.x + x * c - z * s, z: park.z + x * s + z * c });
-    }
-    const parkPath = new THREE.Mesh(own(ribbon(pathLine, 1.25, 0.18, 0xd4d8de, t.roadY)), vcMat);
-    group.add(parkPath);
-
-    if (park.pond) {
-      const pond = new THREE.Mesh(
-        own(new THREE.CircleGeometry(1, 40)),
-        own(mat(0x52b6d6)),
-      );
-      pond.rotation.x = -Math.PI / 2;
-      pond.scale.set(park.pond.radiusX, park.pond.radiusZ, 1);
-      pond.position.set(park.pond.x, t.heightAt(park.pond.x, park.pond.z) + 0.17, park.pond.z);
-      group.add(pond);
-      const shore = new THREE.Mesh(
-        own(new THREE.RingGeometry(0.96, 1.13, 40)),
-        own(mat(0xc8cdd4)),
-      );
-      shore.rotation.x = -Math.PI / 2;
-      shore.scale.set(park.pond.radiusX, park.pond.radiusZ, 1);
-      shore.position.copy(pond.position);
-      shore.position.y += 0.025;
-      group.add(shore);
-    }
-
-    // Benches and low park lamps provide human-scale detail.
-    const parkProps = new Builder();
-    for (const side of [-1, 1]) {
-      const x = park.x + Math.cos(park.rotationY) * side * park.radiusX * 0.48;
-      const z = park.z + Math.sin(park.rotationY) * side * park.radiusX * 0.48;
-      parkProps.box(2.1, 0.14, 0.58, x, baseY, z, 0x686e78, park.rotationY);
-      parkProps.box(2.1, 0.68, 0.12, x, baseY + 0.12, z - 0.22, 0x7c828c, park.rotationY);
-      parkProps.cyl(0.04, 0.05, 1.8, x + 2.5, baseY, z, DARK, 6);
-      parkProps.sphere(0.13, x + 2.5, baseY + 1.78, z, 0xeef2f6);
-    }
-    const propMesh = new THREE.Mesh(own(parkProps.build()), vcMat);
-    propMesh.castShadow = true;
-    group.add(propMesh);
-  }
+  // Streets, junctions, crosswalks, bridges, block ground and park paths (engine/roads.ts).
+  const roads = buildRoads(layout);
+  group.add(roads.group);
 
   // Central square: architectural stone paving, market bell, and the four civic buildings.
   const plaza = new THREE.Mesh(own(new THREE.CylinderGeometry(PLAZA_RADIUS - 1, PLAZA_RADIUS - 1, 0.12, 40)), own(mat(0xdadfe6)));
@@ -574,45 +372,17 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
   const fillers = buildFillers(layout.filler, t);
   group.add(fillers.group);
 
-  // Trees: parks inside town, forest on the hills. Deterministic, on free dry ground.
-  const rng = seeded(0x51ee);
-  const spots: Array<[number, number, number]> = [];
-  const reach = t.extent * 0.85;
-  const near = layout.filler.map((f) => [f.x, f.z] as const);
-  let guard = 0;
-  while (spots.length < maxTrees * 2 && guard++ < maxTrees * 60) {
-    const a = rng() * Math.PI * 2;
-    const r = Math.sqrt(rng()) * reach;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    const h = t.heightAt(x, z);
-    if (h < 0.3 || h > 26) continue;
-    if (r < PLAZA_RADIUS + 1) continue;
-    if (layout.districts.some((d) => {
-      const dx = x - d.cx;
-      const dz = z - d.cz;
-      return Math.hypot(dx, dz) < d.extent + 2 && inGrid(d, x, z);
-    })) continue;
-    if (layout.roads.some((road) => distToPolyline(x, z, road.path) < road.width / 2 + 2.2)) continue;
-    if (near.some(([fx, fz]) => Math.hypot(fx - x, fz - z) < 4.2)) continue;
-    spots.push([x, z, 0.7 + rng() * 0.9]);
-  }
-  const treeGeo = own(treeGeometry());
-  const trees = new THREE.InstancedMesh(treeGeo, vcMat, Math.max(1, spots.length));
-  const m4 = new THREE.Matrix4();
-  spots.forEach(([x, z, sc], i) => {
-    m4.compose(new THREE.Vector3(x, t.heightAt(x, z), z), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc));
-    trees.setMatrixAt(i, m4);
-  });
-  trees.count = Math.min(maxTrees, spots.length);
-  trees.castShadow = true;
-  group.add(trees);
+  // Trees: parks, canal banks, pavements and the country beyond (positions come from the layout).
+  const spots = layout.treeSpots;
+  const treeSet = createTrees(spots, t, maxTrees);
+  const trees = treeSet.round;
+  group.add(treeSet.round, treeSet.pines);
 
   // District names, visible from far away.
   const districtLabels: THREE.Sprite[] = [];
   for (const d of layout.districts) {
     const s = makeLabel(`${DISTRICT_LABEL[d.id]} · ${d.assetCount}`, { font: 34, bg: "rgba(38,43,52,0.86)", fg: "#f4f6f9" });
-    s.position.set(d.cx, t.heightAt(d.cx, d.cz) + 7, d.cz - d.halfH - 3);
+    s.position.set(d.cx, t.heightAt(d.cx, d.cz) + 22, d.cz);
     s.userData.district = d.id;
     group.add(s);
     districtLabels.push(s);
@@ -625,9 +395,10 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     districtLabels,
     civic,
     setTreeCount(n) {
-      trees.count = Math.min(n, spots.length);
+      treeSet.setCount(n);
     },
     update(dtMs: number) {
+      treeSet.update(dtMs);
       fountainTime += dtMs / 1000;
       const sprayPulse = 1.0 + Math.sin(fountainTime * 5.2) * 0.18;
       fountainSpray.scale.set(sprayPulse, 0.85 + Math.sin(fountainTime * 6.5) * 0.22, sprayPulse);
@@ -635,17 +406,10 @@ export function buildTown(layout: WorldLayout, maxTrees: number): Town {
     },
     dispose() {
       disposables.forEach((d) => d.dispose());
+      roads.dispose();
       fillers.dispose();
-      trees.dispose();
+      treeSet.dispose();
       districtLabels.forEach(disposeLabel);
     },
   };
-}
-
-function inGrid(d: { cx: number; cz: number; theta: number; halfW: number; halfH: number }, x: number, z: number): boolean {
-  const c = Math.cos(d.theta);
-  const s = Math.sin(d.theta);
-  const lx = (x - d.cx) * c + (z - d.cz) * s;
-  const lz = -(x - d.cx) * s + (z - d.cz) * c;
-  return Math.abs(lx) < d.halfW + 2 && Math.abs(lz) < d.halfH + 2;
 }
