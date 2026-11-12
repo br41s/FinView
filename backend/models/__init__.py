@@ -29,6 +29,7 @@ from .ledger import (
 )
 from .market_data import (
     PriceCache,
+    SessionClose,
     TickerMap,
     SplitHistoryCache,
     ExchangeRate,
@@ -104,6 +105,7 @@ __all__ = [
     "PortfolioHolding",
     "DataIssue",
     "PriceCache",
+    "SessionClose",
     "TickerMap",
     "SplitHistoryCache",
     "ExchangeRate",

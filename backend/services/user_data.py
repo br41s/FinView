@@ -36,6 +36,7 @@ GLOBAL_TABLES = frozenset({
     "price_cache",
     "segment_checks",
     "segment_reports",
+    "session_closes",
     "split_history_cache",
     "ticker_map",
 })

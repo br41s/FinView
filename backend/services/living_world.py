@@ -30,7 +30,14 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.models import Account, ListingProfile, PriceCache, Transaction, TransactionType
+from backend.models import (
+    Account,
+    ListingProfile,
+    PriceCache,
+    SessionClose,
+    Transaction,
+    TransactionType,
+)
 from backend.services import ticker_map
 from backend.services.living_world_market import market_events
 from backend.services.portfolio_service import Position, get_open_positions
@@ -161,32 +168,53 @@ PRICE_MOVE_EVENT_PCT = 2.0
 _LEDGER_EVENT_TYPES = (TransactionType.BUY, TransactionType.SELL, TransactionType.DIVIDEND)
 
 
-def _price_move_events(db: Session, positions: list[Position], since: date) -> list[dict]:
-    names = {p.isin: p.name for p in positions}
-    rows = db.query(PriceCache).filter(
-        PriceCache.isin.in_(names), PriceCache.fetched_date >= since
+def _price_move_events(
+    db: Session, names: dict[str, str], yahoo: dict[str, str], since: date
+) -> list[dict]:
+    """Every stored session of the window with a move of at least PRICE_MOVE_EVENT_PCT.
+
+    From `session_closes`, which the portfolio's daily download fills with each of its
+    ~5 sessions, so a session counts even if nobody opened FinView that day. Each row's
+    previous close comes from the same download (a real one-session move); a row without
+    one, or a session no download covered, is silence. Same ±MAX_DAY_CHANGE_PCT cap as
+    the day change.
+    """
+    by_ticker: dict[str, list[str]] = defaultdict(list)
+    for isin, ticker in yahoo.items():
+        by_ticker[ticker].append(isin)
+    if not by_ticker:
+        return []
+    rows = db.query(SessionClose).filter(
+        SessionClose.yahoo_ticker.in_(by_ticker),
+        SessionClose.session_date >= since,
+        SessionClose.previous_close.isnot(None),
     )
     out = []
     for row in rows:
-        pct = _move_pct(row)
-        if pct is None or abs(pct) < PRICE_MOVE_EVENT_PCT:
+        if row.previous_close <= 0:
             continue
-        out.append({
-            "id": f"px:{row.isin}:{row.fetched_date.isoformat()}",
-            "event_type": "price_move_up" if pct > 0 else "price_move_down",
-            "isin": row.isin,
-            "name": names[row.isin],
-            "occurred_on": row.fetched_date,
-            "source_type": "price_cache",
-            # A close against the close before: computed here, not reported by anyone.
-            "confidence": "derived",
-            "metrics": {
-                "change_pct": round(pct, 2),
-                "price": float(row.original_price),
-                "currency": row.original_currency or row.currency,
-                "period": "1d",
-            },
-        })
+        pct = float((row.close / row.previous_close - 1) * 100)
+        if abs(pct) > MAX_DAY_CHANGE_PCT or abs(pct) < PRICE_MOVE_EVENT_PCT:
+            continue
+        out.extend(
+            {
+                "id": f"px:{isin}:{row.session_date.isoformat()}",
+                "event_type": "price_move_up" if pct > 0 else "price_move_down",
+                "isin": isin,
+                "name": names[isin],
+                "occurred_on": row.session_date,
+                "source_type": "session_closes",
+                # A close against the close before: computed here, not reported by anyone.
+                "confidence": "derived",
+                "metrics": {
+                    "change_pct": round(pct, 2),
+                    "price": float(row.close),
+                    "currency": ticker_map.currency_for_ticker(row.yahoo_ticker),
+                    "period": "1d",
+                },
+            }
+            for isin in by_ticker[row.yahoo_ticker]
+        )
     return out
 
 
@@ -259,15 +287,10 @@ def _events(
     since = today - timedelta(days=EVENT_WINDOW_DAYS)
     events = _ledger_events(db, user_id, {p.isin for p in positions}, since)
     if positions:
-        events += _price_move_events(db, positions, since)
-        events += market_events(
-            db,
-            user_id,
-            {p.isin: p.name for p in positions},
-            _yahoo_tickers(db, positions, price_rows),
-            since,
-            today,
-        )
+        names = {p.isin: p.name for p in positions}
+        yahoo = _yahoo_tickers(db, positions, price_rows)
+        events += _price_move_events(db, names, yahoo, since)
+        events += market_events(db, user_id, names, yahoo, since, today)
     for e in events:
         e.setdefault("occurred_at", None)
     # What the town received, by type: an empty town is then a fact in the logs, not a guess

@@ -40,6 +40,32 @@ class PriceCache(Base):
     )
 
 
+class SessionClose(Base):
+    """One trading session's close per Yahoo ticker, from the portfolio's daily download.
+
+    The valuation's 5-day batch already carries the last ~5 sessions of every held
+    ticker; this keeps them instead of only the last one, so Living World can show a
+    move for every session, not only for the days somebody opened the portfolio.
+
+    `previous_close` is the bar before it *in the same download* (never the stored row
+    before, which may be weeks older if nobody opened the app), so each row is a real
+    one-session move or NULL. Both in the listing currency, pence already divided.
+    Global: a ticker's close describes no user.
+    """
+
+    __tablename__ = "session_closes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    yahoo_ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    session_date: Mapped[date] = mapped_column(Date, nullable=False)
+    close: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    previous_close: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+
+    __table_args__ = (
+        UniqueConstraint("yahoo_ticker", "session_date"),
+    )
+
+
 class TickerMap(Base):
     """ISIN → Yahoo Finance ticker, learned at runtime.
 

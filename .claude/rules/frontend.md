@@ -205,8 +205,16 @@ del …". Phase 2 has begun: the daily move and the last 30 days' events are rea
   default: a week, opened on «24 h», showed nothing for a portfolio imported monthly). Every `/world`
   logs `living world: user N, H holdings, E events in 30 days {type: count}`, the only way to explain
   an empty town without the user's session. Sent
-  by the same endpoint as `events`: daily moves of at least ±2 % (`PRICE_MOVE_EVENT_PCT`) from each
-  `price_cache` row, confidence `derived`; buys, sells and dividends from the ledger, confidence
+  by the same endpoint as `events`: session moves of at least ±2 % (`PRICE_MOVE_EVENT_PCT`, capped at
+  ±`MAX_DAY_CHANGE_PCT`) from `session_closes`, confidence `derived`. That global table (ticker,
+  session date, close, previous close) is written by the portfolio valuation's daily download
+  (`prices._store_sessions`, one upsert statement): the 5-day frame already carries ~5 sessions per
+  held ticker, so every session gets a move even on days nobody opened FinView, with no extra
+  request. A row's previous close is the bar before it *in the same download* (never the stored row
+  before, which could be weeks older), so the oldest bar of a download has none unless an earlier
+  download stored one (kept by `coalesce`); a newer download overwrites the close (a live last bar).
+  A gap longer than ~4 sessions without a valuation stays silence. `price_cache` rows no longer
+  produce events (only `day_change_pct`). Buys, sells and dividends from the ledger, confidence
   `verified` (a sell is `position_closed` only when the ISIN is no longer held at any broker, and then
   has no building). The backend sends facts and figures only; `model/realEvents.ts` writes the Spanish
   copy and scores them with `priority.ts`, dropping any type or confidence it does not know. They go
@@ -223,7 +231,10 @@ del …". Phase 2 has begun: the daily move and the last 30 days' events are rea
   (interim vs final are not compared), ±15 % to clear a year of FX noise. Annual reports are dated
   when FinView stored them (`segment_reports.created_at`), not published. Geo alerts are the shared
   owner's notified signals (`geo_owner_id`, as `/geo` reads them) whose basket names a holding's
-  Yahoo ticker; Zonas Clave alerts are the user's `technical_signals` with `alerted` only. Geo and
+  Yahoo ticker, one event per (holding, UTC day of sending): several signals about one holding on one
+  day are folded (id `geo:{isin}:{day}`, `signal_count`, `headlines` newline-joined newest first,
+  `country`/`direction` only when every signal agrees, else `null`; `importance` the highest; moment
+  the latest), and `realEvents.ts` titles it «N alertas geopolíticas». Zonas Clave alerts are the user's `technical_signals` with `alerted` only. Geo and
   Zonas alerts carry their real moment (`occurred_at`); the rest a date. An upcoming-earnings event
   has no stored source and is not built.
 - **Instant vs all-day** (`model/eventTiming.ts`). Price moves and signals are instants: performed
