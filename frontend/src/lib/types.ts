@@ -317,7 +317,21 @@ export interface LivingWorldSummary {
   prices_as_of: string | null;
 }
 
+/** A real fact from the last week: a stored daily move (≥ 2 %) or a ledger entry. */
+export interface LivingWorldEvent {
+  id: string;
+  event_type: string;
+  isin: string;
+  name: string;
+  /** ISO date (the session or the trade date; no time of day is known). */
+  occurred_on: string;
+  source_type: string;
+  confidence: string;
+  metrics: Record<string, number | string | null>;
+}
+
 export interface LivingWorldResponse {
   summary: LivingWorldSummary;
   assets: LivingWorldAsset[];
+  events: LivingWorldEvent[];
 }

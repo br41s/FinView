@@ -39,14 +39,29 @@ class WorldSummaryOut(BaseModel):
     prices_as_of: date | None
 
 
+class WorldEventOut(BaseModel):
+    """A fact the town shows as activity: a stored daily move or a ledger entry."""
+
+    id: str
+    event_type: str
+    isin: str
+    name: str
+    occurred_on: date
+    source_type: str
+    confidence: str
+    metrics: dict[str, float | str | None]
+
+
 class WorldOut(BaseModel):
     summary: WorldSummaryOut
     assets: list[WorldAssetOut]
+    events: list[WorldEventOut]
 
 
 @router.get("/world", response_model=WorldOut)
 def world(db: DbSession, user: CurrentUser):
-    """One building per held ISIN with its valuation, cost and classification.
+    """One building per held ISIN with its valuation, cost and classification, and the
+    last week's real events (daily moves of at least 2 %, buys, sells, dividends).
 
     Unknown values are null, never zero. No external call: prices come from the portfolio
     service's cache and the sector from what the exposure refresh already stored.
