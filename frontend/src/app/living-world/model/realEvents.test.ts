@@ -89,6 +89,20 @@ describe("toWorldEvents", () => {
     expect(report.title).toBe(`Nuevo informe anual de ${held.name} (ejercicio 2025)`);
   });
 
+  it("lists every headline of a day's grouped geo alerts", () => {
+    const [grouped, single] = toWorldEvents(
+      [
+        raw({ id: "geo:a", event_type: "geo_alert", confidence: "derived", occurred_on: "2026-11-11", occurred_at: "2026-11-11T15:00:00Z", metrics: { headline: "Arancel", headlines: "Arancel\nSequía\nHuelga", signal_count: 3, importance: 80 } }),
+        raw({ id: "geo:b", event_type: "geo_alert", confidence: "derived", occurred_on: "2026-11-10", occurred_at: "2026-11-10T08:00:00Z", metrics: { headline: "Cierre", headlines: "Cierre", signal_count: 1 } }),
+      ],
+      assets,
+    );
+    expect(grouped.title).toBe(`3 alertas geopolíticas: ${held.name}`);
+    expect(grouped.summary).toBe("Arancel · Sequía · Huelga");
+    expect(single.title).toBe(`Alerta geopolítica: ${held.name}`);
+    expect(single.summary).toBe("Cierre");
+  });
+
   it("names a split and a reverse split by their ratio", () => {
     const [split, reverse] = toWorldEvents(
       [

@@ -217,7 +217,7 @@ def test_an_annual_report_stored_this_week(db, user):
     assert [(e["isin"], e["metrics"]["fiscal_year"]) for e in reports] == [(A, 2025)]
 
 
-def _geo(db, *, symbol, notified_at, headline="Huelga en el puerto", owner=None):
+def _geo(db, *, symbol, notified_at, headline="Huelga en el puerto", owner=None, direction="bearish"):
     signal = GeoSignal(
         user_id=owner if owner is not None else geo_owner_id(db), event_type="strike", display_category="conflict", source="gdelt",
         external_id=f"ev-{symbol}-{notified_at}", headline=headline, location="spain", country="spain",
@@ -227,7 +227,7 @@ def _geo(db, *, symbol, notified_at, headline="Huelga en el puerto", owner=None)
     )
     db.add(signal)
     db.flush()
-    signal.tickers.append(GeoSignalTicker(symbol=symbol, direction="bearish", price_at_signal=10.0))
+    signal.tickers.append(GeoSignalTicker(symbol=symbol, direction=direction, price_at_signal=10.0))
 
 
 def test_a_geo_alert_sent_about_a_holding_keeps_its_moment(db, user):
@@ -243,6 +243,32 @@ def test_a_geo_alert_sent_about_a_holding_keeps_its_moment(db, user):
     assert [e["isin"] for e in geo] == [A]
     assert geo[0]["occurred_at"] == "2026-11-11T08:30:00Z"
     assert geo[0]["metrics"]["headline"] == "Huelga en el puerto"
+
+
+def test_several_geo_alerts_about_one_holding_on_one_day_are_one_event(db, user):
+    _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 10, 7, 0), headline="Huelga")
+    _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 10, 15, 0), headline="Arancel",
+         direction="bullish")
+    _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 10, 11, 0), headline="Sequía")
+    # Another day stays its own event.
+    _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 11, 9, 0), headline="Cierre")
+    db.commit()
+
+    geo = {e["occurred_on"]: e for e in _events(db, user) if e["event_type"] == "geo_alert"}
+
+    assert set(geo) == {date(2026, 11, 10), date(2026, 11, 11)}
+    grouped = geo[date(2026, 11, 10)]
+    assert grouped["id"] == f"geo:{A}:2026-11-10"
+    assert grouped["occurred_at"] == "2026-11-10T15:00:00Z"  # the latest sending
+    m = grouped["metrics"]
+    assert m["signal_count"] == 3
+    assert m["headline"] == "Arancel"
+    assert m["headlines"] == "Arancel\nSequía\nHuelga"
+    assert m["country"] == "spain" and m["importance"] == 80
+    # The signals disagree on direction: unknown, not one of them picked.
+    assert m["direction"] is None
+    single = geo[date(2026, 11, 11)]["metrics"]
+    assert single["signal_count"] == 1 and single["direction"] == "bearish"
 
 
 def test_only_zonas_clave_alerts_the_user_was_sent(db, user):

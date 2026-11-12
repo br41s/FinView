@@ -322,22 +322,35 @@ def _geo_alerts(db: Session, yahoo: dict[str, str], names: dict[str, str], since
             GeoSignalTicker.symbol.in_(by_ticker),
         )
     )
-    out = []
+    # Several signals naming one holding on one day are one event: four identical rows read
+    # as noise. The group keeps each signal's facts; the moment is the latest sending.
+    groups: dict[tuple[str, date], dict[int, tuple[GeoSignal, str | None]]] = {}
     for signal, leg in rows:
-        out.extend(
-            _event(
-                f"geo:{signal.id}:{isin}", "geo_alert", isin, names[isin], signal.notified_at.date(),
-                "geo_signals", "derived",
-                {
-                    "headline": signal.headline,
-                    "country": signal.country,
-                    "importance": signal.importance,
-                    "direction": getattr(leg.direction, "value", leg.direction),
-                },
-                at=signal.notified_at,
-            )
-            for isin in by_ticker[leg.symbol.upper()]
-        )
+        direction = getattr(leg.direction, "value", leg.direction)
+        for isin in by_ticker[leg.symbol.upper()]:
+            groups.setdefault((isin, signal.notified_at.date()), {})[signal.id] = (signal, direction)
+    out = []
+    for (isin, day), by_signal in groups.items():
+        legs = sorted(by_signal.values(), key=lambda sd: (sd[0].notified_at, sd[0].id), reverse=True)
+        latest = legs[0][0]
+        importances = [s.importance for s, _d in legs if s.importance is not None]
+        countries = {s.country for s, _d in legs}
+        directions = {d for _s, d in legs}
+        out.append(_event(
+            f"geo:{isin}:{day.isoformat()}", "geo_alert", isin, names[isin], day,
+            "geo_signals", "derived",
+            {
+                "headline": latest.headline,
+                # Newest first, one per line; metrics are flat, so the list is a string.
+                "headlines": "\n".join(s.headline for s, _d in legs if s.headline),
+                "signal_count": len(legs),
+                # Shared facts only: a field the signals disagree on is unknown, not picked.
+                "country": countries.pop() if len(countries) == 1 else None,
+                "importance": max(importances) if importances else None,
+                "direction": directions.pop() if len(directions) == 1 else None,
+            },
+            at=latest.notified_at,
+        ))
     return out
 
 
