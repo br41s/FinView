@@ -33,6 +33,11 @@ export function toWorldAsset(a: LivingWorldAsset): WorldAsset {
     totalCostEur: a.total_cost_eur,
     unrealizedPlEur: a.unrealized_pl_eur,
     favourite: false,
+    // A closed row without a date is not trusted as closed: it stays an ordinary building.
+    closed:
+      a.status === "closed" && a.closed_on
+        ? { on: a.closed_on, investedEur: a.invested_eur, soldEur: a.sold_eur, dividendsEur: a.dividends_eur }
+        : null,
   };
 }
 
@@ -48,7 +53,7 @@ export const toWorldAssets = (res: LivingWorldResponse): WorldAsset[] => res.ass
 export function sceneSignature(assets: readonly WorldAsset[]): string {
   return assets
     .map((a) =>
-      [a.id, a.name, a.archetype, a.assetType, a.weightPct === null ? "?" : a.weightPct.toFixed(1)].join("|"),
+      [a.id, a.name, a.archetype, a.assetType, a.weightPct === null ? "?" : a.weightPct.toFixed(1), a.closed ? "ruin" : ""].join("|"),
     )
     .sort()
     .join("\n");

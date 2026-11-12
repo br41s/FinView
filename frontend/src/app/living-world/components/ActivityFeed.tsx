@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { whenLabel } from "../model/eventTiming";
 import type { TimeWindow, WorldAsset, WorldEvent } from "../model/types";
 import s from "../world.module.css";
 import { DIRECTION_MARK, SEVERITY_LABEL, WINDOW_LABEL } from "./labels";
@@ -19,14 +20,6 @@ interface Props {
   now: number;
   /** Replaces the "no events" line, e.g. to say why the real town has none yet. */
   emptyHint?: string;
-}
-
-function ago(iso: string, now: number): string {
-  const m = Math.max(0, Math.round((now - Date.parse(iso)) / 60000));
-  if (m < 1) return "ahora";
-  if (m < 60) return `hace ${m} min`;
-  const h = Math.round(m / 60);
-  return h < 48 ? `hace ${h} h` : `hace ${Math.round(h / 24)} d`;
 }
 
 /** The event list lives outside the scene, so it keeps working however busy the town is. */
@@ -79,7 +72,7 @@ export function ActivityFeed({ events, assets, window: win, onWindow, activeId, 
                 <span className={s.feedSeverity}>{SEVERITY_LABEL[e.severity]}</span>
               </div>
               <div className={s.meta}>
-                {a?.name ?? "Actividad del pueblo"} · {ago(e.occurredAt, now)}
+                {a?.name ?? "Actividad del pueblo"} · {whenLabel(e, now)}
               </div>
             </button>
           );

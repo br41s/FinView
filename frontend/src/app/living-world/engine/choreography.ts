@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Performance } from "../model/director";
 import type { Point } from "../model/routes";
+import type { DayMood } from "../model/eventTiming";
 import type { EventType } from "../model/types";
 import type { AgentState, AgentSystem, Role } from "./agents";
 import { Builder } from "./buildingFactory";
@@ -25,6 +26,66 @@ export interface SiteInfo {
   markerY: number;
   /** Door-to-plaza route (already computed from the layout). */
   route: Point[];
+  /** Half the building's footprint on the ground. */
+  radius: number;
+}
+
+/**
+ * How a building lives through an all-day event (see `model/eventTiming.ts`): it is acted out
+ * from midnight to midnight, not once.
+ *  - party     : string lights and balloons, confetti now and then, staff celebrating outside
+ *                and visitors arriving (dividends, good results, an expansion)
+ *  - work      : a crane and crates by the door and a crew coming and going (a buy or a sale)
+ *  - concerned : no decoration; staff gather outside worried and an analyst comes to look
+ */
+
+interface Festivity {
+  mood: DayMood;
+  meshes: THREE.Mesh[];
+  balloons: THREE.Mesh | null;
+  nextStaff: number;
+  nextVisitors: number;
+  nextConfetti: number;
+}
+
+const BULBS = [0xffd166, 0xff6b6b, 0x4dd6ff, 0x7bd88f, 0xc792ea, 0xffffff];
+const BALLOONS = [0xff4d6d, 0xffc300, 0x3a86ff, 0x2ec4b6, 0xff7b00];
+
+/** String lights on four posts over the entrance, at human height. Local to the door. */
+function garland(): THREE.BufferGeometry {
+  const b = new Builder();
+  const r = 1.5;
+  const corners: Array<[number, number]> = [[r, r], [-r, r], [-r, -r], [r, -r]];
+  for (const [x, z] of corners) {
+    b.cyl(0.05, 0.05, 1.9, x, 0, z, 0x4a4f5a, 5);
+    b.sphere(0.12, x, 1.9, z, 0xfff3c4);
+  }
+  for (let k = 0; k < 4; k++) {
+    const [x0, z0] = corners[k];
+    const [x1, z1] = corners[(k + 1) % 4];
+    const n = 9;
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      const sag = Math.sin(t * Math.PI) * 0.35;
+      b.box(0.14, 0.14, 0.14, x0 + (x1 - x0) * t, 1.8 - sag, z0 + (z1 - z0) * t, BULBS[(k * n + i) % BULBS.length]);
+    }
+  }
+  return b.build();
+}
+
+/** A bunch of balloons on strings, tied by the door. Local to the door. */
+function balloonBunch(): THREE.BufferGeometry {
+  const b = new Builder();
+  const x = 1.7;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const bx = x + Math.cos(a) * 0.35;
+    const bz = Math.sin(a) * 0.35;
+    const h = 2.3 + (i % 3) * 0.35;
+    b.cyl(0.012, 0.012, h, bx, 0, bz, 0xdddddd, 3);
+    b.ico(0.3, bx, h + 0.28, bz, BALLOONS[i], 1);
+  }
+  return b.build();
 }
 
 export interface Stage {
@@ -379,6 +440,8 @@ export class Choreographer {
   private beaconMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, fog: false });
   private time = 0;
   private confetti: ConfettiSystem;
+  private festivities = new Map<string, Festivity>();
+  private reduced = false;
 
   constructor(private stage: Stage) {
     this.confetti = new ConfettiSystem(stage.scene);
@@ -395,6 +458,106 @@ export class Choreographer {
     for (const t of types) this.act(p, t, site, ms);
 
     if (p.severity !== "normal") this.beacon(p, site, ms);
+  }
+
+  setReducedMotion(v: boolean) {
+    this.reduced = v;
+  }
+
+  /**
+   * The buildings living through an all-day event right now, and how. Called whenever that
+   * set changes (an event arrives, the day turns); a building not in it goes back to normal.
+   */
+  setAllDay(moods: ReadonlyMap<string, DayMood>) {
+    for (const [assetId, f] of this.festivities) {
+      if (moods.get(assetId) === f.mood) continue;
+      this.endFestivity(assetId);
+    }
+    for (const [assetId, mood] of moods) {
+      if (this.festivities.has(assetId)) continue;
+      const site = this.stage.site(assetId);
+      if (!site) continue;
+      const meshes: THREE.Mesh[] = [];
+      let balloons: THREE.Mesh | null = null;
+      // Everything happens at the entrance, where the staff come out: a big complex would
+      // otherwise swallow decorations placed around its centre.
+      // route[0] is the lot's centre and route[1] the kerb in front: the entrance is just short of it.
+      const c = site.route[0] ?? { x: site.x, z: site.z };
+      const f = site.route[1] ?? { x: site.x + site.radius + 2.2, z: site.z };
+      const d = Math.hypot(f.x - c.x, f.z - c.z) || 1;
+      const k = Math.max(0, d - 2.2) / d;
+      const door = { x: c.x + (f.x - c.x) * k, z: c.z + (f.z - c.z) * k };
+      const place = (g: THREE.BufferGeometry, y = site.groundY) => {
+        const m = new THREE.Mesh(g, this.mat);
+        m.position.set(door.x, y, door.z);
+        m.renderOrder = 6;
+        this.stage.scene.add(m);
+        meshes.push(m);
+        return m;
+      };
+      if (mood === "party") {
+        place(garland());
+        balloons = place(balloonBunch());
+      } else if (mood === "work") {
+        place(geometry("crane"), site.groundY).position.x += 1.2;
+        place(geometry("crates"), site.groundY).position.z += 1.0;
+      }
+      // Staggered, so a dozen celebrating buildings do not pulse in step.
+      const jitter = (assetId.length * 977) % 3000;
+      this.festivities.set(assetId, {
+        mood, meshes, balloons,
+        nextStaff: this.time + jitter * 0.3,
+        nextVisitors: this.time + 1500 + jitter,
+        nextConfetti: this.time + 800 + jitter,
+      });
+    }
+  }
+
+  private endFestivity(assetId: string) {
+    const f = this.festivities.get(assetId);
+    if (!f) return;
+    for (const m of f.meshes) {
+      this.stage.scene.remove(m);
+      // The crane and crates share the marker geometry cache; only the party's own are freed.
+      if (f.mood === "party") m.geometry.dispose();
+    }
+    this.festivities.delete(assetId);
+  }
+
+  private liveFestivities(t: number) {
+    const a = this.stage.agents;
+    for (const [assetId, f] of this.festivities) {
+      const site = this.stage.site(assetId);
+      if (!site) continue;
+      if (f.balloons) f.balloons.position.y = site.groundY + Math.sin(t * 1.3 + assetId.length) * 0.08;
+      if (this.time >= f.nextStaff) {
+        const state: AgentState = f.mood === "party" ? "celebrating" : f.mood === "work" ? "working" : "concerned";
+        a.dispatch(assetId, state, 9000, 6);
+        f.nextStaff = this.time + 7000;
+      }
+      if (this.time >= f.nextVisitors) {
+        const route = site.route.slice(1, -1).reverse();
+        if (route.length >= 2) {
+          const who: { role: Role; hold: AgentState; n: number } =
+            f.mood === "party"
+              ? { role: "visitor", hold: "celebrating", n: 2 }
+              : f.mood === "work"
+                ? { role: "crew", hold: "working", n: 2 }
+                : { role: "analyst", hold: "investigating", n: 1 };
+          for (let i = 0; i < who.n; i++) {
+            a.spawnActor({
+              role: who.role, route, speed: 2.6, holdState: who.hold, holdMs: 14000, assetId,
+              offsetX: (i - (who.n - 1) / 2) * 0.8, offsetZ: 0.5,
+            });
+          }
+        }
+        f.nextVisitors = this.time + 24000;
+      }
+      if (f.mood === "party" && !this.reduced && this.time >= f.nextConfetti) {
+        this.confetti.burst(site.x, site.markerY, site.z, 14);
+        f.nextConfetti = this.time + 6500;
+      }
+    }
   }
 
   /** One beacon per performance; an escalation swaps a weaker one for the stronger kind. */
@@ -620,10 +783,12 @@ export class Choreographer {
     }
     this.badges = this.badges.filter((b) => b.ttl > 0);
 
+    this.liveFestivities(t);
     this.confetti.update(dtMs, t);
   }
 
   dispose() {
+    for (const id of [...this.festivities.keys()]) this.endFestivity(id);
     for (const m of this.markers) this.stage.scene.remove(m.mesh);
     this.markers = [];
     for (const b of this.badges) {

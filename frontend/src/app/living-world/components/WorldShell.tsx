@@ -8,6 +8,7 @@ import type { Quality } from "../engine/quality";
 import { useNow, usePrefersReducedMotion } from "../hooks/useClock";
 import { supportsWebGL, useStats, useWorld, type StatsStore } from "../hooks/useWorld";
 import { useWorldFilters } from "../hooks/useWorldFilters";
+import { activeAllDay, dayMoods } from "../model/eventTiming";
 import { applyFilters, filterEvents } from "../model/filters";
 import { generateDemoEvents, type DemoEventOptions } from "../model/fixtures";
 import type { WorldAsset, WorldEvent } from "../model/types";
@@ -158,6 +159,15 @@ export default function WorldShell({ assets, realEvents, demo, meta, onRefresh, 
   useEffect(() => {
     if (ready) world.current?.enqueue(realEvents);
   }, [ready, realEvents, sceneAssets, world]);
+
+  // All-day events (dividends, results, trades) are lived through their whole day, not once:
+  // the moods change only when an event arrives or the day turns, so the scene is told only then.
+  const moods = useMemo(() => dayMoods(activeAllDay(events, now)), [events, now]);
+  const moodKey = [...moods].map(([id, m]) => `${id}:${m}`).sort().join("|");
+  const applyMoods = useEffectEvent(() => world.current?.setDayMoods(moods));
+  useEffect(() => {
+    if (ready) applyMoods();
+  }, [ready, moodKey, sceneAssets]);
 
   // The scene was rebuilt (the set of assets changed): the new one knows nothing of the
   // user's selection, so hand it back. Pause, mode, quality and filters are re-applied

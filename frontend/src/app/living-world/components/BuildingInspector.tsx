@@ -47,9 +47,26 @@ export function BuildingInspector({ asset: a, demo, events, onClose, onFocus, on
           <span className={s.tag}>{ASSET_TYPE_LABEL[a.assetType]}</span>
         )}
         {!a.classified && <span className={`${s.tag} ${s.tagDemo}`}>Sin clasificar</span>}
-        {a.marketValueEur === null && <span className={`${s.tag} ${s.tagDemo}`}>Valoración desconocida</span>}
+        {a.closed && <span className={`${s.tag} ${s.tagDemo}`}>Posición cerrada · en ruinas</span>}
+        {!a.closed && a.marketValueEur === null && <span className={`${s.tag} ${s.tagDemo}`}>Valoración desconocida</span>}
       </div>
 
+      {a.closed ? (
+        // What the ledger says about a holding that is gone. No «gain»: a sum of sales minus
+        // buys is not a realised result (that is the FIFO engine's, per fiscal year).
+        <dl className={s.kv}>
+          <dt>Cerrada el</dt>
+          <dd>{new Date(`${a.closed.on}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}</dd>
+          <dt>Invertido en compras</dt>
+          <dd>{eur(a.closed.investedEur)}</dd>
+          <dt>Recibido en ventas</dt>
+          <dd>{eur(a.closed.soldEur)}</dd>
+          <dt>Dividendos cobrados</dt>
+          <dd>{eur(a.closed.dividendsEur)}</dd>
+          <dt>Cuentas</dt>
+          <dd>{a.brokers.length} · {a.brokers.join(", ")}</dd>
+        </dl>
+      ) : (
       <dl className={s.kv}>
         <dt>Valor</dt>
         <dd>{eur(a.marketValueEur)}</dd>
@@ -64,14 +81,17 @@ export function BuildingInspector({ asset: a, demo, events, onClose, onFocus, on
         <dt>Cuentas</dt>
         <dd>{a.brokers.length} · {a.brokers.join(", ")}</dd>
       </dl>
+      )}
 
       <div className={s.actions}>
         <button className={`${s.btn} ${s.linkBtn}`} onClick={onFocus}>
           <Crosshair size={14} /> Enfocar
         </button>
-        <button className={`${s.btn} ${s.linkBtn}`} onClick={onFollow}>
-          <Footprints size={14} /> Seguir trabajador
-        </button>
+        {!a.closed && (
+          <button className={`${s.btn} ${s.linkBtn}`} onClick={onFollow}>
+            <Footprints size={14} /> Seguir trabajador
+          </button>
+        )}
       </div>
       {demo ? (
         <p className={s.meta} style={{ margin: "8px 0 0" }}>

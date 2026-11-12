@@ -237,17 +237,86 @@ def _events(db: Session, user_id: int, positions: list[Position], today: date) -
     return sorted(events, key=lambda e: (e["occurred_on"], e["id"]), reverse=True)
 
 
+# ── Closed positions: the town keeps them, in ruins ──────────────────────────
+
+
+def _closed_holdings(db: Session, user_id: int, positions: list[Position]) -> list[dict]:
+    """ISINs the user held and sold out of, with what the ledger says about them.
+
+    Facts only, in euros as booked: what was paid for every buy, what every sale brought in
+    and the dividends collected. No realised gain is computed here: that is the FIFO engine's
+    job, per fiscal year, and a sum of sales minus buys is not it.
+
+    An ISIN needs a SELL to count as closed (a position that left through a corporate action
+    has no closing date FinView can state). One whose ticker is also on an open position is
+    skipped: a split or an exchange gives the same company a new ISIN (AENA), and drawing the
+    old one in ruins next to the live building would say it was sold.
+    """
+    open_isins = {p.isin for p in positions}
+    open_tickers = {p.ticker.upper() for p in positions if p.ticker}
+    rows = (
+        db.query(Transaction, Account.broker)
+        .join(Account, Transaction.account_id == Account.id)
+        .filter(
+            Account.user_id == user_id,
+            Transaction.isin.isnot(None),
+            Transaction.type.in_(
+                (
+                    TransactionType.BUY,
+                    TransactionType.SELL,
+                    TransactionType.DIVIDEND,
+                    TransactionType.SPINOFF,
+                )
+            ),
+        )
+        .order_by(Transaction.trade_date, Transaction.id)
+    )
+    by_isin: dict[str, dict] = {}
+    for tx, broker in rows:
+        if tx.isin in open_isins:
+            continue
+        h = by_isin.setdefault(
+            tx.isin,
+            {
+                "isin": tx.isin, "name": tx.isin, "ticker": None, "country": None,
+                "brokers": set(), "invested": Decimal(0), "sold": Decimal(0),
+                "dividends": Decimal(0), "closed_on": None, "held": False,
+            },
+        )
+        h["name"] = tx.name or h["name"]
+        h["ticker"] = tx.ticker or h["ticker"]
+        h["country"] = tx.country or h["country"]
+        h["brokers"].add(getattr(broker, "value", broker))
+        if tx.type in (TransactionType.BUY, TransactionType.SPINOFF):
+            h["held"] = True
+            h["invested"] += abs(tx.net_amount_eur)
+        elif tx.type == TransactionType.SELL:
+            h["sold"] += tx.net_amount_eur
+            h["closed_on"] = tx.trade_date
+        else:
+            h["dividends"] += tx.net_amount_eur
+    return [
+        h
+        for h in by_isin.values()
+        if h["held"]
+        and h["closed_on"] is not None
+        and not (h["ticker"] and h["ticker"].upper() in open_tickers)
+    ]
+
+
 def build_world(db: Session, user_id: int, today: date | None = None) -> dict:
     positions = get_open_positions(db, user_id)
     isins = [p.isin for p in positions]
     price_rows = _latest_price_rows(db, isins) if isins else {}
+    closed = _closed_holdings(db, user_id, positions)
+    all_isins = isins + [h["isin"] for h in closed]
 
     profiles = (
-        {p.isin: p for p in db.query(ListingProfile).filter(ListingProfile.isin.in_(isins))}
-        if isins
+        {p.isin: p for p in db.query(ListingProfile).filter(ListingProfile.isin.in_(all_isins))}
+        if all_isins
         else {}
     )
-    report_sectors = _report_sector(db, isins) if isins else {}
+    report_sectors = _report_sector(db, all_isins) if all_isins else {}
 
     valued = [p for p in positions if p.market_value_eur is not None]
     prices_as_of = (
@@ -277,6 +346,39 @@ def build_world(db: Session, user_id: int, today: date | None = None) -> dict:
                 # From the stored previous close, never from two price_cache snapshots:
                 # those are whenever the portfolio happened to be opened, not sessions.
                 "day_change_pct": _day_change_pct(price_rows.get(p.isin), prices_as_of),
+                "status": "open",
+                "closed_on": None,
+                "invested_eur": None,
+                "sold_eur": None,
+                "dividends_eur": None,
+            }
+        )
+
+    for h in closed:
+        asset_type, sector, classified = _classify(
+            h["isin"], profiles.get(h["isin"]), report_sectors.get(h["isin"])
+        )
+        assets.append(
+            {
+                "isin": h["isin"],
+                "ticker": h["ticker"],
+                "name": h["name"],
+                "country": h["country"],
+                "brokers": sorted(h["brokers"]),
+                "asset_type": asset_type,
+                "sector": sector,
+                "classified": classified,
+                "archetype_override": ARCHETYPE_OVERRIDES.get(h["isin"]),
+                "market_value_eur": None,
+                "weight_pct": None,
+                "total_cost_eur": None,
+                "unrealized_pl_eur": None,
+                "day_change_pct": None,
+                "status": "closed",
+                "closed_on": h["closed_on"],
+                "invested_eur": _money(h["invested"]),
+                "sold_eur": _money(h["sold"]),
+                "dividends_eur": _money(h["dividends"]),
             }
         )
 
@@ -292,7 +394,8 @@ def build_world(db: Session, user_id: int, today: date | None = None) -> dict:
                 if valuation_complete
                 else None
             ),
-            "classified": sum(1 for a in assets if a["classified"]),
+            "classified": sum(1 for a in assets if a["classified"] and a["status"] == "open"),
+            "closed": len(closed),
             "prices_as_of": prices_as_of.isoformat() if prices_as_of else None,
         },
         "assets": assets,

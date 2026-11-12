@@ -304,6 +304,12 @@ export interface LivingWorldAsset {
   total_cost_eur: number | null;
   unrealized_pl_eur: number | null;
   day_change_pct: number | null;
+  /** "open", or "closed": sold out of, drawn in ruins. */
+  status: string;
+  closed_on: string | null;
+  invested_eur: number | null;
+  sold_eur: number | null;
+  dividends_eur: number | null;
 }
 
 export interface LivingWorldSummary {
@@ -313,6 +319,8 @@ export interface LivingWorldSummary {
   valuation_complete: boolean;
   total_market_value: number | null;
   classified: number;
+  /** Closed positions drawn in ruins (not counted in `positions`). */
+  closed: number;
   /** ISO date of the newest cached price. */
   prices_as_of: string | null;
 }

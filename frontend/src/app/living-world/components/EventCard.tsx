@@ -2,6 +2,7 @@
 
 import { Crosshair, Pin, PinOff, Play, X } from "lucide-react";
 import { fmt, fmtDateTime, formatEur } from "@/lib/format";
+import { eventDay, isAllDay, shortDay } from "../model/eventTiming";
 import type { WorldAsset, WorldEvent } from "../model/types";
 import s from "../world.module.css";
 import { EventIllustration } from "./EventIllustration";
@@ -34,6 +35,13 @@ interface Props {
   onClose: () => void;
   onFocus: () => void;
   onReplay: () => void;
+}
+
+/** An all-day event has a date and no time; never print a midnight it did not happen at. */
+function occurred(e: WorldEvent): string {
+  if (!isAllDay(e)) return fmtDateTime(e.occurredAt);
+  const day = eventDay(e);
+  return `${shortDay(day, Date.parse(day))} ${day.slice(0, 4)} · todo el día`;
 }
 
 function headlineMetric(e: WorldEvent): { value: string; label: string } | null {
@@ -108,7 +116,7 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
 
       <div className={s.eventSourceLine}>
         <span>{SOURCE_LABEL[e.sourceType] ?? e.sourceType}</span>
-        <span>{fmtDateTime(e.observedAt)}</span>
+        <span>{occurred(e)}</span>
         <span>{CONFIDENCE_LABEL[e.confidence]}</span>
       </div>
 
@@ -145,7 +153,7 @@ export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, on
                 <td>{metric(v)}</td>
               </tr>
             ))}
-            <tr><td>Ocurrió</td><td>{fmtDateTime(e.occurredAt)}</td></tr>
+            <tr><td>Ocurrió</td><td>{occurred(e)}</td></tr>
             <tr><td>Observado por FinView</td><td>{fmtDateTime(e.observedAt)}</td></tr>
             <tr><td>Fuente</td><td>{SOURCE_LABEL[e.sourceType] ?? e.sourceType}</td></tr>
             <tr><td>Confianza</td><td>{CONFIDENCE_LABEL[e.confidence]}</td></tr>

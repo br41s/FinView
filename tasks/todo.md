@@ -1,5 +1,23 @@
 # FinView — Dashboard de Inversiones con Brokers Reales
 
+## Mundo vivo — Eventos de día completo, rótulos, hover y ruinas (rama `feat/living-world-day-events`)
+
+Origen: 2026-11-12, tras #378. Brais: distinguir eventos de día completo (dividendos) de los puntuales
+(precio); los de día completo se representan todo el día (fiesta en el edificio); logo iluminado en
+azotea/fachada; resaltar al pasar el ratón; posición cerrada = edificio en ruinas que conserva sus datos.
+
+- [x] `model/eventTiming.ts` (+tests): puntual (precio, señales) vs día completo (dividendos, resultados,
+      operaciones, expansión). Lista: «Todo el día» en lugar de una hora inventada.
+- [x] Coreografía de día completo: mientras sea su día, fiesta (guirnalda de luces, globos, confeti y
+      personal celebrando) o corrillo preocupado (resultados malos); la puntual sigue como hoy.
+- [x] Rótulo iluminado: emblema generado + ticker en la placa de fachada y una linterna de 4 caras en la
+      azotea, mismo material sin luz (se ve igual de día y brilla de noche); sin draw call extra.
+- [x] Hover: brillo del edificio más fuerte y anillo pulsante; cursor de mano.
+- [x] Ruinas: el backend devuelve también las posiciones cerradas (fecha de cierre, invertido, vendido,
+      dividendos); el pueblo las dibuja en ruinas, sin personal, y el inspector conserva sus datos.
+      Un ISIN cerrado con el mismo ticker que uno abierto (canje, split) no se dibuja.
+- [x] Verificación (tests, navegador con BD de prueba, fps), docs, PR.
+
 ## Mundo vivo — Ciudad de referencia (rama `feat/living-world-true-urban-diorama`)
 
 Origen: 2026-11-10. Brais: calles sin sentido, tren y SkyTrain incoherentes, edificios sin personalidad. Objetivo:

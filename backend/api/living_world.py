@@ -27,6 +27,12 @@ class WorldAssetOut(BaseModel):
     total_cost_eur: float | None
     unrealized_pl_eur: float | None
     day_change_pct: float | None
+    # "open", or "closed": sold out of; drawn in ruins, with what the ledger says about it.
+    status: str
+    closed_on: date | None
+    invested_eur: float | None
+    sold_eur: float | None
+    dividends_eur: float | None
 
 
 class WorldSummaryOut(BaseModel):
@@ -36,6 +42,7 @@ class WorldSummaryOut(BaseModel):
     valuation_complete: bool
     total_market_value: float | None
     classified: int
+    closed: int
     prices_as_of: date | None
 
 
