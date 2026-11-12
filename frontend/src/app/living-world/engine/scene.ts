@@ -15,11 +15,12 @@ import { routeToPlaza, sidewalkRoute, type Point } from "../model/routes";
 import { approach, footprintFor, tierFor } from "../model/scale";
 import type { Visibility, WorldAsset, WorldEvent } from "../model/types";
 import { AgentSystem, getCircadianPhase, type CircadianPhase, type SiteSpot } from "./agents";
-import { NOMINAL, accentFor, createSite, disposeSite, specFor, type Site } from "./buildingFactory";
+import { NOMINAL, accentFor, createRuins, createSite, disposeSite, specFor, type Site } from "./buildingFactory";
 import { CameraController } from "./cameraController";
 import { buildInfra, type InfraSystem } from "./infra";
 import { VehicleSystem } from "./vehicles";
 import { Choreographer } from "./choreography";
+import type { DayMood } from "../model/eventTiming";
 import { QUALITY, type Quality } from "./quality";
 import { createLighting } from "./lighting";
 import { createPost } from "./post";
@@ -100,6 +101,8 @@ export interface WorldHandle {
   setPaused(paused: boolean): void;
   setQuality(q: Quality): void;
   setReducedMotion(v: boolean): void;
+  /** Buildings living through an all-day event today, and how (see `Choreographer.setAllDay`). */
+  setDayMoods(moods: ReadonlyMap<string, DayMood>): void;
   /** Jump the city clock (dev tools and screenshots). */
   setHour(h: number): void;
   /** Fly the camera to a ground point (dev tools and screenshots). */
@@ -230,10 +233,15 @@ export function createWorld(
     bank: { x: 0, z: 0 } as Point,
     site(id: string) {
       const e = sites.get(id);
-      return e ? { x: e.lot.x, z: e.lot.z, groundY: e.groundY, markerY: e.groundY + e.site.top * e.scale + 1.6, route: e.route } : null;
+      return e
+        ? { x: e.lot.x, z: e.lot.z, groundY: e.groundY, markerY: e.groundY + e.site.signTop * e.scale + 1.1, route: e.route, radius: e.footprint * 0.5 }
+        : null;
     },
   };
   let choreo = new Choreographer(stage);
+  choreo.setReducedMotion(reduced);
+  // Kept so a rebuilt stage (new choreographer, new sites) picks the day's festivities up again.
+  let dayMoods: ReadonlyMap<string, DayMood> = new Map();
   const sound = createSoundEngine();
 
   const ctrl = new CameraController(camera, canvas, {
@@ -317,7 +325,8 @@ export function createWorld(
     stage.agents = agents;
     choreo.dispose();
     choreo = new Choreographer(stage);
-    const spots: SiteSpot[] = [...sites.values()].map((e) => ({
+    choreo.setReducedMotion(reduced);
+    const spots: SiteSpot[] = [...sites.values()].filter((e) => !e.asset.closed).map((e) => ({
       assetId: e.asset.id,
       archetype: e.asset.archetype,
       x: e.lot.x,
@@ -334,6 +343,7 @@ export function createWorld(
     agents.populate(spots, [...perDistrict.values()]);
     // Scenes still running in the director would otherwise vanish with the old stage.
     for (const p of director.active) choreo.start(p);
+    choreo.setAllDay(dayMoods);
   };
 
   const setAssets = (assets: readonly WorldAsset[]) => {
@@ -363,7 +373,8 @@ export function createWorld(
       const lot = layout.lots.get(asset.id)!;
       const d = layout.districts.find((x) => x.id === lot.district)!;
       const tier = tierFor(asset.weightPct);
-      const site = createSite(asset, tier, asset.marketValueEur === null);
+      // A position sold out of stands in ruins: same lot, same data, nobody inside.
+      const site = asset.closed ? createRuins(asset, tier) : createSite(asset, tier, asset.marketValueEur === null);
       const footprint = footprintFor(asset.weightPct);
       // Portfolio holdings are the landmarks; give them extra visual mass and vertical presence.
       const targetScale = (footprint / NOMINAL[tier]) * 1.28;
@@ -380,7 +391,7 @@ export function createWorld(
       siteMeshes.push(site.mesh, site.brandPlate);
 
       const label = makeBrandLabel(asset);
-      label.position.set(lot.x, groundY + site.top * startScale + 0.72, lot.z);
+      label.position.set(lot.x, groundY + site.signTop * startScale + 0.72, lot.z);
       scene.add(label);
       sites.set(asset.id, {
         asset,
@@ -442,13 +453,15 @@ export function createWorld(
     for (const s of sites.values()) {
       const active = s.asset.id === selected;
       const over = s.asset.id === hovered;
-      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x102b36 : 0x000000);
+      s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x1d5f7a : 0x000000);
+      if (!over) s.site.material.emissiveIntensity = 1;
       s.label.visible = labelShouldShow(s, dist);
     }
     const e = hovered && hovered !== selected ? sites.get(hovered) : null;
     hoverRing.visible = !!e;
     if (e) {
       hoverRing.position.set(e.lot.x, e.groundY + 0.34, e.lot.z);
+      hoverRing.userData.base = e.footprint * 0.86;
       hoverRing.scale.setScalar(e.footprint * 0.86);
     }
   };
@@ -634,6 +647,17 @@ export function createWorld(
       choreo.update(simDt);
     }
 
+    // Hover: the building under the pointer breathes (glow and ring), so it reads as clickable
+    // at any distance and at night. Runs while paused too: the pointer still moves.
+    if (hovered && hovered !== selected) {
+      const e = sites.get(hovered);
+      const beat = reduced ? 0 : Math.sin(performance.now() / 160);
+      if (e) e.site.material.emissiveIntensity = 1.6 + 0.6 * beat;
+      const base = (hoverRing.userData.base as number | undefined) ?? 1;
+      hoverRing.scale.setScalar(base * (1 + 0.05 * beat));
+      (hoverRing.material as THREE.MeshBasicMaterial).opacity = 0.7 + 0.25 * beat;
+    }
+
     // Circadian lighting & atmosphere based on the city's 24-hour clock
     const hour = agents.hour;
     const currentHourInt = Math.floor(hour);
@@ -661,7 +685,7 @@ export function createWorld(
           const eased = 1 - Math.pow(1 - t, 3);
           e.scale = e.scaleFrom + (e.scaleTarget - e.scaleFrom) * eased;
           e.site.group.scale.setScalar(e.scale);
-          e.label.position.y = e.groundY + e.site.top * e.scale + 0.72;
+          e.label.position.y = e.groundY + e.site.signTop * e.scale + 0.72;
         }
       }
     }
@@ -840,9 +864,14 @@ export function createWorld(
     sites() {
       return [...sites.values()].map((e) => ({ id: e.asset.id, name: e.asset.name, archetype: e.asset.archetype, tier: tierFor(e.asset.weightPct), family: specFor(e.asset, tierFor(e.asset.weightPct)).main.family, x: e.lot.x, z: e.lot.z, asset: e.asset }));
     },
+    setDayMoods(moods) {
+      dayMoods = moods;
+      choreo.setAllDay(moods);
+    },
     setReducedMotion(v) {
       if (v === reduced) return;
       reduced = v;
+      choreo.setReducedMotion(v);
       agents.setReducedMotion(v);
       infra?.setReducedMotion(v);
       vehicles?.setReducedMotion(v);
@@ -852,7 +881,7 @@ export function createWorld(
           e.scaleElapsedMs = e.scaleDurationMs;
           e.scaleDelayMs = 0;
           e.site.group.scale.setScalar(e.scaleTarget);
-          e.label.position.y = e.groundY + e.site.top * e.scaleTarget + 0.72;
+          e.label.position.y = e.groundY + e.site.signTop * e.scaleTarget + 0.72;
         }
       }
     },

@@ -126,6 +126,7 @@ export function demoAssets(seed = 7): WorldAsset[] {
       totalCostEur: costKnown ? marketValueEur! / (1 + plRatio) : null,
       unrealizedPlEur: costKnown ? marketValueEur! - marketValueEur! / (1 + plRatio) : null,
       favourite: rng() < 0.08,
+      closed: null,
     };
     asset.archetype = classifyArchetype(asset);
     return asset;

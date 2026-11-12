@@ -368,14 +368,14 @@ def test_a_falling_day_is_negative_and_a_zero_previous_close_is_unknown():
 TODAY = date(2026, 11, 12)
 
 
-def _tx(db, account, isin, kind, day, qty="1", net="100", currency="EUR"):
+def _tx(db, account, isin, kind, day, qty="1", net="100", currency="EUR", ticker="TST"):
     db.add(
         Transaction(
             account_id=account.id,
             type=kind.value,
             trade_date=day,
             isin=isin,
-            ticker="TST",
+            ticker=ticker,
             name=f"Asset {isin}",
             country="España",
             quantity=Decimal(qty),
@@ -456,3 +456,64 @@ def test_events_are_the_users_own(db, client, prices):
 
     assert _world(client, ana)["events"] == []
     assert [e["event_type"] for e in _world(client, bea)["events"]] == ["position_added"]
+
+
+# ── closed positions: kept as ruins, with the ledger's facts ────────────────────
+
+
+def test_a_sold_out_position_comes_back_closed_with_its_ledger_figures(db, client, prices):
+    user = _user(db)
+    acct = _account(db, user, broker=Broker.IBKR)
+    _tx(db, acct, A, TransactionType.BUY, date(2025, 1, 10), qty="10", net="-1000", ticker="AAA")
+    _tx(db, acct, A, TransactionType.DIVIDEND, date(2025, 6, 1), qty="0", net="25.50", ticker="AAA")
+    _tx(db, acct, A, TransactionType.SELL, date(2025, 9, 3), qty="10", net="1200", ticker="AAA")
+    _buy(db, acct, B, "100")
+    db.commit()
+    prices.value = {B: Decimal("100")}
+
+    world = _world(client, user)
+    assets = _by_isin(world)
+
+    ruin = assets[A]
+    assert ruin["status"] == "closed"
+    assert ruin["closed_on"] == "2025-09-03"
+    assert (ruin["invested_eur"], ruin["sold_eur"], ruin["dividends_eur"]) == (1000.0, 1200.0, 25.5)
+    assert ruin["market_value_eur"] is None and ruin["weight_pct"] is None
+    assert ruin["brokers"] == ["IBKR"]
+    assert assets[B]["status"] == "open" and assets[B]["invested_eur"] is None
+    assert world["summary"]["positions"] == 1
+    assert world["summary"]["closed"] == 1
+
+
+def test_a_new_isin_of_a_held_company_is_not_a_ruin(db, client, prices):
+    """A split or an exchange gives the same ticker a new ISIN: the old one was not sold off."""
+    user = _user(db)
+    acct = _account(db, user)
+    _tx(db, acct, A, TransactionType.BUY, date(2024, 1, 1), qty="1", net="-100")
+    _tx(db, acct, A, TransactionType.SELL, date(2024, 6, 1), qty="1", net="110")
+    _buy(db, acct, B, "100")  # same "TST" ticker as A, still held
+    db.commit()
+    prices.value = {B: Decimal("100")}
+
+    assert set(_by_isin(_world(client, user))) == {B}
+
+
+def test_a_position_that_left_without_a_sale_is_not_drawn(db, client, prices):
+    user = _user(db)
+    acct = _account(db, user)
+    _tx(db, acct, A, TransactionType.BUY, date(2024, 1, 1), qty="1", net="-100")
+    db.add(
+        Transaction(
+            account_id=acct.id, type=TransactionType.CORPORATE_ACTION.value,
+            trade_date=date(2024, 3, 1), isin=A, ticker="OLD", name="Asset A", country="España",
+            quantity=Decimal("-1"), price=Decimal("0"), currency="EUR", exchange_rate=Decimal("1"),
+            gross_amount=Decimal("0"), fees=Decimal("0"), withholding_tax=Decimal("0"),
+            net_amount_eur=Decimal("0"),
+        )
+    )
+    db.commit()
+
+    world = lw.build_world(db, user.id, today=TODAY)
+    # No SELL: FinView cannot say when or how it closed, so it is not drawn as sold.
+    assert all(a["isin"] != A or a["status"] == "open" for a in world["assets"])
+    assert world["summary"]["closed"] == 0

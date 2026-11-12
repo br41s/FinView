@@ -61,6 +61,17 @@ export interface WorldAsset {
   totalCostEur: number | null;
   unrealizedPlEur: number | null;
   favourite: boolean;
+  /** Sold out of: the building stands in ruins and keeps what the ledger says. Null while held. */
+  closed: ClosedHolding | null;
+}
+
+/** What a closed position leaves behind, from the ledger, in euros as booked. */
+export interface ClosedHolding {
+  /** ISO date of the last sale. */
+  on: string;
+  investedEur: number | null;
+  soldEur: number | null;
+  dividendsEur: number | null;
 }
 
 export type EventCategory = "market" | "corporate" | "portfolio" | "technical" | "options";

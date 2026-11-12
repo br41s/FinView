@@ -36,6 +36,8 @@ export interface Site {
   top: number;
   /** Where the company sign stands (local, nominal scale). */
   sign: THREE.Vector3;
+  /** Top of the roof lantern (local, nominal scale): labels and markers float above it. */
+  signTop: number;
 }
 
 /** Window colours of the landmark recipes: parts painted with these get the glass treatment. */
@@ -252,6 +254,108 @@ export function composeSite(spec: TowerSpec, n: number, unknown: boolean): { geo
   return { geometry: b.build(), top, triangles };
 }
 
+const SIGN_W = 512;
+const SIGN_H = 164;
+
+/** Initials for the emblem: «Iberdrola» → «IB», «Banco Santander» → «BS». */
+function initials(name: string): string {
+  const words = name.split(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return (words[0] ?? "•").slice(0, 2).toUpperCase();
+}
+
+/**
+ * The company's sign: a generated emblem (its colour, its initials, one of four shapes picked
+ * from its ISIN) and its ticker and name. An emblem, not the real logo: FinView has no
+ * licensed source of logos, and a guessed one would be someone else's mark.
+ */
+function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = SIGN_W;
+  canvas.height = SIGN_H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.roundRect(4, 4, SIGN_W - 8, SIGN_H - 8, 22);
+  ctx.fill();
+  ctx.fillStyle = "#101b29";
+  ctx.beginPath();
+  ctx.roundRect(12, 12, SIGN_W - 24, SIGN_H - 24, 17);
+  ctx.fill();
+
+  // Emblem.
+  const cx = 86;
+  const cy = SIGN_H / 2;
+  const r = 56;
+  const shape = hashString(asset.id) % 4;
+  ctx.fillStyle = accent;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  if (shape === 0) ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  else if (shape === 1) ctx.roundRect(cx - r, cy - r, r * 2, r * 2, 18);
+  else {
+    const sides = shape === 2 ? 6 : 4;
+    const turn = shape === 2 ? Math.PI / 6 : 0;
+    for (let i = 0; i < sides; i++) {
+      const a = turn + (i / sides) * Math.PI * 2;
+      const x = cx + Math.cos(a) * r * 1.08;
+      const y = cy + Math.sin(a) * r * 1.08;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "900 46px system-ui, sans-serif";
+  ctx.fillText(initials(asset.name), cx, cy + 2, r * 1.6);
+
+  // Ticker and name.
+  ctx.textAlign = "left";
+  const ticker = (asset.ticker?.trim() || initials(asset.name)).toUpperCase().slice(0, 12);
+  let size = 58;
+  ctx.font = `800 ${size}px system-ui, sans-serif`;
+  while (size > 26 && ctx.measureText(ticker).width > 330) {
+    size -= 2;
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+  }
+  ctx.fillText(ticker, 166, 64, 330);
+  ctx.fillStyle = "#dbe7f3";
+  ctx.font = "600 24px system-ui, sans-serif";
+  ctx.fillText(asset.name, 166, 120, 330);
+  return canvas;
+}
+
+/**
+ * Where the sign is shown, as one geometry (one draw call per building): a plate over the
+ * entrance and a four-sided lantern on the roof, readable from any side of the town.
+ */
+const lanternWidth = (nominal: number) => Math.min(2.6, Math.max(1.4, nominal * 0.32));
+const lanternTop = (nominal: number, top: number) => top + 0.08 + lanternWidth(nominal) * (SIGN_H / SIGN_W);
+
+function signGeometry(nominal: number, top: number): THREE.BufferGeometry {
+  const ratio = SIGN_H / SIGN_W;
+  const plate = new THREE.PlaneGeometry(1.76, 1.76 * ratio);
+  plate.translate(0, DECK_TOP + 0.4, nominal * 0.5 + 0.075);
+  const w = lanternWidth(nominal);
+  const h = w * ratio;
+  const faces: THREE.BufferGeometry[] = [plate];
+  for (let k = 0; k < 4; k++) {
+    const face = new THREE.PlaneGeometry(w, h);
+    face.translate(0, 0, w / 2);
+    face.rotateY((k * Math.PI) / 2);
+    face.translate(0, top + 0.08 + h / 2, 0);
+    faces.push(face);
+  }
+  const merged = mergeGeometries(faces, false)!;
+  for (const f of faces) f.dispose();
+  return merged;
+}
+
 export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Site {
   const nominal = NOMINAL[tier];
   const spec = specFor(asset, tier);
@@ -269,47 +373,18 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 164;
-  const canvasCtx = canvas.getContext("2d")!;
-  const accentHex = "#" + new THREE.Color(accent).getHexString();
-  canvasCtx.fillStyle = accentHex;
-  canvasCtx.beginPath();
-  canvasCtx.roundRect(4, 4, 504, 156, 22);
-  canvasCtx.fill();
-  canvasCtx.fillStyle = "#101b29";
-  canvasCtx.beginPath();
-  canvasCtx.roundRect(12, 12, 488, 140, 17);
-  canvasCtx.fill();
-  canvasCtx.fillStyle = accentHex;
-  canvasCtx.beginPath();
-  canvasCtx.roundRect(12, 12, 14, 140, 8);
-  canvasCtx.fill();
-  const ticker = (asset.ticker?.trim() || asset.name.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("") || "•").toUpperCase().slice(0, 12);
-  canvasCtx.fillStyle = "#ffffff";
-  canvasCtx.textBaseline = "middle";
-  let signFontSize = 62;
-  canvasCtx.font = "800 " + signFontSize + "px system-ui, sans-serif";
-  while (signFontSize > 28 && canvasCtx.measureText(ticker).width > 430) {
-    signFontSize -= 2;
-    canvasCtx.font = "800 " + signFontSize + "px system-ui, sans-serif";
-  }
-  canvasCtx.fillText(ticker, 36, 66, 430);
-  canvasCtx.fillStyle = "#dbe7f3";
-  canvasCtx.font = "600 23px system-ui, sans-serif";
-  canvasCtx.fillText(asset.name, 36, 124, 430);
-  const texture = new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(drawSign(asset, "#" + new THREE.Color(accent).getHexString()));
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
+  // Unlit (no shading, no tone mapping): the sign reads the same at noon and, with the bloom,
+  // glows at night. The plate on the facade and the lantern on the roof share it.
   const brandMaterial = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
-  const brandPlate = new THREE.Mesh(new THREE.PlaneGeometry(1.76, 0.56), brandMaterial);
-  brandPlate.position.set(0, DECK_TOP + 0.4, nominal * 0.5 + 0.075);
+  const brandPlate = new THREE.Mesh(signGeometry(nominal, top), brandMaterial);
   brandPlate.renderOrder = 3;
 
   const group = new THREE.Group();
   group.add(mesh, brandPlate);
-  return { group, mesh, material, brandPlate, brandMaterial, nominal, top, sign: new THREE.Vector3(nominal * 0.5, 0.9, nominal * 0.5) };
+  return { group, mesh, material, brandPlate, brandMaterial, nominal, top, sign: new THREE.Vector3(nominal * 0.5, 0.9, nominal * 0.5), signTop: lanternTop(nominal, top) };
 }
 
 export function disposeSite(s: Site) {
@@ -318,4 +393,93 @@ export function disposeSite(s: Site) {
   s.brandPlate.geometry.dispose();
   s.brandMaterial.map?.dispose();
   s.brandMaterial.dispose();
+}
+
+const RUIN = { stone: 0x9c9184, dark: 0x6f665c, soot: 0x4f4a44, dust: 0x8a8076, rust: 0x8b5a3c, weed: 0x6f8f4e };
+
+/**
+ * A closed position: the building in ruins. It keeps its lot, its sign and its data (the
+ * inspector still opens it), but nobody works there and nothing lights up: a holding the
+ * user no longer has reads as such from anywhere in the town. Deterministic per ISIN.
+ */
+export function createRuins(asset: WorldAsset, tier: Tier): Site {
+  const n = NOMINAL[tier];
+  const h = n * 0.42;
+  let seed = hashString(asset.id);
+  const rnd = () => {
+    seed = (Math.imul(seed ^ (seed >>> 15), 2246822507) + 0x6d2b79f5) >>> 0;
+    return seed / 0xffffffff;
+  };
+  const b = new Builder();
+  // Cracked foundation slab.
+  b.box(n * 0.92, 0.22, n * 0.92, 0, 0, 0, RUIN.soot);
+  b.box(n * 0.5, 0.06, n * 0.08, -n * 0.1, 0.22, n * 0.12, RUIN.dark, 0.4);
+  // Two walls still standing, broken off at uneven heights (a jagged top).
+  const wall = (x: number, z: number, len: number, alongX: boolean) => {
+    const steps = 5;
+    for (let i = 0; i < steps; i++) {
+      const t = (i + 0.5) / steps - 0.5;
+      const top = h * (0.35 + rnd() * 0.65) * (1 - Math.abs(t) * 0.6);
+      const seg = len / steps - 0.04;
+      const sx = alongX ? x + t * len : x;
+      const sz = alongX ? z : z + t * len;
+      b.box(alongX ? seg : 0.22, top, alongX ? 0.22 : seg, sx, 0.22, sz, i % 2 ? RUIN.stone : RUIN.dust);
+      // Empty window holes: dark recesses in what is left.
+      if (top > h * 0.5) b.box(alongX ? seg * 0.5 : 0.24, h * 0.14, alongX ? 0.24 : seg * 0.5, sx, 0.22 + top * 0.55, sz, RUIN.soot);
+    }
+  };
+  wall(0, -n * 0.4, n * 0.8, true);
+  wall(-n * 0.4, 0, n * 0.8, false);
+  // A corner pillar and the stump of a third wall.
+  b.box(0.36, h * 0.9, 0.36, n * 0.38, 0.22, -n * 0.38, RUIN.stone);
+  b.box(n * 0.3, h * 0.2, 0.22, n * 0.2, 0.22, n * 0.4, RUIN.dust);
+  // A fallen beam and rusted rebar.
+  b.tilted(n * 0.55, 0.16, 0.16, n * 0.05, 0.45, n * 0.05, RUIN.rust, 0.35, 0.7);
+  b.tilted(n * 0.4, 0.06, 0.06, -n * 0.15, 0.5, -n * 0.2, RUIN.rust, -0.6, 1.9);
+  // Rubble heaps and a few weeds.
+  for (let i = 0; i < 9; i++) {
+    const x = (rnd() - 0.4) * n * 0.75;
+    const z = (rnd() - 0.4) * n * 0.75;
+    b.ico(0.18 + rnd() * 0.28, x, 0.3, z, rnd() < 0.5 ? RUIN.stone : RUIN.dust, 0);
+  }
+  for (let i = 0; i < 6; i++) b.cone(0.1, 0.35, (rnd() - 0.5) * n * 0.8, 0.22, (rnd() - 0.5) * n * 0.8, RUIN.weed, 4);
+  const geometry = b.build();
+  const top = b.top;
+
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  // The old sign, faded and stamped, leaning against the front.
+  const canvas = drawSign(asset, "#7d8590");
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "rgba(60, 56, 52, 0.55)";
+  ctx.fillRect(0, 0, SIGN_W, SIGN_H);
+  ctx.save();
+  ctx.translate(SIGN_W / 2, SIGN_H / 2);
+  ctx.rotate(-0.12);
+  ctx.strokeStyle = "#c0392b";
+  ctx.lineWidth = 7;
+  ctx.strokeRect(-150, -40, 300, 80);
+  ctx.fillStyle = "#e74c3c";
+  ctx.font = "900 52px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("CERRADA", 0, 4);
+  ctx.restore();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  // Lit like the stone (no glow): a closed company does not shine at night.
+  const brandMaterial = new THREE.MeshBasicMaterial({ map: texture, color: 0xb8b2aa, side: THREE.DoubleSide });
+  const plate = new THREE.PlaneGeometry(1.76, 1.76 * (SIGN_H / SIGN_W));
+  plate.rotateX(-0.35);
+  plate.rotateZ(0.08);
+  plate.translate(0, 0.62, n * 0.47);
+  const brandPlate = new THREE.Mesh(plate, brandMaterial);
+  brandPlate.renderOrder = 3;
+
+  const group = new THREE.Group();
+  group.add(mesh, brandPlate);
+  return { group, mesh, material, brandPlate, brandMaterial, nominal: n, top, sign: new THREE.Vector3(n * 0.5, 0.9, n * 0.5), signTop: top };
 }

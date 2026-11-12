@@ -17,6 +17,11 @@ const row = (over: Partial<LivingWorldAsset> = {}): LivingWorldAsset => ({
   total_cost_eur: 1000,
   unrealized_pl_eur: 200,
   day_change_pct: null,
+  status: "open",
+  closed_on: null,
+  invested_eur: null,
+  sold_eur: null,
+  dividends_eur: null,
   ...over,
 });
 
@@ -50,6 +55,15 @@ describe("toWorldAsset", () => {
     expect(toWorldAsset(row({ archetype_override: "spaceport" })).archetype).toBe("tech");
   });
 
+  it("keeps a closed position's ledger figures, and trusts no closure without a date", () => {
+    const ruin = toWorldAsset(
+      row({ status: "closed", closed_on: "2025-09-03", invested_eur: 1000, sold_eur: 1200, dividends_eur: 25.5, market_value_eur: null, weight_pct: null }),
+    );
+    expect(ruin.closed).toEqual({ on: "2025-09-03", investedEur: 1000, soldEur: 1200, dividendsEur: 25.5 });
+    expect(toWorldAsset(row({ status: "closed", closed_on: null })).closed).toBeNull();
+    expect(toWorldAsset(row()).closed).toBeNull();
+  });
+
   it("falls back to a company for an asset type it does not know", () => {
     expect(toWorldAsset(row({ asset_type: "warrant" })).assetType).toBe("equity");
   });
@@ -58,7 +72,7 @@ describe("toWorldAsset", () => {
     const res: LivingWorldResponse = {
       summary: {
         positions: 2, valued: 2, cost_known: 2, valuation_complete: true,
-        total_market_value: 2400, classified: 2, prices_as_of: "2026-11-07",
+        total_market_value: 2400, classified: 2, closed: 0, prices_as_of: "2026-11-07",
       },
       assets: [row(), row({ isin: "ES0000000002" })],
       events: [],
@@ -69,6 +83,11 @@ describe("toWorldAsset", () => {
 
 describe("sceneSignature", () => {
   const base = [toWorldAsset(row()), toWorldAsset(row({ isin: "ES0000000002", name: "Other" }))];
+
+  it("changes when a holding is sold out of, so the building is rebuilt as ruins", () => {
+    const sold = [toWorldAsset(row({ status: "closed", closed_on: "2025-09-03" })), base[1]];
+    expect(sceneSignature(sold)).not.toBe(sceneSignature(base));
+  });
 
   it("ignores order, prices and sub-0.1 weight drift", () => {
     const drift = [
