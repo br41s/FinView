@@ -89,6 +89,7 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("segment_reports", "measure", "VARCHAR(30)"),
     ("segment_checks", "reader", "VARCHAR(20)"),
     ("ai_mention_checks", "reader", "VARCHAR(20)"),
+    ("price_cache", "previous_close", "NUMERIC(18, 6)"),
 ]
 
 # Foreign-key columns need explicit indexes: PostgreSQL indexes the *referenced*

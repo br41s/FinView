@@ -177,7 +177,7 @@ Spec: `FinView_Living_World_Technical_Spec.md` (Brais's Downloads). A standalone
 portfolio, built in phases. **Phase 1 (current): the buildings are the user's real portfolio; every
 event is still simulated.** `/living-world?demo=1` keeps the Phase 0 fictional town (`model/fixtures.ts`,
 ISINs start `ZZ`, nothing fetched) and says "Datos ficticios"; the real town says "Tu cartera · precios
-del …". Phase 2 (real event history, previous close for price moves) is not built.
+del …". Phase 2 has begun: the daily move is real (below); real event history is not built.
 
 - **Real data = one read-only endpoint.** `GET /api/living-world/world` (`backend/services/living_world.py`)
   is `get_open_positions` plus classification; it values, converts and reconciles nothing. Unknown cost,
@@ -187,8 +187,12 @@ del …". Phase 2 (real event history, previous close for price moves) is not bu
   else the dominant sector of the latest `segment_reports`); what is not there yet is `classified: false`
   ("Sin clasificar", default building) and fills in once Cartera has run its refresh. `ARCHETYPE_OVERRIDES`
   (curated ISIN → archetype) is **empty on purpose**: this repo is public and the list would be someone's
-  holdings. `day_change_pct` is always `null`: two `price_cache` snapshots (taken whenever the portfolio
-  was first opened that day) are not a daily move; Phase 2 stores the previous close.
+  holdings. `day_change_pct` is the last session's move from `price_cache.previous_close` (the bar
+  before the last in the same 5-day Yahoo download, no extra request, listing currency, pence
+  divided) against `original_price`, never from two `price_cache` snapshots (those are whenever
+  the portfolio was first opened, not sessions). Fail-closed in `living_world._day_change_pct`:
+  `null` without a previous close (rows older than the column), for a row older than the
+  portfolio's `prices_as_of`, and beyond ±`MAX_DAY_CHANGE_PCT` (50, a Yahoo slip is likelier).
 - **Frontend load is `hooks/useWorldData.ts`** through `api.livingWorld.world()` (`request()`, never
   `fetch`): loading / error (Spanish, retry, link to demo) / empty (link to import) / ready. A refresh
   keeps the town on screen and, if it fails, says so in the footer and keeps the old data.

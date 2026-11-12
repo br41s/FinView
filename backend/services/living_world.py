@@ -91,9 +91,54 @@ def _classify(
     return "equity", sector, classified
 
 
+MAX_DAY_CHANGE_PCT = 50.0
+
+
+def _latest_price_rows(db: Session, isins: list[str]) -> dict[str, PriceCache]:
+    """Each ISIN's most recent `price_cache` row (the one the valuation used)."""
+    latest = (
+        db.query(PriceCache.isin, func.max(PriceCache.fetched_date).label("d"))
+        .filter(PriceCache.isin.in_(isins))
+        .group_by(PriceCache.isin)
+        .subquery()
+    )
+    rows = db.query(PriceCache).join(
+        latest, (PriceCache.isin == latest.c.isin) & (PriceCache.fetched_date == latest.c.d)
+    )
+    return {r.isin: r for r in rows}
+
+
+def _day_change_pct(row: PriceCache | None, prices_as_of) -> float | None:
+    """Last session's move, in percent, from one `price_cache` row; None if unknown.
+
+    `row.original_price` is the latest close (or the live price if the market was open
+    when the day's first valuation ran) and `row.previous_close` the session before,
+    both in the listing's own currency, so the euro exchange rate does not leak into
+    the move. `prices_as_of` is the newest `fetched_date` across the portfolio.
+
+    Fail-closed, like the totals:
+    * no row, no price or no previous close (rows written before the column existed) →
+      unknown;
+    * a row older than the rest of the portfolio is a price that could not be refreshed;
+      its move belongs to another day and would read as today's;
+    * a move beyond ±MAX_DAY_CHANGE_PCT is far likelier a Yahoo slip (an unadjusted
+      split, pence read as pounds) than a session, and a wrong number in the town is
+      worse than a dash.
+    """
+    if row is None or row.original_price is None or row.previous_close is None:
+        return None
+    if row.previous_close <= 0 or row.fetched_date != prices_as_of:
+        return None
+    pct = float((row.original_price / row.previous_close - 1) * 100)
+    if abs(pct) > MAX_DAY_CHANGE_PCT:
+        return None
+    return round(pct, 4)
+
+
 def build_world(db: Session, user_id: int) -> dict:
     positions = get_open_positions(db, user_id)
     isins = [p.isin for p in positions]
+    price_rows = _latest_price_rows(db, isins) if isins else {}
 
     profiles = (
         {p.isin: p for p in db.query(ListingProfile).filter(ListingProfile.isin.in_(isins))}
@@ -101,6 +146,11 @@ def build_world(db: Session, user_id: int) -> dict:
         else {}
     )
     report_sectors = _report_sector(db, isins) if isins else {}
+
+    valued = [p for p in positions if p.market_value_eur is not None]
+    prices_as_of = (
+        max((r.fetched_date for r in price_rows.values()), default=None) if valued else None
+    )
 
     assets = []
     for p in positions:
@@ -122,19 +172,13 @@ def build_world(db: Session, user_id: int) -> dict:
                 "weight_pct": float(round(p.weight_pct, 4)) if p.weight_pct is not None else None,
                 "total_cost_eur": _money(p.total_cost_eur),
                 "unrealized_pl_eur": _money(p.unrealized_pl_eur),
-                # Phase 2 stores the previous close; two price_cache snapshots are not a
-                # daily move, so the town shows "unknown" rather than a mislabelled number.
-                "day_change_pct": None,
+                # From the stored previous close, never from two price_cache snapshots:
+                # those are whenever the portfolio happened to be opened, not sessions.
+                "day_change_pct": _day_change_pct(price_rows.get(p.isin), prices_as_of),
             }
         )
 
-    valued = [p for p in positions if p.market_value_eur is not None]
     valuation_complete = len(valued) == len(positions)
-    prices_as_of = (
-        db.query(func.max(PriceCache.fetched_date)).filter(PriceCache.isin.in_(isins)).scalar()
-        if valued
-        else None
-    )
     return {
         "summary": {
             "positions": len(positions),

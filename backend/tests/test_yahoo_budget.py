@@ -258,7 +258,7 @@ def yahoo(monkeypatch):
     import yfinance
 
     monkeypatch.setattr(yfinance, "download", _download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, group: dict.fromkeys(group, 1.0))
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, group, *_: dict.fromkeys(group, 1.0))
     return calls
 
 
@@ -295,7 +295,7 @@ def test_chunks_stop_once_the_budget_is_spent(clock, monkeypatch):
         return object()
 
     monkeypatch.setattr(yfinance, "download", _stalled_download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g, *_: dict.fromkeys(g, 1.0))
 
     out = prices._fetch_yahoo_prices(
         [f"S{i}" for i in range(21)], budget=Budget(GEO_CYCLE_SECONDS, "test")
@@ -316,7 +316,7 @@ def test_a_failing_chunk_does_not_drop_the_others(clock, monkeypatch):
         return object()
 
     monkeypatch.setattr(yfinance, "download", _download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g, *_: dict.fromkeys(g, 1.0))
 
     out = prices._fetch_yahoo_prices(
         [f"S{i}" for i in range(6)], budget=Budget(GEO_CYCLE_SECONDS, "test")
@@ -350,7 +350,7 @@ def test_the_portfolio_fetch_is_bounded_and_chunked(clock, monkeypatch):
         return object()
 
     monkeypatch.setattr(yfinance, "download", _stalled_download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g, *_: dict.fromkeys(g, 1.0))
     monkeypatch.setattr(prices, "_resolve_ticker", lambda isin, _db: isin)
     monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("1"))
 
@@ -391,7 +391,7 @@ def test_valuation_lookups_stop_once_their_budget_is_spent(clock, monkeypatch):
 
     monkeypatch.setattr(ticker_map, "lookup", _stalled_lookup)
     monkeypatch.setattr(yahoo_budget, "download", _download)
-    monkeypatch.setattr(prices, "_last_closes", lambda _d, g: dict.fromkeys(g, 1.0))
+    monkeypatch.setattr(prices, "_last_closes", lambda _d, g, *_: dict.fromkeys(g, 1.0))
     monkeypatch.setattr(prices.exchange_rates, "get_rate", lambda _c, _d: Decimal("1"))
 
     known = "ES0113900J37"   # Santander, curated: the day's fetch has work to do

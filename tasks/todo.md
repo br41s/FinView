@@ -66,8 +66,9 @@ variación diaria en «—» hasta guardar el cierre previo (Fase 2); sector sol
 - [x] La escena solo se reconstruye si cambia `sceneSignature`; al reconstruir se conservan calidad, pausa, modo y selección.
 - [x] Verificado en navegador con una copia de la BD local (71 posiciones, 43 valoradas): real, vacía, error, demo,
       eventos simulados y refresco con cambio de sector.
-- [ ] Seguimiento (Fase 2): eventos reales (libro de operaciones + movimientos de precio), `previous_close` en
-      `price_cache`, favoritos y overrides manuales por usuario, efectivo y alternativas en la meseta,
+- [x] Fase 2a: `price_cache.previous_close` (misma descarga de 5 días, sin petición extra) → `day_change_pct`
+      real en el pueblo, fail-closed (sin cierre previo, fila atrasada o > ±50 % → «—»).
+- [ ] Seguimiento (Fase 2): eventos reales (libro de operaciones + movimientos de precio), favoritos y overrides manuales por usuario, efectivo y alternativas en la meseta,
       bonos/ISIN sin ticker (hoy «sin clasificar»), `industry` por ISIN (coches caen en «Comercio y moda»).
 
 

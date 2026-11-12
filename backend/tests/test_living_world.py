@@ -317,3 +317,47 @@ def test_no_yahoo_call_is_made_by_the_read_model(db, client, prices, monkeypatch
     monkeypatch.setattr(lw.listing, "refresh", boom)
 
     assert len(_world(client, user)["assets"]) == 1
+
+
+D = "US0000000004"
+
+
+def _row(isin, day, price, previous):
+    return PriceCache(
+        isin=isin,
+        price=Decimal(price),
+        original_price=Decimal(price),
+        previous_close=Decimal(previous) if previous is not None else None,
+        fetched_date=day,
+    )
+
+
+def test_day_change_comes_from_the_stored_previous_close(db, client, prices):
+    user = _user(db)
+    acct = _account(db, user)
+    for isin in (A, B, C, D):
+        _buy(db, acct, isin, "100")
+    today, earlier = date(2026, 11, 12), date(2026, 11, 10)
+    db.add_all([
+        _row(A, earlier, "90", "99"),  # superseded by today's row below
+        _row(A, today, "102", "100"),
+        _row(B, earlier, "50", "40"),  # could not be refreshed today: another day's move
+        _row(C, today, "10", None),  # written before the column existed
+        _row(D, today, "200", "100"),  # +100 %: a Yahoo slip, not a session
+    ])
+    db.commit()
+    prices.value = {A: Decimal("102"), B: Decimal("50"), C: Decimal("10"), D: Decimal("200")}
+
+    assets = _by_isin(_world(client, user))
+
+    assert assets[A]["day_change_pct"] == 2.0
+    assert assets[B]["day_change_pct"] is None
+    assert assets[C]["day_change_pct"] is None
+    assert assets[D]["day_change_pct"] is None
+
+
+def test_a_falling_day_is_negative_and_a_zero_previous_close_is_unknown():
+    day = date(2026, 11, 12)
+    assert lw._day_change_pct(_row(A, day, "97.5", "100"), day) == -2.5
+    assert lw._day_change_pct(_row(A, day, "10", "0"), day) is None
+    assert lw._day_change_pct(None, day) is None

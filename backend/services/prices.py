@@ -78,7 +78,7 @@ def _learn_tickers(db: Session, isins: list[str]) -> dict[str, str]:
 
 
 _PRICE_UPDATE_COLUMNS = ("yahoo_ticker", "price", "currency", "original_currency",
-                         "original_price", "fx_rate")
+                         "original_price", "fx_rate", "previous_close")
 
 
 def _upsert_price(db: Session, row: dict) -> None:
@@ -148,9 +148,11 @@ def fetch_and_cache_prices(
     # superlinear in the number of symbols (see yahoo_budget). Whatever the budget
     # stops fetching stays absent, which portfolio totals already treat as "unknown
     # price" and fail closed on — never as a price of zero.
+    previous_closes: dict[str, float] = {}
     prices = _fetch_yahoo_prices(
         list(ticker_to_isins.keys()),
         budget=Budget(PORTFOLIO_SECONDS, "portfolio valuation"),
+        previous=previous_closes,
     )
 
     # Determine which currencies need conversion
@@ -178,13 +180,18 @@ def fetch_and_cache_prices(
         if not ticker_isins:
             continue
 
+        prev_val = previous_closes.get(ticker)
+
         # London Stock Exchange quotes in GBX (pence) — convert to GBP
         if ticker.endswith(".L"):
             price_val = price_val / 100.0
+            if prev_val is not None:
+                prev_val = prev_val / 100.0
 
         # Track original currency and price
         ccy = ticker_currencies.get(ticker, "EUR")
         orig_price = Decimal(str(round(price_val, 6)))
+        prev_close = Decimal(str(round(prev_val, 6))) if prev_val is not None else None
         rate = fx_rates.get(ccy)
 
         # Convert to EUR if needed
@@ -209,6 +216,7 @@ def fetch_and_cache_prices(
                 "original_currency": ccy,
                 "original_price": orig_price,
                 "fx_rate": rate,
+                "previous_close": prev_close,
                 "fetched_date": today,
             })
             cached[isin] = price_dec
@@ -225,16 +233,31 @@ _INTRADAY_PERIOD = "5d"
 _INTRADAY_INTERVAL = "5m"
 
 
-def _last_closes(data, tickers: list[str]) -> dict[str, float]:
+def _last_closes(
+    data, tickers: list[str], previous: dict[str, float] | None = None
+) -> dict[str, float]:
     """Last non-NaN close per ticker from a yfinance download frame.
 
     Shared by the daily and intraday fetches: the column shape is the fiddly part
     (a single ticker comes back as a Series, several as a MultiIndex DataFrame) and
     getting it wrong silently drops every price.
+
+    With *previous*, the bar before the last one is written there too, per ticker and
+    from that ticker's own series: exchanges close on different holidays, so a row of
+    the frame is not one session for every symbol. One bar only → no previous close.
     """
     import pandas as pd
 
     result: dict[str, float] = {}
+
+    def take(ticker: str, series) -> None:
+        vals = series.dropna()
+        if vals.empty:
+            return
+        result[ticker] = float(vals.iloc[-1])
+        if previous is not None and len(vals) > 1:
+            previous[ticker] = float(vals.iloc[-2])
+
     if data is None or getattr(data, "empty", True):
         return result
     try:
@@ -243,9 +266,8 @@ def _last_closes(data, tickers: list[str]) -> dict[str, float]:
         return result
 
     if isinstance(close_data, pd.Series):
-        vals = close_data.dropna()
-        if not vals.empty and tickers:
-            result[tickers[0]] = float(vals.iloc[-1])
+        if tickers:
+            take(tickers[0], close_data)
         return result
 
     if isinstance(close_data, pd.DataFrame):
@@ -253,13 +275,9 @@ def _last_closes(data, tickers: list[str]) -> dict[str, float]:
             close_data = close_data.droplevel(0, axis=1)
         for ticker in tickers:
             if ticker in close_data.columns:
-                series = close_data[ticker].dropna()
-                if not series.empty:
-                    result[ticker] = float(series.iloc[-1])
+                take(ticker, close_data[ticker])
             elif len(tickers) == 1 and len(close_data.columns) == 1:
-                series = close_data.iloc[:, 0].dropna()
-                if not series.empty:
-                    result[tickers[0]] = float(series.iloc[-1])
+                take(tickers[0], close_data.iloc[:, 0])
     return result
 
 
@@ -326,12 +344,17 @@ def _fetch_yahoo_prices(
     period: str = "5d",
     interval: str = "1d",
     budget: Budget | None = None,
+    previous: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Fetch latest prices from Yahoo Finance. Returns dict[ticker, price].
 
     Defaults to daily closes — that is what the portfolio cache stores, one row per
     ISIN per day, paired with an ECB rate for the same day. Do not switch that path
     to intraday.
+
+    *previous*, when given, receives each ticker's close of the session before (see
+    ``_last_closes``). It rides along in the same download, so it costs no request; a
+    caller that ignores it, or a fake in a test, simply leaves it empty.
 
     Without a *budget* this is one batched call, which is what the portfolio path
     wants: nobody can interrupt it, but a user is waiting and the happy path is a
@@ -365,7 +388,7 @@ def _fetch_yahoo_prices(
                 progress=False,
                 threads=True,
             )
-            out.update(_last_closes(data, group))
+            out.update(_last_closes(data, group, previous))
         except Exception:
             # One bad chunk must not drop the symbols that did resolve. Missing
             # symbols are already treated as unresolvable, never as zero.
