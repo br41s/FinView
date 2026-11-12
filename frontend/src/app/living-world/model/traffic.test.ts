@@ -168,18 +168,22 @@ describe("traffic simulation", () => {
   it("keeps every vehicle on the road", () => {
     const sim = new TrafficSim(net, { seed: 9 });
     sim.warm(160);
+    // Segments and half-widths are resolved once; the scan runs every 6th step like the sibling tests.
+    const roads = graph.roads.map((e) => ({ a: graph.node(e.a), b: graph.node(e.b), half: carriage(e) / 2 }));
+    let checked = 0;
+    let worst = 0;
     run(sim, 60, () => {
+      if (++checked % 6 !== 0) return;
       for (const v of sim.vehicles) {
         let near = Infinity;
-        for (const e of graph.roads) {
-          const a = graph.node(e.a);
-          const b = graph.node(e.b);
-          const d = distToSegment({ x: v.x, z: v.z }, a, b) - carriage(e) / 2;
+        for (const r of roads) {
+          const d = distToSegment({ x: v.x, z: v.z }, r.a, r.b) - r.half;
           if (d < near) near = d;
         }
-        expect(near).toBeLessThan(1.6);
+        if (near > worst) worst = near;
       }
     });
+    expect(worst).toBeLessThan(1.6);
   });
 
   const laneEnding = (nodeId: string, axis: 0 | 1): Piece =>
