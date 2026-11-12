@@ -26,6 +26,7 @@ from backend.models import (
     ZonasClaveWatchlistItem,
 )
 from backend.services.auth_service import create_user
+from backend.services.geo.owner import geo_owner_id
 from backend.services.living_world_market import market_events
 
 TODAY = date(2026, 11, 12)
@@ -216,9 +217,9 @@ def test_an_annual_report_stored_this_week(db, user):
     assert [(e["isin"], e["metrics"]["fiscal_year"]) for e in reports] == [(A, 2025)]
 
 
-def _geo(db, *, symbol, notified_at, headline="Huelga en el puerto"):
+def _geo(db, *, symbol, notified_at, headline="Huelga en el puerto", owner=None):
     signal = GeoSignal(
-        user_id=1, event_type="strike", display_category="conflict", source="gdelt",
+        user_id=owner if owner is not None else geo_owner_id(db), event_type="strike", display_category="conflict", source="gdelt",
         external_id=f"ev-{symbol}-{notified_at}", headline=headline, location="spain", country="spain",
         lat=40.0, lng=-3.0, importance=80, confidence=0.8, risk_score=7, direction="bearish",
         status=GeoSignalStatus.ACTIVE.value, created_at=datetime(2026, 11, 11, 8, 0),
@@ -233,6 +234,8 @@ def test_a_geo_alert_sent_about_a_holding_keeps_its_moment(db, user):
     _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 11, 8, 30))
     _geo(db, symbol="BET.MC", notified_at=None)  # never sent out
     _geo(db, symbol="ZZZ", notified_at=datetime(2026, 11, 11, 8, 30))  # not a holding
+    # Another account's own copy (pre-shared-owner history): /geo never reads it, nor does the town.
+    _geo(db, symbol="BET.MC", notified_at=datetime(2026, 11, 11, 9, 0), owner=user.id)
     db.commit()
 
     geo = [e for e in _events(db, user) if e["event_type"] == "geo_alert"]

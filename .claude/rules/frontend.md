@@ -209,6 +209,20 @@ del …". Phase 2 has begun: the daily move and the last week's events are real 
   copy and scores them with `priority.ts`, dropping any type or confidence it does not know. They go
   through the director once when they arrive (it dedupes by id, so a refresh does not replay them).
   Trades and dividends appear only once imported. Only a date is known, so they are stamped at 00:00 UTC.
+- **Events from other features' stored data** (`backend/services/living_world_market.py`): never a
+  Yahoo call, so each covers only what its source covers, and a gap is silence, not "nothing
+  happened". 52-week high/low and unusual volume (≥ 2.5× the 20-session mean) read Zonas Clave's
+  `price_history`, so only tickers on the user's Zonas Clave watchlist with a full year of closes
+  get them (`price_cache` has holes). Splits read `split_history_cache` through the stored ticker
+  map (`ticker_map.effective_map`, no lookup). «Acciones recibidas» is the first SPINOFF row of an
+  ISIN still held: the ledger files spinoffs, DRIP and rights alike, so it is never called a
+  spinoff. Dividend per share = net € ÷ shares held that day, against a payment 300–430 days back
+  (interim vs final are not compared), ±15 % to clear a year of FX noise. Annual reports are dated
+  when FinView stored them (`segment_reports.created_at`), not published. Geo alerts are the shared
+  owner's notified signals (`geo_owner_id`, as `/geo` reads them) whose basket names a holding's
+  Yahoo ticker; Zonas Clave alerts are the user's `technical_signals` with `alerted` only. Geo and
+  Zonas alerts carry their real moment (`occurred_at`); the rest a date. An upcoming-earnings event
+  has no stored source and is not built.
 - **Instant vs all-day** (`model/eventTiming.ts`). Price moves and signals are instants: performed
   once when observed, listed as «hace 3 h». Dividends, results, expansions and trades belong to a
   day (FinView has their date, not their time): listed as «Todo el día · hoy/ayer/9 nov», never a

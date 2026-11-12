@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from backend.services.geo.owner import geo_owner_id
 from backend.models import (
     Account,
     GeoSignal,
@@ -301,7 +302,11 @@ def _annual_reports(db: Session, names: dict[str, str], since: date) -> list[dic
 
 
 def _geo_alerts(db: Session, yahoo: dict[str, str], names: dict[str, str], since: date) -> list[dict]:
-    """Geopolitical signals that were sent out and name one of the user's holdings."""
+    """Geopolitical signals that were sent out and name one of the user's holdings.
+
+    Read exactly as `/geo` reads them: the shared rows of the system owner
+    (`geo/owner.py`), never another account's copies.
+    """
     by_ticker: dict[str, list[str]] = {}
     for isin, ticker in yahoo.items():
         by_ticker.setdefault(ticker.upper(), []).append(isin)
@@ -311,6 +316,7 @@ def _geo_alerts(db: Session, yahoo: dict[str, str], names: dict[str, str], since
         db.query(GeoSignal, GeoSignalTicker)
         .join(GeoSignalTicker, GeoSignalTicker.signal_id == GeoSignal.id)
         .filter(
+            GeoSignal.user_id == geo_owner_id(db),
             GeoSignal.notified_at.isnot(None),
             GeoSignal.notified_at >= datetime.combine(since, datetime.min.time()),
             GeoSignalTicker.symbol.in_(by_ticker),
