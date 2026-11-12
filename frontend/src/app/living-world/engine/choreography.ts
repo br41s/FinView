@@ -51,10 +51,10 @@ interface Festivity {
 const BULBS = [0xffd166, 0xff6b6b, 0x4dd6ff, 0x7bd88f, 0xc792ea, 0xffffff];
 const BALLOONS = [0xff4d6d, 0xffc300, 0x3a86ff, 0x2ec4b6, 0xff7b00];
 
-/** String lights on four posts around the building, at human height. Local to the site. */
-function garland(radius: number): THREE.BufferGeometry {
+/** String lights on four posts over the entrance, at human height. Local to the door. */
+function garland(): THREE.BufferGeometry {
   const b = new Builder();
-  const r = radius + 0.55;
+  const r = 1.5;
   const corners: Array<[number, number]> = [[r, r], [-r, r], [-r, -r], [r, -r]];
   for (const [x, z] of corners) {
     b.cyl(0.05, 0.05, 1.9, x, 0, z, 0x4a4f5a, 5);
@@ -73,10 +73,10 @@ function garland(radius: number): THREE.BufferGeometry {
   return b.build();
 }
 
-/** A bunch of balloons on strings, tied by the door. Local to the site. */
-function balloonBunch(radius: number): THREE.BufferGeometry {
+/** A bunch of balloons on strings, tied by the door. Local to the door. */
+function balloonBunch(): THREE.BufferGeometry {
   const b = new Builder();
-  const x = radius + 0.4;
+  const x = 1.7;
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2;
     const bx = x + Math.cos(a) * 0.35;
@@ -479,20 +479,28 @@ export class Choreographer {
       if (!site) continue;
       const meshes: THREE.Mesh[] = [];
       let balloons: THREE.Mesh | null = null;
+      // Everything happens at the entrance, where the staff come out: a big complex would
+      // otherwise swallow decorations placed around its centre.
+      // route[0] is the lot's centre and route[1] the kerb in front: the entrance is just short of it.
+      const c = site.route[0] ?? { x: site.x, z: site.z };
+      const f = site.route[1] ?? { x: site.x + site.radius + 2.2, z: site.z };
+      const d = Math.hypot(f.x - c.x, f.z - c.z) || 1;
+      const k = Math.max(0, d - 2.2) / d;
+      const door = { x: c.x + (f.x - c.x) * k, z: c.z + (f.z - c.z) * k };
       const place = (g: THREE.BufferGeometry, y = site.groundY) => {
         const m = new THREE.Mesh(g, this.mat);
-        m.position.set(site.x, y, site.z);
+        m.position.set(door.x, y, door.z);
         m.renderOrder = 6;
         this.stage.scene.add(m);
         meshes.push(m);
         return m;
       };
       if (mood === "party") {
-        place(garland(site.radius));
-        balloons = place(balloonBunch(site.radius));
+        place(garland());
+        balloons = place(balloonBunch());
       } else if (mood === "work") {
-        place(geometry("crane"), site.groundY).position.x += site.radius + 0.8;
-        place(geometry("crates"), site.groundY).position.z += site.radius + 0.6;
+        place(geometry("crane"), site.groundY).position.x += 1.2;
+        place(geometry("crates"), site.groundY).position.z += 1.0;
       }
       // Staggered, so a dozen celebrating buildings do not pulse in step.
       const jitter = (assetId.length * 977) % 3000;
