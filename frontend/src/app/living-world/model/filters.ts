@@ -5,7 +5,7 @@ import type { Visibility, WorldAsset, WorldEvent, WorldFilters } from "./types";
  * town: a non-matching building is `muted` by default and only `hidden` in isolate mode.
  */
 
-const WINDOW_MS = { live: 15 * 60_000, "24h": 24 * 3_600_000, "7d": 7 * 24 * 3_600_000 } as const;
+const WINDOW_MS = { live: 15 * 60_000, "24h": 24 * 3_600_000, "7d": 7 * 24 * 3_600_000, "30d": 30 * 24 * 3_600_000 } as const;
 
 /** Lower-case, accent-insensitive: "Nestlé" must be found by "nestle". */
 export function normalise(s: string): string {

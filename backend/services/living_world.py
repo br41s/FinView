@@ -22,7 +22,8 @@ Precedence for the archetype is manual > curated > derived, as for tickers
 
 from __future__ import annotations
 
-from collections import defaultdict
+import logging
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -145,11 +146,15 @@ def _move_pct(row: PriceCache) -> float | None:
 
 # ── Real events ───────────────────────────────────────────────────────────────
 #
-# Facts only, from what FinView already stores: the town's widest activity window is a
-# week, so that is how far back they go. The frontend turns them into cards and scores
-# them with the same rule as everything else (`model/priority.ts`); the copy lives there.
+# Facts only, from what FinView already stores: the town's widest activity window is 30
+# days, so that is how far back they go. A week was too short for a portfolio imported
+# from PDFs once a month: the town showed nothing at all. The frontend turns them into
+# cards and scores them with the same rule as everything else (`model/priority.ts`); the
+# copy lives there.
 
-EVENT_WINDOW_DAYS = 7
+logger = logging.getLogger(__name__)
+
+EVENT_WINDOW_DAYS = 30
 # A smaller daily move is noise for a town of ~100 buildings; 2 % is also where the
 # priority rule's magnitude factor reaches 1.
 PRICE_MOVE_EVENT_PCT = 2.0
@@ -265,6 +270,13 @@ def _events(
         )
     for e in events:
         e.setdefault("occurred_at", None)
+    # What the town received, by type: an empty town is then a fact in the logs, not a guess
+    # (the user's data cannot be read from outside their session).
+    by_type = Counter(e["event_type"] for e in events)
+    logger.info(
+        "living world: user %s, %d holdings, %d events in %d days %s",
+        user_id, len(positions), len(events), EVENT_WINDOW_DAYS, dict(sorted(by_type.items())),
+    )
     return sorted(events, key=lambda e: (e["occurred_on"], e["id"]), reverse=True)
 
 

@@ -153,7 +153,7 @@ export interface WorldEvent {
   why: string;
 }
 
-export type TimeWindow = "live" | "24h" | "7d";
+export type TimeWindow = "live" | "24h" | "7d" | "30d";
 
 export interface WorldFilters {
   query: string;
@@ -184,7 +184,9 @@ export const EMPTY_FILTERS: WorldFilters = {
   directions: [],
   categories: [],
   severities: [],
-  window: "24h",
+  // The widest window: real events are imported weeks after they happen, and a town that
+  // opens on 24 h looked dead even with a month of activity behind it.
+  window: "30d",
   favouritesOnly: false,
   activeOnly: false,
   isolate: false,

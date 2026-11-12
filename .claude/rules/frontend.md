@@ -177,7 +177,7 @@ Spec: `FinView_Living_World_Technical_Spec.md` (Brais's Downloads). A standalone
 portfolio, built in phases. **Phase 1 (current): the buildings are the user's real portfolio; every
 event is still simulated.** `/living-world?demo=1` keeps the Phase 0 fictional town (`model/fixtures.ts`,
 ISINs start `ZZ`, nothing fetched) and says "Datos ficticios"; the real town says "Tu cartera · precios
-del …". Phase 2 has begun: the daily move and the last week's events are real (below).
+del …". Phase 2 has begun: the daily move and the last 30 days' events are real (below).
 
 - **Real data = one read-only endpoint.** `GET /api/living-world/world` (`backend/services/living_world.py`)
   is `get_open_positions` plus classification; it values, converts and reconciles nothing. Unknown cost,
@@ -201,7 +201,10 @@ del …". Phase 2 has begun: the daily move and the last week's events are real 
   a stable copy (set-state-during-render). On a real rebuild the camera refits; quality, pause, director
   mode and filters are re-applied by effects keyed on the scene's assets, and the selection is handed back
   by `reselect`. Add any new "survive a rebuild" state to that list.
-- **Real events are facts from the last 7 days** (`EVENT_WINDOW_DAYS`, the feed's widest window), sent
+- **Real events are facts from the last 30 days** (`EVENT_WINDOW_DAYS`, the feed's widest window and its
+  default: a week, opened on «24 h», showed nothing for a portfolio imported monthly). Every `/world`
+  logs `living world: user N, H holdings, E events in 30 days {type: count}`, the only way to explain
+  an empty town without the user's session. Sent
   by the same endpoint as `events`: daily moves of at least ±2 % (`PRICE_MOVE_EVENT_PCT`) from each
   `price_cache` row, confidence `derived`; buys, sells and dividends from the ledger, confidence
   `verified` (a sell is `position_closed` only when the ISIN is no longer held at any broker, and then

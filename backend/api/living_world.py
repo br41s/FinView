@@ -71,7 +71,7 @@ class WorldOut(BaseModel):
 @router.get("/world", response_model=WorldOut)
 def world(db: DbSession, user: CurrentUser):
     """One building per held ISIN with its valuation, cost and classification, and the
-    last week's real events: daily moves of at least 2 %, buys, sells, dividends, and what
+    last 30 days' real events: daily moves of at least 2 %, buys, sells, dividends, and what
     other features stored (Zonas Clave history and alerts, splits, annual reports, geo).
 
     Unknown values are null, never zero. No external call: prices come from the portfolio
