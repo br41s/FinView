@@ -72,7 +72,7 @@ export const ASSET_TYPE_LABEL: Record<AssetType, string> = {
   alternative: "Alternativas",
 };
 
-export const WINDOW_LABEL: Record<TimeWindow, string> = { live: "En vivo", "24h": "24 h", "7d": "7 días" };
+export const WINDOW_LABEL: Record<TimeWindow, string> = { live: "En vivo", "24h": "24 h", "7d": "7 días", "30d": "30 días" };
 
 export const SOURCE_LABEL: Record<string, string> = {
   price_cache: "Caché de precios",

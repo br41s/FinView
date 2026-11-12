@@ -70,8 +70,8 @@ describe("applyFilters over 100+ holdings", () => {
 
 describe("filterEvents", () => {
   it("never returns an event from the future or outside the window", () => {
-    for (const w of ["live", "24h", "7d"] as const) {
-      const span = { live: 15 * 60_000, "24h": 86_400_000, "7d": 7 * 86_400_000 }[w];
+    for (const w of ["live", "24h", "7d", "30d"] as const) {
+      const span = { live: 15 * 60_000, "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000 }[w];
       for (const e of filterEvents(events, f({ window: w }), NOW)) {
         const t = Date.parse(e.occurredAt);
         expect(t).toBeLessThanOrEqual(NOW + CLOCK_SKEW_MS);
@@ -88,9 +88,10 @@ describe("filterEvents", () => {
   });
 
   it("narrows monotonically: live ⊆ 24h ⊆ 7d", () => {
-    const n = (w: "live" | "24h" | "7d") => filterEvents(events, f({ window: w }), NOW).length;
+    const n = (w: "live" | "24h" | "7d" | "30d") => filterEvents(events, f({ window: w }), NOW).length;
     expect(n("live")).toBeLessThanOrEqual(n("24h"));
     expect(n("24h")).toBeLessThanOrEqual(n("7d"));
+    expect(n("7d")).toBeLessThanOrEqual(n("30d"));
   });
 });
 

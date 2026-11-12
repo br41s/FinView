@@ -373,7 +373,7 @@ export default function WorldShell({ assets, realEvents, demo, meta, onRefresh, 
               emptyHint={
                 demo || live
                   ? undefined
-                  : "Sin actividad real en los últimos 7 días: aquí aparecen tus compras, ventas y dividendos importados y los movimientos diarios de al menos un 2 %. Activa «Simular eventos» para ver cómo reaccionaría el pueblo."
+                  : "Sin actividad real en los últimos 30 días: aquí aparecen tus compras, ventas y dividendos importados y los movimientos diarios de al menos un 2 %. Activa «Simular eventos» para ver cómo reaccionaría el pueblo."
               }
             />
           )}

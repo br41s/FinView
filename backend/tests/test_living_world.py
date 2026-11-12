@@ -363,7 +363,7 @@ def test_a_falling_day_is_negative_and_a_zero_previous_close_is_unknown():
     assert lw._day_change_pct(None, day) is None
 
 
-# ── real events: the last week's facts, nothing invented ───────────────────────
+# ── real events: the last 30 days' facts, nothing invented ──────────────────────
 
 TODAY = date(2026, 11, 12)
 
@@ -394,7 +394,7 @@ def _events(db, user):
     return {e["id"]: e for e in lw.build_world(db, user.id, today=TODAY)["events"]}
 
 
-def test_ledger_entries_of_the_last_week_become_events(db, prices):
+def test_ledger_entries_of_the_window_become_events(db, prices):
     user = _user(db)
     acct = _account(db, user, broker=Broker.IBKR)
     _tx(db, acct, A, TransactionType.BUY, date(2026, 11, 10), qty="10", net="-1000")
@@ -403,14 +403,14 @@ def test_ledger_entries_of_the_last_week_become_events(db, prices):
     _tx(db, acct, C, TransactionType.BUY, date(2026, 1, 1), qty="2", net="-200")
     _tx(db, acct, C, TransactionType.SELL, date(2026, 11, 9), qty="2", net="250")
     _tx(db, acct, A, TransactionType.DIVIDEND, date(2026, 11, 12), qty="0", net="8.10", currency="USD")
-    _tx(db, acct, A, TransactionType.BUY, date(2026, 11, 4), qty="1", net="-10")  # 8 days ago
+    _tx(db, acct, A, TransactionType.BUY, date(2026, 10, 12), qty="1", net="-10")  # 31 days ago
     db.commit()
 
     events = _events(db, user)
     by_type = {e["event_type"]: e for e in events.values()}
 
     assert set(by_type) == {"position_added", "position_reduced", "position_closed", "dividend_paid"}
-    assert len(events) == 4  # the buy of 8 days ago is outside the week
+    assert len(events) == 4  # the buy of 31 days ago is outside the window
     assert by_type["position_added"]["metrics"] == {"quantity": 10.0, "value_eur": 1000.0, "account": "IBKR"}
     assert by_type["position_reduced"]["isin"] == B  # 6 of 10 still held
     assert by_type["position_closed"]["isin"] == C  # nothing left anywhere
@@ -434,7 +434,7 @@ def test_daily_moves_of_two_percent_or_more_become_derived_events(db, prices):
         _row(A, date(2026, 11, 11), "95", "100"),  # −5 % yesterday: its own event
         _row(B, TODAY, "101", "100"),  # +1 %: noise
         _row(C, TODAY, "200", "100"),  # +100 %: a Yahoo slip, not an event
-        _row(D, date(2026, 11, 1), "90", "100"),  # outside the week
+        _row(D, date(2026, 10, 10), "90", "100"),  # outside the window
     ])
     db.commit()
     prices.value = {A: Decimal("103"), B: Decimal("101"), C: Decimal("200"), D: Decimal("90")}
@@ -517,3 +517,17 @@ def test_a_position_that_left_without_a_sale_is_not_drawn(db, client, prices):
     # No SELL: FinView cannot say when or how it closed, so it is not drawn as sold.
     assert all(a["isin"] != A or a["status"] == "open" for a in world["assets"])
     assert world["summary"]["closed"] == 0
+
+
+def test_every_world_logs_what_it_sent(db, prices, caplog):
+    """An empty town has to be explainable from the logs: the user's data is behind their login."""
+    user = _user(db)
+    acct = _account(db, user)
+    _tx(db, acct, A, TransactionType.BUY, date(2026, 11, 10), qty="10", net="-1000")
+    db.commit()
+
+    with caplog.at_level("INFO", logger="backend.services.living_world"):
+        lw.build_world(db, user.id, today=TODAY)
+
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("living world:"))
+    assert "1 events in 30 days {'position_added': 1}" in line
