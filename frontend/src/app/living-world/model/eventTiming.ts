@@ -25,6 +25,15 @@ export const EVENT_TIMING: Record<EventType, EventTiming> = {
   position_added: "all_day",
   position_reduced: "all_day",
   position_closed: "all_day",
+  week52_high: "instant",
+  week52_low: "instant",
+  volume_spike: "instant",
+  geo_alert: "instant",
+  stock_split: "all_day",
+  shares_received: "all_day",
+  dividend_raised: "all_day",
+  dividend_cut: "all_day",
+  annual_report: "all_day",
 };
 
 export const isAllDay = (e: Pick<WorldEvent, "eventType">): boolean => EVENT_TIMING[e.eventType] === "all_day";
@@ -94,6 +103,11 @@ const MOOD: Partial<Record<EventType, DayMood>> = {
   position_added: "work",
   position_reduced: "work",
   earnings_miss: "concerned",
+  shares_received: "party",
+  dividend_raised: "party",
+  dividend_cut: "concerned",
+  stock_split: "work",
+  annual_report: "work",
   // position_closed: the building is in ruins, which says it already.
 };
 

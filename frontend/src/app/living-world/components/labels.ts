@@ -21,6 +21,15 @@ export const EVENT_TYPE_LABEL: Record<EventType, string> = {
   position_added: "Compra",
   position_reduced: "Venta parcial",
   position_closed: "Posición cerrada",
+  week52_high: "Máximo de 52 semanas",
+  week52_low: "Mínimo de 52 semanas",
+  volume_spike: "Volumen inusual",
+  stock_split: "Split",
+  shares_received: "Acciones recibidas",
+  dividend_raised: "Dividendo por acción mayor",
+  dividend_cut: "Dividendo por acción menor",
+  annual_report: "Informe anual",
+  geo_alert: "Alerta geopolítica",
 };
 
 export const CATEGORY_LABEL: Record<EventCategory, string> = {
@@ -70,6 +79,9 @@ export const SOURCE_LABEL: Record<string, string> = {
   ledger: "Libro de operaciones",
   zonas_clave: "Zonas Clave",
   options_monitor: "Monitor de opciones",
+  split_history: "Historial de splits (Yahoo Finance)",
+  segment_reports: "Informes anuales leídos por FinView",
+  geo_signals: "Señales geopolíticas de FinView",
   demo_filing: "Documento de demostración",
 };
 
@@ -100,4 +112,21 @@ export const METRIC_LABEL: Record<string, string> = {
   quantity: "Cantidad",
   value_eur: "Importe (€)",
   account: "Cuenta",
+  close: "Cierre",
+  previous_extreme: "Extremo anterior del año",
+  ticker: "Ticker",
+  volume: "Volumen",
+  average_volume: "Volumen medio (20 sesiones)",
+  ratio: "Proporción",
+  per_share_eur: "Neto por acción (€)",
+  previous_per_share_eur: "Hace un año (€)",
+  previous_date: "Fecha del anterior",
+  fiscal_year: "Ejercicio",
+  source: "Fuente",
+  period_end: "Cierre del ejercicio",
+  headline: "Titular",
+  country: "País",
+  importance: "Importancia (0–100)",
+  direction: "Tesis",
+  zone_level: "Nivel de la zona",
 };

@@ -91,7 +91,16 @@ export type EventType =
   | "options_alert"
   | "position_added"
   | "position_reduced"
-  | "position_closed";
+  | "position_closed"
+  | "week52_high"
+  | "week52_low"
+  | "volume_spike"
+  | "stock_split"
+  | "shares_received"
+  | "dividend_raised"
+  | "dividend_cut"
+  | "annual_report"
+  | "geo_alert";
 
 export const EVENT_TYPE_CATEGORY: Record<EventType, EventCategory> = {
   price_move_up: "market",
@@ -106,6 +115,15 @@ export const EVENT_TYPE_CATEGORY: Record<EventType, EventCategory> = {
   position_added: "portfolio",
   position_reduced: "portfolio",
   position_closed: "portfolio",
+  week52_high: "market",
+  week52_low: "market",
+  volume_spike: "market",
+  stock_split: "corporate",
+  shares_received: "portfolio",
+  dividend_raised: "corporate",
+  dividend_cut: "corporate",
+  annual_report: "corporate",
+  geo_alert: "market",
 };
 
 /** Normalised event, spec §5.3. `occurredAt` and `observedAt` are ISO-8601 UTC. */

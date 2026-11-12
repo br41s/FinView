@@ -30,6 +30,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models import Account, ListingProfile, PriceCache, Transaction, TransactionType
+from backend.services import ticker_map
+from backend.services.living_world_market import market_events
 from backend.services.portfolio_service import Position, get_open_positions
 from backend.services.segments import exposure, listing
 
@@ -229,11 +231,40 @@ def _ledger_events(db: Session, user_id: int, open_isins: set[str], since: date)
     return out
 
 
-def _events(db: Session, user_id: int, positions: list[Position], today: date) -> list[dict]:
+def _yahoo_tickers(
+    db: Session, positions: list[Position], price_rows: dict[str, PriceCache]
+) -> dict[str, str]:
+    """ISIN → Yahoo ticker for the open holdings, from what is stored (never a lookup)."""
+    known = ticker_map.effective_map(db)
+    out = {}
+    for p in positions:
+        ticker = known.get(p.isin) or (price_rows[p.isin].yahoo_ticker if p.isin in price_rows else None)
+        if ticker:
+            out[p.isin] = ticker
+    return out
+
+
+def _events(
+    db: Session,
+    user_id: int,
+    positions: list[Position],
+    price_rows: dict[str, PriceCache],
+    today: date,
+) -> list[dict]:
     since = today - timedelta(days=EVENT_WINDOW_DAYS)
     events = _ledger_events(db, user_id, {p.isin for p in positions}, since)
     if positions:
         events += _price_move_events(db, positions, since)
+        events += market_events(
+            db,
+            user_id,
+            {p.isin: p.name for p in positions},
+            _yahoo_tickers(db, positions, price_rows),
+            since,
+            today,
+        )
+    for e in events:
+        e.setdefault("occurred_at", None)
     return sorted(events, key=lambda e: (e["occurred_on"], e["id"]), reverse=True)
 
 
@@ -399,5 +430,5 @@ def build_world(db: Session, user_id: int, today: date | None = None) -> dict:
             "prices_as_of": prices_as_of.isoformat() if prices_as_of else None,
         },
         "assets": assets,
-        "events": _events(db, user_id, positions, today or date.today()),
+        "events": _events(db, user_id, positions, price_rows, today or date.today()),
     }

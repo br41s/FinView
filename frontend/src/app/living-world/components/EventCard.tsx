@@ -57,6 +57,15 @@ function headlineMetric(e: WorldEvent): { value: string; label: string } | null 
     position_closed: ["value_eur", "Valor de cierre", " €"],
     technical_signal: ["distance_pct", "Distancia a zona", "%"],
     options_alert: ["volume_ratio", "Ratio de volumen", "×"],
+    week52_high: ["close", "Cierre", ""],
+    week52_low: ["close", "Cierre", ""],
+    volume_spike: ["volume_ratio", "Veces el volumen medio", "×"],
+    stock_split: ["ratio", "Acciones nuevas por cada una", "×"],
+    shares_received: ["quantity", "Acciones recibidas", ""],
+    dividend_raised: ["change_pct", "Por acción frente a hace un año", "%"],
+    dividend_cut: ["change_pct", "Por acción frente a hace un año", "%"],
+    annual_report: ["fiscal_year", "Ejercicio", ""],
+    geo_alert: ["importance", "Importancia", "/100"],
   };
   const spec = candidates[e.eventType];
   if (!spec) return null;
