@@ -28,6 +28,8 @@ const MAX_PINNED = 3;
 
 interface Props {
   assets: readonly WorldAsset[];
+  /** The last week's real events from the API; always empty in demo. */
+  realEvents: readonly WorldEvent[];
   /** The fictional town (`?demo=1`): every holding and event is invented. */
   demo: boolean;
   meta: WorldMeta | null;
@@ -40,11 +42,12 @@ const shortDate = (iso: string) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 
 /**
- * The town for a set of assets: the user's portfolio, or the fictional one in demo. Events
- * are still simulated in both (real ones arrive in a later phase): in the real town they
- * start off, and anything simulated says so on its title, its card and the toolbar.
+ * The town for a set of assets: the user's portfolio, or the fictional one in demo. The real
+ * town shows the last week's real events (daily moves, trades, dividends) and adds simulated
+ * ones only while «Simular eventos» is on; anything simulated says so on its title, its card
+ * and the toolbar. Turning the switch off removes the simulated events, never the real ones.
  */
-export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, refreshFailed }: Readonly<Props>) {
+export default function WorldShell({ assets, realEvents, demo, meta, onRefresh, refreshing, refreshFailed }: Readonly<Props>) {
   // The scene is rebuilt only when what it draws changes, not on every data refresh: a
   // price tick must not reset the camera. State set during render is React's pattern for
   // "derive from a prop, but only when it changes".
@@ -64,7 +67,14 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
   const history = (): WorldEvent[] =>
     simulate({ nowMs: Date.now(), seed: 11, count: HISTORY_EVENTS, spanMs: WEEK, idPrefix: "hist" });
 
-  const [events, setEvents] = useState<WorldEvent[]>(() => (demo ? history() : []));
+  const [simulated, setSimulated] = useState<WorldEvent[]>(() => (demo ? history() : []));
+  const events = useMemo(
+    () =>
+      [...realEvents, ...simulated]
+        .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))
+        .slice(0, MAX_EVENTS),
+    [realEvents, simulated],
+  );
   const { filters, set, toggle, clear } = useWorldFilters();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
@@ -107,7 +117,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
   // An event joins the activity history, enters the scene queue and opens its own
   // story card. A burst chooses the highest-priority company event as the lead story.
   const emit = (batch: WorldEvent[]) => {
-    setEvents((prev) => [...batch, ...prev].slice(0, MAX_EVENTS));
+    setSimulated((prev) => [...batch, ...prev].slice(0, MAX_EVENTS));
     world.current?.enqueue(batch);
     const featured = [...batch]
       .filter((event) => event.assetId !== null)
@@ -131,16 +141,23 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
     return () => window.clearInterval(id);
   }, [live]);
 
-  // In the real town the switch is the only source of events: turning it on seeds a
-  // week of history, turning it off takes everything simulated away again.
+  // In the real town the switch adds simulated events on top of the real ones: turning it
+  // on seeds a week of simulated history, turning it off takes everything simulated away.
   const setSimulating = (on: boolean) => {
     setLive(on);
     if (!demo) {
-      setEvents(on ? history() : []);
+      setSimulated(on ? history() : []);
       setOpenEventId(null);
       setPinned([]);
     }
   };
+
+  // Real events go through the scene once they arrive, so the buildings react to them. The
+  // director skips ids it has already seen, so a refresh does not replay them; a rebuilt
+  // scene has a new director and plays them again.
+  useEffect(() => {
+    if (ready) world.current?.enqueue(realEvents);
+  }, [ready, realEvents, sceneAssets, world]);
 
   // The scene was rebuilt (the set of assets changed): the new one knows nothing of the
   // user's selection, so hand it back. Pause, mode, quality and filters are re-applied
@@ -346,7 +363,7 @@ export default function WorldShell({ assets, demo, meta, onRefresh, refreshing, 
               emptyHint={
                 demo || live
                   ? undefined
-                  : "Aún no hay eventos reales: llegarán en una fase posterior. Activa «Simular eventos» para ver cómo reaccionaría el pueblo."
+                  : "Sin actividad real en los últimos 7 días: aquí aparecen tus compras, ventas y dividendos importados y los movimientos diarios de al menos un 2 %. Activa «Simular eventos» para ver cómo reaccionaría el pueblo."
               }
             />
           )}

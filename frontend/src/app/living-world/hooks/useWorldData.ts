@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { demoAssets } from "../model/fixtures";
-import type { WorldAsset } from "../model/types";
+import { toWorldEvents } from "../model/realEvents";
+import type { WorldAsset, WorldEvent } from "../model/types";
 import { toWorldAssets } from "../model/worldAssets";
 
 /** What the screen says about the data under the town. */
@@ -23,11 +24,16 @@ export type WorldData =
   | {
       status: "ready";
       assets: WorldAsset[];
+      /** The last week's real events (empty in demo, where every event is simulated). */
+      events: WorldEvent[];
       meta: WorldMeta | null;
       refresh: () => void;
       refreshing: boolean;
       refreshFailed: boolean;
     };
+
+// One stable empty list, so an effect keyed on the events does not re-run on every render.
+const NO_EVENTS: WorldEvent[] = [];
 
 /**
  * The town's assets. `demo` swaps the portfolio for the fictional Phase 0 holdings and
@@ -35,7 +41,7 @@ export type WorldData =
  * when it arrives, and a failed refresh leaves the old data in place and says so.
  */
 export function useWorldData(demo: boolean): WorldData {
-  const [loaded, setLoaded] = useState<{ assets: WorldAsset[]; meta: WorldMeta } | null>(null);
+  const [loaded, setLoaded] = useState<{ assets: WorldAsset[]; events: WorldEvent[]; meta: WorldMeta } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -50,8 +56,10 @@ export function useWorldData(demo: boolean): WorldData {
     try {
       const res = await api.livingWorld.world();
       if (mine !== latest.current) return;
+      const assets = toWorldAssets(res);
       setLoaded({
-        assets: toWorldAssets(res),
+        assets,
+        events: toWorldEvents(res.events, assets),
         meta: {
           pricesAsOf: res.summary.prices_as_of,
           positions: res.summary.positions,
@@ -85,7 +93,7 @@ export function useWorldData(demo: boolean): WorldData {
   const retry = useCallback(() => void load(false), [load]);
 
   if (demo) {
-    return { status: "ready", assets: demoSet, meta: null, refresh: () => undefined, refreshing: false, refreshFailed: false };
+    return { status: "ready", assets: demoSet, events: NO_EVENTS, meta: null, refresh: () => undefined, refreshing: false, refreshFailed: false };
   }
   if (loaded) {
     if (loaded.assets.length === 0) return { status: "empty" };

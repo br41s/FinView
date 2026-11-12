@@ -61,6 +61,7 @@ describe("toWorldAsset", () => {
         total_market_value: 2400, classified: 2, prices_as_of: "2026-11-07",
       },
       assets: [row(), row({ isin: "ES0000000002" })],
+      events: [],
     };
     expect(toWorldAssets(res).map((a) => a.id)).toEqual(["ES0000000001", "ES0000000002"]);
   });

@@ -82,6 +82,7 @@ export default function LivingWorldClient({ demo = false }: Readonly<{ demo?: bo
     <WorldShell
       key={demo ? "demo" : "real"}
       assets={data.assets}
+      realEvents={data.events}
       demo={demo}
       meta={data.meta}
       onRefresh={demo ? null : data.refresh}

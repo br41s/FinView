@@ -177,7 +177,7 @@ Spec: `FinView_Living_World_Technical_Spec.md` (Brais's Downloads). A standalone
 portfolio, built in phases. **Phase 1 (current): the buildings are the user's real portfolio; every
 event is still simulated.** `/living-world?demo=1` keeps the Phase 0 fictional town (`model/fixtures.ts`,
 ISINs start `ZZ`, nothing fetched) and says "Datos ficticios"; the real town says "Tu cartera · precios
-del …". Phase 2 has begun: the daily move is real (below); real event history is not built.
+del …". Phase 2 has begun: the daily move and the last week's events are real (below).
 
 - **Real data = one read-only endpoint.** `GET /api/living-world/world` (`backend/services/living_world.py`)
   is `get_open_positions` plus classification; it values, converts and reconciles nothing. Unknown cost,
@@ -201,9 +201,18 @@ del …". Phase 2 has begun: the daily move is real (below); real event history 
   a stable copy (set-state-during-render). On a real rebuild the camera refits; quality, pause, director
   mode and filters are re-applied by effects keyed on the scene's assets, and the selection is handed back
   by `reselect`. Add any new "survive a rebuild" state to that list.
-- **Events in the real town start empty.** «Simular eventos» (off) seeds a week of demo history and a live
-  trickle; every simulated event has confidence `demo` (tag «Simulado»), a «Simulado · » title prefix and
-  a banner. Turning it off clears them. Never present a generated event as a fact about a real company.
+- **Real events are facts from the last 7 days** (`EVENT_WINDOW_DAYS`, the feed's widest window), sent
+  by the same endpoint as `events`: daily moves of at least ±2 % (`PRICE_MOVE_EVENT_PCT`) from each
+  `price_cache` row, confidence `derived`; buys, sells and dividends from the ledger, confidence
+  `verified` (a sell is `position_closed` only when the ISIN is no longer held at any broker, and then
+  has no building). The backend sends facts and figures only; `model/realEvents.ts` writes the Spanish
+  copy and scores them with `priority.ts`, dropping any type or confidence it does not know. They go
+  through the director once when they arrive (it dedupes by id, so a refresh does not replay them).
+  Trades and dividends appear only once imported. Only a date is known, so they are stamped at 00:00 UTC.
+- **«Simular eventos» adds, never replaces.** On, it seeds a week of demo history and a live trickle on
+  top of the real events; every simulated event has confidence `demo` (tag «Simulado»), a «Simulado · »
+  title prefix and a banner. Off, it removes the simulated ones only. Never present a generated event as
+  a fact about a real company.
 
 - **Same split as the garden game.** `model/` is pure TypeScript with colocated `*.test.ts`
   (layout, scale, filters, priority, director, routes, fixtures); `engine/` is Three.js and is

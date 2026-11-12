@@ -86,6 +86,7 @@ export const METRIC_LABEL: Record<string, string> = {
   ex_date: "Fecha ex-dividendo",
   pay_date: "Fecha de pago",
   gross_eur: "Bruto (€)",
+  gross: "Bruto (en su divisa)",
   withholding_eur: "Retención (€)",
   net_eur: "Neto (€)",
   site: "Centro",

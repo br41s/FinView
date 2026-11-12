@@ -23,12 +23,13 @@ Precedence for the archetype is manual > curated > derived, as for tickers
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.models import ListingProfile, PriceCache
+from backend.models import Account, ListingProfile, PriceCache, Transaction, TransactionType
 from backend.services.portfolio_service import Position, get_open_positions
 from backend.services.segments import exposure, listing
 
@@ -125,9 +126,14 @@ def _day_change_pct(row: PriceCache | None, prices_as_of) -> float | None:
       split, pence read as pounds) than a session, and a wrong number in the town is
       worse than a dash.
     """
-    if row is None or row.original_price is None or row.previous_close is None:
+    if row is None or row.fetched_date != prices_as_of:
         return None
-    if row.previous_close <= 0 or row.fetched_date != prices_as_of:
+    return _move_pct(row)
+
+
+def _move_pct(row: PriceCache) -> float | None:
+    """The session move one row records, under the same fail-closed rules."""
+    if row.original_price is None or row.previous_close is None or row.previous_close <= 0:
         return None
     pct = float((row.original_price / row.previous_close - 1) * 100)
     if abs(pct) > MAX_DAY_CHANGE_PCT:
@@ -135,7 +141,103 @@ def _day_change_pct(row: PriceCache | None, prices_as_of) -> float | None:
     return round(pct, 4)
 
 
-def build_world(db: Session, user_id: int) -> dict:
+# ── Real events ───────────────────────────────────────────────────────────────
+#
+# Facts only, from what FinView already stores: the town's widest activity window is a
+# week, so that is how far back they go. The frontend turns them into cards and scores
+# them with the same rule as everything else (`model/priority.ts`); the copy lives there.
+
+EVENT_WINDOW_DAYS = 7
+# A smaller daily move is noise for a town of ~100 buildings; 2 % is also where the
+# priority rule's magnitude factor reaches 1.
+PRICE_MOVE_EVENT_PCT = 2.0
+_LEDGER_EVENT_TYPES = (TransactionType.BUY, TransactionType.SELL, TransactionType.DIVIDEND)
+
+
+def _price_move_events(db: Session, positions: list[Position], since: date) -> list[dict]:
+    names = {p.isin: p.name for p in positions}
+    rows = db.query(PriceCache).filter(
+        PriceCache.isin.in_(names), PriceCache.fetched_date >= since
+    )
+    out = []
+    for row in rows:
+        pct = _move_pct(row)
+        if pct is None or abs(pct) < PRICE_MOVE_EVENT_PCT:
+            continue
+        out.append({
+            "id": f"px:{row.isin}:{row.fetched_date.isoformat()}",
+            "event_type": "price_move_up" if pct > 0 else "price_move_down",
+            "isin": row.isin,
+            "name": names[row.isin],
+            "occurred_on": row.fetched_date,
+            "source_type": "price_cache",
+            # A close against the close before: computed here, not reported by anyone.
+            "confidence": "derived",
+            "metrics": {
+                "change_pct": round(pct, 2),
+                "price": float(row.original_price),
+                "currency": row.original_currency or row.currency,
+                "period": "1d",
+            },
+        })
+    return out
+
+
+def _ledger_events(db: Session, user_id: int, open_isins: set[str], since: date) -> list[dict]:
+    rows = (
+        db.query(Transaction, Account.broker)
+        .join(Account, Transaction.account_id == Account.id)
+        .filter(
+            Account.user_id == user_id,
+            Transaction.trade_date >= since,
+            Transaction.type.in_(_LEDGER_EVENT_TYPES),
+            Transaction.isin.isnot(None),
+        )
+    )
+    out = []
+    for tx, broker in rows:
+        account = getattr(broker, "value", broker)
+        if tx.type == TransactionType.DIVIDEND:
+            event_type = "dividend_paid"
+            metrics = {
+                "net_eur": _money(tx.net_amount_eur),
+                "gross": _money(tx.gross_amount),
+                "currency": tx.currency,
+                "account": account,
+            }
+        else:
+            if tx.type == TransactionType.BUY:
+                event_type = "position_added"
+            else:
+                # Closed means the ISIN is no longer held at all, across every broker.
+                event_type = "position_reduced" if tx.isin in open_isins else "position_closed"
+            metrics = {
+                "quantity": float(abs(tx.quantity)),
+                "value_eur": _money(abs(tx.net_amount_eur)),
+                "account": account,
+            }
+        out.append({
+            "id": f"tx:{tx.id}",
+            "event_type": event_type,
+            "isin": tx.isin,
+            "name": tx.name or tx.isin,
+            "occurred_on": tx.trade_date,
+            "source_type": "ledger",
+            "confidence": "verified",
+            "metrics": metrics,
+        })
+    return out
+
+
+def _events(db: Session, user_id: int, positions: list[Position], today: date) -> list[dict]:
+    since = today - timedelta(days=EVENT_WINDOW_DAYS)
+    events = _ledger_events(db, user_id, {p.isin for p in positions}, since)
+    if positions:
+        events += _price_move_events(db, positions, since)
+    return sorted(events, key=lambda e: (e["occurred_on"], e["id"]), reverse=True)
+
+
+def build_world(db: Session, user_id: int, today: date | None = None) -> dict:
     positions = get_open_positions(db, user_id)
     isins = [p.isin for p in positions]
     price_rows = _latest_price_rows(db, isins) if isins else {}
@@ -194,4 +296,5 @@ def build_world(db: Session, user_id: int) -> dict:
             "prices_as_of": prices_as_of.isoformat() if prices_as_of else None,
         },
         "assets": assets,
+        "events": _events(db, user_id, positions, today or date.today()),
     }

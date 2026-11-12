@@ -361,3 +361,98 @@ def test_a_falling_day_is_negative_and_a_zero_previous_close_is_unknown():
     assert lw._day_change_pct(_row(A, day, "97.5", "100"), day) == -2.5
     assert lw._day_change_pct(_row(A, day, "10", "0"), day) is None
     assert lw._day_change_pct(None, day) is None
+
+
+# ── real events: the last week's facts, nothing invented ───────────────────────
+
+TODAY = date(2026, 11, 12)
+
+
+def _tx(db, account, isin, kind, day, qty="1", net="100", currency="EUR"):
+    db.add(
+        Transaction(
+            account_id=account.id,
+            type=kind.value,
+            trade_date=day,
+            isin=isin,
+            ticker="TST",
+            name=f"Asset {isin}",
+            country="España",
+            quantity=Decimal(qty),
+            price=Decimal("1"),
+            currency=currency,
+            exchange_rate=Decimal("1"),
+            gross_amount=abs(Decimal(net)),
+            fees=Decimal("0"),
+            withholding_tax=Decimal("0"),
+            net_amount_eur=Decimal(net),
+        )
+    )
+
+
+def _events(db, user):
+    return {e["id"]: e for e in lw.build_world(db, user.id, today=TODAY)["events"]}
+
+
+def test_ledger_entries_of_the_last_week_become_events(db, prices):
+    user = _user(db)
+    acct = _account(db, user, broker=Broker.IBKR)
+    _tx(db, acct, A, TransactionType.BUY, date(2026, 11, 10), qty="10", net="-1000")
+    _tx(db, acct, B, TransactionType.BUY, date(2026, 1, 1), qty="10", net="-500")
+    _tx(db, acct, B, TransactionType.SELL, date(2026, 11, 11), qty="4", net="300")
+    _tx(db, acct, C, TransactionType.BUY, date(2026, 1, 1), qty="2", net="-200")
+    _tx(db, acct, C, TransactionType.SELL, date(2026, 11, 9), qty="2", net="250")
+    _tx(db, acct, A, TransactionType.DIVIDEND, date(2026, 11, 12), qty="0", net="8.10", currency="USD")
+    _tx(db, acct, A, TransactionType.BUY, date(2026, 11, 4), qty="1", net="-10")  # 8 days ago
+    db.commit()
+
+    events = _events(db, user)
+    by_type = {e["event_type"]: e for e in events.values()}
+
+    assert set(by_type) == {"position_added", "position_reduced", "position_closed", "dividend_paid"}
+    assert len(events) == 4  # the buy of 8 days ago is outside the week
+    assert by_type["position_added"]["metrics"] == {"quantity": 10.0, "value_eur": 1000.0, "account": "IBKR"}
+    assert by_type["position_reduced"]["isin"] == B  # 6 of 10 still held
+    assert by_type["position_closed"]["isin"] == C  # nothing left anywhere
+    dividend = by_type["dividend_paid"]
+    assert dividend["metrics"]["net_eur"] == 8.1
+    assert dividend["metrics"]["currency"] == "USD"
+    assert dividend["confidence"] == "verified"
+    # Newest first.
+    assert [e["occurred_on"] for e in lw.build_world(db, user.id, today=TODAY)["events"]] == sorted(
+        (e["occurred_on"] for e in events.values()), reverse=True
+    )
+
+
+def test_daily_moves_of_two_percent_or_more_become_derived_events(db, prices):
+    user = _user(db)
+    acct = _account(db, user)
+    for isin in (A, B, C, D):
+        _buy(db, acct, isin, "100")
+    db.add_all([
+        _row(A, TODAY, "103", "100"),  # +3 %: an event
+        _row(A, date(2026, 11, 11), "95", "100"),  # −5 % yesterday: its own event
+        _row(B, TODAY, "101", "100"),  # +1 %: noise
+        _row(C, TODAY, "200", "100"),  # +100 %: a Yahoo slip, not an event
+        _row(D, date(2026, 11, 1), "90", "100"),  # outside the week
+    ])
+    db.commit()
+    prices.value = {A: Decimal("103"), B: Decimal("101"), C: Decimal("200"), D: Decimal("90")}
+
+    events = _events(db, user)
+
+    assert set(events) == {f"px:{A}:2026-11-12", f"px:{A}:2026-11-11"}
+    up = events[f"px:{A}:2026-11-12"]
+    assert up["event_type"] == "price_move_up"
+    assert up["confidence"] == "derived"
+    assert up["metrics"]["change_pct"] == 3.0
+    assert events[f"px:{A}:2026-11-11"]["event_type"] == "price_move_down"
+
+
+def test_events_are_the_users_own(db, client, prices):
+    ana, bea = _user(db), _user(db, "bea@example.com")
+    _tx(db, _account(db, bea, account_id="b"), A, TransactionType.BUY, date.today(), net="-10")
+    db.commit()
+
+    assert _world(client, ana)["events"] == []
+    assert [e["event_type"] for e in _world(client, bea)["events"]] == ["position_added"]

@@ -68,7 +68,9 @@ variación diaria en «—» hasta guardar el cierre previo (Fase 2); sector sol
       eventos simulados y refresco con cambio de sector.
 - [x] Fase 2a: `price_cache.previous_close` (misma descarga de 5 días, sin petición extra) → `day_change_pct`
       real en el pueblo, fail-closed (sin cierre previo, fila atrasada o > ±50 % → «—»).
-- [ ] Seguimiento (Fase 2): eventos reales (libro de operaciones + movimientos de precio), favoritos y overrides manuales por usuario, efectivo y alternativas en la meseta,
+- [x] Fase 2b: eventos reales de los últimos 7 días en `events` (movimientos ≥ ±2 % por fila de `price_cache`,
+      compras/ventas/dividendos del libro); `model/realEvents.ts` los redacta y puntúa; pasan por el director.
+- [ ] Seguimiento (Fase 2): favoritos y overrides manuales por usuario, efectivo y alternativas en la meseta,
       bonos/ISIN sin ticker (hoy «sin clasificar»), `industry` por ISIN (coches caen en «Comercio y moda»).
 
 
