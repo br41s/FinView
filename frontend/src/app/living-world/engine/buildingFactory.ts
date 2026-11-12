@@ -340,9 +340,9 @@ function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
 // Both grow with the building: a fixed size vanished on the tallest holdings.
 const lanternWidth = (nominal: number) => Math.min(4.4, Math.max(1.6, nominal * 0.42));
 const plateWidth = (nominal: number) => Math.min(3.4, Math.max(1.76, nominal * 0.34));
-const lanternTop = (nominal: number, top: number) => top + 0.08 + lanternWidth(nominal) * (SIGN_H / SIGN_W);
+export const lanternTop = (nominal: number, top: number) => top + 0.08 + lanternWidth(nominal) * (SIGN_H / SIGN_W);
 
-function signGeometry(nominal: number, top: number): THREE.BufferGeometry {
+export function signGeometry(nominal: number, top: number): THREE.BufferGeometry {
   const ratio = SIGN_H / SIGN_W;
   const pw = plateWidth(nominal);
   const plate = new THREE.PlaneGeometry(pw, pw * ratio);

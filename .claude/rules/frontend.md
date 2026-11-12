@@ -209,6 +209,23 @@ del …". Phase 2 has begun: the daily move and the last week's events are real 
   copy and scores them with `priority.ts`, dropping any type or confidence it does not know. They go
   through the director once when they arrive (it dedupes by id, so a refresh does not replay them).
   Trades and dividends appear only once imported. Only a date is known, so they are stamped at 00:00 UTC.
+- **Instant vs all-day** (`model/eventTiming.ts`). Price moves and signals are instants: performed
+  once when observed, listed as «hace 3 h». Dividends, results, expansions and trades belong to a
+  day (FinView has their date, not their time): listed as «Todo el día · hoy/ayer/9 nov», never a
+  made-up hour, and lived through that whole local day. `dayMoods` gives each building one mood
+  (party > concerned > work), and `Choreographer.setAllDay` keeps it going at the entrance
+  (string lights, balloons, confetti and staff celebrating; a crane, crates and a crew; a worried
+  crowd) until the day turns. `WorldShell` sends the moods only when they change.
+- **Signs** (`buildingFactory.drawSign` / `signGeometry`): a lightbox per holding, over the entrance
+  and as a four-sided lantern on the roof, one geometry and one unlit material per building (no
+  extra draw call); both scale with the building. The emblem is generated (brand colour, initials,
+  a shape from the ISIN), not a real logo: there is no licensed logo source, and a real logo would
+  mean a new third party in `PROCESSORS`. Labels and event markers float above `signTop`.
+- **Closed positions stand in ruins.** `GET /world` returns them with `status: "closed"`, the date of
+  the last sale and, from the ledger as booked, invested / received in sales / dividends (no
+  realised gain: that is FIFO's, per fiscal year). An ISIN needs a SELL to count as closed, and one
+  whose ticker is still held (a split or exchange gave it a new ISIN) is not drawn. Ruins
+  (`createRuins`) keep their lot, sign and inspector data, get no staff and do not light up.
 - **«Simular eventos» adds, never replaces.** On, it seeds a week of demo history and a live trickle on
   top of the real events; every simulated event has confidence `demo` (tag «Simulado»), a «Simulado · »
   title prefix and a banner. Off, it removes the simulated ones only. Never present a generated event as
