@@ -72,7 +72,9 @@ function headlineMetric(e: WorldEvent): { value: string; label: string } | null 
   const raw = e.metrics[spec[0]];
   if (typeof raw !== "number") return null;
   const sign = raw > 0 && spec[2] === "%" ? "+" : "";
-  return { value: sign + fmt(raw, 2) + spec[2], label: spec[1] };
+  // Whole figures (an importance, a share count, a fiscal year) read without «,00».
+  const decimals = Number.isInteger(raw) && spec[2] !== "%" && spec[2] !== " €" ? 0 : 2;
+  return { value: sign + fmt(raw, decimals) + spec[2], label: spec[1] };
 }
 
 export function EventCard({ event: e, asset, pinned, onPin, onClose, onFocus, onReplay }: Readonly<Props>) {
