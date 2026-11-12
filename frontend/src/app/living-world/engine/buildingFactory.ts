@@ -278,7 +278,9 @@ function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
   ctx.beginPath();
   ctx.roundRect(4, 4, SIGN_W - 8, SIGN_H - 8, 22);
   ctx.fill();
-  ctx.fillStyle = "#101b29";
+  // A lightbox: a pale panel lit from behind reads in sunlight and glows (bloom) at night,
+  // where a dark plate with white letters disappeared.
+  ctx.fillStyle = "#f7f9fc";
   ctx.beginPath();
   ctx.roundRect(12, 12, SIGN_W - 24, SIGN_H - 24, 17);
   ctx.fill();
@@ -316,6 +318,7 @@ function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
 
   // Ticker and name.
   ctx.textAlign = "left";
+  ctx.fillStyle = "#0f172a";
   const ticker = (asset.ticker?.trim() || initials(asset.name)).toUpperCase().slice(0, 12);
   let size = 58;
   ctx.font = `800 ${size}px system-ui, sans-serif`;
@@ -324,7 +327,7 @@ function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
     ctx.font = `800 ${size}px system-ui, sans-serif`;
   }
   ctx.fillText(ticker, 166, 64, 330);
-  ctx.fillStyle = "#dbe7f3";
+  ctx.fillStyle = "#475569";
   ctx.font = "600 24px system-ui, sans-serif";
   ctx.fillText(asset.name, 166, 120, 330);
   return canvas;
@@ -334,13 +337,16 @@ function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
  * Where the sign is shown, as one geometry (one draw call per building): a plate over the
  * entrance and a four-sided lantern on the roof, readable from any side of the town.
  */
-const lanternWidth = (nominal: number) => Math.min(2.6, Math.max(1.4, nominal * 0.32));
+// Both grow with the building: a fixed size vanished on the tallest holdings.
+const lanternWidth = (nominal: number) => Math.min(4.4, Math.max(1.6, nominal * 0.42));
+const plateWidth = (nominal: number) => Math.min(3.4, Math.max(1.76, nominal * 0.34));
 const lanternTop = (nominal: number, top: number) => top + 0.08 + lanternWidth(nominal) * (SIGN_H / SIGN_W);
 
 function signGeometry(nominal: number, top: number): THREE.BufferGeometry {
   const ratio = SIGN_H / SIGN_W;
-  const plate = new THREE.PlaneGeometry(1.76, 1.76 * ratio);
-  plate.translate(0, DECK_TOP + 0.4, nominal * 0.5 + 0.075);
+  const pw = plateWidth(nominal);
+  const plate = new THREE.PlaneGeometry(pw, pw * ratio);
+  plate.translate(0, DECK_TOP + 0.12 + (pw * ratio) / 2, nominal * 0.5 + 0.075);
   const w = lanternWidth(nominal);
   const h = w * ratio;
   const faces: THREE.BufferGeometry[] = [plate];
