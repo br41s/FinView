@@ -370,7 +370,18 @@ def test_a_falling_day_is_negative_and_a_zero_previous_close_is_unknown():
 TODAY = date(2026, 11, 12)
 
 
-def _tx(db, account, isin, kind, day, qty="1", net="100", currency="EUR", ticker="TST"):
+def _tx(
+    db,
+    account,
+    isin,
+    kind,
+    day,
+    qty="1",
+    net="100",
+    currency="EUR",
+    ticker="TST",
+    name: str | None = None,
+):
     db.add(
         Transaction(
             account_id=account.id,
@@ -378,7 +389,7 @@ def _tx(db, account, isin, kind, day, qty="1", net="100", currency="EUR", ticker
             trade_date=day,
             isin=isin,
             ticker=ticker,
-            name=f"Asset {isin}",
+            name=name or f"Asset {isin}",
             country="España",
             quantity=Decimal(qty),
             price=Decimal("1"),
@@ -490,6 +501,53 @@ def test_events_are_the_users_own(db, client, prices):
 
     assert _world(client, ana)["events"] == []
     assert [e["event_type"] for e in _world(client, bea)["events"]] == ["position_added"]
+
+
+# ── options are contracts, not holdings ────────────────────────────────────────
+
+
+def test_options_are_not_holdings_in_the_town(db, client, prices):
+    """An IBKR option trade has an empty ISIN; the town draws holdings only."""
+    user = _user(db)
+    acct = _account(db, user)
+    _tx(db, acct, A, TransactionType.BUY, date(2025, 1, 1), qty="10", net="-1000", ticker="AAA")
+    _tx(
+        db, acct, "", TransactionType.BUY, date(2025, 1, 2), qty="1", net="-100",
+        ticker="ADM", name="[OPT] ADM 20DEC24 52.5 P",
+    )
+    _tx(
+        db, acct, "US0000000005", TransactionType.BUY, date(2025, 1, 3), qty="1", net="-100",
+        ticker="ADM2", name="ADM 20DEC24 52.5 P",
+    )
+    db.commit()
+    prices.value = {A: Decimal("100")}
+
+    world = _world(client, user)
+
+    assert set(_by_isin(world)) == {A}
+    assert world["summary"]["positions"] == 1
+
+
+def test_an_option_trade_is_not_an_event(db, prices):
+    user = _user(db)
+    acct = _account(db, user, broker=Broker.IBKR)
+    _tx(
+        db, acct, "", TransactionType.BUY, TODAY, qty="1", net="-100",
+        ticker="ADM", name="[OPT] ADM 20DEC24 52.5 P",
+    )
+    db.commit()
+
+    assert lw.build_world(db, user.id, today=TODAY)["events"] == []
+
+
+def test_is_share_holding():
+    assert lw.is_share_holding("ES0148396007", "INDITEX") is True
+    assert lw.is_share_holding("US0378331005", "Apple Inc") is True
+    assert lw.is_share_holding("", "[OPT] X") is False
+    assert lw.is_share_holding(None, "Apple") is False
+    assert lw.is_share_holding("US0378331005", "AAPL 20DEC24 150 C") is False
+    assert lw.is_share_holding("ES0148396007", "ITX PUT 18DEC26") is False
+    assert lw.is_share_holding("XX123", "Short") is False
 
 
 # ── closed positions: kept as ruins, with the ledger's facts ────────────────────
