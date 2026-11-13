@@ -206,3 +206,44 @@ def test_a_newer_download_overwrites_a_live_close():
     first = db.query(SessionClose).filter(SessionClose.session_date == d1).one()
     assert first.previous_close is None  # never known: unknown, not zero
     db.close()
+
+
+def test_a_repeated_session_date_is_stored_once_with_the_later_bar():
+    """yfinance can repeat a date; Postgres refuses an upsert touching one row twice."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    d1, d2 = date(2026, 11, 11), date(2026, 11, 12)
+
+    svc._store_sessions(db, {"SAN.MC": [(d1, 4.0), (d2, 4.1), (d2, 4.2)]})
+    db.commit()
+
+    rows = db.query(SessionClose).filter(SessionClose.session_date == d2).all()
+    assert [r.close for r in rows] == [Decimal("4.2")]
+    db.close()
+
+
+def test_a_failed_session_write_never_costs_the_valuation(monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    monkeypatch.setattr(svc, "_resolve_ticker", lambda _isin, _db: "AENA.MC")
+
+    def fetch(_tickers, *, sessions=None, **_kw):
+        sessions["AENA.MC"] = [(date(2026, 11, 11), 20.0), (date(2026, 11, 12), 20.5)]
+        return {"AENA.MC": 20.5}
+
+    def broken(_db, _rows):
+        raise OperationalError("INSERT", {}, Exception("connection reset"))
+
+    monkeypatch.setattr(svc, "_fetch_yahoo_prices", fetch)
+    monkeypatch.setattr(svc, "_upsert_sessions", broken)
+
+    result = svc.fetch_and_cache_prices(db, ["ES0105046017"])
+
+    assert result == {"ES0105046017": Decimal("20.5")}
+    assert db.query(PriceCache).one().price == Decimal("20.5")
+    assert db.query(SessionClose).count() == 0
+    db.close()

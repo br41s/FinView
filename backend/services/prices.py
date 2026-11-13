@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.models import PriceCache, SessionClose
@@ -236,24 +236,41 @@ def _store_sessions(db: Session, sessions: dict[str, list[tuple[date, float]]]) 
     bar has none — unless an earlier download stored one, which is kept. A newer download
     overwrites the close: the last bar of a download made while the market was open is
     a live price, and the next day's download carries the real close.
+
+    This rides on the valuation and must never cost it: it runs in its own SAVEPOINT, and
+    a failure loses these rows (logged), not the prices the user is waiting for.
     """
-    rows = []
+    by_key: dict[tuple[str, date], dict] = {}
     for ticker, bars in sessions.items():
         scale = 100.0 if ticker.endswith(".L") else 1.0  # pence, as for the price
         prev: float | None = None
         for day, close in bars:
             if close > 0:
-                rows.append({
+                # yfinance can repeat a date (a live last bar beside the day's row): one row
+                # per (ticker, day), the later bar winning. Postgres refuses an upsert that
+                # touches the same row twice in one statement, and that would fail the batch.
+                by_key[(ticker, day)] = {
                     "yahoo_ticker": ticker,
                     "session_date": day,
                     "close": Decimal(str(round(close / scale, 6))),
                     "previous_close": (
                         Decimal(str(round(prev / scale, 6))) if prev and prev > 0 else None
                     ),
-                })
+                }
             prev = close
-    if not rows:
+    if not by_key:
         return
+    # A fixed order, so two parallel valuations upserting the same rows lock them in the
+    # same sequence instead of waiting on each other.
+    rows = [by_key[k] for k in sorted(by_key)]
+    try:
+        with db.begin_nested():
+            _upsert_sessions(db, rows)
+    except SQLAlchemyError:
+        logger.exception("session_closes: could not store %d sessions; prices unaffected", len(rows))
+
+
+def _upsert_sessions(db: Session, rows: list[dict]) -> None:
     # One statement: a round trip per bar would be ~350 on the day's first page view.
     insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     stmt = insert(SessionClose).values(rows)
