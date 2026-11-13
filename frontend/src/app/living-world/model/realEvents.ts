@@ -118,7 +118,8 @@ function copy(type: RealType, name: string, m: LivingWorldEvent["metrics"]): { t
     case "geo_alert": {
       // The backend folds every signal about one holding on one day into one event.
       const n = typeof m.signal_count === "number" && m.signal_count > 1 ? m.signal_count : 1;
-      const all = typeof m.headlines === "string" ? m.headlines.split("\n").filter(Boolean) : [];
+      // Never more lines than signals: the count is the backend's, the text is external.
+      const all = typeof m.headlines === "string" ? m.headlines.split("\n").filter(Boolean).slice(0, n) : [];
       const one = typeof m.headline === "string" && m.headline ? m.headline : null;
       return {
         title: n > 1 ? `${n} alertas geopolíticas: ${name}` : `Alerta geopolítica: ${name}`,

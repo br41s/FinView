@@ -124,4 +124,12 @@ describe("toWorldEvents", () => {
     expect(cut.title).toBe(`${held.name} paga menos dividendo por acción (−25,50 %)`);
     expect(cut.direction).toBe("negative");
   });
+
+  it("never lists more geo headlines than signals", () => {
+    const [geo] = toWorldEvents(
+      [raw({ id: "geo:x", event_type: "geo_alert", confidence: "derived", metrics: { signal_count: 2, headlines: "Uno\nDos\nTres" } })],
+      assets,
+    );
+    expect(geo.summary.split(" · ")).toHaveLength(2);
+  });
 });

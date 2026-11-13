@@ -342,7 +342,9 @@ def _geo_alerts(db: Session, yahoo: dict[str, str], names: dict[str, str], since
             {
                 "headline": latest.headline,
                 # Newest first, one per line; metrics are flat, so the list is a string.
-                "headlines": "\n".join(s.headline for s, _d in legs if s.headline),
+                # Headlines are external text: flattened to one line each, so a line break
+                # inside one can never read as an extra signal once the list is split.
+                "headlines": "\n".join(" ".join(s.headline.split()) for s, _d in legs if s.headline),
                 "signal_count": len(legs),
                 # Shared facts only: a field the signals disagree on is unknown, not picked.
                 "country": countries.pop() if len(countries) == 1 else None,

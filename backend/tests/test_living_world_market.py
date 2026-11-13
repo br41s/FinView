@@ -291,3 +291,15 @@ def test_only_zonas_clave_alerts_the_user_was_sent(db, user):
     assert [e["isin"] for e in zones] == [A]
     assert zones[0]["metrics"]["zone"] == "soporte"
     assert zones[0]["occurred_at"] == "2026-11-11T15:00:00Z"
+
+
+def test_a_line_break_inside_a_headline_cannot_pose_as_another_signal(db, user):
+    """Headlines are external text joined one per line: each is flattened first."""
+    _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 11, 8, 0), headline="Huelga\nen el puerto")
+    _geo(db, symbol="ALF.MC", notified_at=datetime(2026, 11, 11, 9, 0), headline="Cierre de frontera")
+    db.commit()
+
+    [geo] = [e for e in _events(db, user) if e["event_type"] == "geo_alert"]
+
+    assert geo["metrics"]["signal_count"] == 2
+    assert geo["metrics"]["headlines"].split("\n") == ["Cierre de frontera", "Huelga en el puerto"]
