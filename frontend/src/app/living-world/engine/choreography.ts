@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Performance } from "../model/director";
 import type { Point } from "../model/routes";
 import type { DayMood } from "../model/eventTiming";
+import { flashColorFor } from "../model/eventColors";
 import type { EventType } from "../model/types";
 import type { AgentState, AgentSystem, Role } from "./agents";
 import { Builder } from "./buildingFactory";
@@ -204,6 +205,12 @@ interface SitePulse {
   duration: number;
   intensity: number;
   phase: number;
+}
+
+interface PlotFlash {
+  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  ttl: number;
+  duration: number;
 }
 
 interface FloatingBadge {
@@ -499,6 +506,7 @@ export class Choreographer {
   private markers: Marker[] = [];
   private badges: FloatingBadge[] = [];
   private pulses = new Map<string, SitePulse>();
+  private flashes = new Map<string, PlotFlash>();
   private mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
   private beaconMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, fog: false });
   private time = 0;
@@ -518,6 +526,7 @@ export class Choreographer {
     const types = [...new Set(p.events.map((e) => e.eventType))];
 
     this.pulse(p, site, ms);
+    this.plotFlash(p, site, ms);
     for (const t of types) this.act(p, t, site, ms);
 
     if (p.severity !== "normal") this.beacon(p, site, ms);
@@ -647,6 +656,7 @@ export class Choreographer {
     if (!site || !last) return;
     const ms = Math.max(4000, p.endsAt - clock);
     this.pulse(p, site, ms);
+    this.plotFlash(p, site, ms);
     this.act(p, last.eventType, site, ms);
     if (p.severity !== "normal") this.beacon(p, site, ms);
   }
@@ -656,6 +666,31 @@ export class Choreographer {
     for (const b of this.badges) if (b.key.startsWith(id)) b.ttl = Math.min(b.ttl, 400);
     const pulse = this.pulses.get(id);
     if (pulse) pulse.ttl = Math.min(pulse.ttl, 400);
+    const flash = this.flashes.get(id);
+    if (flash) flash.ttl = Math.min(flash.ttl, 400);
+  }
+
+  /** The lot's ground flashes the colour of the latest event: readable from across the town. */
+  private plotFlash(p: Performance, site: SiteInfo, ms: number) {
+    const color = flashColorFor(p.events.map((e) => e.eventType));
+    const existing = this.flashes.get(p.id);
+    if (existing) {
+      // An absorbed event only recolours the plot this performance already owns.
+      existing.mesh.material.color.setHex(color);
+      existing.ttl = Math.max(existing.ttl, ms);
+      existing.duration = Math.max(existing.duration, ms);
+      return;
+    }
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, fog: false }),
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.scale.setScalar(site.radius * 2.8);
+    mesh.position.set(site.x, site.groundY + 0.3, site.z);
+    mesh.renderOrder = 2;
+    this.stage.scene.add(mesh);
+    this.flashes.set(p.id, { mesh, ttl: ms, duration: ms });
   }
 
   /** Event light washes the affected headquarters, not the surrounding city. */
@@ -827,6 +862,20 @@ export class Choreographer {
       }
     }
 
+    for (const [key, flash] of this.flashes) {
+      flash.ttl -= dtMs;
+      if (flash.ttl <= 0) {
+        this.stage.scene.remove(flash.mesh);
+        flash.mesh.geometry.dispose();
+        flash.mesh.material.dispose();
+        this.flashes.delete(key);
+        continue;
+      }
+      const beat = 0.18 + 0.32 * (0.5 + 0.5 * Math.sin(t * 6));
+      const fade = Math.min(1, flash.ttl / 600);
+      flash.mesh.material.opacity = (this.reduced ? 0.35 : beat) * fade;
+    }
+
     for (const m of this.markers) {
       m.ttl -= dtMs;
       if (m.kind === "beaconBeam") {
@@ -885,6 +934,12 @@ export class Choreographer {
     this.badges = [];
     for (const pulse of this.pulses.values()) this.stage.scene.remove(pulse.light);
     this.pulses.clear();
+    for (const flash of this.flashes.values()) {
+      this.stage.scene.remove(flash.mesh);
+      flash.mesh.geometry.dispose();
+      flash.mesh.material.dispose();
+    }
+    this.flashes.clear();
     this.mat.dispose();
     this.beaconMat.dispose();
     geoCache.forEach((g) => g.dispose());

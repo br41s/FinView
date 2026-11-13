@@ -245,10 +245,24 @@ del …". Phase 2 has begun: the daily move and the last 30 days' events are rea
   (string lights, balloons, confetti and staff celebrating; a crane, crates and a crew; a worried
   crowd) until the day turns. `WorldShell` sends the moods only when they change.
 - **Signs** (`buildingFactory.drawSign` / `signGeometry`): a lightbox per holding, over the entrance
-  and as a four-sided lantern on the roof, one geometry and one unlit material per building (no
-  extra draw call); both scale with the building. The emblem is generated (brand colour, initials,
-  a shape from the ISIN), not a real logo: there is no licensed logo source, and a real logo would
-  mean a new third party in `PROCESSORS`. Labels and event markers float above `signTop`.
+  and as two vertical blades on the facade of the main tower (front and right side), the same
+  texture rotated 90° so the name reads bottom-to-top; one geometry and one unlit material per
+  building (no extra draw call). **Nothing on the roofs** (owner, 2026-11-13): the roof lantern and
+  the floating per-building name label are gone; district labels stay. The emblem is generated
+  (brand colour, initials, a shape from the ISIN), not a real logo: there is no licensed logo
+  source, and a real logo would mean a new third party in `PROCESSORS`. Event markers float above
+  `signTop` (the real roof).
+- **Plot flash** (`model/eventColors.ts`, `Choreographer.plotFlash`): while a performance runs, the
+  lot's ground pulses in one colour per kind of event (up green, down red, dividends gold, geo
+  violet…), so an event is visible from anywhere in the town.
+- **Walking**: the walk shader (`toyMaterial.VERT_WALK`) swings limbs from `toyShared.uTime`, which
+  the frame loop advances with the simulation; left at 0 it froze the limbs and people slid.
+- **Zoom-out**: `CameraController.maxDist` is 4× the town radius (cap 1600; a 32° lens needs ~3.5×
+  to frame it all) and the fog thins with distance so a zoomed-out town stays readable.
+- **Only shares become buildings** (`living_world.is_share_holding`): IBKR stores option trades
+  with an empty ISIN and an «[OPT] SYMBOL DDMMMYY STRIKE P» name, and the portfolio service lets
+  `""` through. Positions, ruins and ledger events require a valid ISIN and a name that is not an
+  option. The importer/portfolio root cause is a separate fiscal change, not done.
 - **Closed positions stand in ruins.** `GET /world` returns them with `status: "closed"`, the date of
   the last sale and, from the ledger as booked, invested / received in sales / dividends (no
   realised gain: that is FIFO's, per fiscal year). An ISIN needs a SELL to count as closed, and one

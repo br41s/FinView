@@ -36,7 +36,7 @@ export interface Site {
   top: number;
   /** Where the company sign stands (local, nominal scale). */
   sign: THREE.Vector3;
-  /** Top of the roof lantern (local, nominal scale): labels and markers float above it. */
+  /** Top of the tallest part (local, nominal scale): labels and markers float just above it. */
   signTop: number;
 }
 
@@ -220,7 +220,7 @@ function plot(b: Builder, n: number, accent: number) {
 }
 
 /** The geometry of a holding's complex, built from its spec. Pure Three.js, no DOM: tests build it too. */
-export function composeSite(spec: TowerSpec, n: number, unknown: boolean): { geometry: THREE.BufferGeometry; top: number; triangles: number } {
+export function composeSite(spec: TowerSpec, n: number, unknown: boolean): { geometry: THREE.BufferGeometry; top: number; mainTop: number; mainRadius: number; triangles: number } {
   const b = new Builder();
   plot(b, n, spec.accent);
   const main = buildMain({ b, n, spec });
@@ -251,7 +251,7 @@ export function composeSite(spec: TowerSpec, n: number, unknown: boolean): { geo
   }
   const triangles = b.triangles();
   const top = b.top;
-  return { geometry: b.build(), top, triangles };
+  return { geometry: b.build(), top, mainTop: main.top, mainRadius: main.radius, triangles };
 }
 
 const SIGN_W = 512;
@@ -334,29 +334,44 @@ function drawSign(asset: WorldAsset, accent: string): HTMLCanvasElement {
 }
 
 /**
- * Where the sign is shown, as one geometry (one draw call per building): a plate over the
- * entrance and a four-sided lantern on the roof, readable from any side of the town.
+ * Where the sign is shown, as one geometry (one draw call per building): the plate over the
+ * entrance and two vertical blades hung on the facade of the main tower, front and right side.
  */
-// Both grow with the building: a fixed size vanished on the tallest holdings.
-const lanternWidth = (nominal: number) => Math.min(4.4, Math.max(1.6, nominal * 0.42));
+// The plate grows with the building: a fixed size vanished on the tallest holdings.
 const plateWidth = (nominal: number) => Math.min(3.4, Math.max(1.76, nominal * 0.34));
-export const lanternTop = (nominal: number, top: number) => top + 0.08 + lanternWidth(nominal) * (SIGN_H / SIGN_W);
 
-export function signGeometry(nominal: number, top: number): THREE.BufferGeometry {
+/** Rewrites `uv` so the texture's long side runs along the plane's height (text reads bottom-to-top). */
+function rotateUv90(g: THREE.BufferGeometry) {
+  const uv = g.getAttribute("uv");
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getY(i), 1 - uv.getX(i));
+  uv.needsUpdate = true;
+}
+
+export function signGeometry(nominal: number, mainTop: number, mainRadius: number): THREE.BufferGeometry {
   const ratio = SIGN_H / SIGN_W;
   const pw = plateWidth(nominal);
   const plate = new THREE.PlaneGeometry(pw, pw * ratio);
   plate.translate(0, DECK_TOP + 0.12 + (pw * ratio) / 2, nominal * 0.5 + 0.075);
-  const w = lanternWidth(nominal);
-  const h = w * ratio;
-  const faces: THREE.BufferGeometry[] = [plate];
-  for (let k = 0; k < 4; k++) {
-    const face = new THREE.PlaneGeometry(w, h);
-    face.translate(0, 0, w / 2);
-    face.rotateY((k * Math.PI) / 2);
-    face.translate(0, top + 0.08 + h / 2, 0);
-    faces.push(face);
+
+  // A vertical blade on the tower wall, clear of it; capped at 70 % of the tower so it never
+  // reaches the roof. Width follows the tower's base, the texture's aspect is kept.
+  let w = Math.min(3.0, Math.max(0.9, mainRadius * 1.2));
+  let h = w / ratio;
+  if (h > mainTop * 0.7) {
+    h = mainTop * 0.7;
+    w = h * ratio;
   }
+  const y = mainTop * 0.15 + h / 2;
+
+  const front = new THREE.PlaneGeometry(w, h);
+  rotateUv90(front);
+  front.translate(0, y, mainRadius + 0.06);
+  const side = new THREE.PlaneGeometry(w, h);
+  rotateUv90(side);
+  side.rotateY(Math.PI / 2);
+  side.translate(mainRadius + 0.06, y, 0);
+
+  const faces: THREE.BufferGeometry[] = [plate, front, side];
   const merged = mergeGeometries(faces, false)!;
   for (const f of faces) f.dispose();
   return merged;
@@ -366,7 +381,7 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   const nominal = NOMINAL[tier];
   const spec = specFor(asset, tier);
   const accent = spec.accent;
-  const { geometry, top } = composeSite(spec, nominal, unknown);
+  const { geometry, top, mainTop, mainRadius } = composeSite(spec, nominal, unknown);
   const lat = new THREE.Color(spec.accent).lerp(new THREE.Color(0xffffff), 0.7).getHex();
   const material = createFacadeMaterial({
     instanced: false,
@@ -383,14 +398,14 @@ export function createSite(asset: WorldAsset, tier: Tier, unknown: boolean): Sit
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   // Unlit (no shading, no tone mapping): the sign reads the same at noon and, with the bloom,
-  // glows at night. The plate on the facade and the lantern on the roof share it.
+  // glows at night. The entrance plate and the blades share it.
   const brandMaterial = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
-  const brandPlate = new THREE.Mesh(signGeometry(nominal, top), brandMaterial);
+  const brandPlate = new THREE.Mesh(signGeometry(nominal, mainTop, mainRadius), brandMaterial);
   brandPlate.renderOrder = 3;
 
   const group = new THREE.Group();
   group.add(mesh, brandPlate);
-  return { group, mesh, material, brandPlate, brandMaterial, nominal, top, sign: new THREE.Vector3(nominal * 0.5, 0.9, nominal * 0.5), signTop: lanternTop(nominal, top) };
+  return { group, mesh, material, brandPlate, brandMaterial, nominal, top, sign: new THREE.Vector3(nominal * 0.5, 0.9, nominal * 0.5), signTop: top };
 }
 
 export function disposeSite(s: Site) {

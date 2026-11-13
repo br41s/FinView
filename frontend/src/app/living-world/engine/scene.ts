@@ -24,7 +24,8 @@ import type { DayMood } from "../model/eventTiming";
 import { QUALITY, type Quality } from "./quality";
 import { createLighting } from "./lighting";
 import { createPost } from "./post";
-import { buildTown, disposeLabel, makeBrandLabel, ribbon, type Town } from "./props";
+import { buildTown, ribbon, type Town } from "./props";
+import { toyShared } from "./toyMaterial";
 import { createSoundEngine, type SoundEngine } from "./audio";
 
 /**
@@ -123,7 +124,6 @@ interface SiteEntry {
   asset: WorldAsset;
   lot: Lot;
   site: Site;
-  label: THREE.Sprite;
   footprint: number;
   /** Ground height under the building. */
   groundY: number;
@@ -289,9 +289,8 @@ export function createWorld(
     hovered = null;
     hoverRing.visible = false;
     for (const e of sites.values()) {
-      scene.remove(e.site.group, e.label);
+      scene.remove(e.site.group);
       disposeSite(e.site);
-      disposeLabel(e.label);
     }
     sites.clear();
     siteMeshes.length = 0;
@@ -390,14 +389,10 @@ export function createWorld(
       scene.add(site.group);
       siteMeshes.push(site.mesh, site.brandPlate);
 
-      const label = makeBrandLabel(asset);
-      label.position.set(lot.x, groundY + site.signTop * startScale + 0.72, lot.z);
-      scene.add(label);
       sites.set(asset.id, {
         asset,
         lot,
         site,
-        label,
         footprint,
         groundY,
         scale: startScale,
@@ -435,27 +430,12 @@ export function createWorld(
     return hit ? (hit.object.userData.assetId as string) : null;
   };
 
-  const labelShouldShow = (e: SiteEntry, dist: number) => {
-    const tier = tierFor(e.asset.weightPct);
-    const visibleByDistance =
-      dist <= 220
-        ? tier === "campus" || tier === "major"
-          ? true
-          : dist <= 140
-            ? tier !== "outpost"
-            : false
-        : false;
-    return (visibleByDistance || e.asset.id === selected || e.asset.id === hovered) && e.site.group.visible;
-  };
-
   const syncHighlights = () => {
-    const dist = ctrl.distance;
     for (const s of sites.values()) {
       const active = s.asset.id === selected;
       const over = s.asset.id === hovered;
       s.site.material.emissive.setHex(active ? 0x302714 : over ? 0x1d5f7a : 0x000000);
       if (!over) s.site.material.emissiveIntensity = 1;
-      s.label.visible = labelShouldShow(s, dist);
     }
     const e = hovered && hovered !== selected ? sites.get(hovered) : null;
     hoverRing.visible = !!e;
@@ -574,11 +554,6 @@ export function createWorld(
         s.scale.set(s.userData.aspect * h, h, 1);
       }
     }
-    const h = Math.min(1.35, Math.max(0.68, dist * 0.014));
-    for (const e of sites.values()) {
-      e.label.visible = labelShouldShow(e, dist);
-      e.label.scale.set(e.label.userData.aspect * h, h, 1);
-    }
     const near = dist < 320;
     agents.setVisible(near);
   };
@@ -641,6 +616,8 @@ export function createWorld(
         cb.onPerformance("end", p);
       }
       agents.update(simDt);
+      // The walk shader swings limbs from this clock; it advances with the simulation, so a paused town stands still.
+      toyShared.uTime.value += simDt / 1000;
       infra?.update(simDt);
       vehicles?.update(simDt, agents.hour);
       town?.update?.(simDt);
@@ -685,7 +662,6 @@ export function createWorld(
           const eased = 1 - Math.pow(1 - t, 3);
           e.scale = e.scaleFrom + (e.scaleTarget - e.scaleFrom) * eased;
           e.site.group.scale.setScalar(e.scale);
-          e.label.position.y = e.groundY + e.site.signTop * e.scale + 0.72;
         }
       }
     }
@@ -711,8 +687,6 @@ export function createWorld(
       }
       brand.depthWrite = next > 0.5;
       e.site.group.visible = e.targetOpacity > 0 || next > 0.01;
-      e.label.visible = labelShouldShow(e, ctrl.distance);
-      e.label.material.opacity = Math.max(0.25, next);
     }
 
     const dist = ctrl.distance;
@@ -720,6 +694,8 @@ export function createWorld(
       lastLod = dist;
       lod(dist);
     }
+    // Thin the fog on a zoomed-out camera so the whole town stays readable.
+    if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.0008 * Math.min(1, 420 / Math.max(1, ctrl.distance));
     renderer.info.reset();
     post.render();
     drawCalls = renderer.info.render.calls;
@@ -881,7 +857,6 @@ export function createWorld(
           e.scaleElapsedMs = e.scaleDurationMs;
           e.scaleDelayMs = 0;
           e.site.group.scale.setScalar(e.scaleTarget);
-          e.label.position.y = e.groundY + e.site.signTop * e.scaleTarget + 0.72;
         }
       }
     },
