@@ -325,7 +325,11 @@ export interface LivingWorldSummary {
   prices_as_of: string | null;
 }
 
-/** A real fact from the last week: a stored daily move (≥ 2 %) or a ledger entry. */
+/**
+ * A real fact from the last 30 days: a stored session move (≥ 2 %), a ledger entry or a
+ * fact another feature stored. Metrics are flat: a list (a day's geo headlines) is a
+ * newline-joined string.
+ */
 export interface LivingWorldEvent {
   id: string;
   event_type: string;

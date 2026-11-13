@@ -115,11 +115,20 @@ function copy(type: RealType, name: string, m: LivingWorldEvent["metrics"]): { t
       const fy = typeof m.fiscal_year === "number" ? ` (ejercicio ${m.fiscal_year})` : "";
       return { title: `Nuevo informe anual de ${name}${fy}`, summary: "FinView ha leído su informe; la fecha es la de lectura, no la de publicación." };
     }
-    case "geo_alert":
+    case "geo_alert": {
+      // The backend folds every signal about one holding on one day into one event.
+      const n = typeof m.signal_count === "number" && m.signal_count > 1 ? m.signal_count : 1;
+      // Never more lines than signals: the count is the backend's, the text is external.
+      const all = typeof m.headlines === "string" ? m.headlines.split("\n").filter(Boolean).slice(0, n) : [];
+      const one = typeof m.headline === "string" && m.headline ? m.headline : null;
       return {
-        title: `Alerta geopolítica: ${name}`,
-        summary: typeof m.headline === "string" && m.headline ? m.headline : "Una señal geopolítica enviada menciona este valor.",
+        title: n > 1 ? `${n} alertas geopolíticas: ${name}` : `Alerta geopolítica: ${name}`,
+        summary:
+          n > 1 && all.length > 0
+            ? all.join(" · ")
+            : (one ?? "Una señal geopolítica enviada menciona este valor."),
       };
+    }
     case "technical_signal": {
       const z = typeof m.zone === "string" && m.zone ? ` (${m.zone})` : "";
       return { title: `${name} llega a una zona clave${z}`, summary: "Alerta de Zonas Clave enviada para este valor." };

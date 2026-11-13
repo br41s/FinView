@@ -20,6 +20,8 @@ from backend.models import (
     ListingProfile,
     PriceCache,
     SegmentReport,
+    SessionClose,
+    TickerMap,
     Transaction,
     TransactionType,
 )
@@ -424,29 +426,61 @@ def test_ledger_entries_of_the_window_become_events(db, prices):
     )
 
 
-def test_daily_moves_of_two_percent_or_more_become_derived_events(db, prices):
+def _session(ticker, day, close, previous):
+    return SessionClose(
+        yahoo_ticker=ticker,
+        session_date=day,
+        close=Decimal(close),
+        previous_close=Decimal(previous) if previous is not None else None,
+    )
+
+
+def test_every_stored_session_move_of_two_percent_or_more_is_an_event(db, prices):
+    """Every session the daily download carried, not only the days FinView was opened."""
     user = _user(db)
     acct = _account(db, user)
     for isin in (A, B, C, D):
         _buy(db, acct, isin, "100")
+    E = "ES0000000005"
+    _buy(db, acct, E, "100")
     db.add_all([
-        _row(A, TODAY, "103", "100"),  # +3 %: an event
-        _row(A, date(2026, 11, 11), "95", "100"),  # −5 % yesterday: its own event
-        _row(B, TODAY, "101", "100"),  # +1 %: noise
-        _row(C, TODAY, "200", "100"),  # +100 %: a Yahoo slip, not an event
-        _row(D, date(2026, 10, 10), "90", "100"),  # outside the window
+        TickerMap(isin=A, yahoo_ticker="AAA.MC", source="manual"),
+        TickerMap(isin=B, yahoo_ticker="BBB.MC", source="manual"),
+        TickerMap(isin=C, yahoo_ticker="CCC.MC", source="manual"),
+        TickerMap(isin=D, yahoo_ticker="DDD", source="manual"),
+        TickerMap(isin=E, yahoo_ticker="EEE.MC", source="manual"),
+        _session("AAA.MC", TODAY, "103", "100"),  # +3 %: an event
+        _session("AAA.MC", date(2026, 11, 9), "95", "100"),  # −5 % three sessions back: its own
+        _session("BBB.MC", TODAY, "101", "100"),  # +1 %: noise
+        _session("CCC.MC", TODAY, "200", "100"),  # +100 %: a Yahoo slip, not an event
+        _session("DDD", date(2026, 10, 10), "90", "100"),  # outside the window
+        # The oldest bar of a download has no previous one: silence, never a move from 0.
+        _session("EEE.MC", date(2026, 11, 6), "90", None),
+        _session("ZZZ", TODAY, "90", "100"),  # not a holding
     ])
     db.commit()
-    prices.value = {A: Decimal("103"), B: Decimal("101"), C: Decimal("200"), D: Decimal("90")}
+    prices.value = {i: Decimal("100") for i in (A, B, C, D, E)}
 
     events = _events(db, user)
 
-    assert set(events) == {f"px:{A}:2026-11-12", f"px:{A}:2026-11-11"}
+    assert set(events) == {f"px:{A}:2026-11-12", f"px:{A}:2026-11-09"}
     up = events[f"px:{A}:2026-11-12"]
     assert up["event_type"] == "price_move_up"
     assert up["confidence"] == "derived"
-    assert up["metrics"]["change_pct"] == 3.0
-    assert events[f"px:{A}:2026-11-11"]["event_type"] == "price_move_down"
+    assert up["occurred_on"] == TODAY
+    assert up["metrics"] == {"change_pct": 3.0, "price": 103.0, "currency": "EUR", "period": "1d"}
+    assert events[f"px:{A}:2026-11-09"]["event_type"] == "price_move_down"
+
+
+def test_no_ticker_no_session_moves(db, prices):
+    """An ISIN nothing maps to a ticker cannot be matched to a session: silence."""
+    user = _user(db)
+    _buy(db, _account(db, user), A, "100")
+    db.add(_session("AAA.MC", TODAY, "110", "100"))
+    db.commit()
+    prices.value = {A: Decimal("100")}
+
+    assert not [e for e in _events(db, user).values() if e["event_type"].startswith("price_move")]
 
 
 def test_events_are_the_users_own(db, client, prices):

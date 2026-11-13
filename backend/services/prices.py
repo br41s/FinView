@@ -4,12 +4,13 @@ import logging
 from datetime import datetime, time, date
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from backend.models import PriceCache
+from backend.models import PriceCache, SessionClose
 from backend.services import exchange_rates, ticker_map, yahoo_budget
 from backend.services.yahoo_budget import (
     GEO_CYCLE_SECONDS,
@@ -149,10 +150,12 @@ def fetch_and_cache_prices(
     # stops fetching stays absent, which portfolio totals already treat as "unknown
     # price" and fail closed on — never as a price of zero.
     previous_closes: dict[str, float] = {}
+    sessions: dict[str, list[tuple[date, float]]] = {}
     prices = _fetch_yahoo_prices(
         list(ticker_to_isins.keys()),
         budget=Budget(PORTFOLIO_SECONDS, "portfolio valuation"),
         previous=previous_closes,
+        sessions=sessions,
     )
 
     # Determine which currencies need conversion
@@ -221,8 +224,65 @@ def fetch_and_cache_prices(
             })
             cached[isin] = price_dec
 
+    _store_sessions(db, sessions)
     db.commit()
     return cached
+
+
+def _store_sessions(db: Session, sessions: dict[str, list[tuple[date, float]]]) -> None:
+    """Keep every session of the download (`session_closes`), for Living World's moves.
+
+    Each row's previous close is the bar before it in this same download, so the oldest
+    bar has none — unless an earlier download stored one, which is kept. A newer download
+    overwrites the close: the last bar of a download made while the market was open is
+    a live price, and the next day's download carries the real close.
+
+    This rides on the valuation and must never cost it: it runs in its own SAVEPOINT, and
+    a failure loses these rows (logged), not the prices the user is waiting for.
+    """
+    by_key: dict[tuple[str, date], dict] = {}
+    for ticker, bars in sessions.items():
+        scale = 100.0 if ticker.endswith(".L") else 1.0  # pence, as for the price
+        prev: float | None = None
+        for day, close in bars:
+            if close > 0:
+                # yfinance can repeat a date (a live last bar beside the day's row): one row
+                # per (ticker, day), the later bar winning. Postgres refuses an upsert that
+                # touches the same row twice in one statement, and that would fail the batch.
+                by_key[(ticker, day)] = {
+                    "yahoo_ticker": ticker,
+                    "session_date": day,
+                    "close": Decimal(str(round(close / scale, 6))),
+                    "previous_close": (
+                        Decimal(str(round(prev / scale, 6))) if prev and prev > 0 else None
+                    ),
+                }
+            prev = close
+    if not by_key:
+        return
+    # A fixed order, so two parallel valuations upserting the same rows lock them in the
+    # same sequence instead of waiting on each other.
+    rows = [by_key[k] for k in sorted(by_key)]
+    try:
+        with db.begin_nested():
+            _upsert_sessions(db, rows)
+    except SQLAlchemyError:
+        logger.exception("session_closes: could not store %d sessions; prices unaffected", len(rows))
+
+
+def _upsert_sessions(db: Session, rows: list[dict]) -> None:
+    # One statement: a round trip per bar would be ~350 on the day's first page view.
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
+    stmt = insert(SessionClose).values(rows)
+    db.execute(stmt.on_conflict_do_update(
+        index_elements=["yahoo_ticker", "session_date"],
+        set_={
+            "close": stmt.excluded.close,
+            "previous_close": func.coalesce(
+                stmt.excluded.previous_close, SessionClose.previous_close
+            ),
+        },
+    ))
 
 
 # Geo scores moves over hours, so it prices on intraday bars; a daily close cannot
@@ -234,7 +294,10 @@ _INTRADAY_INTERVAL = "5m"
 
 
 def _last_closes(
-    data, tickers: list[str], previous: dict[str, float] | None = None
+    data,
+    tickers: list[str],
+    previous: dict[str, float] | None = None,
+    sessions: dict[str, list[tuple[date, float]]] | None = None,
 ) -> dict[str, float]:
     """Last non-NaN close per ticker from a yfinance download frame.
 
@@ -245,6 +308,10 @@ def _last_closes(
     With *previous*, the bar before the last one is written there too, per ticker and
     from that ticker's own series: exchanges close on different holidays, so a row of
     the frame is not one session for every symbol. One bar only → no previous close.
+
+    With *sessions*, every bar of the ticker's own series goes there as (session date,
+    close), oldest first. The date is the index's own calendar date (the exchange's
+    session), never shifted to UTC; a frame without a date index gives none.
     """
     import pandas as pd
 
@@ -257,6 +324,8 @@ def _last_closes(
         result[ticker] = float(vals.iloc[-1])
         if previous is not None and len(vals) > 1:
             previous[ticker] = float(vals.iloc[-2])
+        if sessions is not None and isinstance(vals.index, pd.DatetimeIndex):
+            sessions[ticker] = [(ts.date(), float(v)) for ts, v in vals.items()]
 
     if data is None or getattr(data, "empty", True):
         return result
@@ -345,6 +414,7 @@ def _fetch_yahoo_prices(
     interval: str = "1d",
     budget: Budget | None = None,
     previous: dict[str, float] | None = None,
+    sessions: dict[str, list[tuple[date, float]]] | None = None,
 ) -> dict[str, float]:
     """Fetch latest prices from Yahoo Finance. Returns dict[ticker, price].
 
@@ -354,7 +424,8 @@ def _fetch_yahoo_prices(
 
     *previous*, when given, receives each ticker's close of the session before (see
     ``_last_closes``). It rides along in the same download, so it costs no request; a
-    caller that ignores it, or a fake in a test, simply leaves it empty.
+    caller that ignores it, or a fake in a test, simply leaves it empty. *sessions*
+    likewise receives every bar of the download (see ``_last_closes``).
 
     Without a *budget* this is one batched call, which is what the portfolio path
     wants: nobody can interrupt it, but a user is waiting and the happy path is a
@@ -388,7 +459,7 @@ def _fetch_yahoo_prices(
                 progress=False,
                 threads=True,
             )
-            out.update(_last_closes(data, group, previous))
+            out.update(_last_closes(data, group, previous, sessions))
         except Exception:
             # One bad chunk must not drop the symbols that did resolve. Missing
             # symbols are already treated as unresolvable, never as zero.
