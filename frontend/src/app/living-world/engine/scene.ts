@@ -25,6 +25,7 @@ import { QUALITY, type Quality } from "./quality";
 import { createLighting } from "./lighting";
 import { createPost } from "./post";
 import { buildTown, disposeLabel, makeBrandLabel, ribbon, type Town } from "./props";
+import { toyShared } from "./toyMaterial";
 import { createSoundEngine, type SoundEngine } from "./audio";
 
 /**
@@ -641,6 +642,8 @@ export function createWorld(
         cb.onPerformance("end", p);
       }
       agents.update(simDt);
+      // The walk shader swings limbs from this clock; it advances with the simulation, so a paused town stands still.
+      toyShared.uTime.value += simDt / 1000;
       infra?.update(simDt);
       vehicles?.update(simDt, agents.hour);
       town?.update?.(simDt);
@@ -720,6 +723,8 @@ export function createWorld(
       lastLod = dist;
       lod(dist);
     }
+    // Thin the fog on a zoomed-out camera so the whole town stays readable.
+    if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.0008 * Math.min(1, 420 / Math.max(1, ctrl.distance));
     renderer.info.reset();
     post.render();
     drawCalls = renderer.info.render.calls;

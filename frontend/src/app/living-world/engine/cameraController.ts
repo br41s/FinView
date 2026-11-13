@@ -240,7 +240,7 @@ export class CameraController {
     return 9;
   }
   private maxDist() {
-    return Math.max(60, Math.min(420, this.o.radius() * 2.2));
+    return Math.max(60, Math.min(1600, this.o.radius() * 4));
   }
   private clampDist(d: number) {
     return Math.min(this.maxDist(), Math.max(this.minDist(), d));
