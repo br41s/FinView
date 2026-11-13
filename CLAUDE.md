@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1804 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 395 frontend tests |
+| Tests | pytest · 1807 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 396 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -241,10 +241,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1804 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1804 pass in ~140s. Those files are not in the repo,
+Backend: `pytest` — 1807 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1807 pass in ~140s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1656 run in ~100s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1659 run in ~100s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
@@ -262,7 +262,7 @@ reported 127 skips here against 159 there. Gate on a path built from
 is — a fixture that calls `pytest.skip()`, not a module-level `pytestmark` that also takes
 the pure unit tests down with it.
 
-Frontend: `cd frontend && pnpm test` (vitest) — 395 tests over pure logic: `src/lib/`
+Frontend: `cd frontend && pnpm test` (vitest) — 396 tests over pure logic: `src/lib/`
 (`aiExposure`, `brokerSync`, `exposure`, `optionsWatchlistSync`, `optionsWatchlistRows`, `portfolioValues`, `apiError`, `bestEffort`,
 `format`, `geoHealth`, `geo` — accuracy line, tradability hint, scope label, chained thesis, tier grouping, ladder badge)
 plus `src/app/blog/posts.test.ts`, `src/app/options/optionsData.test.ts` (the options
