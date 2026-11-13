@@ -23,6 +23,7 @@ Precedence for the archetype is manual > curated > derived, as for tickers
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
@@ -42,6 +43,24 @@ from backend.services import ticker_map
 from backend.services.living_world_market import market_events
 from backend.services.portfolio_service import Position, get_open_positions
 from backend.services.segments import exposure, listing
+
+_ISIN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+_OPTION_NAME = re.compile(
+    r"^\[OPT\]|\b\d{1,2}[A-Z]{3}\d{2}\s+\d+(?:[.,]\d+)?\s+[PC]\s*$|\b(?:PUT|CALL)\b",
+    re.IGNORECASE,
+)
+
+
+def is_share_holding(isin: str | None, name: str | None) -> bool:
+    """Whether a position is a share, not an option contract.
+
+    Options are contracts, not holdings: IBKR stores them with an empty ISIN and a name
+    like "[OPT] SYMBOL DDMMMYY STRIKE P". The town draws holdings only.
+    """
+    if not isin or not _ISIN.match(isin):
+        return False
+    return not _OPTION_NAME.search(name or "")
+
 
 # Yahoo `quoteType` → the town's asset type. Anything else (an index, a future) is not a
 # holding the town knows how to build, so it falls back to an unclassified equity.
@@ -231,6 +250,8 @@ def _ledger_events(db: Session, user_id: int, open_isins: set[str], since: date)
     )
     out = []
     for tx, broker in rows:
+        if not is_share_holding(tx.isin, tx.name):
+            continue
         account = getattr(broker, "value", broker)
         if tx.type == TransactionType.DIVIDEND:
             event_type = "dividend_paid"
@@ -339,6 +360,8 @@ def _closed_holdings(db: Session, user_id: int, positions: list[Position]) -> li
     )
     by_isin: dict[str, dict] = {}
     for tx, broker in rows:
+        if not is_share_holding(tx.isin, tx.name):
+            continue
         if tx.isin in open_isins:
             continue
         h = by_isin.setdefault(
@@ -372,6 +395,7 @@ def _closed_holdings(db: Session, user_id: int, positions: list[Position]) -> li
 
 def build_world(db: Session, user_id: int, today: date | None = None) -> dict:
     positions = get_open_positions(db, user_id)
+    positions = [p for p in positions if is_share_holding(p.isin, p.name)]
     isins = [p.isin for p in positions]
     price_rows = _latest_price_rows(db, isins) if isins else {}
     closed = _closed_holdings(db, user_id, positions)
