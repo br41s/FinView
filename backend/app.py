@@ -1,6 +1,7 @@
 """FinView FastAPI application."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -44,6 +45,22 @@ logger = logging.getLogger(__name__)
 Base.metadata.create_all(bind=engine)
 ensure_columns()
 ensure_constraints()
+
+
+def _process_age_seconds() -> float | None:
+    """Seconds since this process started (Linux /proc), or None elsewhere."""
+    try:
+        with open("/proc/self/stat", encoding="utf-8") as fh:
+            stat = fh.read()
+        # Everything after the last ")" is field 3 onward; starttime is field 22,
+        # i.e. index 19 of the remainder, in clock ticks since boot.
+        fields = stat[stat.rindex(")") + 1:].split()
+        starttime = int(fields[19])
+        with open("/proc/uptime", encoding="utf-8") as fh:
+            uptime = float(fh.read().split()[0])
+        return uptime - starttime / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def _start_instance_background_workers() -> None:
@@ -102,6 +119,12 @@ def _start_instance_background_workers() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # How long the process had already been alive when we got here: splits Cloud
+    # Run's cold start into platform time (container boot) vs our import time.
+    age = _process_age_seconds()
+    if age is not None:
+        logger.info("Startup: process alive %.1fs when lifespan began (imports + create_all)", age)
+
     # One-off data migration: legacy options/zonas watchlists → followed_instruments.
     # Runs in lifespan (not at import) so merely importing backend.app — e.g. from
     # tests — never mutates a real database. No-op after the first boot.
