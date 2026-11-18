@@ -32,6 +32,7 @@ from .market_data import (
     SessionClose,
     TickerMap,
     SplitHistoryCache,
+    EurexProductCache,
     ExchangeRate,
     FredRate,
 )
@@ -108,6 +109,7 @@ __all__ = [
     "SessionClose",
     "TickerMap",
     "SplitHistoryCache",
+    "EurexProductCache",
     "ExchangeRate",
     "FredRate",
     "AlertSeverity",

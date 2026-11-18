@@ -16,7 +16,12 @@ paths:
 ### Data sources
 - **Yahoo Finance**: global options chains; all available expirations exposed via `fetch_expirations()` (instant metadata call). Agent cycle uses first 3 expirations; UI fetches per-expiry on demand.
 - **MEFF**: direct HTML scraping from meff.es, 30 verified `.MC` tickers (Ibex-35 blue chips + extended). HV computed via yfinance 60d history since MEFF doesn't publish it.
-- **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day.
+- **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day **in the DB** (`eurex_product_cache`, one row per symbol
+  and day, via `services/eurex_cache.py`): the in-memory `_EUREX_RDF_CACHE` dies with every
+  cold start, and with `--min-instances=0` every cron cycle is one, so 154 of 161 cycles in a
+  week re-downloaded the 29 MB zip (~61 s, ~44% of the cycle; 2026-11-18). "Not listed" is
+  cached as NULL (else `MNDI.L` would trigger the download every cycle); a failed download is
+  never cached. Only the first cycle of the day parses the RDF.
 - Options chain cached 5 min (TTL) per ticker to avoid redundant scrapes. Per-expiry chains have their own cache keyed by `TICKER:YYYY-MM-DD`.
 - **A watchlist row can hold an ISIN, and the sources are only ever asked about tickers.**
   A portfolio position nothing knows a ticker for is sent by its ISIN (`p.ticker || p.isin`
