@@ -133,7 +133,7 @@ email). Two gates, both load-bearing:
   inserted when notified, deleted when cleared. Brais chose this over the earlier 6 h
   re-send on 2026-10-06. Keyed on ticker+type (+contract for spikes), never on the
   message (its numbers drift).
-  - **Clearing is by cycle, never by clock.** The cron runs `5,35 7-22` UTC on
+  - **Clearing is by cycle, never by clock.** The cron runs `5 7-22` UTC (hourly since 2026-11-18) on
     weekdays (minute 5, not 0: at :00 it collided with the geo cycle on the single
     instance and Cloud Run refused it with a 429, three times in a month), so any
     "unseen for N hours" rule would end every episode overnight and at weekends and
