@@ -491,7 +491,7 @@ Tracker manual de posiciones de banca privada (PE/VC/RE, Hedge Fund, Producto Es
 
 - **Modelo `AltInvestment`** — una fila por posición, con los flujos como agregados (`committed_capital`, `called_capital`, `distributed_capital`, `current_nav`) más `type`, `status`, `manager`, `vintage_year`, `geography`, `currency`, `notes`. No hay sub-tabla de movimientos.
 - **Métricas derivadas** (calculadas en cada respuesta, nunca almacenadas): TVPI = (distribuido + NAV) / called, DPI = distribuido / called, RVPI = NAV / called, unfunded = comprometido − called. Todas `None` cuando called = 0.
-- Las tablas nuevas se crean con `Base.metadata.create_all` al arrancar (no requieren Alembic para altas).
+- Las tablas nuevas se crean con `Base.metadata.create_all` al arrancar (no requieren Alembic para altas); en producción, en el primer arranque de cada revisión desplegada (`database.ensure_schema`).
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|

@@ -1,9 +1,11 @@
 import logging
+import os
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, Query
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy import MetaData, create_engine, inspect, text
+from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.config import settings
@@ -224,6 +226,68 @@ def ensure_constraints() -> None:
                     f"ON {table} ({columns}) WHERE {where}"
                 )
             )
+
+
+def ensure_schema(metadata: MetaData) -> bool:
+    """Apply the startup schema DDL once per Cloud Run revision.
+
+    Production runs with min-instances=0, so every cron tick is a cold start and
+    every start used to pay ~200 Neon round-trips (6.3 s measured) for DDL that
+    only changes with a deploy. A deploy is a new Cloud Run revision, so the first
+    start of a revision runs the DDL and stamps its `K_REVISION`; later starts of
+    the same revision read the stamp with one SELECT and skip it.
+
+    Returns True when the DDL ran, False when it was skipped. Without `K_REVISION`
+    (local dev, tests, CI) the DDL always runs exactly as before.
+    """
+    revision = os.environ.get("K_REVISION")
+    if revision and _stamped_revision() == revision:
+        return False
+    metadata.create_all(bind=engine)
+    ensure_columns()
+    ensure_constraints()
+    if revision:
+        _stamp_revision(revision)
+    return True
+
+
+def _stamped_revision() -> str | None:
+    """The revision that last applied the DDL, or None when unknown.
+
+    A missing table (first deploy) or a transient database error means "no stamp":
+    the caller then runs the DDL, which also recreates the table. Never raises.
+    """
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT revision FROM schema_stamp WHERE id = 1")).first()
+        return row[0] if row else None
+    except SQLAlchemyError:
+        _logger.debug("Schema stamp read failed; running the startup DDL", exc_info=True)
+        return None
+
+
+def _stamp_revision(revision: str) -> None:
+    """Record `revision` as the last one to apply the DDL, replacing any old row.
+
+    Best-effort: the DDL already succeeded, and a missing stamp only means the
+    next start runs it again. Never raises.
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM schema_stamp"))
+            conn.execute(
+                text(
+                    "INSERT INTO schema_stamp (id, revision, applied_at) "
+                    "VALUES (1, :revision, :applied_at)"
+                ),
+                {"revision": revision, "applied_at": datetime.now(timezone.utc)},
+            )
+    except SQLAlchemyError:
+        _logger.warning(
+            "Schema stamp write failed for %s; next start reruns the DDL",
+            revision,
+            exc_info=True,
+        )
 
 
 # Annotated type aliases for FastAPI dependency injection

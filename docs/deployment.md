@@ -379,6 +379,7 @@ Ver revisiones: `gcloud run revisions list --service finview-api --region europe
 - Consola: https://console.neon.tech
 - Branch de producción: `main`
 - Migraciones: sin Alembic — SQLAlchemy crea tablas en `startup` (`Base.metadata.create_all`) en [backend/database.py](../backend/database.py). Cambios destructivos al esquema requieren script manual.
+- El DDL de arranque se ejecuta una vez por revisión de Cloud Run (`ensure_schema`): el primer arranque de cada revisión lo aplica y guarda `K_REVISION` en la tabla `schema_stamp`; los arranques en frío siguientes de esa revisión lo saltan con una sola consulta (ahorra ~6 s por arranque). Para forzarlo sin desplegar, borra la fila de `schema_stamp`. El log de arranque dice `DDL ran` o `DDL skipped, revision already applied`.
 - Backups: Neon hace PITR 7 días en plan Free. Dumps puntuales vía `pg_dump` están en el repo como `finview-YYYYMMDD-HHMMSS.dump` (gitignored).
 
 ## Troubleshooting

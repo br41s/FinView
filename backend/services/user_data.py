@@ -35,6 +35,7 @@ GLOBAL_TABLES = frozenset({
     "geo_rule_stats",
     "listing_profiles",
     "price_cache",
+    "schema_stamp",
     "segment_checks",
     "segment_reports",
     "session_closes",

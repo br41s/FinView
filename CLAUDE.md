@@ -32,7 +32,7 @@ Legal and data-protection obligations are mapped in `docs/compliance/README.md`.
 | DB local | SQLite fallback |
 | Deploy | Vercel (frontend) · Google Cloud Run europe-west1 (backend) |
 | CI | Cloud Build trigger on push to backend/**, Dockerfile, pyproject.toml, cloudbuild.yaml |
-| Tests | pytest · 1827 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 400 frontend tests |
+| Tests | pytest · 1834 collected (all pass with files/; 148 skip without real broker PDFs/CSVs, on CI and in a local worktree alike) · vitest · 400 frontend tests |
 | Linter | ruff (line-length 100) · ESLint (`cd frontend && pnpm lint`, eslint-config-next) |
 
 ---
@@ -148,6 +148,12 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   Dropping an obsolete UNIQUE constraint in prod (Postgres only) goes in
   `database._DROP_UNIQUE_CONSTRAINTS` (applied by `ensure_constraints()`); SQLite tables
   are rebuilt from the model and never carry it.
+- That startup DDL runs **once per Cloud Run revision** (`database.ensure_schema`): the
+  first start of a revision applies it and stamps `K_REVISION` in `schema_stamp`; later
+  cold starts read the stamp with one SELECT and skip ~200 Neon round-trips (6.3 s per
+  start, measured 2026-11-18). A deploy is a new revision, so schema changes still apply
+  on deploy. Without `K_REVISION` (local, tests, CI smoke) it always runs. To force a
+  rerun without deploying, delete the `schema_stamp` row.
 - A new table must be classified for data rights. `services/user_data.py` derives from the
   schema which tables belong to a user (a `user_id` column, or a foreign key into a table
   that has one) and uses that one definition for both the export (`GET /users/me/export`)
@@ -241,10 +247,10 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
 
 ## Tests
 
-Backend: `pytest` — 1827 collected (all under `backend/tests/`). On the main machine, with
-the real broker files in `files/`, all 1827 pass in ~140s. Those files are not in the repo,
+Backend: `pytest` — 1834 collected (all under `backend/tests/`). On the main machine, with
+the real broker files in `files/`, all 1834 pass in ~140s. Those files are not in the repo,
 so where `files/` is absent — CI, and worktrees unless you symlink it — 148 skip and the
-remaining 1679 run in ~100s. It is one number again: until 2026-10-05 it was 159 on CI and
+remaining 1686 run in ~100s. It is one number again: until 2026-10-05 it was 159 on CI and
 127 in a worktree, and the 32 between them were `test_ing.py` (below). The geo suite is
 the largest block (`test_geo_*`): it pins the
 notify gate's reachability from the real rule catalogue, the scope-vs-breadth invariant, the
