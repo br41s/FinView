@@ -179,6 +179,50 @@ def test_evaluate_pending_fills_matured_signal_beyond_old_window(db, monkeypatch
     assert sig.outcome_7d == BacktestOutcome.CORRECT  # 7d now actually fills
 
 
+def test_evaluate_pending_same_prices_report_nothing_updated(db, monkeypatch):
+    # 4 days old → 1d/3d fill, 7d not reached yet, so the row stays in the pending
+    # scan. A second run over the same prices must report 0, not one "update" per
+    # signal scanned (prod logged pending=353 updated=353 every cycle).
+    sig = _pending_signal(days_old=4)
+    db.add(sig)
+    db.commit()
+    monkeypatch.setattr(backtest_service, "yf", _fake_yf(close=105.0))
+
+    assert evaluate_pending(db, user_id=1) == 1
+    db.refresh(sig)
+    first = (sig.price_at_1d, sig.outcome_1d, sig.price_at_3d, sig.outcome_3d,
+             sig.price_at_7d, sig.outcome_7d)
+    assert first[0] == 105.0
+
+    assert evaluate_pending(db, user_id=1) == 0
+    db.refresh(sig)
+    after = (sig.price_at_1d, sig.outcome_1d, sig.price_at_3d, sig.outcome_3d,
+             sig.price_at_7d, sig.outcome_7d)
+    assert after == first
+
+
+def test_evaluate_pending_changed_price_overwrites_stored_values(db, monkeypatch):
+    sig = _pending_signal(days_old=20)
+    db.add(sig)
+    db.commit()
+    monkeypatch.setattr(backtest_service, "yf", _fake_yf(close=105.0))  # BULLISH +5%
+    assert evaluate_pending(db, user_id=1) == 1
+    db.refresh(sig)
+    assert sig.price_at_7d == 105.0
+    assert sig.outcome_7d == BacktestOutcome.CORRECT
+
+    # The pending scan only selects rows whose 7d outcome is still NULL; clear it
+    # to model a row a later run re-evaluates, keeping the stored 105 price.
+    sig.outcome_7d = None
+    db.commit()
+    monkeypatch.setattr(backtest_service, "yf", _fake_yf(close=95.0))  # BULLISH −5%
+
+    assert evaluate_pending(db, user_id=1) == 1
+    db.refresh(sig)
+    assert sig.price_at_7d == 95.0
+    assert sig.outcome_7d == BacktestOutcome.INCORRECT
+
+
 def test_evaluate_pending_skips_signals_past_max_age(db, monkeypatch):
     # Older than _MAX_EVAL_AGE_DAYS → terminally unevaluable, left out of the scan.
     sig = _pending_signal(days_old=backtest_service._MAX_EVAL_AGE_DAYS + 5)

@@ -55,10 +55,11 @@ zones (zonas_clave_analyzer)
   gate. `GET /zonas-clave/signals` returns everything by default; `alerted_only=true`
   is the Monitor's view.
 - **Outcomes are evaluated by the zonas cycle itself** (`run_analysis_for_user`
-  ends with `backtest_service.evaluate_pending`). The options agent also
-  evaluates, but returns early for a user with no options watchlist, so a
+  ends with `backtest_service.evaluate_pending`). It is the **only** scheduled evaluator
+  since 2026-11-18, for options and zonas signals alike: the options agent used to
+  evaluate every cycle too (returning early for a user with no options watchlist, so a
   zonas-only user never got ZONE_BREAK outcomes — and without outcomes nothing
-  calibrates.
+  calibrates). Don't drop this call: no other job fills outcomes.
 - **`break_probability = NULL` means "no score"** (no API key, LLM failure,
   unparseable answer). Never coerce it to 0 — that reads as "certainly won't
   break" in any later calibration, and it must not alert either.

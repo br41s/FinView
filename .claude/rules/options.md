@@ -50,7 +50,9 @@ paths:
 ### Agent cycle (options_agent.py)
 1. Fetch watchlist tickers for the user
 2. For each ticker: fetch chain → enrich with Greeks → rule analysis → premium spike detection → store snapshot + alerts + unusual activity → record backtest signals (HIGH/MEDIUM)
-3. evaluate_pending() resolves outcomes from previous cycles
+3. Backtest outcomes are **not** evaluated here since 2026-11-18: the daily zonas-clave cron
+   (22:15 UTC, after the NY close) runs `evaluate_pending` for every active user, and doing it
+   every options cycle cost ~36 Yahoo history fetches (~10 s) to recompute the same daily closes
 4. If `FINVIEW_OPENROUTER_API_KEY` set and alerts exist → AI analysis (7-section Markdown)
 5. notify_alerts() → single entry point for all channels (ntfy + Telegram + email)
 
@@ -189,7 +191,8 @@ email). Two gates, both load-bearing:
   NOT a fixed window — a `10d` window only reached signals recorded 7-17 days ago, so any that
   missed that sweet spot (weekend, skipped cron) never got a 7d outcome and piled up unbounded.
   Scan is bounded by `_MAX_EVAL_AGE_DAYS` (45); a `[backtest-eval] pending/tickers/priced/updated`
-  log line per run makes a zero-throughput regression visible.
+  log line per run makes a zero-throughput regression visible. `updated` counts rows whose stored
+  price or outcome actually changed (it used to count every row scanned: `pending=353 updated=353`).
 - **Cross-cycle dedup (both sources):** a persistent condition fires the same alert every cycle.
   Options: `record_signal` skips a repeat within `_DEDUP_WINDOW_HOURS` (20h) on
   (user, ticker, signal_type, direction). Technical: `technical_signals._already_open` does the

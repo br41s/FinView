@@ -54,7 +54,6 @@ def _cycle(session_factory, alerts, data=True):
                      return_value={"summary": SUMMARY, "alerts": [dict(a) for a in alerts],
                                    "unusual_activity": []}),
         patch.object(options_agent, "macro_context", return_value=None),
-        patch.object(options_agent, "evaluate_pending"),
         patch.object(options_agent, "record_signal"),
         patch.object(options_agent.settings, "openrouter_api_key", ""),
         patch.object(ns, "send_ntfy"), patch.object(ns, "send_email"),
