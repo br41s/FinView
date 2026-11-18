@@ -16,7 +16,12 @@ paths:
 ### Data sources
 - **Yahoo Finance**: global options chains; all available expirations exposed via `fetch_expirations()` (instant metadata call). Agent cycle uses first 3 expirations; UI fetches per-expiry on demand.
 - **MEFF**: direct HTML scraping from meff.es, 30 verified `.MC` tickers (Ibex-35 blue chips + extended). HV computed via yfinance 60d history since MEFF doesn't publish it.
-- **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day.
+- **Eurex**: daily RDF file; covers .DE, .PA, .AS, .L, .MI, .SW, .ZU, .BR, .VI, .OL, .ST, .CO, .HE, .LS, .PR suffixes. Cached once per trading day **in the DB** (`eurex_product_cache`, one row per symbol
+  and day, via `services/eurex_cache.py`): the in-memory `_EUREX_RDF_CACHE` dies with every
+  cold start, and with `--min-instances=0` every cron cycle is one, so 154 of 161 cycles in a
+  week re-downloaded the 29 MB zip (~61 s, ~44% of the cycle; 2026-11-18). "Not listed" is
+  cached as NULL (else `MNDI.L` would trigger the download every cycle); a failed download is
+  never cached. Only the first cycle of the day parses the RDF.
 - Options chain cached 5 min (TTL) per ticker to avoid redundant scrapes. Per-expiry chains have their own cache keyed by `TICKER:YYYY-MM-DD`.
 - **A watchlist row can hold an ISIN, and the sources are only ever asked about tickers.**
   A portfolio position nothing knows a ticker for is sent by its ISIN (`p.ticker || p.isin`
@@ -45,7 +50,9 @@ paths:
 ### Agent cycle (options_agent.py)
 1. Fetch watchlist tickers for the user
 2. For each ticker: fetch chain → enrich with Greeks → rule analysis → premium spike detection → store snapshot + alerts + unusual activity → record backtest signals (HIGH/MEDIUM)
-3. evaluate_pending() resolves outcomes from previous cycles
+3. Backtest outcomes are **not** evaluated here since 2026-11-18: the daily zonas-clave cron
+   (22:15 UTC, after the NY close) runs `evaluate_pending` for every active user, and doing it
+   every options cycle cost ~36 Yahoo history fetches (~10 s) to recompute the same daily closes
 4. If `FINVIEW_OPENROUTER_API_KEY` set and alerts exist → AI analysis (7-section Markdown)
 5. notify_alerts() → single entry point for all channels (ntfy + Telegram + email)
 
@@ -133,7 +140,7 @@ email). Two gates, both load-bearing:
   inserted when notified, deleted when cleared. Brais chose this over the earlier 6 h
   re-send on 2026-10-06. Keyed on ticker+type (+contract for spikes), never on the
   message (its numbers drift).
-  - **Clearing is by cycle, never by clock.** The cron runs `5,35 7-22` UTC on
+  - **Clearing is by cycle, never by clock.** The cron runs `5 7-22` UTC (hourly since 2026-11-18) on
     weekdays (minute 5, not 0: at :00 it collided with the geo cycle on the single
     instance and Cloud Run refused it with a 429, three times in a month), so any
     "unseen for N hours" rule would end every episode overnight and at weekends and
@@ -184,7 +191,8 @@ email). Two gates, both load-bearing:
   NOT a fixed window — a `10d` window only reached signals recorded 7-17 days ago, so any that
   missed that sweet spot (weekend, skipped cron) never got a 7d outcome and piled up unbounded.
   Scan is bounded by `_MAX_EVAL_AGE_DAYS` (45); a `[backtest-eval] pending/tickers/priced/updated`
-  log line per run makes a zero-throughput regression visible.
+  log line per run makes a zero-throughput regression visible. `updated` counts rows whose stored
+  price or outcome actually changed (it used to count every row scanned: `pending=353 updated=353`).
 - **Cross-cycle dedup (both sources):** a persistent condition fires the same alert every cycle.
   Options: `record_signal` skips a repeat within `_DEDUP_WINDOW_HOURS` (20h) on
   (user, ticker, signal_type, direction). Technical: `technical_signals._already_open` does the

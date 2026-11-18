@@ -26,6 +26,7 @@ GLOBAL_TABLES = frozenset({
     "ai_mention_checks",
     "ai_mention_reports",
     "alt_investment_catalog",
+    "eurex_product_cache",
     "exchange_rates",
     "fred_rates",
     "geo_flight_samples",

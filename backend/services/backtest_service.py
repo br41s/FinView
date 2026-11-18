@@ -2,8 +2,10 @@
 
 Lifecycle:
     1. record_signal() is called during each agent cycle for every HIGH/MEDIUM alert.
-    2. evaluate_pending() is called periodically (or at cycle start) to fill in
-       price_at_1d, price_at_3d, price_at_7d and derive outcomes.
+    2. evaluate_pending() runs once per market day from the zonas-clave cron
+       (zonas_clave_analyzer.run_analysis_for_user) and from
+       POST /options/backtest/evaluate, to fill in price_at_1d, price_at_3d,
+       price_at_7d and derive outcomes.
 
 Direction derivation:
     - HIGH_PUT_CALL_RATIO, HIGH_IV on puts, IV_SKEW  → BEARISH
@@ -266,15 +268,27 @@ def evaluate_pending(db: Session, user_id: int) -> int:
 
             outcome = _outcome(signal.direction, float(signal.price_at_signal), price_later)
             if label == "1d":
+                old_price, old_outcome = signal.price_at_1d, signal.outcome_1d
                 signal.price_at_1d = price_later
                 signal.outcome_1d = outcome
             elif label == "3d":
+                old_price, old_outcome = signal.price_at_3d, signal.outcome_3d
                 signal.price_at_3d = price_later
                 signal.outcome_3d = outcome
             elif label == "7d":
+                old_price, old_outcome = signal.price_at_7d, signal.outcome_7d
                 signal.price_at_7d = price_later
                 signal.outcome_7d = outcome
-            changed = True
+
+            # Only count a row as updated when a stored value actually moves: the
+            # stored outcome reads back as a BacktestOutcome member, the computed
+            # one is a plain string, so normalize before comparing.
+            if (
+                _outcome_value(old_outcome) != outcome
+                or old_price is None
+                or abs(float(old_price) - price_later) > 1e-9
+            ):
+                changed = True
 
         if changed:
             updated += 1

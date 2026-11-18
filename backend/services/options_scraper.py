@@ -15,7 +15,7 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
-from backend.services import ticker_map
+from backend.services import eurex_cache, ticker_map
 from backend.services.greeks_calculator import _norm_cdf, _norm_pdf
 
 logger = logging.getLogger(__name__)
@@ -319,18 +319,22 @@ def _load_eurex_rdf() -> bool:
 
 def _fetch_eurex(ticker: str) -> dict | None:
     """Return options chain for a European ticker using Eurex daily settlement data."""
-    if not _load_eurex_rdf():
-        return None
-
-    # Resolve ticker → Eurex product code
-    # Try stripping the exchange suffix (e.g., "BAS.DE" → "BAS")
+    # Resolve ticker → Eurex product code by stripping the exchange suffix
+    # (e.g., "BAS.DE" → "BAS"). The day's answer is in the DB because a cold
+    # start empties the in-memory RDF, and re-downloading it costs most of a cycle.
     sym = ticker.split(".")[0].upper()
-    code = _EUREX_RDF_CACHE["sym_to_code"].get(sym)
-    if not code:
-        logger.debug("No Eurex product found for ticker %s (sym=%s)", ticker, sym)
-        return None
+    day = date.today()
+    hit, product = eurex_cache.load(sym, day)
+    if not hit:
+        if not _load_eurex_rdf():
+            return None  # failed download: nothing cached
 
-    product = _EUREX_RDF_CACHE["products"].get(code)
+        code = _EUREX_RDF_CACHE["sym_to_code"].get(sym)
+        if not code:
+            logger.debug("No Eurex product found for ticker %s (sym=%s)", ticker, sym)
+        product = _EUREX_RDF_CACHE["products"].get(code) if code else None
+        eurex_cache.store(sym, day, product)  # None too: "not listed today"
+
     if not product or not product["options"]:
         return None
 

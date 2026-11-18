@@ -23,7 +23,6 @@ from backend.models import (
 )
 from backend.services.backtest_service import (
     alignment_for_alert,
-    evaluate_pending,
     record_signal,
 )
 from backend.services.fred_rates import risk_free_rate_for_ticker
@@ -180,12 +179,6 @@ def run_cycle(user_id: int) -> dict:
                     implied_volatility=ua.get("implied_volatility"),
                     last_price=ua.get("last_price"),
                 ))
-
-        # Evaluate pending backtest signals from previous cycles
-        try:
-            evaluate_pending(db, user_id)
-        except Exception:
-            logger.exception("Backtest evaluation failed — non-fatal")
 
         # Phase 5: Optional AI analysis via OpenRouter
         claude_analysis = None

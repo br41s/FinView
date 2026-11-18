@@ -127,6 +127,29 @@ class SplitHistoryCache(Base):
     )
 
 
+class EurexProductCache(Base):
+    """One Eurex OSTK product for one symbol and day, read from the RDF.
+
+    `product` is the JSON of the product dict `_parse_eurex_rdf` builds
+    (product_isin, ccy, underlying_isin, sym, prev_close, options), or NULL when
+    that day's RDF had no product for the symbol — a real answer, cached so a
+    symbol Eurex does not list stops triggering the download. A failed download
+    is never cached. In the DB, not in memory, because `--min-instances=0` makes
+    every cron cycle a cold start. Not user-scoped.
+    """
+
+    __tablename__ = "eurex_product_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sym: Mapped[str] = mapped_column(String(20), nullable=False)
+    rdf_date: Mapped[date] = mapped_column(Date, nullable=False)
+    product: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    __table_args__ = (UniqueConstraint("sym", "rdf_date"),)
+
+
 # ── Exchange Rates (ECB) ─────────────────────────────────────────────
 
 
