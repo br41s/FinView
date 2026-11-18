@@ -7,6 +7,7 @@ Everything is re-exported here so `from backend.models import X` keeps working a
 from .base import (
     Base,
     Broker,
+    SchemaStamp,
     TransactionType,
 )
 from .auth import (
@@ -90,6 +91,7 @@ from .segments import (
 __all__ = [
     "Base",
     "Broker",
+    "SchemaStamp",
     "TransactionType",
     "SubscriptionTier",
     "SubscriptionStatus",

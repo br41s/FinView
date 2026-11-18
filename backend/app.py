@@ -26,7 +26,9 @@ from backend.api.users import router as users_router
 from backend.api.brokers import router as brokers_router
 from backend.api.living_world import router as living_world_router
 from backend.config import PRODUCTION_LIKE_ENVS, settings
-from backend.database import engine, ensure_columns, ensure_constraints
+# `engine` is re-exported for callers that probe this module's engine (readiness
+# tests patch it); the startup DDL itself goes through `ensure_schema`.
+from backend.database import engine as engine, ensure_schema
 from backend.models import Base
 from backend.services.geo.owner import ensure_geo_owner
 from backend.services.geo.scheduler import shutdown_scheduler as shutdown_geo_scheduler
@@ -42,12 +44,11 @@ logging.getLogger("backend").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-# Create tables on startup, then apply any additive column / constraint migrations.
-# Timed so the lifespan log can split a cold start into imports vs this DDL.
+# Create tables and apply additive column / constraint migrations, once per Cloud
+# Run revision (see `ensure_schema`). Timed so the lifespan log can split a cold
+# start into imports vs this DDL.
 _ddl_started = time.perf_counter()
-Base.metadata.create_all(bind=engine)
-ensure_columns()
-ensure_constraints()
+_STARTUP_DDL_RAN = ensure_schema(Base.metadata)
 _STARTUP_DDL_SECONDS = time.perf_counter() - _ddl_started
 
 
@@ -128,8 +129,9 @@ async def lifespan(app: FastAPI):
     age = _process_age_seconds()
     if age is not None:
         logger.info(
-            "Startup: process alive %.1fs when lifespan began, %.1fs of it startup DDL",
+            "Startup: process alive %.1fs when lifespan began, %.1fs of it startup schema (%s)",
             age, _STARTUP_DDL_SECONDS,
+            "DDL ran" if _STARTUP_DDL_RAN else "DDL skipped, revision already applied",
         )
 
     # One-off data migration: legacy options/zonas watchlists → followed_instruments.
