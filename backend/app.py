@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -41,10 +42,13 @@ logging.getLogger("backend").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-# Create tables on startup, then apply any additive column / constraint migrations
+# Create tables on startup, then apply any additive column / constraint migrations.
+# Timed so the lifespan log can split a cold start into imports vs this DDL.
+_ddl_started = time.perf_counter()
 Base.metadata.create_all(bind=engine)
 ensure_columns()
 ensure_constraints()
+_STARTUP_DDL_SECONDS = time.perf_counter() - _ddl_started
 
 
 def _process_age_seconds() -> float | None:
@@ -123,7 +127,10 @@ async def lifespan(app: FastAPI):
     # Run's cold start into platform time (container boot) vs our import time.
     age = _process_age_seconds()
     if age is not None:
-        logger.info("Startup: process alive %.1fs when lifespan began (imports + create_all)", age)
+        logger.info(
+            "Startup: process alive %.1fs when lifespan began, %.1fs of it startup DDL",
+            age, _STARTUP_DDL_SECONDS,
+        )
 
     # One-off data migration: legacy options/zonas watchlists → followed_instruments.
     # Runs in lifespan (not at import) so merely importing backend.app — e.g. from
