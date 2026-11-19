@@ -77,6 +77,9 @@ steps:
       - --min-instances=0
       - --max-instances=1
       - --memory=1Gi
+      # Pinned: a manual deploy once left gen2 in the service template and every
+      # later build would have inherited it. gen2 measured no faster (2026-11-18).
+      - --execution-environment=gen1
       - --timeout=1800
       - --startup-probe=httpGet.path=/api/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=24
       - --update-env-vars=FINVIEW_ENV=production,FINVIEW_REQUEST_SCOPED_RUNTIME=true
