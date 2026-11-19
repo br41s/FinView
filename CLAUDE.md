@@ -232,7 +232,8 @@ Never run pip install outside .venv. Never use npm — frontend uses pnpm.
   `uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt` and commit
   both files — `backend/tests/test_requirements_sync.py` fails the suite if you forget.
 - Cloud Run runtime flags in cloudbuild.yaml are load-bearing: `--cpu-throttling` +
-  `--cpu-boost` + `--min=0` + `--max=1` + `--max-instances=1` + `--memory=1Gi`, with
+  `--cpu-boost` + `--min=0` + `--max=1` + `--max-instances=1` + `--memory=1Gi` +
+  `--execution-environment=gen1` (pinned: gen2 cold starts measured no faster, 2026-11-18), with
   `FINVIEW_REQUEST_SCOPED_RUNTIME=true`. Production work must finish inside HTTP requests;
   never restore startup/background workers or `--no-cpu-throttling` to hide cold-start latency.
 - Revisions are named `finview-api-$SHORT_SHA-$BUILD_ID`, one per build: a failed candidate
