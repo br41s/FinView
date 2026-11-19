@@ -142,7 +142,8 @@ email). Two gates, both load-bearing:
   message (its numbers drift).
   - **Clearing is by cycle, never by clock.** The cron runs `5 7-22` UTC (hourly since 2026-11-18) on
     weekdays (minute 5, not 0: at :00 it collided with the geo cycle on the single
-    instance and Cloud Run refused it with a 429, three times in a month), so any
+    instance and Cloud Run refused it with a 429, three times in a month; geo now runs at :03,
+    so the options request lands on an instance that is already up), so any
     "unseen for N hours" rule would end every episode overnight and at weekends and
     re-push them all at 07:05.
   - **Only an analyzed ticker clears.** `run_cycle` passes `analyzed` — every ticker

@@ -76,7 +76,7 @@ Otras opcionales (Stripe, notificaciones ntfy/Telegram/email, claves de fuentes 
 >    solo debe diferir esa variable, y debe estar `Ready`.
 > 3. `gcloud run services update-traffic finview-api --to-latest`; marcha atrás con
 >    `--to-revisions=<revisión anterior>=100`.
-> 4. Esperar al siguiente ciclo (`geo-intel-cycle` corre en el minuto :00): `/api/geo/cron` debe
+> 4. Esperar al siguiente ciclo (`geo-intel-cycle` corre en el minuto :03): `/api/geo/cron` debe
 >    devolver 200 y no debe aparecer `User not found`. Los jobs del Scheduler no se pausan (no es un build).
 >
 > Cambiar el modelo (`FINVIEW_OPENROUTER_MODEL`) se hace en otra revisión: el scorer de zonas está
@@ -148,7 +148,7 @@ done
 >
 > ```bash
 > gcloud scheduler jobs create http geo-intel-audit --location=europe-west1 \
->   --schedule='0 */4 * * *' --time-zone=Etc/UTC --http-method=POST \
+>   --schedule='3 */4 * * *' --time-zone=Etc/UTC --http-method=POST \
 >   --uri="$SERVICE_URL/api/geo/audit" --headers="X-Cron-Key=$FINVIEW_CRON_SECRET" \
 >   --attempt-deadline=1800s --max-retry-attempts=0
 > ```
@@ -192,9 +192,9 @@ instancia puede reclamarse tras la respuesta.
 
 | Job | Endpoint | Horario | Por qué ese horario |
 |---|---|---|---|
-| `geo-intel-cycle` | `/api/geo/cron` | `0 * * * *` | Los eventos geopolíticos no cierran de noche. Horario desde el 2026-10-01 (antes `*/30`, y antes `*/10`). GDELT lee las 2 últimas horas, así que un ciclo perdido no pierde noticias |
+| `geo-intel-cycle` | `/api/geo/cron` | `3 * * * *` | Los eventos geopolíticos no cierran de noche. Horario desde el 2026-10-01 (antes `*/30`, y antes `*/10`). En el minuto :03 desde el 2026-11-19: a las :00 los arranques en frío tardaban 23–97 s (mediana ~45 s) frente a 13–17 s a cualquier otra hora. GDELT lee las 2 últimas horas, así que un ciclo perdido no pierde noticias |
 | `options-agent-cycle` | `/api/options/agent/cron` | `5 7-22 * * 1-5` | Solo horario de mercado (EU+US). MEFF rate-limita el scraping; de madrugada no hay nada que leer. Cada hora desde el 2026-11-18 (antes cada 30 min desde el 2026-10-01, y antes `*/15`): era el 60 % del tiempo facturado de Cloud Run (138 s por ciclo) y el tick de las :35 despertaba Neon por su cuenta. En el minuto 5, no en el 0, desde el 2026-10-14: con una sola instancia, el tick de las :00 coincidía con el ciclo geo y Cloud Run lo rechazaba con 429 "no available instance" (3 veces en un mes); es además el único job con reintentos (2, backoff 60–120 s), porque el 500 de los jobs geo es una señal a propósito |
-| `geo-intel-audit` | `/api/geo/audit` | `0 */4 * * *` | Checkpoints y aprendizaje de reglas; sus horizontes (+1h…+7d) no necesitan más frecuencia |
+| `geo-intel-audit` | `/api/geo/audit` | `3 */4 * * *` | Checkpoints y aprendizaje de reglas; sus horizontes (+1h…+7d) no necesitan más frecuencia |
 | `zonas-clave-cycle` | `/api/zonas-clave/cron` | `15 22 * * 1-5` | Diario tras el cierre de NY; también refresca una vez ECB/FRED/CNMV para mantener esas descargas fuera de los ciclos de geo y opciones |
 | `ibkr-sync-daily` | `/api/brokers/cron` | `20 6 * * *` | Los informes Flex terminan ayer (fecha UTC), así que basta una vez al día. A las 06:20 UTC no coincide con geo (minuto 0) ni con opciones (desde las 7). No está comprobado contra el horario de cierre de IBKR: si un día llega incompleto, el del día siguiente lo reemplaza entero |
 

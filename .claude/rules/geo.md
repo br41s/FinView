@@ -472,8 +472,9 @@ advisor (score + dedup + persist GeoSignal) → notify → auditor.evaluate_pend
 The in-process APScheduler (`/geo/scheduler/start`, UI "Monitor" button) only survives
 while the instance is alive — with `--min-instances=0` it dies on scale-to-zero.
 **Prod periodicity = two Cloud Scheduler jobs**: `geo-intel-cycle` → `POST /api/geo/cron`
-hourly, `0 * * * *` (ingest, signals, notify; was `*/30` until 2026-10-01 — see the cost
-note in `docs/deployment.md`) and `geo-intel-audit` → `POST /api/geo/audit` every
+hourly, `3 * * * *` (ingest, signals, notify; was `*/30` until 2026-10-01 — see the cost
+note in `docs/deployment.md`; minute 3, not 0, since 2026-11-19: cold starts at :00 took
+23–97 s against 13–17 s at any other minute, and the audit moved with it to `3 */4`) and `geo-intel-audit` → `POST /api/geo/audit` every
 4 hours (checkpoints, live re-rating, rule learning). Both authenticate with header
 `X-Cron-Key == FINVIEW_CRON_SECRET` (constant-time compare; empty secret disables the
 endpoint) and run synchronously so Cloud Run keeps CPU until they finish. Don't convert
